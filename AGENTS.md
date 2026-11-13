@@ -13,7 +13,7 @@ The full description of the workflow lives in `docs/workflow.md`; read it before
 | `product-manager` | blue | `ai-docs/business.md` | `docs/business.md` |
 | `architect` | green | `ai-docs/architecture.md` | `docs/architecture.md` |
 | `principal-engineer` | red | `ai-docs/code.md` | `docs/code.md` + the code in `src/`, `tests/`, `Cargo.toml` |
-| `documenter` | light gray, cheapest model | `ai-docs/notes.md` | `README.md`, `LICENSE`, `docs/changelog.md`, `docs/workflow.md`, consistency of all `docs/` |
+| `documenter` | yellow, cheapest model | `ai-docs/notes.md` | `README.md`, `LICENSE`, `docs/changelog.md`, `docs/workflow.md`, consistency of all `docs/` |
 
 ## Rules (MUST)
 1. **The `documenter` agent MUST ALWAYS be called at the end of each development** (every feature, fix, refactor, dependency change or workflow change) so that it updates `docs/changelog.md` and keeps `docs/` and `README.md` consistent. A development is not finished until the documenter has run.

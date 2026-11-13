@@ -11,7 +11,7 @@
 ## Installation
 Requires Rust 1.88 or newer.
 ```sh
-git clone <repository-url> videolore
+git clone git@github.com:andrealorenzani/videolore.git
 cd videolore
 cargo build --release
 ```
@@ -28,6 +28,7 @@ The project is developed with an agentic workflow (Product Manager, Architect, P
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md)
 
 ## Latest changes
+- 2026-11-13 — Documenter agent now shown in yellow; repository published on GitHub.
 - 2026-11-13 — Project bootstrap: crate 0.1.0, GPL-3.0 licence, first draft of the agentic workflow.
 
 ## License
@@ -37,13 +38,13 @@ GPL-3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Before a single line of logic came to be,
-Andrea Lorenzani planted a whole tree:
-a Product Manager in calm and steady blue,
-an Architect in green to see the structure through,
-a Principal Engineer in red to forge the code,
-a Documenter in grey to light the road.
-He wrote the rules, he set the changelog's pace,
-gave every note and doc its rightful place.
-So videolore begins with nothing yet to show
-but the finest garden, where great things will grow.
+When the scribe stood pale and grey within the hall,
+Andrea Lorenzani heard the colours call:
+he dipped the Documenter in yellow light,
+so every changelog now shines warm and bright.
+Then, not content to keep his work at home,
+he gave the code a harbour and a dome,
+an origin on GitHub, firm and true,
+where every commit sails for all to view.
+Four agents, three commands, one steady hand:
+the finest workshop in the Rustacean land.

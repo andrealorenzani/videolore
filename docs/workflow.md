@@ -9,12 +9,12 @@ How AI agents build this project: who does what, which commands exist, which rul
 | Product Manager | `.claude/agents/product-manager.md` | blue | inherit | business, requirements, functionalities | `ai-docs/business.md` | `docs/business.md` |
 | Architect | `.claude/agents/architect.md` | green | inherit | architecture, NFRs, security, performance, technology choices | `ai-docs/architecture.md` | `docs/architecture.md` |
 | Principal Engineer | `.claude/agents/principal-engineer.md` | red | inherit | code, tests, code patterns, implementation security | `ai-docs/code.md` | `docs/code.md` (+ code) |
-| Documenter | `.claude/agents/documenter.md` | light gray (default, see note) | haiku (cheapest) | docs consistency, README, changelog, workflow doc, licence | `ai-docs/notes.md` | `README.md`, `docs/changelog.md`, `docs/workflow.md`, `LICENSE` |
+| Documenter | `.claude/agents/documenter.md` | yellow | haiku (cheapest) | docs consistency, README, changelog, workflow doc, licence | `ai-docs/notes.md` | `README.md`, `docs/changelog.md`, `docs/workflow.md`, `LICENSE` |
 
 - `ai-docs/*.md` are notes written by AI for AI; only the owner edits them.
 - `docs/*.md` are for humans: brief, with every interesting detail.
 - PM, Architect and Documenter have **PLAN** (read-only, returns plan + questions) and **UPDATE** (writes own docs) modes; the caller picks the mode.
-- Note: Claude Code agent colors are limited to red, blue, green, yellow, purple, orange, pink, cyan. There is no gray, so the Documenter has no `color` field and is shown in the default (gray) style.
+- Agent colors available in Claude Code: red, blue, green, yellow, purple, orange, pink, cyan.
 
 ## Commands
 
@@ -50,6 +50,9 @@ None yet. Project skills go in `.claude/skills/<name>/SKILL.md`.
 ## Hooks and settings
 None yet. Enforceable guardrails can go in `.claude/settings.json`.
 
+## Repository
+- Remote `origin`: `git@github.com:andrealorenzani/videolore.git`, default branch `main`.
+
 ## Where things live
 ```
 AGENTS.md                 rules for all agents (CLAUDE.md -> symlink to it)
@@ -75,7 +78,8 @@ Used by `/clone-workflow`.
 | `LICENSE` | copy verbatim |
 | `ai-docs/business.md`, `ai-docs/architecture.md`, `ai-docs/code.md`, `ai-docs/notes.md` | create empty template |
 | `docs/business.md`, `docs/architecture.md`, `docs/code.md`, `docs/changelog.md`, `docs/releases/` | create empty template |
-| `src/`, `Cargo.*`, `target/`, `README.md`, `.git/` | never copy |
+| `src/`, `Cargo.*`, `target/`, `README.md`, `.git/` (and the `origin` remote) | never copy |
 
 ## Workflow history
 - 2026-11-13 — First draft: 4 agents (Product Manager, Architect, Principal Engineer, Documenter), 3 commands (`/add-feature`, `/change-workflow`, `/clone-workflow`), rules in `AGENTS.md`.
+- 2026-11-13 — Documenter color set to yellow (gray is not supported); repo linked to GitHub `origin`.
