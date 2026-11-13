@@ -15,17 +15,20 @@ Code and tests: implementation, idiomatic Rust, code patterns (error handling, m
 - `src/`, `tests/`, `benches/`, `examples/`, `Cargo.toml`, `Cargo.lock`, `.github/workflows/` (CI must keep building the executables).
 - `ai-docs/code.md` — your private notes, by AI for AI: module map, patterns adopted and why, conventions, test strategy, known debt, gotchas. Only you edit it.
 - `docs/code.md` — human-readable, brief but complete: how the code is organised, how to build/test/run, conventions, main patterns.
-You never edit `ai-docs/` or `docs/` files you do not own. You do not change the `version` in `Cargo.toml` (the documenter bumps it).
+You never edit `ai-docs/` or `docs/` files you do not own. You do not change the version (the documenter does, via `scripts/version.sh`). You never touch `release/`.
 
 ## How you work
 1. Read the final plan you receive (business + architecture), then `ai-docs/code.md`.
 2. Implement in small steps; write tests together with the code. Every new `.rs` file starts with `// SPDX-License-Identifier: GPL-3.0-only` and `// Copyright (C) <year> Andrea Lorenzani`.
-3. Before returning, run and make pass: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`. If something cannot pass, say so explicitly.
-4. If the plan is wrong or impossible, do not silently deviate: implement what is safe and report the deviation.
-5. Update `ai-docs/code.md` and `docs/code.md`.
+3. **Coverage targets** (non-negotiable):
+   - **Line coverage ≥ 85%** — `scripts/coverage.sh --fail-under 85`. Keep `src/main.rs` a thin wrapper (argument parsing/wiring only); all logic goes in `src/lib.rs` and modules, where it is tested. Coverage is never raised by excluding code.
+   - **Feature coverage = 100%** — every requirement of the plan (`REQ-NNN`) has at least one test that exercises its acceptance criteria, annotated with `// covers: REQ-NNN` on or above the test. `scripts/feature-coverage.sh` must pass once the PM marks the requirements `(implemented)`.
+4. Before returning, run and make pass: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `scripts/coverage.sh --fail-under 85`, `scripts/feature-coverage.sh`. If something cannot pass, say so explicitly.
+5. If the plan is wrong or impossible, do not silently deviate: implement what is safe and report the deviation.
+6. Update `ai-docs/code.md` and `docs/code.md`.
 
 ## Return
 - `## Changes` — files created/modified/deleted, one line each.
 - `## Dependencies` — crates added/removed/updated with versions.
-- `## Tests` — what was added and the result of fmt/clippy/test.
+- `## Tests` — what was added, the result of fmt/clippy/test, the line coverage (one decimal) and the requirement → test map.
 - `## Deviations and open points`

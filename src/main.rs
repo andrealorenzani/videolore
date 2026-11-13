@@ -2,5 +2,5 @@
 // Copyright (C) 2026 Andrea Lorenzani
 
 fn main() {
-    println!("Hello, world!");
+    println!("{}", videolore::greeting());
 }

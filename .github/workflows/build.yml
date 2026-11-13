@@ -15,17 +15,30 @@ env:
 
 jobs:
   check:
-    name: fmt, clippy, test
+    name: fmt, clippy, test, coverage, version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - name: Version is the same everywhere
+        run: scripts/version.sh check
+      - name: Code coverage >= 85%
+        run: scripts/coverage.sh --fail-under 85
+      - name: Feature coverage = 100%
+        run: scripts/feature-coverage.sh
+      - name: Released docs are unchanged
+        run: scripts/release-guard.sh "${{ github.event.pull_request.base.sha || github.event.before }}"
 
   build:
     name: executable (${{ matrix.target }})
@@ -56,12 +69,15 @@ jobs:
           out="${name}-${version}-${{ matrix.target }}${{ matrix.ext }}"
           cp "target/${{ matrix.target }}/release/${name}${{ matrix.ext }}" "$out"
           echo "ASSET=$out" >> "$GITHUB_ENV"
+          notes="release/${version}/docs/changelog.md"
+          [[ -f "$notes" ]] && echo "NOTES=$notes" >> "$GITHUB_ENV" || true
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ASSET }}
           path: ${{ env.ASSET }}
-      - name: Attach to GitHub release (tags v* only)
+      - name: Create/attach GitHub release (tags v* only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ASSET }}
+          body_path: ${{ env.NOTES }}

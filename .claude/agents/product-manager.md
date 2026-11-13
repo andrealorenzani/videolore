@@ -22,7 +22,7 @@ You may read every other file; you never edit files you do not own.
 1. Read `ai-docs/business.md` and `docs/business.md` for context.
 2. Produce a business plan for the requested feature and return exactly:
    - `## Summary` — the feature in 2-3 lines.
-   - `## Requirements` — numbered, testable, with acceptance criteria.
+   - `## Requirements` — testable, with acceptance criteria, each with a stable ID `REQ-NNN` (continue the numbering found in `ai-docs/business.md`; never reuse an ID).
    - `## Out of scope`
    - `## Ambiguities` — each one tagged `[SEVERE]` or `[MINOR]`.
      - `[SEVERE]` = the answer changes what is built or who it is for, and no reasonable default exists. Give the question and 2-4 concrete options.
@@ -31,4 +31,4 @@ You may read every other file; you never edit files you do not own.
 If the caller sends answers to SEVERE ambiguities, return the **final plan** in the same format with no SEVERE items left.
 
 ### UPDATE mode
-Apply the final agreed plan to your documents: update `ai-docs/business.md` (decisions, requirement IDs, assumptions) and `docs/business.md`. Return a short list of what you changed.
+Apply the final agreed plan to your documents: update `ai-docs/business.md` (decisions, requirement IDs, assumptions) and `docs/business.md`. In `docs/business.md` every requirement is a line `- REQ-NNN (implemented): <text>` (or `(planned)` if not built in this development) — `scripts/feature-coverage.sh` reads this format to check that every implemented requirement has a test. Return a short list of what you changed.

@@ -14,7 +14,7 @@ $ARGUMENTS
 If the feature text is empty, ask the user for it and stop.
 
 ## Phase 0 — Target version
-If the user named a version for this change (e.g. "for 0.3.0", "version 1.0.0"), that is the **target version**. Otherwise take `version` from `Cargo.toml` and increment the last number by one (0.1.1 → 0.1.2). Pass the target version to every agent.
+If the user named a version for this change (e.g. "for 0.3.0", "version 1.0.0"), that is the **target version**. Otherwise it is `scripts/version.sh next-patch` (0.1.1 → 0.1.2). Pass the target version to every agent.
 
 You are the orchestrator: you do not write project files yourself, the agents do. Run the phases in order.
 
@@ -45,7 +45,7 @@ Wait for all three. If the Principal Engineer reports failing checks or deviatio
 Call the `documenter` agent with: the **target version**, the final plan, the Principal Engineer's result, and the lists of changes from PM and Architect. It updates the changelog, README (with its poem) and keeps `docs/` consistent. This step is mandatory (rule 1 of `AGENTS.md`).
 
 ## Commit
-Run `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`, then `git add -A` and commit with a **single human-readable line** describing the feature for a human (no prefixes, no body, no trailers, no mention of agents/AI). Do not push unless the user asks.
+Run `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && scripts/coverage.sh --fail-under 85 && scripts/feature-coverage.sh && scripts/version.sh check`, then `git add -A` and commit with a **single human-readable line** describing the feature for a human (no prefixes, no body, no trailers, no mention of agents/AI). Do not push unless the user asks.
 
 ## Finish
 Report to the user in a few lines: target version, what was built, files changed, test result, decisions taken with defaults, open points.
