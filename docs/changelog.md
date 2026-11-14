@@ -1,6 +1,14 @@
 # Changelog
 
-Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
+Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
+
+## 0.4.1 — 2026-11-14 21:29 +0000
+### Workflow
+- `/release [name]` now releases the **current** version: it creates `releases/<version> - <name>/` with a copy of all docs (README, docs, ai-docs) unchanged, `sources.zip` and `RELEASE_NOTES.md` taken from the changelog, cleans the changelog, commits, tags `v<version>` and pushes, watches CI, then moves to the next major version, commits and pushes. The name is asked when missing.
+- The snapshot folder is renamed `release/` → `releases/`; `scripts/collect-release.sh <version> "<name>"` and `scripts/release-guard.sh` use it; `.claude/settings.json` denies Edit and Write there; CI takes the GitHub release notes from `releases/<version> - */RELEASE_NOTES.md`.
+- New `docs/roadmap.md`, owned by the Documenter: known limitations and improvements for future versions. Every agent returns a `## Future work` section; `/add-feature` collects them, plus the features a plan postpones, and passes them to the Documenter. Seeded with the open items of 0.2.0–0.4.0.
+- README "Latest changes" keeps only the last 3 versions, with a link to the changelog and the release notes.
+- `AGENTS.md` scripts list completed.
 
 ## 0.4.0 — 2026-11-14 20:05 +0000
 Summary: export can use the computer's video hardware. Settings has a new **Export** choice: Best quality (the default, unchanged) or Faster. Faster encodes H.264 and HEVC with the video hardware of NVIDIA, Intel, AMD or Apple when it works. Every hardware file is checked, and on any problem the export is silently redone with the normal method, so the result is always a correct file. Measured on Linux with Intel integrated graphics, Faster was not always quicker, so it stays opt-in. Two real-hardware fixes are included: Linux drivers that refuse bitrate control and older system libva versions.

@@ -30,10 +30,11 @@ Return exactly:
 - `## Technology choices` — each with alternatives and the chosen one.
 - `## NFR, security and performance` — concrete targets and risks.
 - `## Implementation plan` — ordered steps for the Principal Engineer, including tests.
+- `## Future work` — parts of the plan postponed to a later version (with the reason), technical debt, risks to address later. The caller passes it to the Documenter for `docs/roadmap.md`.
 - `## Questions` — each tagged:
   - `[SEVERE PRODUCT-CHANGING]` = the technical choice changes what the user gets (behaviour, cost, platform support, data handling, UX). Give options and consequences.
   - `[TECHNICAL]` = you decided; state the decision and reason.
 If the caller sends answers, return the **final plan** in the same format with no SEVERE items left.
 
 ### UPDATE mode
-Apply the final plan to `ai-docs/architecture.md` and `docs/architecture.md`. Return a short list of what you changed.
+Apply the final plan to `ai-docs/architecture.md` and `docs/architecture.md`. Return a short list of what you changed and a `## Future work` section (new items for the roadmap, or "none").

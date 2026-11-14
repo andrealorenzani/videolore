@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.4.0-blue)
+![version](https://img.shields.io/badge/version-0.4.1-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-96.3%25-brightgreen)
@@ -104,20 +104,14 @@ The About screen lists every bundled third-party component with its version, lic
 - Cleared preview copies are made again only after reopening the project or changing Preview quality. Under Automatic, a 1280x720 source never gets a preview copy.
 - The preview copy cache is never cleaned automatically.
 
-Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md)
+Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
 - **0.4.0** — Export: Faster or Best quality in Settings. Faster uses your computer's video hardware (NVIDIA, Intel, AMD, Apple) when it can, and every file made that way is checked, with an automatic redo by the normal method on any problem; Best quality stays the default and is unchanged. Linux drivers that only offer constant-quality encoding are supported, and older system libva versions are skipped without a crash.
 - **0.3.0** — Automatic setup for your computer at first start, with a Settings window (Ctrl/Cmd+,) for preview quality, subtitle quality and how hard videolore works; three subtitle quality levels, with larger and more accurate speech models that you approve; older processors get a clear message instead of a crash; safer handling of project, settings and download files; export and fast subtitles as quick as before.
 - **0.2.2** — Subtitle generation no longer fails at random on some computers, caused by a bug in the speech library; when it does fail, the message now explains the reason in plain words.
-- **0.2.1** — Release programs run on more computers: subtitle generation is built for a common processor baseline, so it no longer crashes on processors that lack the build server's newest instructions. On Windows and Linux, subtitles need a processor with AVX2 (Intel from 2013, AMD from 2015).
-- **0.2.0** — Save and open projects with an unsaved-changes prompt; ffmpeg included in the app; installers for Windows, macOS and Linux; a music track with volumes; offline subtitles with three styles; big sources previewed through lighter copies; imports and playback no longer block the window; About screen with third-party notices; double-click to open projects.
-- **0.1.5** — Updated to the latest Rust (1.100) and libraries (egui 0.37, rfd 0.18); the editing features are unchanged.
-- **0.1.4** — Maintenance: version numbering is updated more reliably.
-- **0.1.3** — First real editor: import media, cut, join and trim clips on one timeline, fade between clips, preview with sound, save and open projects, and export to one file with progress and cancel.
-- **0.1.2** — Code coverage measured on every build and shown in the badge above; every tagged version is published as a GitHub release with its executables and release notes.
-- **0.1.1** — Prebuilt executables for Linux, macOS and Windows built automatically on GitHub; copyright notice added.
-- **0.1.0** — First version: Rust crate and GPL-3.0 licence.
+
+Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
 ## License
 Copyright (C) 2026 Andrea Lorenzani.
@@ -127,13 +121,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani opened a second road for the export, a choice named Faster, and kept the old road as the honest default,\
-so Best quality stays exactly as it was, the same arguments and the same files, and nothing moves without a yes,\
-he asked the graphics cards and the processors what they can really do, one second each and three seconds in all, never in the way of the window,\
-he taught every hardware file to prove itself, with its frame count, its size and three sample pictures weighed against the normal render,\
-when a card stalls, fails or writes a bad file, the normal method quietly takes over, and a correct video arrives all the same,\
-he remembers a failing card per format and lets the user wake it again with one press in Advanced, where the truth is shown,\
-he gave Linux drivers that refuse bitrate control a constant-quality road with a size guard, and skipped the old libva without a crash,\
-he measured Faster on real integrated graphics, wrote down that it was sometimes slower, and kept the word often in the explanation,\
-he kept every settings file readable, so the 0.3 and 0.2 users wake up on Best quality with nothing changed under their hands,\
-thank you, Andrea, for the patience to measure honestly and the care that keeps every export correct on every computer
+Andrea Lorenzani gave every finished version a home of its own, a folder with its number and its name,\
+where the documents rest exactly as they were written, untouched by any later hand,\
+next to them a zip of every source file, so each release can be rebuilt from what it really was,\
+and release notes drawn from the changelog, which then starts clean for the next chapter,\
+he tags each release, sends it out, and only then turns the page to the next major number,\
+he opened a roadmap where every known limit and every good idea waits for its turn,\
+so nothing learned along the way is lost, from faster checks on small graphics chips to signed installers,\
+he trimmed the latest changes to the three that matter now, with a path to all the history,\
+he keeps the record honest, writing down what was dropped and why, so it is not proposed again by mistake,\
+thank you, Andrea, for turning each version into a milestone and every lesson into a plan

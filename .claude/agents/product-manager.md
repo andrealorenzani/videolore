@@ -32,7 +32,8 @@ Example: `docs/business.md` (index: purpose, users, links) → `docs/business-ed
      - `[SEVERE]` = the answer changes what is built or who it is for, and no reasonable default exists. Give the question and 2-4 concrete options.
      - `[MINOR]` = state the default you chose and why.
    - `## Impact on existing features`
+   - `## Future work` — features of the request you propose to postpone (with the reason), and anything important that should be done in a future version. The caller passes it to the Documenter for `docs/roadmap.md`.
 If the caller sends answers to SEVERE ambiguities, return the **final plan** in the same format with no SEVERE items left.
 
 ### UPDATE mode
-Apply the final agreed plan to your documents: update `ai-docs/business.md` (decisions, requirement IDs, assumptions) and `docs/business.md`. In `docs/business.md` every requirement is a line `- REQ-NNN (implemented): <text>` (or `(planned)` if not built in this development) — `scripts/feature-coverage.sh` reads this format to check that every implemented requirement has a test. Return a short list of what you changed.
+Apply the final agreed plan to your documents: update `ai-docs/business.md` (decisions, requirement IDs, assumptions) and `docs/business.md`. In `docs/business.md` every requirement is a line `- REQ-NNN (implemented): <text>` (or `(planned)` if not built in this development) — `scripts/feature-coverage.sh` reads this format to check that every implemented requirement has a test. Return a short list of what you changed and a `## Future work` section (new items for the roadmap, or "none").

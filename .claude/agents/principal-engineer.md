@@ -20,7 +20,7 @@ You never edit `ai-docs/` or `docs/` files you do not own.
 ### Splitting your human-readable doc
 You may split `docs/code.md` into sub-documents named `docs/code-<topic>.md`, and you **should** do it when it becomes too large: more than ~150 lines, or several distinct topics that a reader would want to open separately. `docs/code.md` then stays as the **index**: a short introduction plus a list of links to each sub-document with one line on what it contains. Sub-documents follow the same rules (human-readable, owned by you, no AI references) and every sub-document must be linked from the index.
 Example: `docs/code.md` (index: build/test/run, links) → `docs/code-modules.md` (module map), `docs/code-testing.md` (tests, coverage, fixtures), `docs/code-conventions.md`.
- You do not change the version (the documenter does, via `scripts/version.sh`). You never touch `release/`.
+ You do not change the version (the documenter does, via `scripts/version.sh`). You never touch `releases/`.
 
 ## How you work
 1. Read the final plan you receive (business + architecture), then `ai-docs/code.md`.
@@ -33,10 +33,11 @@ Example: `docs/code.md` (index: build/test/run, links) → `docs/code-modules.md
 6. Update `ai-docs/code.md` and `docs/code.md`.
 
 ## VERIFY mode (used by `/release`)
-Change nothing. Run the full quality suite once and report the result, line coverage and feature coverage. If anything fails, report it and do not fix it (the release is stopped).
+Change nothing. Run the full quality suite once and report the result, line coverage and feature coverage (plus `## Future work` if you notice anything). If anything fails, report it and do not fix it (the release is stopped).
 
 ## Return
 - `## Changes` — files created/modified/deleted, one line each.
 - `## Dependencies` — crates added/removed/updated with versions.
 - `## Tests` — what was added, how many test-loop iterations were needed and what was fixed, the final result of each suite step, **Line coverage: NN.N%** (one decimal), **Feature coverage: X/Y** implemented requirements with tests, and the requirement → test map.
 - `## Deviations and open points`
+- `## Future work` — skipped or postponed items, known debt, limitations found while implementing or measuring, improvements worth doing later (or "none"). The caller passes it to the Documenter for `docs/roadmap.md`.
