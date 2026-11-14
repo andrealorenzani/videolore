@@ -122,13 +122,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani read the release check of 0.4.1 closely, and saw that a busy laptop could hide the video hardware,\
-a test that needed a moment more was cut off after one second, and the export quietly took the slower road,\
-so every candidate was given a second chance, one more try of up to four seconds, with the order of preference left untouched,\
-the whole search was bounded at ten seconds, so it can never run on forever,\
-when the answer is uncertain the check repeats once in the background, while the first answer is already in use,\
-a time-out is never written down as a failure, so one moment of heavy load cannot switch the hardware off for good,\
-the requirement was written again in plain limits, one second, four seconds and ten in total, so the promise can be measured,\
-the code, the tests and the documents moved together, and the record says what really happens,\
-the honest limits stay in view: a hanging test still costs time, and extreme load can still miss the hardware,\
-thank you, Andrea, for turning a flaky check into a reliable one, and for keeping the speed you promised
+Andrea Lorenzani gave the timeline a way to close its own gaps,\
+and laid fades through black between the clips, with a music track of its own,\
+and kept every source file untouched, so projects can be saved, reopened and trusted,\
+then bundled ffmpeg into the installers, so that nothing else has to be installed,\
+and taught videolore to write subtitles on your own computer, in three styles and three quality levels,\
+and set the program up for each computer at the first start, with plain settings anyone can read,\
+and hardened every door the files pass through, so a broken project or a doubtful download finds no way in,\
+and built Faster export on the video hardware, checking every file and falling back quietly when the hardware falls short,\
+and kept line coverage at 96.3 percent, with every finished requirement held by a test,\
+thank you, Andrea, for carrying videolore from its first version to this MVP release, and for every line you gave it.

@@ -50,3 +50,9 @@
 - open: docs/architecture-hardware-export.md Known limitations has no 0.4.2 item beyond the 139 note; roadmap covers it
 - open: docs/workflow.md unchanged in 0.4.2 (.claude/ and AGENTS.md untouched)
 - open: no commit made by documenter in 0.4.2 (caller commits)
+- RELEASE 0.4.2 "MVP" (version unchanged): changelog "### Release 0.4.2 — MVP" added under the 0.4.2 header (changelog NOT cleaned, releases/ untouched); roadmap refreshed (open limitations from docs/ added across Export, Subtitles, Editing, Performance, Quality, Packaging; "A10"/"A1" internal IDs replaced by plain "assumption"/"open question"); coverage badge 96.3 (PE); README poem replaced (10 verses, 1-9 end with backslash); latest changes kept 0.4.2, 0.4.0, 0.3.0
+- 0.4.2 release link check: 0 dead links, 0 bad anchors, all sub-docs linked from indexes; badges vs Cargo deps: 12 of 12 match
+- open: changelog has duplicate "## 0.1.0" header (two entries at the bottom, 0.1.0 — 23:01 and 23:04); left for the release clean-up
+- open: business.md says "Projects saved by 0.2.0 cannot be opened by 0.1.x"; README says "this version" (both acceptable, not changed)
+- open: docs/workflow.md and .claude/ untouched in the release
+- open: no commit made by documenter in release 0.4.2 (caller commits)
