@@ -14,3 +14,9 @@
 - open: docs/workflow.md unchanged in 0.2.0 (.claude/ and AGENTS.md untouched in this development)
 - open: docs/business-editing.md uses "freezes the window" (product wording, not WIP; left as is)
 - open: ai-docs/architecture.md and ai-docs/business.md contain stale 0.1.x facts? not mine; PM/Arch to refresh if needed
+- 0.2.1 dev (2026-11-14 11:02 +0000): version set via scripts/version.sh (consistent); changelog entry 0.2.1 added; coverage badge 95.9 (PE), features 44/44
+- 0.2.1 README: System requirements section added (CPU AVX2/FMA/F16C for subtitles on Windows/Linux x86-64; Apple Silicon all); known limitation added; latest changes 0.2.1 line; poem replaced (10 verses, lines 1-9 end with backslash)
+- 0.2.1 links: no dead links; all sub-docs linked from indexes; anchor architecture-subtitles.md#cpu-requirements-since-021 exists
+- open: business.md / business-subtitles.md / business-install.md (PM) do not mention the AVX2 CPU requirement or the crash on old CPUs; reported to caller
+- open: docs/workflow.md unchanged in 0.2.1 (.claude/ and AGENTS.md untouched; CI cache prefix only in build.yml, documented in code-testing.md)
+- open: CI cache prefix v1-rust-ggml-portable documented in docs/code-testing.md (PE owned, consistent)

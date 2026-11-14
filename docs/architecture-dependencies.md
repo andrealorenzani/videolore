@@ -57,3 +57,4 @@ Not part of `videolore`; not linked.
 - Linux: `libasound2-dev` and `pkg-config` (feature `audio`); `cmake`, `libclang-dev` and a C++ compiler (feature `stt`).
 - macOS: Xcode command-line tools and `cmake`.
 - Windows: MSVC, `cmake` and LLVM (set `LIBCLANG_PATH` if libclang is not found).
+- whisper.cpp (feature `stt`) is built with `GGML_NATIVE=OFF`, set in `.cargo/config.toml`: a fixed AVX2/FMA/F16C baseline on x86-64 instead of the build machine's CPU (since 0.2.1). See [subtitles](architecture-subtitles.md#cpu-requirements-since-021).

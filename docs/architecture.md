@@ -63,6 +63,7 @@ The UI never waits on `ffmpeg` or on disk, apart from saving or loading the proj
 - **Encoders:** each output format has a preferred encoder list with fallbacks; formats with no available encoder are disabled with an explanation.
 - **Fades:** 0.5 s or half the clip, whichever is shorter; video and audio aligned.
 - **Speech-to-text:** local whisper.cpp, included in release builds; the model is downloaded once after consent. See [subtitles](architecture-subtitles.md).
+- **whisper.cpp CPU baseline (0.2.1):** compiled for AVX2/FMA/F16C on x86-64 instead of for the build machine's CPU, so release executables do not crash on users' computers. Generating subtitles on x86-64 therefore needs a CPU from about 2013 or later. See [subtitles](architecture-subtitles.md#cpu-requirements-since-021).
 - **Projects:** format version 2; unsaved changes are detected by comparing the edit with the last saved one, so undoing back to the saved state clears the marker. See [Projects](#projects).
 - **Installers:** unsigned in 0.2.0. See [packaging](architecture-packaging.md).
 
@@ -84,7 +85,7 @@ The UI never waits on `ffmpeg` or on disk, apart from saving or loading the proj
 - Memory does not grow with source file size: at most 200 MB more peak memory for a long source than a short one of the same resolution. Assumption: tested in CI with a 2–5 minute source; since no internal buffer depends on file size, the result is expected to hold for multi-gigabyte files.
 - Targets, not gates: playback start with a proxy under 300 ms; speech-to-text at least 10x faster than real time on 4 threads; installers about 70–130 MB each (estimates).
 - Export progress at least twice per second; cancel within 1 s; project saves are atomic.
-- Platforms: Linux x86_64 (current Ubuntu LTS and Fedora), macOS Apple Silicon, Windows x86_64.
+- Platforms: Linux x86_64 (current Ubuntu LTS and Fedora), macOS Apple Silicon, Windows x86_64. Generating subtitles on x86_64 needs a CPU with AVX2, FMA and F16C (about 2013 or later); everything else has no special CPU requirement.
 - Code coverage >= 85% and every requirement covered by at least one test: logic is kept out of the UI.
 
 ## Rust toolchain policy

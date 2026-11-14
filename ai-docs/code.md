@@ -4,12 +4,12 @@
 
 ## State (0.2.0 target)
 Implemented ALL REQ-001..044 (REQ-014..020 subs/music now implemented; 026..044 new). Version bump to 0.2.0 is the documenter's job (Cargo.toml still 0.1.6 when code landed).
-Coverage 95.4% lines (rustc 1.100, default features, ffmpeg 6.1.1 local incl. integration). Feature coverage 44/44. 134 lib tests (133 w/o stt) + 14 integration.
+Coverage 95.9% lines (rustc 1.100, default features, ffmpeg 6.1.1 local incl. integration + real whisper test w/ espeak-ng). Feature coverage 44/44. 135 lib tests + 14 integration.
 User decisions: unsigned installers; Linux AppImage AND tar.gz; 2nd window on Win/Linux for double-clicked .vlproj (macOS odoc + REQ-028 prompt); only Noto Sans Bold bundled.
 Docs: docs/code.md index -> code-modules.md, code-testing.md, code-packaging.md (manual per-OS checklist + known limitations live there).
 
 ## Local env (dev box)
-- libasound2-dev not installed: `apt-get download libasound2-dev` into scratchpad, `dpkg-deb -x`, fix symlink libasound.so -> /usr/lib/x86_64-linux-gnu/libasound.so.2, sed prefix in alsa.pc, PKG_CONFIG_PATH=<that>/usr/lib/x86_64-linux-gnu/pkgconfig. LIBCLANG_PATH=/usr/lib/llvm-18/lib for whisper-rs-sys bindgen. espeak-ng absent -> real whisper test skips locally.
+- libasound2-dev not installed: `apt-get download libasound2-dev` into scratchpad, `dpkg-deb -x`, fix symlink libasound.so -> /usr/lib/x86_64-linux-gnu/libasound.so.2, sed prefix in alsa.pc, PKG_CONFIG_PATH=<that>/usr/lib/x86_64-linux-gnu/pkgconfig. LIBCLANG_PATH=/usr/lib/llvm-18/lib for whisper-rs-sys bindgen. espeak-ng not installed system-wide: `apt-get download espeak-ng espeak-ng-data libespeak-ng1 libpcaudio0 libsonic0`, dpkg-deb -x into scratchpad, PATH+LD_LIBRARY_PATH(usr/lib/x86_64-linux-gnu)+ESPEAK_DATA_PATH(.../espeak-ng-data); model via pinned URL+sha (as build.yml) -> VIDEOLORE_STT_MODEL. Real whisper test passes locally (espeak 1.51 and 1.52, ffmpeg 6.1.1 and 9.0.2, ggml native/AVX2/SSE-only builds: text "Hello world, this is VD floor.", lang en).
 - Cross-check mac/win code: `rustup target add aarch64-apple-darwin x86_64-pc-windows-msvc`; `cargo clippy --target <t> --no-default-features --all-targets -- -D warnings` works (no C deps without default feats). Both clean at 0.2.0.
 - cargo-deny 0.20.2 + cargo-about 0.9.3 (`--features cli`) in ~/.cargo/bin.
 
@@ -55,8 +55,10 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 - lavfi sine amplitude = 1/8 full scale (~4096 peak s16): thresholds in audio tests.
 - Paste inside a clip splits it.
 - `system_runner_runs_and_kills` uses `rustc` from PATH.
+- Integration tests share ONE process: own_rss() counts every parallel test (whisper ~170MB peak, measured up to +159MB in the memory test). REQ-039 test therefore re-execs current_exe on the #[ignore] helper `memory_peak_of_one_preview` (env VIDEOLORE_MEMORY_PROBE=file, prints VIDEOLORE_PEAK=n on the libtest line -> parse with split_once). Fixed after CI failure of 0.2.0 check job (log unreadable; only diff vs passing msrv job = espeak + model -> whisper runs in-process).
 
 ## Debt / open
 - dialogs.rs untested glue (0%); macOS module not covered (compiled only on mac).
 - Proxy cache: no eviction. STT chunk boundary artefacts. No per-OS code signing.
+- whisper portable build (Andrea's decision, 0.2.x): .cargo/config.toml [env] GGML_NATIVE=OFF + SSE42/AVX/AVX2/FMA/F16C/BMI2=ON explicitly (ggml sets INS_ENB OFF if GGML_NATIVE_DEFAULT OFF, i.e. CMAKE_CROSSCOMPILING or SOURCE_DATE_EPOCH -> would fall to SSE-only; explicit avoids that). Verified flags.make: -march=x86-64 -msse4.2 -mf16c -mfma -mbmi2 -mavx -mavx2. ARM (macOS): NATIVE OFF + no GGML_CPU_ARM_ARCH -> no -march, Apple clang default apple-m1 (NEON/dotprod/fp16); x86 vars ignored. MSVC: GGML_AVX2 -> /arch:AVX2 + defs. mac/win whisper build NOT verified locally (no SDK) -> CI build/package jobs. build.rs has no rerun-if-env-changed for GGML_*: after edits `cargo clean -p whisper-rs-sys` (+--release, rm target/llvm-cov-target) and bump rust-cache prefix-key (all 4 uses: v1-rust-ggml-portable). Test packaging::whisper_is_built_for_a_portable_cpu_baseline include_str!s config + build.yml.
 - RemoveMedia drops undo history when referenced (simple & safe; could prune instead).

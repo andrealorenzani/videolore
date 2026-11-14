@@ -15,6 +15,8 @@ Every release (version tag) gets five downloads, built by CI:
 
 Each package contains `ffmpeg`, `ffprobe`, the subtitle font and the notices; nothing else needs to be installed.
 
+**System requirements.** Generating subtitles on Windows and Linux x86_64 needs a CPU with AVX2, FMA and F16C (about 2013 or later); the rest of the program has no special CPU requirement. Every Apple Silicon Mac is supported. See [subtitles](architecture-subtitles.md#cpu-requirements-since-021).
+
 **Unsigned in 0.2.0** (decided by Andrea; signing is postponed, not rejected). The README explains the one-time first-launch steps: Windows SmartScreen "More info → Run anyway", macOS Gatekeeper "Open Anyway" in System Settings → Privacy & Security, and the Linux AppImage "Allow executing file as program".
 
 ## Windows

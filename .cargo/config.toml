@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Andrea Lorenzani
+#
+# Portable speech recognition build. whisper-rs-sys passes every GGML_* variable to the
+# whisper.cpp CMake build. By default ggml is compiled with -march=native, so an executable
+# built on one machine (e.g. a CI runner with AVX-512) could crash with an illegal
+# instruction on another. The baseline is fixed instead: x86-64 with AVX2, FMA, F16C and BMI2
+# (the AVX/AVX2 flags are set explicitly because ggml turns them off when it thinks it is
+# cross-compiling). On Apple silicon NEON comes from the compiler's default target; the x86
+# flags are ignored there.
+#
+# whisper-rs-sys does not rebuild when these values change: after editing them run
+# `cargo clean -p whisper-rs-sys` and bump the rust-cache prefix-key in the CI workflow.
+[env]
+GGML_NATIVE = "OFF"
+GGML_SSE42 = "ON"
+GGML_AVX = "ON"
+GGML_AVX2 = "ON"
+GGML_FMA = "ON"
+GGML_F16C = "ON"
+GGML_BMI2 = "ON"

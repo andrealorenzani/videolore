@@ -176,6 +176,28 @@ mod tests {
         assert!(ci.contains("scripts/fetch-ffmpeg.sh"));
     }
 
+    /// The speech recognition code is built for a fixed CPU baseline (never -march=native),
+    /// and every CI cache uses the same prefix, so no job can restore an old native build.
+    #[test]
+    fn whisper_is_built_for_a_portable_cpu_baseline() {
+        let config = include_str!("../.cargo/config.toml");
+        for line in [
+            "GGML_NATIVE = \"OFF\"",
+            "GGML_AVX2 = \"ON\"",
+            "GGML_FMA = \"ON\"",
+            "GGML_F16C = \"ON\"",
+        ] {
+            assert!(config.lines().any(|l| l.trim() == line), "missing {line}");
+        }
+        let ci = include_str!("../.github/workflows/build.yml");
+        let caches = ci.matches("Swatinem/rust-cache@").count();
+        assert!(caches > 0);
+        assert_eq!(
+            ci.matches("prefix-key: v1-rust-ggml-portable").count(),
+            caches
+        );
+    }
+
     #[test]
     fn lock_parser_rejects_malformed_files() {
         assert!(parse_lock("x = 1").is_err());

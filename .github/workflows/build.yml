@@ -32,6 +32,10 @@ jobs:
       - name: System packages (ffmpeg for tests, ALSA headers, whisper.cpp build, speech fixture)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
+          # does not rebuild on its own, so an old cache would keep the old (native) build.
+          prefix-key: v1-rust-ggml-portable
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov,cargo-deny@0.20.2
@@ -88,6 +92,10 @@ jobs:
       - name: System packages (ffmpeg for tests, ALSA headers, whisper.cpp build)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config cmake libclang-dev
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
+          # does not rebuild on its own, so an old cache would keep the old (native) build.
+          prefix-key: v1-rust-ggml-portable
       - run: cargo build --locked --all-targets
       - run: cargo test --locked
 
@@ -119,6 +127,10 @@ jobs:
         if: runner.os == 'Windows'
         run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
+          # does not rebuild on its own, so an old cache would keep the old (native) build.
+          prefix-key: v1-rust-ggml-portable
       - name: Build release executable
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Name the executable
@@ -159,6 +171,10 @@ jobs:
         if: runner.os == 'Windows'
         run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
+          # does not rebuild on its own, so an old cache would keep the old (native) build.
+          prefix-key: v1-rust-ggml-portable
       - name: cargo-packager (pinned in packaging/tools.lock)
         if: runner.os != 'Linux'
         run: cargo install cargo-packager --locked --version 0.11.8

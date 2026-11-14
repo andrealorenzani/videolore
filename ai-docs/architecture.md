@@ -2,7 +2,7 @@
 
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
-target: 0.2.0 | MSRV 1.100 (ADR-012) | toolchain: latest stable | ed 2024 | GPL-3.0-only
+target: 0.2.1 (fix: ADR-027) | MSRV 1.100 (ADR-012) | toolchain: latest stable | ed 2024 | GPL-3.0-only
 scope 0.2.0: resolve all 0.1.3 known limitations + REQ-026..044 + REQ-014..020 implemented (music, subtitles/STT) + bundled ffmpeg (C1 reversed) + installers.
 exact crate versions: Cargo.toml/Cargo.lock (PE owns) = source of truth. versions below = verified at plan time (2026-11-14), not pins.
 full plan archived in session scratch arch-0.2.0.md (not durable); this file = durable summary.
@@ -147,6 +147,14 @@ ADR-025 (0.2.0) supply chain. cargo-deny 0.20.2 in check job, deny.toml: licence
 
 ADR-026 (0.2.0) notices/About (REQ-031). notices module: ffmpeg (version read at runtime), x264/x265/libass/other libs + licences, Noto Sans OFL-1.1, whisper.cpp MIT, model MIT, rust crates (generated), source links + written offer, patent note. About reachable from command bar; also installer licence page (win).
 
+ADR-027 (0.2.1) whisper.cpp CPU baseline (decided by Andrea). ctx: whisper-rs-sys -> cmake ggml GGML_NATIVE default ON (not cross, no SOURCE_DATE_EPOCH) -> -march=native of GH runner (may have AVX-512) -> release exe SIGILL on user CPUs lacking runner ISA.
+  choice: .cargo/config.toml [env] GGML_NATIVE = "OFF". whisper-rs-sys 0.15.0 build.rs forwards every GGML_*/WHISPER_*/CMAKE_* env var as cmake -D (verified source 2026-11-14). ggml CMakeLists (vendored): NATIVE OFF + NATIVE_DEFAULT ON -> INS_ENB ON -> SSE4.2, AVX, AVX2, BMI2, FMA, F16C ON (MSVC: /arch:AVX2, FMA/F16C implied); AVX512*, AVX-VNNI, AMX OFF (verified source).
+  result: x86-64 STT baseline = AVX2+FMA+F16C+BMI2 (Intel Haswell 2013+, AMD Excavator 2015+/Zen; ~2013+). macOS aarch64: NEON/ARMv8 baseline as before (unaffected). applies to source builds too (config.toml in repo); user may override GGML_NATIVE=ON for a local native build.
+  pre-AVX2 x86-64: ASSUMPTION (not verified on hw): STT path (whisper/ggml code) hits illegal instruction -> process crash (SIGILL / STATUS_ILLEGAL_INSTRUCTION) when generating subtitles; rest of app unaffected because ggml code only runs inside STT (ASSUMPTION: compiler does not hoist AVX2 into code run at startup; ggml objects only reached via whisper calls). no runtime CPU check in 0.2.1 (possible follow-up: is_x86_feature_detected!("avx2"/"fma"/"f16c") gate -> "not supported on this CPU" message instead of crash; or GGML_CPU_ALL_VARIANTS + GGML_BACKEND_DL dynamic dispatch).
+  CI: rust-cache key bumped so cached native-built whisper-rs-sys artefacts are not reused (build.rs has no rerun-if-env-changed on GGML_NATIVE).
+  alt rejected: native (SIGILL on users); SSE-only (GGML_AVX*/FMA/F16C OFF -> ~7x slower STT, per Andrea's measurement/estimate); runtime dispatch GGML_CPU_ALL_VARIANTS (needs GGML_BACKEND_DL = shipping loadable backend libs; not supported by whisper-rs-sys static build; more packaging) -> deferred.
+  risk: setting SOURCE_DATE_EPOCH in build env flips NATIVE_DEFAULT OFF -> INS_ENB OFF -> silent SSE-only build (slow); keep it unset or set GGML_AVX2/FMA/F16C/BMI2 ON explicitly if ever needed. future whisper-rs-sys bump: re-verify env forwarding + ggml defaults.
+
 ## NFR targets (0.2.0)
 - <= 3 ffmpeg/ffprobe procs always; by construction (ADR-015); test atomic high-water mark: 20 imports + export + preview.
 - UI thread: no subprocess/blocking I/O except project save/load (<= 16 MiB) + small linux desktop writes at startup.
@@ -157,7 +165,7 @@ ADR-026 (0.2.0) notices/About (REQ-031). notices module: ffmpeg (version read at
 - memory: <= 200 MB peak RSS growth short vs long same-res source (sysinfo own pid); CI long = 2–5 min lavfi; ASSUMPTION: no size-dependent structure -> holds for 4 GB; unit tests on buffer caps.
 - playback start with proxy < 300 ms (target, not gate). STT tiny >= 10x real time @4 thr (estimate). installer 70–130 MB (estimate, measured). startup to window < 1 s (ffmpeg check bg).
 - export progress >= 2/s, cancel < 1 s, no partial outputs, atomic project save (unchanged).
-- platforms: Linux x86_64 (Ubuntu LTS, Fedora current), macOS aarch64, Windows x86_64.
+- platforms: Linux x86_64 (Ubuntu LTS, Fedora current), macOS aarch64, Windows x86_64. STT on x86_64 needs AVX2+FMA+F16C+BMI2 CPU (ADR-027); everything else no extra CPU req.
 - coverage >= 85% line, feature coverage 100%; every REQ >= 1 `// covers: REQ-0xx` test.
 
 ## security
@@ -191,6 +199,7 @@ bundled non-Rust: ffmpeg GPL builds (BtbN, Riedl), Noto Sans Bold OFL-1.1, model
 9. egui frequent breaking releases (ADR-012) -> thin ui. new stable lints -> fix promptly.
 10. ffmpeg build variance for user override/PATH -> startup capability probe + fallback; bundled copy has known caps.
 11. H.264/HEVC patent licensing varies by country -> note in notices.
+12. (0.2.1) pre-AVX2 x86-64 users: STT crash (ASSUMPTION) -> README/system requirements state min CPU; runtime gate = follow-up candidate (ADR-027).
 
 ## 0.2.0 milestones (PE)
 M0 deps+tooling (Cargo.toml, version, deny.toml, cargo-about, CI apt + model cache) | M1 projects (v2, dirty, save, prompt, close/quit, argv) | M2 scheduler + probe pool + async ffmpeg check | M3 FrameKey/mailbox, clock, run-grouped inputs, hvc1 | M4 music | M5 proxies + machine + memory | M6 subtitles + ass + stt | M7 packaging, icon, notices/About, desktop, locks, scripts, CI package job. then documenter; architect UPDATE.

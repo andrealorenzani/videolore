@@ -36,6 +36,16 @@ Three styles (REQ-017):
 - **Threads:** half the CPU cores, between 1 and 4; one transcription at a time. It does not count toward the 3-process `ffmpeg` limit.
 - **Regenerating** replaces all lines; if any line was edited by hand, the user is asked first (REQ-044).
 
+## CPU requirements (since 0.2.1)
+- whisper.cpp is compiled for a **fixed instruction-set baseline**, not for the machine that builds it. This is set once in `.cargo/config.toml` (`GGML_NATIVE=OFF`), which the `whisper-rs` build passes on to whisper.cpp's build.
+- **Why:** before 0.2.1 whisper.cpp was optimised for the CPU of the build machine. Release executables are built on GitHub's servers, whose CPUs can have instructions (such as AVX-512) that many users' CPUs lack; generating subtitles could then crash on those computers.
+- **Minimum CPU for generating subtitles on x86-64 (Windows, Linux):** AVX2, FMA, F16C and BMI2, i.e. roughly Intel processors from 2013 (Haswell) on and AMD processors from 2015 (Excavator, all Ryzen) on. AVX-512 is never used.
+- **macOS (Apple Silicon):** unchanged; every Apple Silicon Mac is supported.
+- **Older x86-64 CPUs without AVX2:** assumption, not tested on such a machine: the program starts and everything else works (editing, music, subtitle editing and burn-in, export), but generating subtitles makes the program crash, because whisper.cpp uses instructions the CPU does not have. 0.2.1 does not check the CPU beforehand; showing a "not supported on this computer" message instead is a possible future improvement.
+- **Alternatives considered:** a build for the oldest CPUs (SSE only) was rejected because subtitle generation is about 7 times slower; picking the best code for each CPU at run time would need whisper.cpp to be shipped as separate loadable libraries, which the `whisper-rs` build does not support.
+- Building from source uses the same baseline. Someone building only for their own computer can set `GGML_NATIVE=ON` in the environment.
+- CI's build cache key was changed so that whisper.cpp builds made the old way are not reused.
+
 ## Speech model
 - Model: whisper "tiny" multilingual, quantised (`ggml-tiny-q5_1.bin`), 32 MB, MIT licence.
 - Source: a fixed revision on Hugging Face (`huggingface.co/ggerganov/whisper.cpp`), with exact size (32,152,673 bytes) and SHA-256 `818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7`.
@@ -51,3 +61,5 @@ Three styles (REQ-017):
 ## Risks
 - The C++ build of whisper.cpp on three platforms slows CI and can break on toolchain changes.
 - Scripts other than Latin, Greek and Cyrillic depend on system fonts.
+- On x86-64 computers without AVX2 (before about 2013), generating subtitles is expected to crash (see [CPU requirements](#cpu-requirements-since-021)).
+- If the build environment ever sets `SOURCE_DATE_EPOCH`, whisper.cpp's build silently falls back to the slow SSE-only baseline; it must stay unset (or AVX2, FMA, F16C and BMI2 must be enabled explicitly).

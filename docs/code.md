@@ -38,6 +38,15 @@ This page covers building and running; the details are in the sub-documents:
 - **ffmpeg** (any build >= 4.4 with the usual filters) on `PATH` to run a source build and the
   integration tests; installed copies use the bundled one.
 
+### CPU baseline for speech recognition
+
+`.cargo/config.toml` builds whisper.cpp for a fixed baseline instead of the build machine's CPU
+(`GGML_NATIVE=OFF`): on x86-64 it needs **AVX2, FMA, F16C (and BMI2)**, i.e. Intel Haswell (2013)
+/ AMD Excavator or newer; on Apple silicon it uses NEON. The same flags apply to local, CI and
+release builds. whisper-rs-sys does not notice when these values change: after editing them run
+`cargo clean -p whisper-rs-sys` (and `--release`) and bump `prefix-key` of the rust-cache steps in
+`.github/workflows/build.yml`; a test checks that the file and the workflow agree.
+
 ### Cargo features
 
 | Feature | Default | What it adds |

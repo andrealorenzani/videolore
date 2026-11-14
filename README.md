@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.2.0-blue)
+![version](https://img.shields.io/badge/version-0.2.1-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-95.4%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-95.9%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -21,6 +21,12 @@
 
 ## What it is
 `videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install. Nothing is uploaded and no account is needed; the only network access is the one-time download of the speech model, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
+
+## System requirements
+- **Windows** (64-bit, x86_64) and **Linux** (64-bit, x86_64; current Ubuntu LTS and Fedora).
+- **macOS** on Apple Silicon: every Apple Silicon Mac is supported.
+- **Generating subtitles** on Windows and Linux needs a processor with AVX2, FMA and F16C: Intel from 2013 (Haswell) on, AMD from 2015 (Excavator) on, all Ryzen. Everything else in videolore has no special processor requirement.
+- **Internet**: only for the one-time download of the speech model (about 32 MB), which you approve; you can also provide the model file yourself.
 
 ## Installation
 Each release has one installer per system, with ffmpeg included. Download it from the [Releases](https://github.com/andrealorenzani/videolore/releases) page (tagged versions), or from the artifacts of the latest [Build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml) run.
@@ -80,6 +86,7 @@ The About screen lists every bundled third-party component with its version, lic
 
 ### Known limitations
 - Installers are not code-signed: each system asks for a one-time confirmation (see Installation).
+- On Windows and Linux, generating subtitles needs a processor with AVX2, FMA and F16C (see System requirements). On older processors it may crash; the rest of videolore keeps working. This has not been tested on such hardware.
 - Subtitles in scripts other than Latin, Greek and Cyrillic (for example Chinese, Japanese, Arabic or Hindi) may look different on each computer or show empty boxes, and cannot be read in the subtitle editor.
 - Speech is recognised in pieces of about two minutes; a word cut at a boundary can be lost.
 - On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the Hide and Minimize menu items are not available.
@@ -91,6 +98,7 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md)
 
 ## Latest changes
+- **0.2.1** — Release programs run on more computers: subtitle generation is built for a common processor baseline, so it no longer crashes on processors that lack the build server's newest instructions. On Windows and Linux, subtitles need a processor with AVX2 (Intel from 2013, AMD from 2015).
 - **0.2.0** — Save and open projects with an unsaved-changes prompt; ffmpeg included in the app; installers for Windows, macOS and Linux; a music track with volumes; offline subtitles with three styles; big sources previewed through lighter copies; imports and playback no longer block the window; About screen with third-party notices; double-click to open projects.
 - **0.1.5** — Updated to the latest Rust (1.100) and libraries (egui 0.37, rfd 0.18); the editing features are unchanged.
 - **0.1.4** — Maintenance: version numbering is updated more reliably.
@@ -107,13 +115,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani gave every project a home to keep,\
-with Save and Open, so the cut comes back as it was left to sleep;\
-a gentle question waits before unsaved work can go,\
-with Save, Discard or Cancel, so no careful cut is lost below;\
-Each installer now carries its own ffmpeg, ready at the first click,\
-for Windows, macOS and Linux, no tool hunt before the first clip;\
-Music finds its track and subtitles find their voice,\
-spoken offline on your own machine, a quiet and private choice;\
-Big sources wear a lighter copy for the preview's easy flight,\
-while the export still uses the originals, so the quality stays right.
+Andrea Lorenzani chose a steady ground that every processor can share,\
+so the speech engine is made for a common chip, not for one rare machine's flair;\
+He set the rule once in the build settings, so every build keeps it, time after time,\
+and the release programs now open on older computers where a crash once stopped them cold;\
+He kept the old build cache apart, so no stale speech engine hides in the store,\
+and wrote a test that guards the flags, so the promise cannot slip out the door;\
+He found the memory test counting its neighbours, and measured each preview alone,\
+turning a red line on the build page back into a clean and steady tone;\
+He wrote the limits in plain words, the AVX2 need, the years, the honest note,\
+so every reader knows what their own computer can do; thank you, Andrea, for the care that holds it true.

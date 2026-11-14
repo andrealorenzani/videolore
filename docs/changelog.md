@@ -2,6 +2,18 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
 
+## 0.2.1 — 2026-11-14 11:02 +0000
+Summary: fixes the failed test run of 0.2.0 on GitHub and makes the release programs run on more computers. Subtitle generation (speech recognition) is now built for a common x86-64 processor baseline instead of the CPU of the build server, so the programs no longer crash on processors that lack the build server's instructions. Generating subtitles on Windows and Linux needs a processor with AVX2 (see Known limitations).
+
+- **Changed**: whisper.cpp is compiled for a fixed x86-64 baseline (AVX2, FMA, F16C and BMI2 enabled; the build machine's CPU is not detected) through `.cargo/config.toml`. macOS Apple Silicon is not affected and remains supported. A build for the oldest processors (SSE only) was rejected because subtitle generation is about 7 times slower; see [subtitles](architecture-subtitles.md#cpu-requirements-since-021).
+- **Fixed**: the `cargo test` run of 0.2.0 failed on GitHub. The memory test (REQ-039) counted the memory of the speech-recognition test running in parallel in the same process; each preview is now measured in its own process. The cause is probable, not confirmed, because the CI log could not be read.
+- **Workflow**: CI build caches use the key prefix `v1-rust-ggml-portable`, so no whisper.cpp build made for the old native flags is reused. New test `whisper_is_built_for_a_portable_cpu_baseline` guards the flags and the cache prefix.
+- **Quality**: 135 unit tests and 14 integration tests (including the real speech test) pass; fmt, clippy, coverage and feature coverage pass; line coverage 95.9%; feature coverage 44/44 implemented requirements.
+
+Known limitations (0.2.1):
+- Generating subtitles on Windows and Linux (x86-64) needs a processor with AVX2, FMA and F16C: Intel from 2013 (Haswell), AMD from 2015 (Excavator, all Ryzen). On older processors, subtitle generation crashes with an illegal-instruction error (assumption, not tested on such hardware); the rest of the program works. The program does not check the processor beforehand.
+- Installers are unsigned: macOS Gatekeeper, Windows SmartScreen and the AppImage permission need a one-time confirmation.
+
 ## 0.2.0 — 2026-11-14 10:17 +0000
 Summary: the first complete version for people who are not editing experts. Projects can be saved and reopened, ffmpeg is included in the app, subtitles are generated offline, a music track is added, and every platform gets a one-click installer. All known limitations of 0.1.3 are resolved.
 

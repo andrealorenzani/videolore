@@ -691,46 +691,88 @@ fn proxy_is_generated_from_a_big_source() {
     assert!(cache.size() > 0);
 }
 
+/// Environment variable telling `memory_peak_of_one_preview` which file to preview.
+const MEMORY_PROBE: &str = "VIDEOLORE_MEMORY_PROBE";
+/// Prefix of the line where `memory_peak_of_one_preview` reports its peak.
+const PEAK_LINE: &str = "VIDEOLORE_PEAK=";
+
 /// Memory does not grow with the length of the source: preview of a long file costs the
-/// same as a short one.
+/// same as a short one. Each preview runs in its own process (this test binary, running only
+/// `memory_peak_of_one_preview`): the resident memory of this process also counts every
+/// other test running in parallel (the speech model alone adds ~170 MB), which made the
+/// comparison depend on test scheduling.
 // covers: REQ-039
 #[test]
 fn memory_does_not_grow_with_source_length() {
     let Some(env) = setup() else { return };
     let short = env.clip("short.mp4", 640, 360, 25, 2, true);
     let long = env.clip("long.mp4", 640, 360, 25, 120, true);
-    let use_file = |file: &Path| {
-        let mut p = Project::default();
-        let m = env.probe(&mut p, file);
-        p.timeline.append(&m).unwrap();
-        let cfg = PreviewConfig {
-            runner: limited(Priority::Preview),
-            ffmpeg: env.info.ffmpeg.clone(),
-            version: env.info.version,
-            encoders: env.info.encoders.clone(),
-        };
-        let mut pv = Preview::new(Some(cfg), Box::new(NullSink));
-        pv.play(&p, Micros::ZERO, Instant::now()).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(20);
-        let mut got = 0;
-        let mut peak = 0;
-        while got < 20 && Instant::now() < deadline {
-            if pv.poll(Instant::now()).is_some() {
-                got += 1;
-            }
-            peak = peak.max(videolore::machine::own_rss());
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        pv.pause(Instant::now());
-        assert!(got > 0);
-        peak
-    };
-    let small = use_file(&short);
-    let big = use_file(&long);
+    let small = peak_in_own_process(&short);
+    let big = peak_in_own_process(&long);
     assert!(
         big <= small + 200 * 1024 * 1024,
         "peak memory {big} with the long source vs {small}"
     );
+}
+
+/// Runs `memory_peak_of_one_preview` on `file` in a fresh process and returns its peak.
+fn peak_in_own_process(file: &Path) -> u64 {
+    let out = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "memory_peak_of_one_preview",
+            "--exact",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(MEMORY_PROBE, file)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "memory probe failed: {stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    stdout
+        .lines()
+        .find_map(|l| l.split_once(PEAK_LINE)?.1.trim().parse().ok())
+        .unwrap_or_else(|| panic!("memory probe printed no peak: {stdout}"))
+}
+
+/// Helper of `memory_does_not_grow_with_source_length` (does nothing on its own): plays the
+/// file named by `VIDEOLORE_MEMORY_PROBE` for 20 frames and prints the peak resident memory.
+#[test]
+#[ignore = "run in its own process by memory_does_not_grow_with_source_length"]
+fn memory_peak_of_one_preview() {
+    let Some(file) = std::env::var_os(MEMORY_PROBE) else {
+        return;
+    };
+    let Some(env) = setup() else { return };
+    let mut p = Project::default();
+    let m = env.probe(&mut p, Path::new(&file));
+    p.timeline.append(&m).unwrap();
+    let cfg = PreviewConfig {
+        runner: limited(Priority::Preview),
+        ffmpeg: env.info.ffmpeg.clone(),
+        version: env.info.version,
+        encoders: env.info.encoders.clone(),
+    };
+    let mut pv = Preview::new(Some(cfg), Box::new(NullSink));
+    pv.play(&p, Micros::ZERO, Instant::now()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut got = 0;
+    let mut peak = 0;
+    while got < 20 && Instant::now() < deadline {
+        if pv.poll(Instant::now()).is_some() {
+            got += 1;
+        }
+        peak = peak.max(videolore::machine::own_rss());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    pv.pause(Instant::now());
+    assert!(got > 0, "no preview frame");
+    println!("{PEAK_LINE}{peak}");
 }
 
 /// Real speech recognition with the pinned model (CI provides it with
