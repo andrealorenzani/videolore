@@ -2,6 +2,9 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.0.0 — 2026-11-14 22:36 +0000
+- Version 1.0.0 opened after release 0.4.2 "MVP". No user-facing changes yet.
+
 ## 0.4.3 — 2026-11-14 22:35 +0000
 
 Fixes the macOS and Windows installers, which the 0.4.2 installer job could not build. The Linux installers of 0.4.2 were unaffected. The macOS and Windows installers of 0.4.2 are not in its GitHub release; they are confirmed only when the installer job runs again.
