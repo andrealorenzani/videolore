@@ -348,6 +348,9 @@ pub struct AppState {
     /// Video hardware for "Export: Faster".
     pub hw: HwState,
     hw_probe: Option<RunningProbe>,
+    /// The check of the current request was already repeated once (its first answer was
+    /// inconclusive because something did not answer in time).
+    hw_rechecked: bool,
     hw_generation: u64,
     /// Describes this computer for the hardware check; replaced in tests.
     pub platform: fn() -> Platform,
@@ -536,6 +539,7 @@ impl AppState {
             export_status: ExportStatus::default(),
             hw: HwState::default(),
             hw_probe: None,
+            hw_rechecked: false,
             hw_generation: 0,
             platform: Platform::none,
             probe_limits: ProbeLimits::default(),
@@ -605,8 +609,15 @@ impl AppState {
     }
 
     /// Starts the background check of the video hardware (needs a working ffmpeg; an
-    /// older run still going is cancelled and its result ignored).
+    /// older run still going is cancelled and its result ignored). If its answer is
+    /// inconclusive (a candidate did not answer in time, e.g. on a busy computer), it is
+    /// repeated once by itself; the first answer stays in use until the repeat ends.
     fn start_hw_probe(&mut self) {
+        self.hw_rechecked = false;
+        self.launch_hw_probe();
+    }
+
+    fn launch_hw_probe(&mut self) {
         self.stop_hw_probe();
         let Ok(info) = &self.ffmpeg else {
             self.hw.probe = HwProbe::NotChecked;
@@ -630,7 +641,9 @@ impl AppState {
                 let _ = tx.send((generation, status));
             }
         });
-        self.hw.probe = HwProbe::Checking(generation);
+        if !(self.hw_rechecked && matches!(self.hw.probe, HwProbe::Done(_))) {
+            self.hw.probe = HwProbe::Checking(generation);
+        }
         self.hw_probe = Some((generation, rx, cancel));
     }
 
@@ -1844,10 +1857,18 @@ impl AppState {
         if let Some((generation, rx, _)) = &self.hw_probe
             && let Ok((g, status)) = rx.try_recv()
         {
-            if g == *generation && self.hw.probe == HwProbe::Checking(g) {
+            let mut again = false;
+            // a repeat keeps the first answer in use (and on screen) until it ends
+            let repeat = self.hw_rechecked && matches!(self.hw.probe, HwProbe::Done(_));
+            if g == *generation && (self.hw.probe == HwProbe::Checking(g) || repeat) {
+                again = status.inconclusive() && !self.hw_rechecked;
                 self.hw.probe = HwProbe::Done(status);
             }
             self.hw_probe = None;
+            if again {
+                self.hw_rechecked = true;
+                self.launch_hw_probe();
+            }
         }
         for p in (self.open_requests)() {
             let _ = self.dispatch(Command::OpenProject(p), now);

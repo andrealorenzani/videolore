@@ -53,12 +53,23 @@ Calibration on a real Intel laptop showed that no single quantiser (and no bits-
 
 ## Background hardware check
 - **When:** only when it can matter: at start-up if Export is already "Faster", when the user switches to "Faster", on "Try video hardware again", on "Use recommended settings", and when the custom `ffmpeg` changes while "Faster" is selected. With "Best quality" nothing runs, and Advanced shows "not checked (only checked when Export is Faster)".
-- **Why not at every start:** most users keep "Best quality"; checking would wake the discrete graphics card on hybrid laptops and use up to 3 s of background work for nothing.
+- **Why not at every start:** most users keep "Best quality"; checking would wake the discrete graphics card on hybrid laptops and use up to 20 s of background work for nothing.
 - **How:** for each format (H.264, HEVC), each candidate in order encodes 8 synthetic frames (640x360, generated inside `ffmpeg`, no file read) with exactly the settings of a real export, until one works. Typically 2 to 4 short runs.
-- **Limits:** at most 1 s per candidate and 3 s in total; one process, at background priority, within the process limit (REQ-033); no network. An export started before the check finishes uses the normal method.
-- **Constant-quality retry:** a VA-API device that fails with variable bitrate (an ordinary failure, not a missing device or encoder) is tried again with the constant-quality variant, inside the same 1 s / 3 s limits. Advanced then shows the method as "constant quality".
+- **Limits (since 0.4.2):** times count from the start of each process (waiting for a free process slot does not count).
+
+  | Limit | Value | What happens |
+  |---|---|---|
+  | First try of a candidate | 1 s | if it does not answer in time, it is tried once more straight away (the next candidate waits, so the preference order never changes) |
+  | Retry | 4 s | if it still does not answer, it is noted "did not answer in time" and the next candidate is tried |
+  | Whole check | 10 s | untried candidates are noted "did not answer in time"; a try cut short by this limit is not retried |
+
+  One process at a time, at background priority, within the process limit (REQ-033); no network. An export started before the check finishes uses the normal method.
+- **Why the retry (0.4.2):** before 0.4.2 the limits were 1 s per candidate and 3 s in total. On a busy computer (an export, subtitle generation or a build using every core) a working encoder can take longer than 1 s to start, so the check reported "no hardware" at random. A time-out is therefore never a final "does not work".
+- **Inconclusive answer, one repeat:** if a format ends with no working hardware and one of its candidates did not answer in time, the answer is inconclusive. `videolore` then repeats the whole check once by itself; the first answer stays in use (and on screen) until the repeat finishes. At most one repeat per request, so at most about 20 s of background work. A new request (for example "Try video hardware again") starts a fresh check, which may again be repeated once.
+- **Time-outs are not failures:** a candidate that did not answer in time is never recorded in the "turned off after a problem" memory (REQ-064); only a failed hardware export is.
+- **Constant-quality retry:** a VA-API device that fails with variable bitrate (an ordinary failure, not a missing device or encoder) is tried again with the constant-quality variant, with the same first try and retry, inside the same 10 s limit. Advanced then shows the method as "constant quality".
 - **Old system video library (Linux):** the bundled Linux `ffmpeg` loads the system's libva at run time and crashes (core dump) if libva is older than 2.21 (it lacks the function `vaMapBuffer2`). Ubuntu 24.04 ships 2.20. Before any check, `videolore` reads the `ffmpeg` file and the system `libva.so.2` (from `LD_LIBRARY_PATH` and the usual library folders) as plain bytes, never loading or running them, to see whether `ffmpeg` needs that function and the library has it. If not, VA-API and Quick Sync are skipped without starting any process, and Advanced says the hardware "needs a newer system video library (libva 2.21 or newer)". A system `ffmpeg` built against the system libva is not affected.
-- Reading the 173 MB bundled binary takes about 3 s; it runs in the background once per session (remembered by path, size and date) and is not part of the 3 s run limit, which counts only the check processes.
+- Reading the 173 MB bundled binary takes about 3 s; it runs in the background once per session (remembered by path, size and date) and is not part of the 10 s limit, which counts only the check processes.
 - The result is kept only for the session, so driver changes are noticed at the next start. A newer check replaces an older one; late results of an older check are ignored. A too-old NVIDIA driver is recognised from its message and shown in Advanced.
 
 ## Export with hardware
@@ -103,7 +114,7 @@ Hardware can report success while writing damaged frames, so every hardware resu
 ## Testing
 - CI has no graphics hardware. Every vendor path is tested with a **simulated hardware encoder**: the real CI `ffmpeg` with the hardware encoder swapped for the software one, plus faults injected on purpose (empty file, truncated file, missing frames, wrong size, green frames, garbage frames, error exit, crash, stall). Each must end with a correct normal-method file, no error shown and no leftover temporary file; a correct hardware file must pass.
 - The check is also run on real software exports of the existing test media to make sure it raises no false alarms.
-- The real check runs against the CI `ffmpeg`: it must finish within 3 s and find no usable hardware.
+- The real check runs twice against the CI `ffmpeg`: each run must finish within the 10 s limit (plus 1.5 s for process start-up), both must give the same answer, and they must find no usable hardware. Simulated tests cover the first try, the retry, the whole-check limit, a candidate that is slow once and then works (also at constant quality), and the single repeat of an inconclusive answer.
 - **Manual, per release (QG-05):** Windows with NVIDIA, Intel and AMD; Linux with NVIDIA (proprietary driver), Intel and AMD; macOS Apple Silicon. A reference project is exported in H.264 and HEVC with both choices and checked for hardware use, identical format and frame count, `hvc1` playback on Apple devices, visible damage, quality (at most 3 VMAF points below Best quality, measured against a lossless render with the bundled `ffmpeg`'s VMAF), size (at most 1.5x), speed, and a forced failure. Results are recorded in the [developer documentation](code.md).
 
 ## Security
@@ -125,5 +136,7 @@ Hardware can report success while writing damaged frames, so every hardware resu
 - The 40% speed target was not met on integrated Intel graphics and may not be met elsewhere at 1080p; it should be re-set or the check made cheaper.
 - Constant quality: a restart with a coarser quantiser may lower quality more than 3 VMAF points on videos unlike those measured.
 - Reading the bundled `ffmpeg` for the libva check takes about 3 s in the background, which delays the first check result in a session.
+- **Slow failing candidates cost more since 0.4.2:** a candidate that is slow and then fails now costs 5 s (first try plus retry) instead of 1 s, and makes the answer inconclusive, so the check is always repeated once. Measured on the development laptop (Intel Iris Plus G7, Ubuntu 24.04, system `ffmpeg`): the HEVC VA-API test encode runs about 14 s and then fails, so each check takes about 6.4 s when the computer is idle and up to 10 s under load, and is always repeated (about 13–20 s of background work). H.264 hardware is usable from the first answer.
+- The check cannot tell a busy computer from a candidate that hangs; under extreme load it can still end with "no hardware" after its repeat.
 - Damage limited to frames between the samples passes the automatic check.
 - Whether each hardware encoder is present in each bundled build is confirmed only by the release smoke test.

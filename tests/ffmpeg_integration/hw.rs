@@ -571,11 +571,14 @@ fn the_check_accepts_correct_files_of_rich_projects() {
 
 /// The real check of this computer's video hardware finishes within its time budget,
 /// picks the same methods every time and, on CI (no graphics hardware), finds nothing.
+/// It runs next to the other tests, so the computer is busy: a candidate that does not
+/// answer in time is retried, and both checks must still agree.
 // covers: REQ-061
 #[test]
 fn the_real_hardware_check_is_quick_and_stable() {
     let Some(env) = setup() else { return };
     let platform = Platform::detect();
+    let limits = ProbeLimits::default();
     let run = || {
         let t = Instant::now();
         let s = hwenc::probe_all(
@@ -583,21 +586,22 @@ fn the_real_hardware_check_is_quick_and_stable() {
             &env.info.ffmpeg,
             &env.info.encoders,
             &platform,
-            ProbeLimits::default(),
+            limits,
             &AtomicBool::new(false),
         );
         (s, t.elapsed())
     };
     let (first, took) = run();
-    // 3 s of running time at most, plus process start-up and slot bookkeeping
-    assert!(took < Duration::from_millis(4500), "{took:?}");
-    let (second, _) = run();
-    assert_eq!(first.h264, second.h264);
-    assert_eq!(first.hevc, second.hevc);
+    let (second, took2) = run();
+    // the total running time at most, plus process start-up and slot bookkeeping
+    let bound = limits.total + Duration::from_millis(1500);
+    assert!(took < bound && took2 < bound, "{took:?} {took2:?}");
+    assert_eq!(first.h264, second.h264, "{first:?}\n{second:?}");
+    assert_eq!(first.hevc, second.hevc, "{first:?}\n{second:?}");
     if std::env::var("CI").as_deref() == Ok("true") && platform.render_nodes.is_empty() {
         assert!(first.none_found(), "{first:?}");
     }
-    eprintln!("hardware found: {first:?} in {took:?}");
+    eprintln!("hardware found: {first:?} in {took:?} and {took2:?}");
 }
 
 /// With real video hardware (only when VIDEOLORE_REAL_HW=1): each format the check finds

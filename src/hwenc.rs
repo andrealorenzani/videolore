@@ -9,8 +9,9 @@
 //! * [`encode_args`] gives the arguments of a method: they replace the software video
 //!   arguments of the export (same bitrate target, GOP 250, profile High/Main, 8-bit
 //!   4:2:0), so the file looks like the Best quality one.
-//! * [`probe`] tries the candidates with a tiny synthetic encode (at most 1 s each, 3 s in
-//!   total) and keeps the first one that works for each format.
+//! * [`probe`] tries the candidates with a tiny synthetic encode (at most 1 s each, one
+//!   retry of at most 4 s for a try that ran out of time, 10 s in total) and keeps the
+//!   first one that works for each format.
 //!
 //! Everything is pure except [`probe`] (runs ffmpeg through a [`Runner`]) and
 //! [`render_nodes`] (lists `/dev/dri`). The VA-API device path only ever comes from
@@ -680,6 +681,14 @@ impl HwStatus {
     pub fn none_found(&self) -> bool {
         self.h264.is_none() && self.hevc.is_none()
     }
+
+    /// Some format has no working hardware but one of its candidates did not answer in
+    /// time (even after its retry): the answer may be different on a less busy computer.
+    pub fn inconclusive(&self) -> bool {
+        self.notes
+            .iter()
+            .any(|(codec, _, r)| *r == Reason::TimedOut && self.get(*codec).is_none())
+    }
 }
 
 /// What an export may use (the probe result minus the methods turned off after a problem).
@@ -699,11 +708,19 @@ impl HwOffer {
 }
 
 /// Time limits of the probe.
+///
+/// A try that runs out of time is not taken as "this hardware does not work": on a busy
+/// computer a working encoder can take longer to start, so the candidate is tried once
+/// more, immediately (the preference order stays the same), with the longer `retry`
+/// limit. `total` is the hard bound of the whole check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProbeLimits {
-    /// Per candidate, from the start of its process (waiting for a slot does not count).
+    /// First try of a candidate, from the start of its process (waiting for a slot does
+    /// not count).
     pub per: Duration,
-    /// All candidates together; untried ones then count as not working.
+    /// The one extra try of a candidate whose first try ran out of time.
+    pub retry: Duration,
+    /// All tries together; untried candidates then count as not answering in time.
     pub total: Duration,
 }
 
@@ -711,7 +728,8 @@ impl Default for ProbeLimits {
     fn default() -> Self {
         ProbeLimits {
             per: Duration::from_secs(1),
-            total: Duration::from_secs(3),
+            retry: Duration::from_secs(4),
+            total: Duration::from_secs(10),
         }
     }
 }
@@ -782,9 +800,56 @@ fn timed_run(
     }
 }
 
-/// Tries the candidates of each format in order and keeps the first that works. Each try
-/// runs at most `limits.per`; once `limits.total` of running time is used up, the untried
-/// candidates count as not working. Stops early when `cancel` is set.
+/// Running time used by a probe, against [`ProbeLimits::total`].
+struct Budget {
+    limits: ProbeLimits,
+    used: Duration,
+}
+
+impl Budget {
+    fn left(&self) -> Duration {
+        self.limits.total.saturating_sub(self.used)
+    }
+
+    /// Runs the probe of `cand`: a first try of at most `per`; if it runs out of time (and
+    /// was not cut short by the total budget), one more try of at most `retry`. `None`
+    /// when nothing could be started (no time left, or cancelled).
+    fn attempt(
+        &mut self,
+        runner: &dyn Runner,
+        ffmpeg: &Path,
+        cand: &Candidate,
+        codec: Codec,
+        cancel: &AtomicBool,
+    ) -> Option<Result<Candidate, Reason>> {
+        let args = probe_args(cand, codec);
+        let mut outcome = None;
+        for limit in [self.limits.per, self.limits.retry] {
+            let left = self.left();
+            if left.is_zero() || cancel.load(Ordering::SeqCst) {
+                break;
+            }
+            let (run, ran) = timed_run(runner, ffmpeg, &args, limit.min(left));
+            self.used += ran;
+            let (result, again) = match run {
+                Run::Ok => (Ok(cand.clone()), false),
+                Run::Failed(err) => (Err(reason_of(&err)), false),
+                // a time-out only because the whole check is out of time is final
+                Run::TimedOut => (Err(Reason::TimedOut), limit <= left),
+            };
+            outcome = Some(result);
+            if !again {
+                break;
+            }
+        }
+        outcome
+    }
+}
+
+/// Tries the candidates of each format in order and keeps the first that works. A try
+/// that runs out of time is repeated once with a longer limit before the next candidate
+/// (see [`ProbeLimits`]); once `limits.total` of running time is used up, the untried
+/// candidates count as not answering in time. Stops early when `cancel` is set.
 pub fn probe(
     runner: &dyn Runner,
     ffmpeg: &Path,
@@ -793,44 +858,28 @@ pub fn probe(
     cancel: &AtomicBool,
 ) -> HwStatus {
     let mut status = HwStatus::default();
-    let mut used = Duration::ZERO;
+    let mut budget = Budget {
+        limits,
+        used: Duration::ZERO,
+    };
     for (codec, list) in cands {
         for c in list {
             if cancel.load(Ordering::SeqCst) {
                 return status;
             }
-            let left = limits.total.saturating_sub(used);
-            if left.is_zero() {
+            let Some(mut outcome) = budget.attempt(runner, ffmpeg, c, *codec, cancel) else {
+                if cancel.load(Ordering::SeqCst) {
+                    return status;
+                }
                 status.notes.push((*codec, c.vendor, Reason::TimedOut));
                 continue;
-            }
-            let (run, ran) =
-                timed_run(runner, ffmpeg, &probe_args(c, *codec), limits.per.min(left));
-            used += ran;
-            let mut outcome = match run {
-                Run::Ok => Ok(c.clone()),
-                Run::Failed(err) => Err(reason_of(&err)),
-                Run::TimedOut => Err(Reason::TimedOut),
             };
             // a driver that refuses bitrate control may still encode at constant quality
             if outcome == Err(Reason::Failed)
                 && let Some(cq) = c.constant_quality()
+                && let Some(r) = budget.attempt(runner, ffmpeg, &cq, *codec, cancel)
             {
-                let left = limits.total.saturating_sub(used);
-                if !left.is_zero() && !cancel.load(Ordering::SeqCst) {
-                    let (run, ran) = timed_run(
-                        runner,
-                        ffmpeg,
-                        &probe_args(&cq, *codec),
-                        limits.per.min(left),
-                    );
-                    used += ran;
-                    outcome = match run {
-                        Run::Ok => Ok(cq),
-                        Run::Failed(err) => Err(reason_of(&err)),
-                        Run::TimedOut => Err(Reason::TimedOut),
-                    };
-                }
+                outcome = r;
             }
             match outcome {
                 Ok(found) => {

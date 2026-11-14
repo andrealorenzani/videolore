@@ -333,8 +333,8 @@ fn probe_keeps_the_first_working_method_of_each_format() {
 // covers: REQ-061
 #[test]
 fn probe_respects_its_time_limits_and_cancel() {
-    // every candidate hangs: each is stopped after `per`, and once `total` is used up
-    // the rest count as not working without being started
+    // every candidate hangs: each is stopped after `per`, tried once more for `retry`,
+    // and once `total` is used up the rest count as not answering without being started
     let started = Arc::new(AtomicUsize::new(0));
     let s2 = Arc::clone(&started);
     let hang = FakeRunner::default()
@@ -345,22 +345,42 @@ fn probe_respects_its_time_limits_and_cancel() {
         .holding_streams();
     let limits = ProbeLimits {
         per: Duration::from_millis(60),
-        total: Duration::from_millis(150),
+        retry: Duration::from_millis(90),
+        total: Duration::from_millis(400),
     };
     let t = Instant::now();
     let st = probe_linux(&hang, limits);
     let took = t.elapsed();
     assert!(st.none_found());
+    assert!(st.inconclusive());
     assert_eq!(st.notes.len(), 6);
     assert!(st.notes.iter().all(|n| n.2 == Reason::TimedOut));
     assert_eq!(
         started.load(Ordering::SeqCst),
-        3,
-        "60 + 60 + 30 ms, then out of time"
+        6,
+        "(60 + 90) twice, then 60 + the last 40 ms, then out of time"
     );
-    assert!(took < Duration::from_millis(1500), "{took:?}");
+    assert!(took < Duration::from_millis(2000), "{took:?}");
+    // a try cut short by the total budget is not tried again
+    let started = Arc::new(AtomicUsize::new(0));
+    let s2 = Arc::clone(&started);
+    let hang = FakeRunner::default()
+        .on(move |_, _| {
+            s2.fetch_add(1, Ordering::SeqCst);
+            ok("")
+        })
+        .holding_streams();
+    let short = ProbeLimits {
+        total: Duration::from_millis(50),
+        ..limits
+    };
+    let st = probe_linux(&hang, short);
+    assert_eq!(st.notes.len(), 6);
+    assert_eq!(started.load(Ordering::SeqCst), 1);
+    // the documented numbers: 1 s per try, 4 s for the retry, 10 s at most in total
     assert_eq!(ProbeLimits::default().per, Duration::from_secs(1));
-    assert_eq!(ProbeLimits::default().total, Duration::from_secs(3));
+    assert_eq!(ProbeLimits::default().retry, Duration::from_secs(4));
+    assert_eq!(ProbeLimits::default().total, Duration::from_secs(10));
     // a cancelled probe stops before starting anything
     let r = prober(|_| true);
     let st = probe_all(
@@ -582,4 +602,97 @@ fn old_system_libva_skips_va_api_and_quick_sync() {
     );
     assert_eq!(st.h264.map(|c| c.vendor), Some(Vendor::Vaapi));
     assert!(find_system_libva().is_none_or(|p| p.is_file()));
+}
+
+/// A fake ffmpeg where every probe works, except that the first `slow` probe runs whose
+/// arguments contain `encoder` do not answer in time (a busy computer).
+fn slow_at_first(encoder: &'static str, slow: usize) -> (FakeRunner, Arc<AtomicUsize>) {
+    let seen = Arc::new(AtomicUsize::new(0));
+    let s2 = Arc::clone(&seen);
+    let r = FakeRunner::default()
+        .on(|_, _| ok(""))
+        .hanging_if(move |a| {
+            a.iter().any(|x| x == encoder) && s2.fetch_add(1, Ordering::SeqCst) < slow
+        });
+    (r, seen)
+}
+
+fn quick() -> ProbeLimits {
+    ProbeLimits {
+        per: Duration::from_millis(40),
+        retry: Duration::from_millis(80),
+        total: Duration::from_secs(5),
+    }
+}
+
+/// A try that runs out of time because the computer is busy is not a "does not work":
+/// the same candidate is tried again at once, so the choice is the one of a quiet computer.
+// covers: REQ-061
+#[test]
+fn a_candidate_that_times_out_once_is_tried_again() {
+    let (quiet, _) = slow_at_first("h264_nvenc", 0);
+    let want = probe_linux(&quiet, quick());
+    assert_eq!(want.h264, Some(Candidate::new(Vendor::Nvenc)));
+    let (busy, seen) = slow_at_first("h264_nvenc", 1);
+    let st = probe_linux(&busy, quick());
+    assert_eq!((st.h264.clone(), st.hevc.clone()), (want.h264, want.hevc));
+    assert_eq!(seen.load(Ordering::SeqCst), 2, "tried twice");
+    assert!(st.notes.is_empty(), "{:?}", st.notes);
+    assert!(!st.inconclusive());
+    // the preference order is kept: Quick Sync is not tried before NVIDIA's retry
+    let calls = busy.calls.lock().unwrap();
+    assert!(calls[0].contains(&"h264_nvenc".to_string()));
+    assert!(calls[1].contains(&"h264_nvenc".to_string()));
+    drop(calls);
+    // twice out of time: noted as not answering, the next candidate is used and the
+    // answer is inconclusive only while a format has no hardware
+    let (busier, seen) = slow_at_first("h264_nvenc", 2);
+    let st = probe_linux(&busier, quick());
+    assert_eq!(seen.load(Ordering::SeqCst), 2, "one retry only");
+    assert_eq!(st.h264, Some(Candidate::new(Vendor::Qsv)));
+    assert_eq!(st.notes, [(Codec::H264, Vendor::Nvenc, Reason::TimedOut)]);
+    assert!(!st.inconclusive());
+    let only_nvenc: BTreeSet<String> = ["h264_nvenc".to_string()].into();
+    let (busier, _) = slow_at_first("h264_nvenc", 2);
+    let st = probe_all(
+        &busier,
+        Path::new("/usr/bin/ffmpeg"),
+        &only_nvenc,
+        &linux(&[]),
+        quick(),
+        &AtomicBool::new(false),
+    );
+    assert!(st.none_found() && st.inconclusive());
+    // a definite failure is never inconclusive
+    let st = probe_linux(&prober(|_| false), quick());
+    assert!(st.none_found() && !st.inconclusive());
+}
+
+/// The VA-API constant-quality variant gets the same retry when the computer is busy.
+// covers: REQ-061
+#[test]
+fn the_constant_quality_variant_is_also_tried_again() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let c2 = Arc::clone(&calls);
+    let r = FakeRunner::default()
+        .on(|_, a| {
+            let i = a.iter().position(|x| x == "-c:v")?;
+            if a[i + 1] != "h264_vaapi" {
+                return fail("Cannot load libcuda.so.1");
+            }
+            if a.iter().any(|x| x == "CQP") {
+                ok("")
+            } else {
+                fail("Driver does not support VBR RC mode")
+            }
+        })
+        .hanging_if(move |a| {
+            // the first constant-quality try does not answer in time
+            a.iter().any(|x| x == "CQP") && c2.fetch_add(1, Ordering::SeqCst) == 0
+        });
+    let st = probe_linux(&r, quick());
+    let found = st.h264.expect("found on the retry");
+    assert_eq!(found.vendor, Vendor::Vaapi);
+    assert_eq!(found.rc, RateControl::ConstantQuality);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
 }

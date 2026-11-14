@@ -56,12 +56,32 @@ normal method.
 Runs only when needed: at start-up (after the ffmpeg check) if Export is Faster, when the user
 picks Faster, on "Try video hardware again", on "Use recommended settings", and when the ffmpeg
 changes while Faster is selected. With Best quality nothing runs. Each candidate encodes 8
-synthetic 640×360 frames with the real export arguments to `-f null`: at most 1 s each (from
-the start of its process), at most 3 s in total (untried ones then count as not working), one
-process slot at probe priority, no network. The first working method per format wins, so the
-same working set always gives the same choice. A VA-API driver that refuses bitrate control
-(a plain failure, not a missing device) is tried again at constant quality within the same
-time budget.
+synthetic 640×360 frames with the real export arguments to `-f null`, using one process slot
+at probe priority and no network. Time limits (since 0.4.2), counted from the start of each
+process (waiting for a slot does not count):
+
+| Limit | Value | What happens |
+|---|---|---|
+| First try of a candidate | 1 s | if it does not answer in time it is **tried once more at once** (the next candidate waits, so the preference order never changes) |
+| The retry | 4 s | if it still does not answer, the candidate is noted "did not answer in time" and the next one is tried |
+| Whole check (hard bound) | 10 s | untried candidates are noted "did not answer in time"; a try cut short by this bound is not retried |
+
+The retry exists because a busy computer (an export, speech recognition or a build using every
+core) can make a working encoder start slowly; before 0.4.2 a single 1 s try then reported "no
+hardware". The first working method per format wins, so the same working set always gives the
+same choice. A VA-API driver that refuses bitrate control (a plain failure, not a missing
+device) is tried again at constant quality, with the same first try + retry, within the same
+total bound.
+
+**A time-out is never a final "does not work".** If the check ends with a format that has no
+working hardware and one of its candidates did not answer in time, the answer is inconclusive:
+the app repeats the whole check once by itself, keeping the first answer in use (and on screen)
+until the repeat ends. A time-out is never recorded in the "turned off after a problem" memory:
+only a failed hardware export is. "Try video hardware again" starts a new check (with its own
+possible repeat). Measured on the development laptop: the HEVC VA-API test encode of its Intel
+driver runs about 14 s and then fails, so each check spends 5 s on it (about 6.4 s per check on
+an idle machine, up to the 10 s bound under full CPU load) and is repeated once; H.264 stays
+usable during the repeat.
 
 **Old system libva.** The bundled Linux ffmpeg loads libva at run time and aborts (core dump)
 when the system library lacks `vaMapBuffer2` (libva 2.21+; Ubuntu 24.04 ships 2.20). Before
@@ -119,7 +139,9 @@ new hardware. A cancelled export is never a problem. The settings file stays at 
   argument sets and the constant-quality ones (golden), the second-run quantiser, the
   constant-quality fallback of the probe, the old-libva skip (pure rule and file scan across
   read boundaries), the probe with a fake ffmpeg (first working method, notes and reasons,
-  per-candidate and total time limits with processes that never end, cancel, chosen ffmpeg).
+  per-candidate, retry and total time limits with processes that never end, a candidate that
+  does not answer in time once and then works (also the constant-quality variant), inconclusive
+  answers, cancel, chosen ffmpeg).
 - `outcheck/tests.rs`: metadata rules on ffprobe JSON, sample selection, PSNR log parsing and the
   neighbour rule.
 - `export/hw_tests.rs`: a simulated ffmpeg for each of the 5 methods × error exit, crash, stall,
@@ -127,7 +149,9 @@ new hardware. A cancelled export is never a problem. The settings file stays at 
   constant quality growing too big (one restart with a coarser quantiser; still too big: the
   normal method).
 - `app/hw_tests.rs` and `ui/tests.rs`: when the check runs, Best quality never touching the
-  hardware, the failure memory and its resets, the Settings window texts, and the
+  hardware, the failure memory and its resets, the automatic single repeat of an inconclusive
+  check (first answer kept meanwhile, time-outs never remembered as problems), the Settings
+  window texts, and the
   responsiveness harness with a hardware export running.
 - `tests/ffmpeg_integration/hw.rs` (real ffmpeg): a test runner stands in for each vendor by
   running the real command with libx264/libx265 (vendor options and device setup removed,
@@ -135,8 +159,9 @@ new hardware. A cancelled export is never a problem. The settings file stays at 
   HEVC give the Best quality format; empty, truncated, missing-frame, wrong-size, green and
   garbage files are each caught by the step meant for them on the NVENC and VA-API paths;
   a rich project (60 uneven cuts, two frame rates, fades, letterbox, music, subtitles) passes
-  the check; stream copy is byte-identical with either choice; the real check of the machine
-  stays within its time budget and finds nothing on CI. With `VIDEOLORE_REAL_HW=1`, every
+  the check; stream copy is byte-identical with either choice; the real check of the machine,
+  run twice while the other tests keep the CPU busy, stays within its 10 s bound (+1.5 s for
+  process start-up), both runs pick the same methods, and it finds nothing on CI. With `VIDEOLORE_REAL_HW=1`, every
   method the check finds on the machine is exported for real and must pass the check.
 
 ## QG-05: real-hardware verification (manual)

@@ -2,6 +2,23 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 0.4.2 — 2026-11-14 21:59 +0000
+Summary: Faster export finds the computer's video hardware reliably, also on a busy computer. The release check of 0.4.1 found that on a loaded Intel laptop the hardware test was cut off after 1 second and reported "no hardware", so Faster silently used the normal method. Now a slow test gets one longer try, the whole check is bounded, and an uncertain answer is checked once more in the background while the first answer stays usable.
+
+- **Fixed**: the background hardware check gives each candidate 1 second; a candidate that does not answer in time gets one more try of up to 4 seconds before the next candidate is tried, so the preference order never changes (REQ-061).
+- **Fixed**: a time-out is never remembered as a hardware failure, so a busy moment does not turn the hardware off for later exports (REQ-064).
+- **Changed**: the whole check takes at most 10 seconds (it was 3 seconds in total). Time spent waiting for a free process slot is not counted (REQ-061).
+- **Changed**: if the answer is uncertain (no working hardware for a format and a candidate ran out of time), the whole check is repeated once by itself in the background; the first answer is used until the repeat ends (REQ-061).
+- **Changed**: REQ-061 reworded: the acceptance limits are 1 second first try, one 4-second retry per candidate and 10 seconds in total.
+- **Workflow**: none.
+- **Dependencies**: none added or removed.
+- **Quality**: fmt; clippy run three times; cargo test run twice in full (222 unit and 23 integration tests pass, 2 ignored); coverage; feature coverage; cargo-deny; notices check; version check. Line coverage 96.3%; feature coverage 65/65 implemented requirements.
+
+Known limitations (0.4.2):
+- A candidate that is slow and then fails costs 5 s on every check and makes each check repeat. On the development laptop (Intel Iris Plus G7, Ubuntu 24.04, system ffmpeg) the HEVC VA-API test takes about 14 s and then fails: a check takes about 6.4 s idle and up to 10 s under load, and it is always repeated (about 13–20 s of background work per request). H.264 hardware is usable from the first answer.
+- A busy computer cannot always be told apart from a hanging test; under extreme load the check can still end with "no hardware" after its repeat, and Faster then uses the normal method.
+- The repeat is not paused while an export or subtitle generation runs.
+
 ## 0.4.1 — 2026-11-14 21:29 +0000
 ### Workflow
 - `/release [name]` now releases the **current** version: it creates `releases/<version> - <name>/` with a copy of all docs (README, docs, ai-docs) unchanged, `sources.zip` and `RELEASE_NOTES.md` taken from the changelog, cleans the changelog, commits, tags `v<version>` and pushes, watches CI, then moves to the next major version, commits and pushes. The name is asked when missing.

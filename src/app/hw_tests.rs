@@ -29,8 +29,12 @@ struct World {
 }
 
 fn fake(world: World) -> Arc<FakeRunner> {
+    Arc::new(fake_runner(world))
+}
+
+fn fake_runner(world: World) -> FakeRunner {
     let base = runner();
-    Arc::new(FakeRunner::default().on(move |prog, a| {
+    FakeRunner::default().on(move |prog, a| {
         if a.iter().any(|x| x.starts_with("testsrc2")) {
             let i = a.iter().position(|x| x == "-c:v")?;
             return if world.working.lock().unwrap().contains(&a[i + 1]) {
@@ -45,11 +49,14 @@ fn fake(world: World) -> Arc<FakeRunner> {
             return world.hw_export.clone();
         }
         base.responders[0](prog, a)
-    }))
+    })
 }
 
 fn app_in(dir: &Path, world: World) -> (AppState, Arc<FakeRunner>) {
-    let f = fake(world);
+    app_with(dir, fake(world))
+}
+
+fn app_with(dir: &Path, f: Arc<FakeRunner>) -> (AppState, Arc<FakeRunner>) {
     let mut i = info();
     i.encoders.extend(
         ["h264_nvenc", "hevc_nvenc", "h264_qsv", "hevc_qsv"]
@@ -100,6 +107,21 @@ fn checked(app: &mut AppState) -> HwStatus {
     loop {
         app.tick(Instant::now());
         if let HwProbe::Done(s) = &app.hw.probe {
+            return s.clone();
+        }
+        assert!(Instant::now() < deadline, "hardware check did not end");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+/// Ticks until the hardware check and its possible repeat are over.
+fn settled(app: &mut AppState) -> HwStatus {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        app.tick(Instant::now());
+        if let HwProbe::Done(s) = &app.hw.probe
+            && app.hw_probe.is_none()
+        {
             return s.clone();
         }
         assert!(Instant::now() < deadline, "hardware check did not end");
@@ -394,4 +416,60 @@ fn stale_checks_are_ignored_and_a_new_ffmpeg_is_checked() {
     app.hw.probe = HwProbe::Checking(9);
     assert!(!crate::ui::settings::no_hardware(&app));
     assert!(crate::ui::settings::hardware_lines(&app)[1].ends_with("checking…"));
+}
+
+/// A check whose answer is inconclusive because a candidate did not answer in time (a
+/// busy computer) is repeated once by itself; a time-out is never remembered as a
+/// hardware problem.
+// covers: REQ-061, REQ-064
+#[test]
+fn a_check_without_an_answer_in_time_is_repeated_once() {
+    for (slow, found, runs) in [(2, Some(Candidate::new(Vendor::Nvenc)), 8), (4, None, 10)] {
+        let dir = tempfile::tempdir().unwrap();
+        let hangs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let h2 = Arc::clone(&hangs);
+        let f = fake_runner(World {
+            working: working(&["h264_nvenc"]),
+            hw_export: ok("progress=end\n"),
+        })
+        .hanging_if(move |a| {
+            a.iter().any(|x| x == "testsrc2=size=640x360:rate=30")
+                && a.iter().any(|x| x == "h264_nvenc")
+                && h2.fetch_add(1, Ordering::SeqCst) < slow
+        });
+        let (mut app, f) = app_with(dir.path(), Arc::new(f));
+        app.probe_limits = ProbeLimits {
+            per: Duration::from_millis(30),
+            retry: Duration::from_millis(60),
+            total: Duration::from_secs(5),
+        };
+        app.settings.export = ExportChoice::Faster;
+        app.start_hw_probe();
+        // the first answer is inconclusive: it is in use while the check is repeated
+        let first = checked(&mut app);
+        assert!(first.inconclusive() && first.h264.is_none());
+        assert!(app.hw_probe.is_some(), "repeating");
+        assert_eq!(app.hw.probe, HwProbe::Done(first));
+        let st = settled(&mut app);
+        assert_eq!(st.h264, found, "slow {slow}");
+        // first check: NVIDIA twice (retry) + Intel for H.264, NVIDIA + Intel for HEVC;
+        // the repeat: NVIDIA (1 or 2 tries) [+ Intel] for H.264, the same 2 for HEVC
+        assert_eq!(probes(&f), runs, "slow {slow}");
+        assert_eq!(st.inconclusive(), found.is_none());
+        // never more than one repeat
+        for _ in 0..20 {
+            app.tick(Instant::now());
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(app.hw.probe, HwProbe::Done(st));
+        assert_eq!(probes(&f), runs);
+        assert!(app.settings.hardware_off.is_empty());
+        // the user can ask again: a new request may be repeated once more
+        app.dispatch(Command::TryHardwareAgain, Instant::now())
+            .unwrap();
+        assert!(matches!(app.hw.probe, HwProbe::Checking(_)));
+        let again = settled(&mut app);
+        assert!(again.h264.is_some(), "the computer is quiet now");
+        assert!(app.settings.hardware_off.is_empty());
+    }
 }

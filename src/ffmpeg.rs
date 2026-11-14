@@ -696,6 +696,7 @@ pub mod fake {
     use std::sync::{Arc, Condvar};
 
     type Responder = Box<dyn Fn(&Path, &[String]) -> Option<CmdOutput> + Send + Sync>;
+    type HangIf = Box<dyn Fn(&[String]) -> bool + Send + Sync>;
 
     /// Answers each call with the first responder that returns `Some`.
     #[derive(Default)]
@@ -707,6 +708,8 @@ pub mod fake {
         /// When true, spawned processes keep their stdout open until killed,
         /// like a real long-running ffmpeg (no premature end of stream).
         pub hold_streams: bool,
+        /// Like `hold_streams`, only for the spawned processes it says yes to.
+        pub hang_if: Option<HangIf>,
     }
 
     impl FakeRunner {
@@ -721,6 +724,13 @@ pub mod fake {
         /// Spawned processes block on stdout after their scripted output until killed.
         pub fn holding_streams(mut self) -> Self {
             self.hold_streams = true;
+            self
+        }
+
+        /// Spawned processes whose arguments `f` says yes to (it is asked once per spawn,
+        /// in order) block on stdout until killed: a process that does not answer in time.
+        pub fn hanging_if(mut self, f: impl Fn(&[String]) -> bool + Send + Sync + 'static) -> Self {
+            self.hang_if = Some(Box::new(f));
             self
         }
 
@@ -821,9 +831,15 @@ pub mod fake {
             cwd: Option<&Path>,
         ) -> io::Result<Box<dyn Process>> {
             self.cwds.lock().unwrap().push(cwd.map(Path::to_path_buf));
-            let held = self
-                .hold_streams
-                .then(|| Arc::new((Mutex::new(false), Condvar::new())));
+            let hang = self.hold_streams
+                || self.hang_if.as_ref().is_some_and(|f| {
+                    let a: Vec<String> = args
+                        .iter()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .collect();
+                    f(&a)
+                });
+            let held = hang.then(|| Arc::new((Mutex::new(false), Condvar::new())));
             Ok(Box::new(FakeProcess(
                 Some(self.answer(program, args)?),
                 held,

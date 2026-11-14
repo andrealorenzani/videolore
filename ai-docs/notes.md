@@ -42,3 +42,11 @@
 - open: docs/architecture-hardware-export.md index blurb says "measured results"; its section is "Performance" (cosmetic, PE/Architect)
 - open: README poem/changelog header time 20:05 (written before the final date call at 20:06)
 - open: no commit made by documenter in 0.4.0 (caller commits)
+- 0.4.2 dev (2026-11-14 21:59 +0000): version set via scripts/version.sh set 0.4.2 (consistent); coverage badge 96.3 (PE), features 65/65; changelog 0.4.2 entry at top (above 0.4.1)
+- 0.4.2 README: latest changes now 0.4.2, 0.4.0, 0.3.0 (0.2.2 dropped; 0.4.1 workflow-only); known limitation "very busy computer" added; poem replaced (10 verses, 1-9 end with backslash)
+- 0.4.2 roadmap: 5 hardware-check items + split code-hardware.md (Quality section, new); "Under extreme load" item in Export
+- 0.4.2 links: 0 dead links, 0 bad anchors, all sub-docs linked from indexes; timing figures (1 s / 4 s / 10 s, repeat) consistent in architecture, architecture-hardware-export, code-hardware, business-export
+- open: docs/code-hardware.md is 237 lines (not 234 as the caller said); split item in roadmap
+- open: docs/architecture-hardware-export.md Known limitations has no 0.4.2 item beyond the 139 note; roadmap covers it
+- open: docs/workflow.md unchanged in 0.4.2 (.claude/ and AGENTS.md untouched)
+- open: no commit made by documenter in 0.4.2 (caller commits)

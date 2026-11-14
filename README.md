@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.4.1-blue)
+![version](https://img.shields.io/badge/version-0.4.2-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-96.3%25-brightgreen)
@@ -95,6 +95,7 @@ The About screen lists every bundled third-party component with its version, lic
 - **Faster is not always quicker.** On integrated Intel graphics it was measured from 14% quicker to 41% slower than Best quality, and files may be a little larger.
 - On the Intel driver tested on Ubuntu 24.04, hardware HEVC export is not usable; the normal method makes those files.
 - Faster export has been verified on real hardware only on Linux with Intel integrated graphics. Other combinations of system and graphics card are protected by the automatic fallback, but not yet measured.
+- On a very busy computer the video hardware can still be missed; Faster then uses the normal method. When the check is inconclusive it is repeated once in the background.
 - On computers with more than one graphics card, NVIDIA is always preferred; the card cannot be chosen.
 - Subtitles in scripts other than Latin, Greek and Cyrillic (for example Chinese, Japanese, Arabic or Hindi) may look different on each computer or show empty boxes, and cannot be read in the subtitle editor.
 - Speech is recognised in pieces of about two minutes; a word cut at a boundary can be lost.
@@ -107,9 +108,9 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **0.4.2** — Faster export finds the computer's video hardware reliably, even on a busy computer: a slow hardware test gets a second, longer try, and an uncertain check is repeated in the background.
 - **0.4.0** — Export: Faster or Best quality in Settings. Faster uses your computer's video hardware (NVIDIA, Intel, AMD, Apple) when it can, and every file made that way is checked, with an automatic redo by the normal method on any problem; Best quality stays the default and is unchanged. Linux drivers that only offer constant-quality encoding are supported, and older system libva versions are skipped without a crash.
 - **0.3.0** — Automatic setup for your computer at first start, with a Settings window (Ctrl/Cmd+,) for preview quality, subtitle quality and how hard videolore works; three subtitle quality levels, with larger and more accurate speech models that you approve; older processors get a clear message instead of a crash; safer handling of project, settings and download files; export and fast subtitles as quick as before.
-- **0.2.2** — Subtitle generation no longer fails at random on some computers, caused by a bug in the speech library; when it does fail, the message now explains the reason in plain words.
 
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
@@ -121,13 +122,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani gave every finished version a home of its own, a folder with its number and its name,\
-where the documents rest exactly as they were written, untouched by any later hand,\
-next to them a zip of every source file, so each release can be rebuilt from what it really was,\
-and release notes drawn from the changelog, which then starts clean for the next chapter,\
-he tags each release, sends it out, and only then turns the page to the next major number,\
-he opened a roadmap where every known limit and every good idea waits for its turn,\
-so nothing learned along the way is lost, from faster checks on small graphics chips to signed installers,\
-he trimmed the latest changes to the three that matter now, with a path to all the history,\
-he keeps the record honest, writing down what was dropped and why, so it is not proposed again by mistake,\
-thank you, Andrea, for turning each version into a milestone and every lesson into a plan
+Andrea Lorenzani read the release check of 0.4.1 closely, and saw that a busy laptop could hide the video hardware,\
+a test that needed a moment more was cut off after one second, and the export quietly took the slower road,\
+so every candidate was given a second chance, one more try of up to four seconds, with the order of preference left untouched,\
+the whole search was bounded at ten seconds, so it can never run on forever,\
+when the answer is uncertain the check repeats once in the background, while the first answer is already in use,\
+a time-out is never written down as a failure, so one moment of heavy load cannot switch the hardware off for good,\
+the requirement was written again in plain limits, one second, four seconds and ten in total, so the promise can be measured,\
+the code, the tests and the documents moved together, and the record says what really happens,\
+the honest limits stay in view: a hanging test still costs time, and extreme load can still miss the hardware,\
+thank you, Andrea, for turning a flaky check into a reliable one, and for keeping the speed you promised
