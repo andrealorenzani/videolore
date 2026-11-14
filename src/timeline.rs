@@ -48,7 +48,7 @@ pub enum EditError {
     NoSuchClip,
     #[error("the playhead is not inside a clip")]
     NotInsideClip,
-    #[error("'{0}' has no video: audio-only files cannot be placed on the video track yet")]
+    #[error("'{0}' has no video: audio files go on the music track")]
     NoVideo(String),
     #[error("'{0}' is missing")]
     MissingMedia(String),
@@ -351,6 +351,8 @@ pub(crate) mod tests {
                 ..Default::default()
             },
             missing: false,
+            status: Default::default(),
+            proxy: Default::default(),
         }
     }
 

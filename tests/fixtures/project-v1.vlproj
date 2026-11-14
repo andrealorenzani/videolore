@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "next_media_id": 2,
+  "media": [
+    {
+      "id": 1,
+      "path_abs": "/videolore-fixture-does-not-exist/a.mp4",
+      "path_rel": "a.mp4",
+      "name": "a.mp4",
+      "duration": 5000000,
+      "format": {
+        "container": "mp4",
+        "vcodec": "h264",
+        "acodec": "aac",
+        "width": 1280,
+        "height": 720,
+        "fps": { "num": 30, "den": 1 },
+        "bit_rate": 2000000,
+        "audio_bit_rate": 128000,
+        "sample_rate": 48000,
+        "channels": 2
+      }
+    },
+    {
+      "id": 2,
+      "path_abs": "/videolore-fixture-does-not-exist/b.mp4",
+      "path_rel": "b.mp4",
+      "name": "b.mp4",
+      "duration": 3000000,
+      "format": {
+        "container": "mp4",
+        "vcodec": "h264",
+        "acodec": "aac",
+        "width": 640,
+        "height": 360,
+        "fps": { "num": 25, "den": 1 },
+        "bit_rate": 800000,
+        "audio_bit_rate": 96000,
+        "sample_rate": 44100,
+        "channels": 2
+      }
+    }
+  ],
+  "timeline": {
+    "clips": [
+      { "id": 1, "media": 1, "src_in": 0, "src_out": 2000000 },
+      { "id": 3, "media": 2, "src_in": 500000, "src_out": 3000000 },
+      { "id": 2, "media": 1, "src_in": 2000000, "src_out": 5000000 }
+    ],
+    "fades": [[1, 3]],
+    "next_clip_id": 3
+  }
+}

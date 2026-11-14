@@ -30,7 +30,18 @@ pub const REQUIRED_FILTERS: &[&str] = &[
     "concat",
     "anullsrc",
     "aresample",
+    "amix",
+    "alimiter",
+    "volume",
+    "split",
+    "asplit",
 ];
+
+/// Filter needed only to burn subtitles in (libass). Checked when an export needs it.
+pub const SUBTITLES_FILTER: &str = "subtitles";
+
+/// Most stdout kept by [`Runner::run`]; more than this is an error (ffprobe output is small).
+pub const RUN_STDOUT_LIMIT: usize = 16 * 1024 * 1024;
 
 /// Graphs longer than this are passed through a script file instead of argv.
 pub const MAX_INLINE_GRAPH: usize = 8 * 1024;
@@ -50,6 +61,8 @@ pub enum FfmpegError {
     UnknownVersion,
     #[error("ffmpeg lacks required filters: {0}")]
     MissingFilters(String),
+    #[error("the ffmpeg included with videolore is damaged ({0}): reinstall videolore")]
+    BundledDamaged(String),
 }
 
 /// Output of a finished process.
@@ -70,12 +83,35 @@ pub trait Process: Send {
     fn wait(&mut self) -> io::Result<CmdOutput>;
 }
 
-/// Starts external programs. The real implementation is [`SystemRunner`].
+/// Starts external programs. The real implementation is [`SystemRunner`]; the rest of the
+/// application only ever sees a [`crate::jobs::Limited`] wrapper that enforces the process cap.
 pub trait Runner: Send + Sync {
-    /// Runs to completion capturing stdout and stderr.
+    /// Runs to completion capturing stdout (at most [`RUN_STDOUT_LIMIT`]) and stderr.
     fn run(&self, program: &Path, args: &[OsString]) -> io::Result<CmdOutput>;
-    /// Spawns with stdout piped (stdin null, stderr captured in the background).
-    fn spawn(&self, program: &Path, args: &[OsString]) -> io::Result<Box<dyn Process>>;
+    /// Spawns with stdout piped (stdin null, stderr captured in the background), in `cwd`
+    /// when given (always one of our private temporary folders).
+    fn spawn_in(
+        &self,
+        program: &Path,
+        args: &[OsString],
+        cwd: Option<&Path>,
+    ) -> io::Result<Box<dyn Process>>;
+    /// [`Runner::spawn_in`] in the current folder.
+    fn spawn(&self, program: &Path, args: &[OsString]) -> io::Result<Box<dyn Process>> {
+        self.spawn_in(program, args, None)
+    }
+    /// Spawns two processes that belong together (preview video + audio). A limited runner
+    /// reserves both slots at once, so the pair never waits half-started.
+    fn spawn_pair(
+        &self,
+        a: (&Path, &[OsString]),
+        b: (&Path, &[OsString]),
+        cwd: Option<&Path>,
+    ) -> io::Result<(Box<dyn Process>, Box<dyn Process>)> {
+        let first = self.spawn_in(a.0, a.1, cwd)?;
+        let second = self.spawn_in(b.0, b.1, cwd)?;
+        Ok((first, second))
+    }
 }
 
 /// Runs real processes via `std::process::Command`.
@@ -96,19 +132,35 @@ fn command(program: &Path, args: &[OsString]) -> Command {
 
 impl Runner for SystemRunner {
     fn run(&self, program: &Path, args: &[OsString]) -> io::Result<CmdOutput> {
-        let out = command(program, args).output()?;
-        Ok(CmdOutput {
-            success: out.status.success(),
-            stdout: out.stdout,
-            stderr: tail(String::from_utf8_lossy(&out.stderr).into_owned()),
-        })
+        let mut p = self.spawn_in(program, args, None)?;
+        let mut out = Vec::new();
+        if let Some(s) = p.take_stdout() {
+            s.take(RUN_STDOUT_LIMIT as u64 + 1).read_to_end(&mut out)?;
+        }
+        if out.len() > RUN_STDOUT_LIMIT {
+            p.kill();
+            let _ = p.wait();
+            return Err(io::Error::other(format!(
+                "{} printed more than 16 MiB",
+                program.display()
+            )));
+        }
+        let mut r = p.wait()?;
+        r.stdout = out;
+        Ok(r)
     }
 
-    fn spawn(&self, program: &Path, args: &[OsString]) -> io::Result<Box<dyn Process>> {
-        let mut child = command(program, args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+    fn spawn_in(
+        &self,
+        program: &Path,
+        args: &[OsString],
+        cwd: Option<&Path>,
+    ) -> io::Result<Box<dyn Process>> {
+        let mut c = command(program, args);
+        if let Some(d) = cwd {
+            c.current_dir(d);
+        }
+        let mut child = c.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
         let stderr = Arc::new(Mutex::new(String::new()));
         let sink = Arc::clone(&stderr);
         let mut pipe = child.stderr.take();
@@ -213,57 +265,139 @@ pub fn exe_name(base: &str) -> String {
     }
 }
 
-/// Finds a binary: app setting > environment variable > next to our executable > PATH.
+/// Where a binary was found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BinSource {
+    /// Chosen by the user in the app (saved in the settings).
+    Setting,
+    /// `VIDEOLORE_FFMPEG` / `VIDEOLORE_FFPROBE`.
+    Env,
+    /// The copy shipped with videolore.
+    Bundled,
+    /// Found on `PATH`.
+    #[default]
+    Path,
+}
+
+impl std::fmt::Display for BinSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            BinSource::Setting => "chosen in settings",
+            BinSource::Env => "from the environment",
+            BinSource::Bundled => "included with videolore",
+            BinSource::Path => "from PATH",
+        })
+    }
+}
+
+/// Folders where the bundled ffmpeg lives: next to the executable, then (macOS bundles)
+/// `Contents/Resources`.
+pub fn bundled_dirs(exe_dir: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![exe_dir.to_path_buf()];
+    dirs.extend(exe_dir.parent().map(|p| p.join("Resources")));
+    dirs
+}
+
+/// Finds a binary: app setting > environment variable > bundled copy > PATH.
 pub fn locate(
     base: &str,
     setting: Option<&Path>,
     env_value: Option<&OsStr>,
     exe_dir: Option<&Path>,
     path_var: Option<&OsStr>,
-) -> Option<PathBuf> {
+) -> Option<(PathBuf, BinSource)> {
     if let Some(p) = setting.filter(|p| p.is_file()) {
-        return Some(p.to_path_buf());
+        return Some((p.to_path_buf(), BinSource::Setting));
     }
     if let Some(p) = env_value.map(PathBuf::from).filter(|p| p.is_file()) {
-        return Some(p);
+        return Some((p, BinSource::Env));
     }
     let name = exe_name(base);
-    if let Some(p) = exe_dir.map(|d| d.join(&name)).filter(|p| p.is_file()) {
-        return Some(p);
+    if let Some(p) = exe_dir
+        .into_iter()
+        .flat_map(bundled_dirs)
+        .map(|d| d.join(&name))
+        .find(|p| p.is_file())
+    {
+        return Some((p, BinSource::Bundled));
     }
     path_var
         .into_iter()
         .flat_map(std::env::split_paths)
         .map(|d| d.join(&name))
         .find(|p| p.is_file())
+        .map(|p| (p, BinSource::Path))
+}
+
+/// The pair of binaries the app will use.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Located {
+    pub ffmpeg: PathBuf,
+    pub ffprobe: PathBuf,
+    /// Where `ffmpeg` came from (decides the wording of errors).
+    pub source: BinSource,
+}
+
+/// Locates `ffmpeg` and `ffprobe` given the folder of our executable.
+pub fn locate_pair(
+    ffmpeg_setting: Option<&Path>,
+    ffprobe_setting: Option<&Path>,
+    env: impl Fn(&str) -> Option<OsString>,
+    exe_dir: Option<&Path>,
+) -> Result<Located, FfmpegError> {
+    let path = env("PATH");
+    let (ffmpeg, source) = locate(
+        "ffmpeg",
+        ffmpeg_setting,
+        env("VIDEOLORE_FFMPEG").as_deref(),
+        exe_dir,
+        path.as_deref(),
+    )
+    .ok_or_else(|| FfmpegError::NotFound("ffmpeg".into()))?;
+    let (ffprobe, _) = locate(
+        "ffprobe",
+        ffprobe_setting,
+        env("VIDEOLORE_FFPROBE").as_deref(),
+        exe_dir,
+        path.as_deref(),
+    )
+    .ok_or_else(|| FfmpegError::NotFound("ffprobe".into()))?;
+    Ok(Located {
+        ffmpeg,
+        ffprobe,
+        source,
+    })
 }
 
 /// Locates `ffmpeg` and `ffprobe` using the real environment.
 pub fn locate_both(
     ffmpeg_setting: Option<&Path>,
     ffprobe_setting: Option<&Path>,
-) -> Result<(PathBuf, PathBuf), FfmpegError> {
+) -> Result<Located, FfmpegError> {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(Path::to_path_buf));
-    let path = std::env::var_os("PATH");
-    let ffmpeg = locate(
-        "ffmpeg",
+    locate_pair(
         ffmpeg_setting,
-        std::env::var_os("VIDEOLORE_FFMPEG").as_deref(),
-        exe_dir.as_deref(),
-        path.as_deref(),
-    )
-    .ok_or_else(|| FfmpegError::NotFound("ffmpeg".into()))?;
-    let ffprobe = locate(
-        "ffprobe",
         ffprobe_setting,
-        std::env::var_os("VIDEOLORE_FFPROBE").as_deref(),
+        |k: &str| std::env::var_os(k),
         exe_dir.as_deref(),
-        path.as_deref(),
     )
-    .ok_or_else(|| FfmpegError::NotFound("ffprobe".into()))?;
-    Ok((ffmpeg, ffprobe))
+}
+
+/// Checks a located pair. A bundled copy that does not work is reported as damaged
+/// (reinstall), anything else keeps its specific error.
+pub fn check_located(runner: &dyn Runner, located: &Located) -> Result<FfmpegInfo, FfmpegError> {
+    match check(runner, &located.ffmpeg, &located.ffprobe) {
+        Ok(mut info) => {
+            info.source = located.source;
+            Ok(info)
+        }
+        Err(e) if located.source == BinSource::Bundled => {
+            Err(FfmpegError::BundledDamaged(e.to_string()))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Parsed `ffmpeg -version`.
@@ -345,6 +479,14 @@ pub struct FfmpegInfo {
     pub version: FfVersion,
     pub filters: BTreeSet<String>,
     pub encoders: BTreeSet<String>,
+    pub source: BinSource,
+}
+
+impl FfmpegInfo {
+    /// Whether subtitles can be burned in (the `subtitles` filter needs libass).
+    pub fn has_subtitles(&self) -> bool {
+        self.filters.contains(SUBTITLES_FILTER)
+    }
 }
 
 fn run_text(runner: &dyn Runner, prog: &Path, args: &[&str]) -> Result<String, FfmpegError> {
@@ -385,17 +527,19 @@ pub fn check(
         version,
         filters,
         encoders,
+        source: BinSource::Path,
     })
 }
 
-/// How to install ffmpeg on this platform (shown in the blocking startup message).
+/// What to do when ffmpeg is unusable (shown in the blocking startup message). videolore
+/// ships its own copy, so reinstalling comes first; a system ffmpeg is the alternative.
 pub fn install_hint() -> &'static str {
     if cfg!(target_os = "macos") {
-        "Install it with Homebrew: brew install ffmpeg"
+        "Reinstall videolore (it includes ffmpeg), or install ffmpeg with Homebrew: brew install ffmpeg"
     } else if cfg!(windows) {
-        "Install it with: winget install Gyan.FFmpeg (or put ffmpeg.exe and ffprobe.exe next to videolore.exe)"
+        "Reinstall videolore (it includes ffmpeg), or install ffmpeg with: winget install Gyan.FFmpeg"
     } else {
-        "Install it with your package manager, e.g. sudo apt install ffmpeg"
+        "Reinstall videolore (it includes ffmpeg), or install ffmpeg with your package manager, e.g. sudo apt install ffmpeg"
     }
 }
 
@@ -499,6 +643,8 @@ pub mod fake {
     pub struct FakeRunner {
         pub responders: Vec<Responder>,
         pub calls: Mutex<Vec<Vec<String>>>,
+        /// Working folder of each spawned process (None = current folder).
+        pub cwds: Mutex<Vec<Option<PathBuf>>>,
         /// When true, spawned processes keep their stdout open until killed,
         /// like a real long-running ffmpeg (no premature end of stream).
         pub hold_streams: bool,
@@ -601,7 +747,13 @@ pub mod fake {
         fn run(&self, program: &Path, args: &[OsString]) -> io::Result<CmdOutput> {
             self.answer(program, args)
         }
-        fn spawn(&self, program: &Path, args: &[OsString]) -> io::Result<Box<dyn Process>> {
+        fn spawn_in(
+            &self,
+            program: &Path,
+            args: &[OsString],
+            cwd: Option<&Path>,
+        ) -> io::Result<Box<dyn Process>> {
+            self.cwds.lock().unwrap().push(cwd.map(Path::to_path_buf));
             let held = self
                 .hold_streams
                 .then(|| Arc::new((Mutex::new(false), Condvar::new())));
@@ -623,6 +775,7 @@ pub mod fake {
                 for f in REQUIRED_FILTERS {
                     s.push_str(&format!(" ... {f}  V->V  x\n"));
                 }
+                s.push_str(" ... subtitles  V->V  x\n");
                 ok(&s)
             } else if a.contains("-encoders") {
                 ok(" V....D libx264  H.264\n A....D aac  AAC\n")
@@ -716,11 +869,11 @@ mod tests {
         let path_var = std::env::join_paths([&b]).unwrap();
         assert_eq!(
             locate("ffmpeg", Some(&setting), None, Some(&a), Some(&path_var)),
-            Some(setting.clone())
+            Some((setting.clone(), BinSource::Setting))
         );
         assert_eq!(
             locate("ffmpeg", None, Some(setting.as_os_str()), Some(&a), None),
-            Some(setting.clone())
+            Some((setting.clone(), BinSource::Env))
         );
         assert_eq!(
             locate(
@@ -730,13 +883,92 @@ mod tests {
                 Some(&a),
                 Some(&path_var)
             ),
-            Some(a.join(&name))
+            Some((a.join(&name), BinSource::Bundled))
         );
         assert_eq!(
             locate("ffmpeg", None, None, None, Some(&path_var)),
-            Some(b.join(&name))
+            Some((b.join(&name), BinSource::Path))
         );
         assert_eq!(locate("ffmpeg", None, None, None, None), None);
+        assert_eq!(BinSource::Bundled.to_string(), "included with videolore");
+    }
+
+    // covers: REQ-030
+    #[test]
+    fn bundled_copy_is_preferred_over_path_and_overrides_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        // macOS bundle layout: Contents/MacOS/videolore + Contents/Resources/ffmpeg
+        let macos = dir.path().join("Contents/MacOS");
+        let res = dir.path().join("Contents/Resources");
+        let sys = dir.path().join("usr/bin");
+        for d in [&macos, &res, &sys] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        for n in ["ffmpeg", "ffprobe"] {
+            std::fs::write(res.join(exe_name(n)), "").unwrap();
+            std::fs::write(sys.join(exe_name(n)), "").unwrap();
+        }
+        let path = std::env::join_paths([&sys]).unwrap();
+        let env = |k: &str| (k == "PATH").then(|| path.clone());
+        let l = locate_pair(None, None, env, Some(&macos)).unwrap();
+        assert_eq!(l.source, BinSource::Bundled);
+        assert!(l.ffmpeg.starts_with(&res));
+        assert!(l.ffprobe.starts_with(&res));
+        // a user override wins over the bundled copy
+        let mine = dir.path().join("my-ffmpeg");
+        std::fs::write(&mine, "").unwrap();
+        let l = locate_pair(Some(&mine), None, env, Some(&macos)).unwrap();
+        assert_eq!(
+            (l.ffmpeg.as_path(), l.source),
+            (mine.as_path(), BinSource::Setting)
+        );
+        let env2 = |k: &str| match k {
+            "VIDEOLORE_FFMPEG" => Some(mine.clone().into_os_string()),
+            "PATH" => Some(path.clone()),
+            _ => None,
+        };
+        assert_eq!(
+            locate_pair(None, None, env2, Some(&macos)).unwrap().source,
+            BinSource::Env
+        );
+        // nothing anywhere: not found (the message then says to reinstall or install ffmpeg)
+        let none = |_: &str| None;
+        assert_eq!(
+            locate_pair(None, None, none, Some(&dir.path().join("x"))).unwrap_err(),
+            FfmpegError::NotFound("ffmpeg".into())
+        );
+        let only_ffmpeg = dir.path().join("only");
+        std::fs::create_dir_all(&only_ffmpeg).unwrap();
+        std::fs::write(only_ffmpeg.join(exe_name("ffmpeg")), "").unwrap();
+        assert_eq!(
+            locate_pair(None, None, none, Some(&only_ffmpeg)).unwrap_err(),
+            FfmpegError::NotFound("ffprobe".into())
+        );
+        assert!(install_hint().contains("Reinstall videolore"));
+        assert!(locate_both(None, None).is_ok() || locate_both(None, None).is_err());
+    }
+
+    // covers: REQ-030
+    #[test]
+    fn damaged_bundled_copy_is_told_apart_from_a_missing_one() {
+        let broken = FakeRunner::default().on(|_, _| fail("cannot execute binary file"));
+        let mut l = Located {
+            ffmpeg: "ffmpeg".into(),
+            ffprobe: "ffprobe".into(),
+            source: BinSource::Bundled,
+        };
+        let e = check_located(&broken, &l).unwrap_err();
+        assert!(matches!(e, FfmpegError::BundledDamaged(_)));
+        assert!(e.to_string().contains("reinstall videolore"));
+        l.source = BinSource::Path;
+        assert!(matches!(
+            check_located(&broken, &l),
+            Err(FfmpegError::Io(_, _))
+        ));
+        l.source = BinSource::Bundled;
+        let info = check_located(&healthy(), &l).unwrap();
+        assert_eq!(info.source, BinSource::Bundled);
+        assert!(info.has_subtitles());
     }
 
     #[test]
@@ -805,6 +1037,26 @@ mod tests {
         let t = tail(long);
         assert!(t.len() <= STDERR_LIMIT);
         assert_eq!(tail("abc".into()), "abc");
+    }
+
+    #[test]
+    fn system_runner_caps_output_and_uses_cwd() {
+        let dir = tempfile::tempdir().unwrap();
+        let r = SystemRunner;
+        let rustc = PathBuf::from("rustc");
+        let mut p = r
+            .spawn_in(&rustc, &argv(["--version"]), Some(dir.path()))
+            .unwrap();
+        assert!(p.wait().unwrap().success);
+        let (mut a, mut b) = r
+            .spawn_pair(
+                (&rustc, &argv(["--version"])),
+                (&rustc, &argv(["--version"])),
+                None,
+            )
+            .unwrap();
+        assert!(a.wait().unwrap().success && b.wait().unwrap().success);
+        assert!(r.run(Path::new("/definitely/not/here"), &[]).is_err());
     }
 
     #[test]

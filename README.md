@@ -1,25 +1,53 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.1.6-blue)
+![version](https://img.shields.io/badge/version-0.2.0-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-96.0%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-95.4%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
+![whisper](https://img.shields.io/badge/whisper--rs-0.16-blue)
+![ureq](https://img.shields.io/badge/ureq-3.5-blue)
 ![serde](https://img.shields.io/badge/serde-1-blue)
-![ffmpeg](https://img.shields.io/badge/requires-ffmpeg%20%3E%3D%204.4-informational)
+![serde_json](https://img.shields.io/badge/serde__json-1-blue)
+![thiserror](https://img.shields.io/badge/thiserror-2-blue)
+![directories](https://img.shields.io/badge/directories-6-blue)
+![tempfile](https://img.shields.io/badge/tempfile-3-blue)
+![sha2](https://img.shields.io/badge/sha2-0.11-blue)
+![sysinfo](https://img.shields.io/badge/sysinfo-0.40-blue)
+![ffmpeg](https://img.shields.io/badge/ffmpeg-9.0.2%20bundled-informational)
 [![build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg)](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml)
 
 ## What it is
-`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on a single timeline that closes its gaps by itself. Add fades through black between clips, watch the result with sound in the preview, and export it to one file with progress and cancel. Editing is non-destructive: your source files are never modified, and projects can be saved and reopened. Nothing is uploaded and no account is needed. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope. Automatic subtitles and background music are planned for the next versions.
+`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install. Nothing is uploaded and no account is needed; the only network access is the one-time download of the speech model, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
 
 ## Installation
-**Requirements:** `ffmpeg` and `ffprobe`, version 4.4 or newer, installed on your system (they are not included). videolore looks for them in this order: the path set in the app settings, the environment variables `VIDEOLORE_FFMPEG` and `VIDEOLORE_FFPROBE`, the folder of the videolore executable, then `PATH`. If they are missing, the app explains how to install them.
+Each release has one installer per system, with ffmpeg included. Download it from the [Releases](https://github.com/andrealorenzani/videolore/releases) page (tagged versions), or from the artifacts of the latest [Build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml) run.
 
-**Prebuilt executable:** download it for Linux (x86_64), macOS (Apple Silicon) or Windows (x86_64) from the [Releases](https://github.com/andrealorenzani/videolore/releases) page (tagged versions), or from the artifacts of the latest [Build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml) run.
+The installers are not code-signed yet, so your system asks for a one-time confirmation the first time you open videolore. The steps are below.
 
-**From source** (Rust 1.100 or newer; run `rustup update` to get it). On Linux install the ALSA headers and pkg-config first (`sudo apt install libasound2-dev pkg-config`), or build without preview sound with `--no-default-features`:
+### Windows (x86_64)
+1. Run `videolore-<version>-windows-x86_64-setup.exe`. The installer needs no administrator rights and installs for your user only.
+2. Start videolore from the Start menu.
+3. First launch: if SmartScreen shows "Windows protected your PC", click **More info**, then **Run anyway**.
+4. To uninstall, use Settings → Apps. Your projects are kept.
+
+### macOS (Apple Silicon)
+1. Open `videolore-<version>-macos-aarch64.dmg` and drag **videolore** into **Applications**.
+2. First launch: macOS says the developer cannot be verified. Open **System Settings → Privacy & Security**, click **Open Anyway** next to videolore, then confirm. Only the first launch needs this.
+3. If macOS still blocks the bundled ffmpeg, run `xattr -dr com.apple.quarantine /Applications/videolore.app` in Terminal once.
+4. To uninstall, drag videolore out of Applications. Your projects are kept.
+
+### Linux (x86_64, Ubuntu LTS and Fedora)
+Choose one of the two files:
+- **AppImage** (`videolore-<version>-linux-x86_64.AppImage`): make it executable once (file properties → **Allow executing file as program**, or `chmod +x` in a terminal), then double-click it. It needs `fusermount3`, which current Ubuntu LTS and Fedora have.
+- **Archive** (`videolore-<version>-linux-x86_64.tar.gz`): extract it and double-click `videolore` in the new folder. If your file manager does not start programs on double-click, right-click the file and choose **Run**, or run `./videolore` from a terminal.
+
+The first start adds videolore to the application menu and associates `.vlproj` files with it. To remove that entry, use **Remove from application menu** in the About screen; deleting the AppImage or folder uninstalls the program, and your projects are kept.
+
+### From source
+Requires Rust 1.100 or newer (`rustup update`). On Linux install the ALSA headers, cmake, a C++ compiler and libclang first (`sudo apt install libasound2-dev pkg-config cmake libclang-dev`). A source build uses the ffmpeg and ffprobe 4.4 or newer found on your system (`PATH`, or `VIDEOLORE_FFMPEG` / `VIDEOLORE_FFPROBE`). To build without sound and subtitles, which needs neither ALSA nor cmake, use `--no-default-features`.
 ```sh
 git clone git@github.com:andrealorenzani/videolore.git
 cd videolore
@@ -27,19 +55,18 @@ cargo build --release --locked
 ```
 
 ## Usage
-Start the editor with the prebuilt executable, or from the project folder with:
-```sh
-cargo run --release
-```
+Start videolore from the menu, the Applications folder, the AppImage or the extracted folder. The window has five panels: the media list (import files here) and the preview at the top, the timeline with the effects and settings panel in the middle, and a bar with the zoom slider at the bottom. Actions are also in the toolbar at the top.
 
-The window has five panels: the media list (import files here) and the preview at the top, the timeline with the effects and settings panel in the middle, and a bottom bar with the zoom slider.
-
-1. **Import** video or audio files into the media list. Unreadable files are rejected with a message.
+1. **Import** video or audio files into the media list. Each file shows "analysing" while it is read, then its name and duration; unreadable files are rejected with a message. Importing never blocks the window.
 2. **Build the clip** by appending media to the timeline, then split, cut, copy, paste, merge, trim or move the pieces.
 3. **Add fades** between two clips to get a fade through black on video and audio.
-4. **Preview** the result with play, pause and seek from the playhead.
-5. **Save** the project to reopen it later. Missing source files are reported by name.
-6. **Export** to one file, with progress; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched.
+4. **Add music**: place audio files on the music track below the video. Music can be moved, trimmed, split and deleted. Each of the video audio and the music has its own volume and mute. Music does not move when you edit the video, and it ends with a fade-out where the video ends.
+5. **Add subtitles**: choose **Generate subtitles**. The first time, you are asked to approve a download of the speech model (about 32 MB), or you can provide the model file yourself. Recognition runs on your computer in the background, the language is detected automatically, and you can edit, re-word and re-time every line. Choose a style: Classic, Box or Word highlight. Subtitles are visible in the preview and burned into the exported video.
+6. **Preview** the result with play, pause and seek from the playhead. Very large sources get a smaller preview copy, made in the background; the export always uses your original files. The preview copies can be cleared in the settings.
+7. **Save** the project (**Save** or **Save As**, Ctrl/Cmd+S) and reopen it later with **Open**. A `•` in the window title means unsaved changes. New, Open, closing the window and Quit ask whether to **Save**, **Discard** or **Cancel**. Projects are `.vlproj` files: double-click one to open it in videolore.
+8. **Export** to one file, with progress; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades, music, subtitles or volume changes and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched. HEVC files play on Apple devices.
+
+The About screen lists every bundled third-party component with its version, licence and where to get its source code.
 
 | Action | Shortcut |
 |---|---|
@@ -48,10 +75,23 @@ The window has five panels: the media list (import files here) and the preview a
 | Cut / copy / paste | Ctrl/Cmd + X / C / V |
 | Undo | Ctrl/Cmd + Z |
 | Redo | Ctrl/Cmd + Shift + Z, or Ctrl/Cmd + Y |
+| Save | Ctrl/Cmd + S |
+| Quit | Ctrl/Cmd + Q |
+
+### Known limitations
+- Installers are not code-signed: each system asks for a one-time confirmation (see Installation).
+- Subtitles in scripts other than Latin, Greek and Cyrillic (for example Chinese, Japanese, Arabic or Hindi) may look different on each computer or show empty boxes, and cannot be read in the subtitle editor.
+- Speech is recognised in pieces of about two minutes; a word cut at a boundary can be lost.
+- On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the Hide and Minimize menu items are not available.
+- Projects saved by this version cannot be opened by versions 0.1.x.
+- Removing a file from the media list also drops the undo history when an undo step refers to it.
+- Cleared preview copies are made again only after reopening the project or switching proxies off and on. A 1280x720 source never gets a preview copy.
+- The preview copy cache is never cleaned automatically.
 
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md)
 
 ## Latest changes
+- **0.2.0** — Save and open projects with an unsaved-changes prompt; ffmpeg included in the app; installers for Windows, macOS and Linux; a music track with volumes; offline subtitles with three styles; big sources previewed through lighter copies; imports and playback no longer block the window; About screen with third-party notices; double-click to open projects.
 - **0.1.5** — Updated to the latest Rust (1.100) and libraries (egui 0.37, rfd 0.18); the editing features are unchanged.
 - **0.1.4** — Maintenance: version numbering is updated more reliably.
 - **0.1.3** — First real editor: import media, cut, join and trim clips on one timeline, fade between clips, preview with sound, save and open projects, and export to one file with progress and cancel.
@@ -67,13 +107,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani set one steady hand to test,\
-the one that wrote the code, before it takes its rest:\
-it runs the trial through, and should a single fail,\
-it mends the code itself and runs the whole tale.\
-No second voice re-checks what the first has proved,\
-no double work, no doubt, no effort wasted or moved;\
-the numbers that it finds, each coverage and each need,\
-are handed on as truth for all the rest to read.\
-And still, upon the shore, the distant builders check:\
-a careful captain's ship, and a watchman on the deck.
+Andrea Lorenzani gave every project a home to keep,\
+with Save and Open, so the cut comes back as it was left to sleep;\
+a gentle question waits before unsaved work can go,\
+with Save, Discard or Cancel, so no careful cut is lost below;\
+Each installer now carries its own ffmpeg, ready at the first click,\
+for Windows, macOS and Linux, no tool hunt before the first clip;\
+Music finds its track and subtitles find their voice,\
+spoken offline on your own machine, a quiet and private choice;\
+Big sources wear a lighter copy for the preview's easy flight,\
+while the export still uses the originals, so the quality stays right.

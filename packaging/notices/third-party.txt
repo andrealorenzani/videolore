@@ -1,0 +1,73 @@
+videolore — third-party notices
+================================
+
+videolore is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License version 3 (GPL-3.0-only). Its source code
+is published with every release.
+
+The installers also contain, or download on request, the components listed below.
+Each one keeps its own licence. The exact corresponding source code of every
+bundled component is attached to each release as
+"videolore-<version>-third-party-source.tar.xz" (see "Source code" below).
+
+FFmpeg (ffmpeg and ffprobe programs)
+  Version:  9.0.2 (exact build per platform in packaging/ffmpeg.lock)
+  Licence:  GPL-3.0-or-later (built with --enable-gpl --enable-version3)
+  Source:   https://ffmpeg.org/download.html
+  Builds:   Windows and Linux: BtbN/FFmpeg-Builds (https://github.com/BtbN/FFmpeg-Builds);
+            macOS: Martin Riedl build server (https://git.martin-riedl.de/ffmpeg/build-script)
+  videolore runs ffmpeg and ffprobe as separate programs; they are not linked into it.
+
+Libraries inside the FFmpeg builds (versions as pinned by the build scripts)
+  x264           GPL-2.0-or-later   https://code.videolan.org/videolan/x264
+  x265           GPL-2.0-or-later   https://bitbucket.org/multicoreware/x265_git
+  libass         ISC                https://github.com/libass/libass
+  FreeType       FTL or GPL-2.0     https://freetype.org
+  HarfBuzz       MIT                https://github.com/harfbuzz/harfbuzz
+  FriBidi        LGPL-2.1-or-later  https://github.com/fribidi/fribidi
+  Fontconfig     MIT-style          https://www.freedesktop.org/wiki/Software/fontconfig/
+  libvpx         BSD-3-Clause       https://chromium.googlesource.com/webm/libvpx
+  Opus           BSD-3-Clause       https://opus-codec.org
+  LAME           LGPL-2.0-or-later  https://lame.sourceforge.io
+  SVT-AV1        BSD-3-Clause-Clear https://gitlab.com/AOMediaCodec/SVT-AV1
+  libaom, dav1d, zimg, libwebp, Vorbis, Theora, OpenSSL and the other libraries
+  enabled by each build: see the build scripts in the source archive, which pin
+  every library version.
+
+Noto Sans Bold (subtitle font)
+  Version:  2.015
+  Licence:  SIL Open Font License 1.1 (OFL-1.1)
+  Source:   https://github.com/notofonts/latin-greek-cyrillic
+  Covers Latin, Greek and Cyrillic. Other scripts use the fonts of the system.
+
+whisper.cpp (speech recognition engine, built into videolore)
+  Version:  as bundled by whisper-rs-sys 0.15.0
+  Licence:  MIT
+  Source:   https://github.com/ggml-org/whisper.cpp
+
+Whisper speech model "ggml-tiny-q5_1.bin" (downloaded only after you agree)
+  Licence:  MIT
+  Source:   https://huggingface.co/ggerganov/whisper.cpp
+  Size:     32 MB; checked by SHA-256 before use. This download is the only
+            time videolore uses the network.
+
+Rust libraries
+  The Rust libraries compiled into videolore are listed, with their licence
+  texts, in "rust-crates.txt" (shown in the About screen).
+
+Source code
+  Every release includes "videolore-<version>-third-party-source.tar.xz" with the
+  FFmpeg source of the bundled builds, the build scripts at the pinned commits
+  (which name and pin every library), the Noto Sans font reference and licence,
+  and a README. Written offer: for at least three years after the release, the
+  author will provide, on request, a copy of the corresponding source code of
+  any GPL or LGPL component shipped in a videolore installer, for no more than
+  the cost of physically performing the distribution. Ask through the project's
+  issue tracker.
+
+Patents
+  H.264 (AVC) and H.265 (HEVC) are covered by patents in some countries. Whether
+  you need a patent licence to encode or distribute such videos depends on where
+  you live and what you do with them; videolore does not grant one.
+
+This notice was written by the project and was not reviewed by a lawyer.

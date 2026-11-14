@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! The project (media list + timeline) and its `.vlproj` JSON file.
+//! The project (media list, video track, music track, mix, subtitles) and its `.vlproj`
+//! JSON file.
 //!
 //! Files are untrusted input: size-limited, schema-versioned, and every id is validated
-//! before use. Saving is atomic (temporary file, fsync, rename).
+//! before use. Saving is atomic (temporary file, fsync, rename). Schema 1 files (videolore
+//! 0.1.x) are migrated in memory; files from a newer version are refused untouched.
 
 use crate::media::{MediaFormat, MediaId, MediaItem};
+use crate::music::{Mix, MusicTrack};
+use crate::subtitles::{self, Subtitles};
 use crate::time::Micros;
 use crate::timeline::Timeline;
 use serde::{Deserialize, Serialize};
@@ -14,19 +18,81 @@ use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-pub const SCHEMA_VERSION: u64 = 1;
+/// Schema written by this version.
+pub const SCHEMA_VERSION: u64 = 2;
+/// Oldest schema that can still be opened (0.1.x).
+pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 16 * 1024 * 1024;
 pub const EXTENSION: &str = "vlproj";
+
+/// Everything an edit can change: what undo/redo snapshots.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Edit {
+    pub timeline: Timeline,
+    pub music: MusicTrack,
+    pub subtitles: Subtitles,
+    pub mix: Mix,
+}
 
 /// In-memory project.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Project {
     pub media: Vec<MediaItem>,
     pub timeline: Timeline,
+    pub music: MusicTrack,
+    pub subtitles: Subtitles,
+    pub mix: Mix,
     pub next_media_id: u64,
 }
 
+/// The saved content of a project (for "unsaved changes" detection): media that finished
+/// analysing plus the edit. Transient state (analysis, proxies) is not part of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectDoc {
+    media: Vec<(MediaId, PathBuf, String, Micros, MediaFormat)>,
+    edit: Edit,
+}
+
 impl Project {
+    /// A copy of the editable part.
+    pub fn edit(&self) -> Edit {
+        Edit {
+            timeline: self.timeline.clone(),
+            music: self.music.clone(),
+            subtitles: self.subtitles.clone(),
+            mix: self.mix,
+        }
+    }
+
+    /// Replaces the editable part.
+    pub fn set_edit(&mut self, e: Edit) {
+        self.timeline = e.timeline;
+        self.music = e.music;
+        self.subtitles = e.subtitles;
+        self.mix = e.mix;
+    }
+
+    /// What would be saved.
+    pub fn doc(&self) -> ProjectDoc {
+        ProjectDoc {
+            media: self
+                .media
+                .iter()
+                .filter(|m| m.is_ready())
+                .map(|m| {
+                    (
+                        m.id,
+                        m.path.clone(),
+                        m.name.clone(),
+                        m.duration,
+                        m.format.clone(),
+                    )
+                })
+                .collect(),
+            edit: self.edit(),
+        }
+    }
+
     pub fn media(&self, id: MediaId) -> Option<&MediaItem> {
         self.media.iter().find(|m| m.id == id)
     }
@@ -53,6 +119,10 @@ pub enum ProjectError {
     Invalid(String),
     #[error("project schema version {0} is not supported by this version of videolore")]
     UnsupportedSchema(u64),
+    #[error(
+        "this project was saved by a newer version of videolore (format {0}): update videolore to open it"
+    )]
+    TooNew(u64),
 }
 
 fn io_err(e: std::io::Error) -> ProjectError {
@@ -76,6 +146,13 @@ struct ProjectFile {
     next_media_id: u64,
     media: Vec<MediaEntry>,
     timeline: Timeline,
+    // Added in schema 2; absent (= empty / defaults) in schema 1 files.
+    #[serde(default)]
+    music: MusicTrack,
+    #[serde(default)]
+    mix: Mix,
+    #[serde(default)]
+    subtitles: Subtitles,
 }
 
 /// Relative path from directory `from` to `to` (both absolute); `None` across roots.
@@ -110,6 +187,7 @@ pub fn to_json(project: &Project, path: &Path) -> Result<String, ProjectError> {
         media: project
             .media
             .iter()
+            .filter(|m| m.is_ready())
             .map(|m| MediaEntry {
                 id: m.id,
                 path_abs: m.path.clone(),
@@ -120,6 +198,9 @@ pub fn to_json(project: &Project, path: &Path) -> Result<String, ProjectError> {
             })
             .collect(),
         timeline: project.timeline.clone(),
+        music: project.music.clone(),
+        mix: project.mix,
+        subtitles: project.subtitles.clone(),
     };
     serde_json::to_string_pretty(&file).map_err(|e| ProjectError::Invalid(e.to_string()))
 }
@@ -171,7 +252,10 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
         .get("schema_version")
         .and_then(serde_json::Value::as_u64)
         .ok_or_else(|| invalid("missing schema_version"))?;
-    if version != SCHEMA_VERSION {
+    if version > SCHEMA_VERSION {
+        return Err(ProjectError::TooNew(version));
+    }
+    if version < OLDEST_SCHEMA {
         return Err(ProjectError::UnsupportedSchema(version));
     }
     let file: ProjectFile =
@@ -213,6 +297,8 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
             duration: e.duration,
             format: e.format,
             missing: found.is_none(),
+            status: Default::default(),
+            proxy: Default::default(),
         });
     }
 
@@ -235,15 +321,95 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
             return Err(invalid("fade refers to an unknown clip"));
         }
     }
+    let mut music = file.music;
+    validate_music(&mut music, &media)?;
+    let mut subs = file.subtitles;
+    validate_subtitles(&mut subs, &media)?;
+    let mix = file.mix;
+    if mix.video_volume > 100 || mix.music_volume > 100 {
+        return Err(invalid("volume above 100%"));
+    }
     let max_clip = clip_ids.iter().map(|c| c.0).max().unwrap_or(0);
     let max_media = ids.iter().map(|m| m.0).max().unwrap_or(0);
     let mut project = Project {
         media,
         timeline,
+        music,
+        subtitles: subs,
+        mix,
         next_media_id: file.next_media_id.max(max_media),
     };
     project.timeline.next_clip_id = project.timeline.next_clip_id.max(max_clip);
     Ok((project, missing))
+}
+
+fn validate_music(music: &mut MusicTrack, media: &[MediaItem]) -> Result<(), ProjectError> {
+    let mut ids = BTreeSet::new();
+    for c in &music.clips {
+        if !ids.insert(c.id) {
+            return Err(invalid("duplicate music clip id"));
+        }
+        let m = media
+            .iter()
+            .find(|m| m.id == c.media)
+            .ok_or_else(|| invalid("music clip refers to an unknown media id"))?;
+        if m.has_video() {
+            return Err(invalid("music clip refers to a video file"));
+        }
+        if c.src_in < Micros::ZERO
+            || c.src_out <= c.src_in
+            || c.src_out > m.duration
+            || c.start < Micros::ZERO
+        {
+            return Err(invalid("music clip range outside its source"));
+        }
+    }
+    music.clips.sort_by_key(|c| (c.start, c.id));
+    if music.clips.windows(2).any(|w| w[0].end() > w[1].start) {
+        return Err(invalid("music clips overlap"));
+    }
+    music.next_id = music
+        .next_id
+        .max(ids.iter().map(|i| i.0).max().unwrap_or(0));
+    Ok(())
+}
+
+fn validate_subtitles(subs: &mut Subtitles, media: &[MediaItem]) -> Result<(), ProjectError> {
+    let mut ids = BTreeSet::new();
+    let mut words = 0usize;
+    for l in &subs.lines {
+        if !ids.insert(l.id) {
+            return Err(invalid("duplicate subtitle id"));
+        }
+        if !media.iter().any(|m| m.id == l.media) {
+            return Err(invalid("subtitle refers to an unknown media id"));
+        }
+        if l.start < Micros::ZERO || l.end <= l.start {
+            return Err(invalid("subtitle with an invalid time range"));
+        }
+        if l.text.chars().count() > subtitles::MAX_TEXT {
+            return Err(invalid("subtitle text too long"));
+        }
+        if l.words
+            .iter()
+            .any(|w| w.start < l.start || w.end > l.end || w.end < w.start)
+        {
+            return Err(invalid("subtitle word outside its line"));
+        }
+        words += l.words.len();
+    }
+    if words > subtitles::MAX_WORDS {
+        return Err(invalid("too many subtitle words"));
+    }
+    if subs
+        .language
+        .as_ref()
+        .is_some_and(|l| l.len() > 16 || !l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+    {
+        return Err(invalid("invalid subtitle language"));
+    }
+    subs.next_id = subs.next_id.max(ids.iter().map(|i| i.0).max().unwrap_or(0));
+    Ok(())
 }
 
 /// Loads a project file (at most 16 MiB).
@@ -257,7 +423,7 @@ pub fn load(path: &Path) -> Result<(Project, Vec<String>), ProjectError> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::timeline::tests::media;
 
@@ -337,8 +503,8 @@ mod tests {
         ));
         assert!(matches!(from_json("{}", d), Err(ProjectError::Invalid(_))));
         assert_eq!(
-            from_json(r#"{"schema_version": 2}"#, d).unwrap_err(),
-            ProjectError::UnsupportedSchema(2)
+            from_json(r#"{"schema_version": 0}"#, d).unwrap_err(),
+            ProjectError::UnsupportedSchema(0)
         );
         assert!(matches!(
             from_json(r#"{"schema_version": 1}"#, d),
@@ -387,6 +553,161 @@ mod tests {
         assert_eq!(q.next_media_id, 2);
         assert_eq!(q.timeline.next_clip_id, 3);
         assert_eq!(q.media[0].name, "src1.mp4");
+    }
+
+    /// A 0.1.x project file (schema 1), committed as a fixture.
+    pub const V1_FIXTURE: &str = include_str!("../tests/fixtures/project-v1.vlproj");
+
+    /// Opens the v1 fixture next to two dummy sources.
+    pub fn open_v1(dir: &Path) -> Project {
+        for n in ["a.mp4", "b.mp4"] {
+            std::fs::write(dir.join(n), n).unwrap();
+        }
+        let file = dir.join("old.vlproj");
+        std::fs::write(&file, V1_FIXTURE).unwrap();
+        let (p, missing) = load(&file).unwrap();
+        assert!(missing.is_empty());
+        p
+    }
+
+    // covers: REQ-029
+    #[test]
+    fn old_projects_open_identically_and_newer_ones_are_refused_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = open_v1(dir.path());
+        assert_eq!(p.media.len(), 2);
+        assert_eq!(p.timeline.clips.len(), 3);
+        assert!(p.timeline.has_fade(0));
+        assert!(p.music.is_empty());
+        assert_eq!(p.mix, Mix::default());
+        assert!(p.subtitles.is_empty());
+        // the same project built by hand gives exactly the same export
+        let mut q = Project::default();
+        for m in &p.media {
+            q.add_media(m.clone());
+        }
+        q.next_media_id = 2;
+        q.timeline = p.timeline.clone();
+        let enc = ["libx264", "aac"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            crate::render::plan_export(&p, &enc, |_, _| true),
+            crate::render::plan_export(&q, &enc, |_, _| true)
+        );
+        // saving writes the new format, which reopens identically
+        let file = dir.path().join("old.vlproj");
+        save(&p, &file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("\"schema_version\": 2"));
+        assert_eq!(load(&file).unwrap().0, p);
+        // a file from a newer videolore is refused and left byte-for-byte unchanged
+        let newer = dir.path().join("newer.vlproj");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 3");
+        std::fs::write(&newer, &body).unwrap();
+        let e = load(&newer).unwrap_err();
+        assert_eq!(e, ProjectError::TooNew(3));
+        assert!(e.to_string().contains("newer version of videolore"));
+        assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
+    }
+
+    // covers: REQ-020, REQ-019, REQ-016
+    #[test]
+    fn music_mix_and_subtitles_are_saved_and_validated() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = sample(dir.path());
+        let id = p.new_media_id();
+        let mut song = crate::music::tests::song(id.0, 8);
+        song.path = dir.path().join("song.mp3");
+        std::fs::write(&song.path, b"mp3").unwrap();
+        p.add_media(song.clone());
+        p.music.place(&song, Micros(1_000_000), Micros(1)).unwrap();
+        p.mix = Mix {
+            video_volume: 40,
+            video_muted: true,
+            music_volume: 70,
+            music_muted: false,
+        };
+        let tl = p.timeline.clone();
+        p.subtitles
+            .add_at(&tl, Micros(500_000), "hello", Micros(1))
+            .unwrap();
+        p.subtitles.language = Some("en".into());
+        let file = dir.path().join("v2.vlproj");
+        save(&p, &file).unwrap();
+        let (q, _) = load(&file).unwrap();
+        assert_eq!(q, p);
+        assert_eq!(q.doc(), p.doc());
+        // analysing items are neither saved nor part of the document
+        let mut r = q.clone();
+        let rid = r.new_media_id();
+        r.add_media(MediaItem::analysing(rid, &dir.path().join("x.mp4")));
+        assert_eq!(r.doc(), q.doc());
+        assert!(!to_json(&r, &file).unwrap().contains("x.mp4"));
+
+        let v: serde_json::Value = serde_json::from_str(&to_json(&p, &file).unwrap()).unwrap();
+        let bad = |f: &dyn Fn(&mut serde_json::Value)| {
+            let mut w = v.clone();
+            f(&mut w);
+            from_json(&w.to_string(), dir.path())
+        };
+        let msg = |r: Result<(Project, Vec<String>), ProjectError>| match r {
+            Err(ProjectError::Invalid(m)) => m,
+            other => panic!("{other:?}"),
+        };
+        assert!(msg(bad(&|w| w["music"]["clips"][0]["media"] = 1.into())).contains("video"));
+        assert!(msg(bad(&|w| w["music"]["clips"][0]["media"] = 77.into())).contains("unknown"));
+        assert!(
+            msg(bad(
+                &|w| w["music"]["clips"][0]["src_out"] = 99_000_000.into()
+            ))
+            .contains("range")
+        );
+        assert!(
+            msg(bad(&|w| {
+                let c = w["music"]["clips"][0].clone();
+                w["music"]["clips"].as_array_mut().unwrap().push(c);
+            }))
+            .contains("duplicate")
+        );
+        assert!(
+            msg(bad(&|w| {
+                let mut c = w["music"]["clips"][0].clone();
+                c["id"] = 50.into();
+                w["music"]["clips"].as_array_mut().unwrap().push(c);
+            }))
+            .contains("overlap")
+        );
+        assert!(msg(bad(&|w| w["mix"]["video_volume"] = 101.into())).contains("volume"));
+        assert!(msg(bad(&|w| w["subtitles"]["lines"][0]["media"] = 77.into())).contains("unknown"));
+        assert!(msg(bad(&|w| w["subtitles"]["lines"][0]["end"] = 0.into())).contains("range"));
+        assert!(
+            msg(bad(
+                &|w| w["subtitles"]["lines"][0]["text"] = "x".repeat(1001).into()
+            ))
+            .contains("long")
+        );
+        assert!(
+            msg(bad(&|w| {
+                w["subtitles"]["lines"][0]["words"] =
+                    serde_json::json!([{"start": 0, "end": 99_000_000, "text": "x"}]);
+            }))
+            .contains("word")
+        );
+        assert!(
+            msg(bad(&|w| {
+                let c = w["subtitles"]["lines"][0].clone();
+                w["subtitles"]["lines"].as_array_mut().unwrap().push(c);
+            }))
+            .contains("duplicate")
+        );
+        assert!(msg(bad(&|w| w["subtitles"]["language"] = "e n!".into())).contains("language"));
+        // ids are repaired upwards
+        let (q, _) = bad(&|w| {
+            w["music"]["next_id"] = 0.into();
+            w["subtitles"]["next_id"] = 0.into();
+        })
+        .unwrap();
+        assert_eq!(q.music.next_id, 1);
+        assert_eq!(q.subtitles.next_id, 1);
     }
 
     #[test]

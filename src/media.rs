@@ -77,6 +77,43 @@ impl MediaFormat {
     }
 }
 
+/// Where an imported file is in its analysis.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum MediaStatus {
+    /// ffprobe is running (or queued) on it.
+    Analysing,
+    /// Probed; duration and format are known.
+    #[default]
+    Ready,
+    /// Not a usable video or audio file; the reason is shown to the user.
+    Rejected(String),
+}
+
+/// The low-resolution preview copy of a big source (never used for export).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ProxyState {
+    /// Not needed, disabled, or not started.
+    #[default]
+    None,
+    /// Waiting for a free ffmpeg slot.
+    Queued,
+    /// Being generated; fraction done.
+    Generating(u8),
+    /// Ready at this path (in the proxy cache).
+    Ready(PathBuf),
+    /// Generation failed; the original is used.
+    Failed(String),
+}
+
+/// What a file can be used for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaKind {
+    /// Has a video stream: goes on the video track.
+    Video,
+    /// Audio only: goes on the music track.
+    Audio,
+}
+
 /// A file imported into the project. Never modified by the editor.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MediaItem {
@@ -89,11 +126,50 @@ pub struct MediaItem {
     /// Set when a reopened project cannot find the file.
     #[serde(skip)]
     pub missing: bool,
+    #[serde(skip)]
+    pub status: MediaStatus,
+    #[serde(skip)]
+    pub proxy: ProxyState,
 }
 
 impl MediaItem {
+    /// A list entry for a file that is still being analysed.
+    pub fn analysing(id: MediaId, path: &Path) -> MediaItem {
+        MediaItem {
+            id,
+            path: std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()),
+            name: display_name(path),
+            duration: Micros::ZERO,
+            format: MediaFormat::default(),
+            missing: false,
+            status: MediaStatus::Analysing,
+            proxy: ProxyState::None,
+        }
+    }
+
     pub fn has_video(&self) -> bool {
         self.format.has_video()
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.status == MediaStatus::Ready
+    }
+
+    /// Video track or music track.
+    pub fn kind(&self) -> MediaKind {
+        if self.has_video() {
+            MediaKind::Video
+        } else {
+            MediaKind::Audio
+        }
+    }
+
+    /// The proxy file, when ready.
+    pub fn proxy_path(&self) -> Option<&Path> {
+        match &self.proxy {
+            ProxyState::Ready(p) => Some(p),
+            _ => None,
+        }
     }
 }
 
@@ -270,6 +346,8 @@ pub fn probe(
         duration,
         format,
         missing: false,
+        status: MediaStatus::Ready,
+        proxy: ProxyState::None,
     })
 }
 
@@ -395,5 +473,13 @@ pub(crate) mod tests {
         assert_eq!(m.name, "notes.txt");
         assert!(m.path.is_absolute());
         assert!(m.has_video());
+        assert_eq!(m.kind(), MediaKind::Video);
+        assert!(m.is_ready());
+        assert!(m.proxy_path().is_none());
+        let a = MediaItem::analysing(MediaId(3), Path::new("x/clip.mov"));
+        assert_eq!(a.status, MediaStatus::Analysing);
+        assert_eq!(a.name, "clip.mov");
+        assert!(a.path.is_absolute());
+        assert_eq!(a.kind(), MediaKind::Audio);
     }
 }

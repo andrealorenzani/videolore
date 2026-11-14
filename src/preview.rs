@@ -1,25 +1,39 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! Preview playback: ffmpeg renders the edited timeline (fades included) from the playhead
-//! as raw RGBA frames (<= 360p) and s16le PCM on stdout. Frames go through a bounded
-//! channel (8 frames); the clock follows the audio actually played (or the wall clock when
-//! there is no audio device). A seek kills the workers and starts new ones.
+//! Preview playback. ffmpeg renders the edited timeline (fades, music, subtitles included)
+//! from the playhead as raw RGBA frames (<= 360p) and s16le PCM on stdout.
+//!
+//! * **Clock:** the wall clock is the master. Audio is corrected towards it (dropping or
+//!   padding samples when it drifts more than 40 ms), so the video never waits for audio.
+//! * **Playback** needs two ffmpeg processes (video + audio), started together from a
+//!   worker thread so the UI never waits for a free slot.
+//! * **Still frames** (paused): a single-input render of the frame at the playhead. A frame
+//!   is rendered only when its [`FrameKey`] differs from the one shown, after an 80 ms quiet
+//!   period, through a latest-only mailbox (an older pending or running render is dropped).
+//! * Proxies are used when ready and enabled.
 
+use crate::export::write_subtitles;
 use crate::ffmpeg::{FfVersion, Process, Runner};
+use crate::jobs::Limited;
 use crate::project::Project;
-use crate::render::{self, Geometry};
+use crate::render::{self, FrameKey, Geometry, Source};
 use crate::time::Micros;
 use std::collections::VecDeque;
+use std::ffi::OsString;
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, TryRecvError, sync_channel};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel, sync_channel};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 /// Frames buffered between the decoder and the UI.
 pub const FRAME_BUFFER: usize = 8;
+/// Quiet period before a still frame is rendered (edit bursts are coalesced).
+pub const STILL_DEBOUNCE: Duration = Duration::from_millis(80);
+/// Audio is corrected when it drifts more than this from the wall clock.
+pub const DRIFT_THRESHOLD: Micros = Micros(40_000);
 
 /// One decoded preview frame.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,23 +44,83 @@ pub struct Frame {
     pub rgba: Vec<u8>,
 }
 
+/// What to do to bring the audio back to the wall clock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Correction {
+    None,
+    /// Skip this many frames (audio is late).
+    Drop(u64),
+    /// Play this many frames of silence (audio is early).
+    Pad(u64),
+}
+
+/// Compares the audio stream position with the wall clock (both in frames at `rate`).
+pub fn audio_correction(stream_frames: u64, wall_frames: u64, rate: u32) -> Correction {
+    let threshold = u64::from(rate) * DRIFT_THRESHOLD.0 as u64 / 1_000_000;
+    if wall_frames > stream_frames + threshold {
+        Correction::Drop(wall_frames - stream_frames)
+    } else if stream_frames > wall_frames + threshold {
+        Correction::Pad(stream_frames - wall_frames)
+    } else {
+        Correction::None
+    }
+}
+
 /// PCM shared between the decoder thread and the audio device callback.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AudioBuffer {
     samples: Mutex<VecDeque<i16>>,
-    /// Frames (samples per channel) handed to the device so far.
-    played: AtomicU64,
+    channels: u16,
+    /// Frames of the stream used so far (played or dropped): the audio clock.
+    consumed: AtomicU64,
+    /// Frames handed to the device, silence included.
+    device: AtomicU64,
+    /// Frames still to drop from data not received yet.
+    owed_drop: AtomicU64,
+    /// Frames of silence still to play before the next samples.
+    owed_silence: AtomicU64,
     /// Decoder reached the end.
     finished: AtomicBool,
 }
 
+impl Default for AudioBuffer {
+    fn default() -> Self {
+        AudioBuffer::new(2)
+    }
+}
+
 impl AudioBuffer {
-    /// Max samples kept in memory (about one second of stereo 48 kHz).
+    /// Max samples kept in memory (about one second of stereo 48 kHz), whatever the file.
     pub const CAP: usize = 96_000;
 
+    pub fn new(channels: u16) -> AudioBuffer {
+        AudioBuffer {
+            samples: Mutex::new(VecDeque::new()),
+            channels: channels.max(1),
+            consumed: AtomicU64::new(0),
+            device: AtomicU64::new(0),
+            owed_drop: AtomicU64::new(0),
+            owed_silence: AtomicU64::new(0),
+            finished: AtomicBool::new(false),
+        }
+    }
+
+    fn ch(&self) -> usize {
+        usize::from(self.channels)
+    }
+
+    /// Appends decoded samples, first paying any pending drop.
     pub fn push(&self, data: &[i16]) {
+        let owed = self.owed_drop.load(Ordering::SeqCst) as usize;
+        let skip_frames = owed.min(data.len() / self.ch());
+        if skip_frames > 0 {
+            self.owed_drop
+                .fetch_sub(skip_frames as u64, Ordering::SeqCst);
+            self.consumed
+                .fetch_add(skip_frames as u64, Ordering::SeqCst);
+        }
         if let Ok(mut q) = self.samples.lock() {
-            q.extend(data.iter().copied());
+            q.extend(data[skip_frames * self.ch()..].iter().copied());
         }
     }
 
@@ -58,11 +132,20 @@ impl AudioBuffer {
         self.len() == 0
     }
 
-    /// Fills `out` with samples (silence when starved) mapped by `conv`; counts played frames.
-    pub fn pull<T>(&self, out: &mut [T], channels: u16, conv: impl Fn(i16) -> T) {
+    /// Fills `out` (interleaved) with samples mapped by `conv`; silence when starved or
+    /// while padding.
+    pub fn pull<T>(&self, out: &mut [T], conv: impl Fn(i16) -> T) {
+        let ch = self.ch();
+        let frames = out.len() / ch;
+        let pad = (self.owed_silence.load(Ordering::SeqCst) as usize).min(frames);
+        self.owed_silence.fetch_sub(pad as u64, Ordering::SeqCst);
         let mut taken = 0usize;
         if let Ok(mut q) = self.samples.lock() {
-            for o in out.iter_mut() {
+            for (i, o) in out.iter_mut().enumerate() {
+                if i < pad * ch {
+                    *o = conv(0);
+                    continue;
+                }
                 match q.pop_front() {
                     Some(s) => {
                         *o = conv(s);
@@ -72,12 +155,41 @@ impl AudioBuffer {
                 }
             }
         }
-        self.played
-            .fetch_add((taken / channels.max(1) as usize) as u64, Ordering::SeqCst);
+        self.consumed
+            .fetch_add((taken / ch) as u64, Ordering::SeqCst);
+        self.device.fetch_add(frames as u64, Ordering::SeqCst);
     }
 
-    pub fn played_frames(&self) -> u64 {
-        self.played.load(Ordering::SeqCst)
+    /// Stream position in frames, counting corrections already decided.
+    pub fn position_frames(&self) -> u64 {
+        (self.consumed.load(Ordering::SeqCst) + self.owed_drop.load(Ordering::SeqCst))
+            .saturating_sub(self.owed_silence.load(Ordering::SeqCst))
+    }
+
+    /// Frames handed to the device so far.
+    pub fn device_frames(&self) -> u64 {
+        self.device.load(Ordering::SeqCst)
+    }
+
+    /// Applies a correction.
+    pub fn correct(&self, c: Correction) {
+        match c {
+            Correction::None => {}
+            Correction::Drop(n) => {
+                let ch = self.ch();
+                let mut dropped = 0u64;
+                if let Ok(mut q) = self.samples.lock() {
+                    let k = (n as usize).min(q.len() / ch);
+                    q.drain(..k * ch);
+                    dropped = k as u64;
+                }
+                self.consumed.fetch_add(dropped, Ordering::SeqCst);
+                self.owed_drop.fetch_add(n - dropped, Ordering::SeqCst);
+            }
+            Correction::Pad(n) => {
+                self.owed_silence.fetch_add(n, Ordering::SeqCst);
+            }
+        }
     }
 }
 
@@ -90,7 +202,7 @@ pub trait AudioSink {
     fn stop(&mut self);
 }
 
-/// No audio device: the preview is silent and clocked by the wall clock.
+/// No audio device: the preview is silent.
 #[derive(Debug, Default)]
 pub struct NullSink;
 
@@ -134,11 +246,10 @@ mod device {
             &self,
             buffer: Arc<AudioBuffer>,
         ) -> Option<cpal::Stream> {
-            let ch = self.config.channels;
             self.device
                 .build_output_stream::<T, _, _>(
                     self.config,
-                    move |out: &mut [T], _| buffer.pull(out, ch, T::from_sample),
+                    move |out: &mut [T], _| buffer.pull(out, T::from_sample),
                     |_| {},
                     None,
                 )
@@ -184,17 +295,26 @@ pub fn default_sink() -> Box<dyn AudioSink> {
     Box::new(NullSink)
 }
 
-/// A decoding worker: the child process (killable from the UI) and its thread.
+/// Processes of a playback run (killable from the UI thread) and the stop flag.
 struct Worker {
-    process: Arc<Mutex<Box<dyn Process>>>,
     stop: Arc<AtomicBool>,
+    processes: Arc<Mutex<Vec<Box<dyn Process>>>>,
 }
 
 impl Worker {
+    fn new() -> Worker {
+        Worker {
+            stop: Arc::new(AtomicBool::new(false)),
+            processes: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
     fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
-        if let Ok(mut p) = self.process.lock() {
-            p.kill();
+        if let Ok(mut ps) = self.processes.lock() {
+            for p in ps.iter_mut() {
+                p.kill();
+            }
         }
     }
 }
@@ -205,78 +325,253 @@ impl Drop for Worker {
     }
 }
 
-fn spawn_video(
-    mut process: Box<dyn Process>,
+fn read_frames(
+    mut out: Box<dyn Read + Send>,
     g: Geometry,
     from: Micros,
-) -> Option<(Worker, Receiver<Frame>)> {
-    let mut out = process.take_stdout()?;
-    let (tx, rx) = sync_channel(FRAME_BUFFER);
-    let stop = Arc::new(AtomicBool::new(false));
-    let flag = Arc::clone(&stop);
-    std::thread::spawn(move || {
-        let size = g.width as usize * g.height as usize * 4;
-        let mut n = 0i64;
-        while !flag.load(Ordering::SeqCst) {
-            let mut buf = vec![0u8; size];
-            if out.read_exact(&mut buf).is_err() {
-                break;
-            }
-            let frame = Frame {
-                pts: from + g.fps.frame_time(n),
-                width: g.width,
-                height: g.height,
-                rgba: buf,
-            };
-            if tx.send(frame).is_err() {
-                break;
-            }
-            n += 1;
+    stop: &AtomicBool,
+    tx: &std::sync::mpsc::SyncSender<Frame>,
+) {
+    let size = g.width as usize * g.height as usize * 4;
+    let mut n = 0i64;
+    while !stop.load(Ordering::SeqCst) {
+        let mut buf = vec![0u8; size];
+        if out.read_exact(&mut buf).is_err() {
+            break;
         }
-    });
-    Some((
-        Worker {
-            process: Arc::new(Mutex::new(process)),
-            stop,
-        },
-        rx,
-    ))
+        let frame = Frame {
+            pts: from + g.fps.frame_time(n),
+            width: g.width,
+            height: g.height,
+            rgba: buf,
+        };
+        if tx.send(frame).is_err() {
+            break;
+        }
+        n += 1;
+    }
 }
 
-fn spawn_audio(mut process: Box<dyn Process>, buffer: Arc<AudioBuffer>) -> Option<Worker> {
-    let mut out = process.take_stdout()?;
-    let stop = Arc::new(AtomicBool::new(false));
-    let flag = Arc::clone(&stop);
-    std::thread::spawn(move || {
-        let mut bytes = [0u8; 8192];
-        let mut carry: Option<u8> = None;
-        'outer: while !flag.load(Ordering::SeqCst) {
-            let n = match out.read(&mut bytes) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => n,
-            };
-            let mut data: Vec<u8> = carry.take().into_iter().collect();
-            data.extend_from_slice(&bytes[..n]);
-            if data.len() % 2 == 1 {
-                carry = data.pop();
-            }
-            // `data` has an even length here, so the remainder is always empty.
-            let (pairs, _) = data.as_chunks::<2>();
-            let samples: Vec<i16> = pairs.iter().map(|&p| i16::from_le_bytes(p)).collect();
-            while buffer.len() > AudioBuffer::CAP {
-                if flag.load(Ordering::SeqCst) {
-                    break 'outer;
-                }
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            buffer.push(&samples);
+fn read_audio(mut out: Box<dyn Read + Send>, buffer: &AudioBuffer, stop: &AtomicBool) {
+    let mut bytes = [0u8; 8192];
+    let mut carry: Option<u8> = None;
+    'outer: while !stop.load(Ordering::SeqCst) {
+        let n = match out.read(&mut bytes) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        let mut data: Vec<u8> = carry.take().into_iter().collect();
+        data.extend_from_slice(&bytes[..n]);
+        if data.len() % 2 == 1 {
+            carry = data.pop();
         }
-        buffer.finished.store(true, Ordering::SeqCst);
+        // `data` has an even length here, so the remainder is always empty.
+        let (pairs, _) = data.as_chunks::<2>();
+        let samples: Vec<i16> = pairs.iter().map(|&p| i16::from_le_bytes(p)).collect();
+        while buffer.len() > AudioBuffer::CAP {
+            if stop.load(Ordering::SeqCst) {
+                break 'outer;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        buffer.push(&samples);
+    }
+    buffer.finished.store(true, Ordering::SeqCst);
+}
+
+/// Everything playback needs, moved into its worker thread.
+struct PlaybackJob {
+    runner: Limited,
+    ffmpeg: PathBuf,
+    cwd: PathBuf,
+    video: Vec<OsString>,
+    audio: Option<(Vec<OsString>, Arc<AudioBuffer>)>,
+    geometry: Geometry,
+    from: Micros,
+}
+
+/// Starts a playback run: spawning waits for scheduler slots inside the thread.
+fn start_playback(job: PlaybackJob, errors: Sender<String>) -> (Worker, Receiver<Frame>) {
+    let worker = Worker::new();
+    let (tx, rx) = sync_channel(FRAME_BUFFER);
+    let stop = Arc::clone(&worker.stop);
+    let processes = Arc::clone(&worker.processes);
+    std::thread::spawn(move || {
+        let runner = job.runner.cancellable(Arc::clone(&stop));
+        let ff = job.ffmpeg.as_path();
+        let spawned = match &job.audio {
+            Some((aargs, _)) => runner
+                .spawn_pair((ff, &job.video), (ff, aargs), Some(&job.cwd))
+                .map(|(v, a)| (v, Some(a))),
+            None => runner
+                .spawn_in(ff, &job.video, Some(&job.cwd))
+                .map(|v| (v, None)),
+        };
+        let (mut vp, ap) = match spawned {
+            Ok(p) => p,
+            Err(e) => {
+                if !stop.load(Ordering::SeqCst) {
+                    let _ = errors.send(e.to_string());
+                }
+                return;
+            }
+        };
+        let vout = vp.take_stdout();
+        let mut audio_reader = None;
+        if let (Some(mut ap), Some((_, buf))) = (ap, job.audio) {
+            if let Some(aout) = ap.take_stdout() {
+                let stop = Arc::clone(&stop);
+                audio_reader = Some(std::thread::spawn(move || read_audio(aout, &buf, &stop)));
+            }
+            if let Ok(mut ps) = processes.lock() {
+                ps.push(ap);
+            }
+        }
+        if let Ok(mut ps) = processes.lock() {
+            ps.push(vp);
+            if stop.load(Ordering::SeqCst) {
+                ps.iter_mut().for_each(|p| p.kill());
+            }
+        }
+        if let Some(out) = vout {
+            read_frames(out, job.geometry, job.from, &stop, &tx);
+        }
+        drop(tx);
+        if let Some(t) = audio_reader {
+            let _ = t.join();
+        }
     });
-    Some(Worker {
-        process: Arc::new(Mutex::new(process)),
-        stop,
-    })
+    (worker, rx)
+}
+
+/// A still frame to render.
+struct StillRequest {
+    generation: u64,
+    args: Vec<OsString>,
+    subtitles: Option<String>,
+    geometry: Geometry,
+    at: Micros,
+    key: FrameKey,
+}
+
+/// The render in progress: its cancel flag and (once started) its process.
+type Running = (Arc<AtomicBool>, Option<Arc<Mutex<Box<dyn Process>>>>);
+
+/// Latest-only mailbox between the UI and the still-frame thread.
+#[derive(Default)]
+struct Mailbox {
+    slot: Mutex<Option<StillRequest>>,
+    cv: Condvar,
+    latest: AtomicU64,
+    quit: AtomicBool,
+    running: Mutex<Option<Running>>,
+}
+
+impl Mailbox {
+    fn post(&self, req: StillRequest) {
+        self.latest.store(req.generation, Ordering::SeqCst);
+        self.post_cancel();
+        if let Ok(mut s) = self.slot.lock() {
+            *s = Some(req);
+        }
+        self.cv.notify_all();
+    }
+
+    fn take(&self) -> Option<StillRequest> {
+        let mut s = self.slot.lock().ok()?;
+        loop {
+            if self.quit.load(Ordering::SeqCst) {
+                return None;
+            }
+            if let Some(r) = s.take() {
+                return Some(r);
+            }
+            s = self.cv.wait(s).ok()?;
+        }
+    }
+
+    fn shutdown(&self) {
+        self.quit.store(true, Ordering::SeqCst);
+        self.post_cancel();
+        self.cv.notify_all();
+    }
+
+    /// Stops the render in progress: it is obsolete.
+    fn post_cancel(&self) {
+        let running = self.running.lock().ok().and_then(|mut r| r.take());
+        if let Some((flag, process)) = running {
+            flag.store(true, Ordering::SeqCst);
+            if let Some(p) = process
+                && let Ok(mut p) = p.lock()
+            {
+                p.kill();
+            }
+        }
+    }
+}
+
+/// Result of a still render.
+type StillResult = (u64, FrameKey, Frame);
+
+fn still_thread(
+    mailbox: Arc<Mailbox>,
+    config: PreviewConfig,
+    cwd: PathBuf,
+    renders: Arc<AtomicU64>,
+    out: Sender<StillResult>,
+) {
+    while let Some(req) = mailbox.take() {
+        if req.generation != mailbox.latest.load(Ordering::SeqCst) {
+            continue;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        if let Ok(mut r) = mailbox.running.lock() {
+            *r = Some((Arc::clone(&cancel), None));
+        }
+        if let Some(doc) = &req.subtitles
+            && write_subtitles(&cwd, doc).is_err()
+        {
+            continue;
+        }
+        let runner = config.runner.cancellable(Arc::clone(&cancel));
+        let Ok(mut p) = runner.spawn_in(&config.ffmpeg, &req.args, Some(&cwd)) else {
+            continue;
+        };
+        renders.fetch_add(1, Ordering::SeqCst);
+        let stdout = p.take_stdout();
+        let p = Arc::new(Mutex::new(p));
+        if let Ok(mut r) = mailbox.running.lock() {
+            match r.as_mut() {
+                // a newer request may have arrived meanwhile
+                Some((flag, slot)) if Arc::ptr_eq(flag, &cancel) => *slot = Some(Arc::clone(&p)),
+                _ => cancel.store(true, Ordering::SeqCst),
+            }
+        }
+        let g = req.geometry;
+        let mut buf = vec![0u8; g.width as usize * g.height as usize * 4];
+        let ok = !cancel.load(Ordering::SeqCst)
+            && stdout.is_some_and(|mut s| s.read_exact(&mut buf).is_ok())
+            && !cancel.load(Ordering::SeqCst);
+        if let Ok(mut p) = p.lock() {
+            p.kill();
+        }
+        if ok
+            && out
+                .send((
+                    req.generation,
+                    req.key,
+                    Frame {
+                        pts: req.at,
+                        width: g.width,
+                        height: g.height,
+                        rgba: buf,
+                    },
+                ))
+                .is_err()
+        {
+            return;
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,13 +583,20 @@ pub enum PlayState {
 /// Everything the preview needs to start ffmpeg.
 #[derive(Clone)]
 pub struct PreviewConfig {
-    pub runner: Arc<dyn Runner>,
+    /// Preview-priority runner.
+    pub runner: Limited,
     pub ffmpeg: PathBuf,
     pub version: FfVersion,
     pub encoders: std::collections::BTreeSet<String>,
 }
 
-/// The preview player (seek state machine + clock + frame pacing).
+/// A still frame waiting for the quiet period to end.
+struct Wanted {
+    request: StillRequest,
+    due: Instant,
+}
+
+/// The preview player.
 pub struct Preview {
     config: Option<PreviewConfig>,
     sink: Box<dyn AudioSink>,
@@ -302,34 +604,65 @@ pub struct Preview {
     /// Timeline position where the current run started (or the paused position).
     start: Micros,
     wall_origin: Instant,
-    audio: Option<(Worker, Arc<AudioBuffer>)>,
-    video: Option<(Worker, Receiver<Frame>)>,
-    /// Paused: show the first frame that arrives, then stop decoding.
-    still: bool,
+    end: Micros,
+    playback: Option<(Worker, Receiver<Frame>)>,
+    audio: Option<Arc<AudioBuffer>>,
+    errors: (Sender<String>, Receiver<String>),
     /// A decoded frame that is not due yet.
     pending: Option<Frame>,
-    end: Micros,
+    // still frames
+    mailbox: Arc<Mailbox>,
+    stills: Option<Receiver<StillResult>>,
+    renders: Arc<AtomicU64>,
+    generation: u64,
+    wanted: Option<Wanted>,
+    shown_key: Option<FrameKey>,
+    posted_key: Option<FrameKey>,
     scratch: Option<tempfile::TempDir>,
+    /// Use proxies when ready.
+    pub proxies: bool,
     pub error: Option<String>,
 }
 
 impl Preview {
     pub fn new(config: Option<PreviewConfig>, sink: Box<dyn AudioSink>) -> Preview {
+        let scratch = tempfile::Builder::new()
+            .prefix("videolore-preview-")
+            .tempdir()
+            .ok();
+        let mailbox = Arc::new(Mailbox::default());
+        let renders = Arc::new(AtomicU64::new(0));
+        let stills = match (&config, &scratch) {
+            (Some(cfg), Some(dir)) => {
+                let cwd = dir.path().join("still");
+                let _ = std::fs::create_dir_all(&cwd);
+                let (tx, rx) = channel();
+                let (m, c, r) = (Arc::clone(&mailbox), cfg.clone(), Arc::clone(&renders));
+                std::thread::spawn(move || still_thread(m, c, cwd, r, tx));
+                Some(rx)
+            }
+            _ => None,
+        };
         Preview {
             config,
             sink,
             state: PlayState::Paused,
             start: Micros::ZERO,
             wall_origin: Instant::now(),
-            audio: None,
-            video: None,
-            still: false,
-            pending: None,
             end: Micros::ZERO,
-            scratch: tempfile::Builder::new()
-                .prefix("videolore-preview-")
-                .tempdir()
-                .ok(),
+            playback: None,
+            audio: None,
+            errors: channel(),
+            pending: None,
+            mailbox,
+            stills,
+            renders,
+            generation: 0,
+            wanted: None,
+            shown_key: None,
+            posted_key: None,
+            scratch,
+            proxies: true,
             error: None,
         }
     }
@@ -342,68 +675,89 @@ impl Preview {
         self.state == PlayState::Playing
     }
 
-    /// Current playback position.
+    /// Still frames actually rendered so far (spawned ffmpeg runs).
+    pub fn still_renders(&self) -> u64 {
+        self.renders.load(Ordering::SeqCst)
+    }
+
+    /// True while something is about to change on screen (repaint soon).
+    pub fn busy(&self) -> bool {
+        self.is_playing() || self.wanted.is_some() || self.posted_key.is_some()
+    }
+
+    fn source(&self) -> Source {
+        Source::Preview {
+            proxies: self.proxies,
+        }
+    }
+
+    fn dir(&self, sub: &str) -> PathBuf {
+        let d = self
+            .scratch
+            .as_ref()
+            .map(|d| d.path().to_path_buf())
+            .unwrap_or_else(std::env::temp_dir)
+            .join(sub);
+        let _ = std::fs::create_dir_all(&d);
+        d
+    }
+
+    /// Current playback position (wall clock, pauses excluded).
     pub fn position(&self, now: Instant) -> Micros {
         if self.state == PlayState::Paused {
             return self.start;
         }
-        let elapsed = match &self.audio {
-            Some((_, buf)) => {
-                let rate = self.sink.format().0.max(1) as i64;
-                Micros(buf.played_frames() as i64 * 1_000_000 / rate)
-            }
-            None => Micros(now.saturating_duration_since(self.wall_origin).as_micros() as i64),
-        };
+        let elapsed = Micros(now.saturating_duration_since(self.wall_origin).as_micros() as i64);
         (self.start + elapsed).min(self.end)
     }
 
     fn stop_workers(&mut self) {
         self.sink.stop();
+        self.playback = None;
         self.audio = None;
-        self.video = None;
-        self.still = false;
         self.pending = None;
     }
 
-    fn launch(&mut self, project: &Project, from: Micros, with_audio: bool) -> Result<(), String> {
+    fn launch(&mut self, project: &Project, from: Micros) -> Result<(), String> {
         self.stop_workers();
         self.error = None;
         let cfg = self.config.clone().ok_or("ffmpeg is not available")?;
-        let g = render::output_geometry(project, &cfg.encoders)
-            .map_err(|e| e.to_string())?
-            .preview();
-        let dir = self
-            .scratch
-            .as_ref()
-            .map(|d| d.path().to_path_buf())
-            .unwrap_or_else(std::env::temp_dir);
-        let vargs = render::preview_video_args(project, from, &g, cfg.version, &dir.join("v.txt"))?;
-        let vp = cfg
-            .runner
-            .spawn(&cfg.ffmpeg, &vargs)
-            .map_err(|e| e.to_string())?;
-        self.video = spawn_video(vp, g, from);
-        if with_audio {
-            let (rate, ch) = self.sink.format();
-            let aargs = render::preview_audio_args(
-                project,
-                from,
-                rate,
-                ch,
-                cfg.version,
-                &dir.join("a.txt"),
-            )?;
-            let buf = Arc::new(AudioBuffer::default());
-            if self.sink.play(Arc::clone(&buf)) {
-                let ap = cfg
-                    .runner
-                    .spawn(&cfg.ffmpeg, &aargs)
-                    .map_err(|e| e.to_string())?;
-                self.audio = spawn_audio(ap, Arc::clone(&buf)).map(|w| (w, buf));
-            } else {
-                self.sink.stop();
-            }
+        let eg = render::output_geometry(project, &cfg.encoders).map_err(|e| e.to_string())?;
+        let cwd = self.dir("play");
+        let src = self.source();
+        let v =
+            render::preview_video_args(project, from, &eg, cfg.version, &cwd.join("v.txt"), src)?;
+        if let Some(doc) = &v.subtitles {
+            write_subtitles(&cwd, doc).map_err(|e| e.to_string())?;
         }
+        let (rate, ch) = self.sink.format();
+        let aargs = render::preview_audio_args(
+            project,
+            from,
+            rate,
+            ch,
+            cfg.version,
+            &cwd.join("a.txt"),
+            src,
+        )?;
+        let buf = Arc::new(AudioBuffer::new(ch));
+        let audio = if self.sink.play(Arc::clone(&buf)) {
+            self.audio = Some(Arc::clone(&buf));
+            Some((aargs, buf))
+        } else {
+            self.sink.stop();
+            None
+        };
+        let job = PlaybackJob {
+            runner: cfg.runner.clone(),
+            ffmpeg: cfg.ffmpeg.clone(),
+            cwd,
+            video: v.args,
+            audio,
+            geometry: eg.preview(),
+            from,
+        };
+        self.playback = Some(start_playback(job, self.errors.0.clone()));
         Ok(())
     }
 
@@ -414,7 +768,9 @@ impl Preview {
         self.start = from;
         self.wall_origin = now;
         self.state = PlayState::Playing;
-        let r = self.launch(project, from, true);
+        self.wanted = None;
+        self.shown_key = None;
+        let r = self.launch(project, from);
         if let Err(e) = &r {
             self.state = PlayState::Paused;
             self.error = Some(e.clone());
@@ -429,7 +785,7 @@ impl Preview {
         self.stop_workers();
     }
 
-    /// Moves to `to`: restarts playback there, or shows the still frame when paused.
+    /// Moves to `to`: restarts playback there, or asks for the still frame when paused.
     pub fn seek(&mut self, project: &Project, to: Micros, now: Instant) -> Result<(), String> {
         let to = to.clamp(Micros::ZERO, project.timeline.duration());
         if self.is_playing() {
@@ -437,29 +793,118 @@ impl Preview {
         }
         self.start = to;
         self.end = project.timeline.duration();
-        if project.timeline.clips.is_empty() || to >= self.end {
-            self.stop_workers();
-            return Ok(());
-        }
-        let r = self.launch(project, to, false);
-        self.still = r.is_ok();
-        if let Err(e) = &r {
-            self.error = Some(e.clone());
-        }
-        r
+        self.request_still(project, to, now)
     }
 
-    /// Stops everything (e.g. after an edit) keeping the position.
+    /// Stops playback (e.g. after an edit) keeping the position.
     pub fn invalidate(&mut self, now: Instant) {
         self.pause(now);
     }
 
-    /// Returns the frame to show now, if a newer one is due. Detects the end of playback.
+    /// Asks for the picture at `at` (paused). Nothing happens when the picture would be the
+    /// one already shown or already requested; otherwise it is rendered after
+    /// [`STILL_DEBOUNCE`] without newer requests.
+    pub fn request_still(
+        &mut self,
+        project: &Project,
+        at: Micros,
+        now: Instant,
+    ) -> Result<(), String> {
+        self.start = at;
+        self.end = project.timeline.duration();
+        let Some(cfg) = self.config.clone() else {
+            let e = "ffmpeg is not available".to_string();
+            self.error = Some(e.clone());
+            return Err(e);
+        };
+        let Ok(eg) = render::output_geometry(project, &cfg.encoders) else {
+            self.wanted = None;
+            return Ok(());
+        };
+        let src = self.source();
+        let Some(key) = render::frame_key(project, at, src, &eg) else {
+            self.wanted = None;
+            return Ok(());
+        };
+        if self.shown_key.as_ref() == Some(&key) || self.posted_key.as_ref() == Some(&key) {
+            self.wanted = None;
+            return Ok(());
+        }
+        let script = self.dir("still").join("g.txt");
+        let r = render::still_args(project, at, &eg, cfg.version, &script, src);
+        let r = match r {
+            Ok(r) => r,
+            Err(e) => {
+                self.error = Some(e.clone());
+                return Err(e);
+            }
+        };
+        self.error = None;
+        self.generation += 1;
+        self.wanted = Some(Wanted {
+            request: StillRequest {
+                generation: self.generation,
+                args: r.args,
+                subtitles: r.subtitles,
+                geometry: eg.preview(),
+                at,
+                key,
+            },
+            due: now + STILL_DEBOUNCE,
+        });
+        Ok(())
+    }
+
+    /// Forgets the shown picture (the next request renders even if the key is the same).
+    pub fn forget_frame(&mut self) {
+        self.shown_key = None;
+        self.posted_key = None;
+        self.wanted = None;
+    }
+
+    fn poll_stills(&mut self, now: Instant) -> Option<Frame> {
+        if let Some(w) = self.wanted.take() {
+            if now >= w.due {
+                self.posted_key = Some(w.request.key.clone());
+                self.mailbox.post(w.request);
+            } else {
+                self.wanted = Some(w);
+            }
+        }
+        let mut shown = None;
+        if let Some(rx) = &self.stills {
+            for (generation, key, frame) in rx.try_iter() {
+                if generation == self.generation && !self.is_playing() {
+                    self.shown_key = Some(key);
+                    self.posted_key = None;
+                    shown = Some(frame);
+                }
+            }
+        }
+        shown
+    }
+
+    /// Returns the frame to show now, if a newer one is due. Keeps the audio in sync with
+    /// the wall clock and detects the end of playback.
     pub fn poll(&mut self, now: Instant) -> Option<Frame> {
+        if let Ok(e) = self.errors.1.try_recv() {
+            self.error = Some(e);
+            if self.is_playing() {
+                self.pause(now);
+            }
+        }
+        if !self.is_playing() {
+            return self.poll_stills(now);
+        }
         let pos = self.position(now);
+        if let Some(buf) = &self.audio {
+            let rate = self.sink.format().0;
+            let wall = ((pos - self.start).0.max(0) as u128 * u128::from(rate) / 1_000_000) as u64;
+            buf.correct(audio_correction(buf.position_frames(), wall, rate));
+        }
         let mut shown = None;
         if let Some(f) = self.pending.take() {
-            if self.still || f.pts <= pos {
+            if f.pts <= pos {
                 shown = Some(f);
             } else {
                 self.pending = Some(f);
@@ -467,10 +912,10 @@ impl Preview {
             }
         }
         let mut ended = false;
-        if let Some((_, rx)) = &self.video {
-            while !(self.still && shown.is_some()) {
+        if let Some((_, rx)) = &self.playback {
+            loop {
                 match rx.try_recv() {
-                    Ok(f) if self.still || f.pts <= pos => shown = Some(f),
+                    Ok(f) if f.pts <= pos => shown = Some(f),
                     Ok(f) => {
                         self.pending = Some(f);
                         break;
@@ -483,11 +928,7 @@ impl Preview {
                 }
             }
         }
-        if self.still && shown.is_some() {
-            self.video = None;
-            self.still = false;
-        }
-        if ended && self.state == PlayState::Playing {
+        if ended || pos >= self.end {
             self.start = self.end;
             self.state = PlayState::Paused;
             self.stop_workers();
@@ -496,11 +937,18 @@ impl Preview {
     }
 }
 
+impl Drop for Preview {
+    fn drop(&mut self) {
+        self.mailbox.shutdown();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ffmpeg::CmdOutput;
     use crate::ffmpeg::fake::FakeRunner;
+    use crate::jobs::{Priority, Scheduler};
     use crate::time::Fps;
     use crate::timeline::tests::media;
 
@@ -519,8 +967,8 @@ mod tests {
         p
     }
 
-    fn runner(frames: usize) -> Arc<dyn Runner> {
-        Arc::new(FakeRunner::default().on(move |_, a| {
+    fn fake(frames: usize) -> FakeRunner {
+        FakeRunner::default().on(move |_, a| {
             let joined = a.join(" ");
             let stdout = if joined.contains("rawvideo") {
                 (0..frames)
@@ -537,16 +985,23 @@ mod tests {
                 stdout,
                 stderr: String::new(),
             })
-        }))
+        })
     }
 
-    fn config(frames: usize) -> Option<PreviewConfig> {
-        Some(PreviewConfig {
-            runner: runner(frames),
+    fn config_with(runner: FakeRunner) -> (Option<PreviewConfig>, Arc<FakeRunner>) {
+        let fake = Arc::new(runner);
+        let sched = Scheduler::new(3);
+        let cfg = PreviewConfig {
+            runner: sched.runner(Priority::Preview, fake.clone()),
             ffmpeg: "ffmpeg".into(),
             version: FfVersion::Release(6, 1, 0),
             encoders: ["libx264", "aac"].iter().map(|s| s.to_string()).collect(),
-        })
+        };
+        (Some(cfg), fake)
+    }
+
+    fn config(frames: usize) -> Option<PreviewConfig> {
+        config_with(fake(frames)).0
     }
 
     #[derive(Default)]
@@ -593,7 +1048,8 @@ mod tests {
         let t0 = Instant::now();
         p.play(&project(), Micros(1_000_000), t0).unwrap();
         assert!(p.is_playing());
-        // Not due yet at t0 + 0: only the first frame (pts == start).
+        assert!(p.busy());
+        // At t0 only the first frame (pts == start) is due.
         let first = poll_until(&mut p, t0, |_, f| f.is_some()).unwrap();
         assert_eq!(first.pts, Micros(1_000_000));
         assert_eq!(first.rgba.len(), (W * H * 4) as usize);
@@ -612,11 +1068,14 @@ mod tests {
         let mut p = Preview::new(config(5), Box::new(NullSink));
         let t0 = Instant::now();
         let proj = project();
-        p.seek(&proj, Micros(500_000), t0).unwrap();
-        let f = poll_until(&mut p, t0, |_, f| f.is_some()).unwrap();
-        assert_eq!(f.pts, Micros(500_000));
-        assert!(p.poll(t0).is_none()); // decoding stopped after the still
-        assert_eq!(p.position(t0), Micros(500_000));
+        p.seek(&proj, Micros(520_000), t0).unwrap();
+        // nothing before the quiet period, then the frame
+        assert!(p.poll(t0).is_none());
+        let later = t0 + STILL_DEBOUNCE;
+        let f = poll_until(&mut p, later, |_, f| f.is_some()).unwrap();
+        assert_eq!(f.pts, Micros(520_000));
+        assert_eq!(p.still_renders(), 1);
+        assert_eq!(p.position(t0), Micros(520_000));
         p.seek(&proj, Micros(99_000_000), t0).unwrap(); // clamped to the end: nothing to show
         assert_eq!(p.position(t0), Micros(2_000_000));
         // playing from the end restarts from zero
@@ -630,9 +1089,71 @@ mod tests {
         assert!(!p.is_playing());
     }
 
-    // covers: REQ-013
+    // covers: REQ-034
     #[test]
-    fn audio_drives_the_clock() {
+    fn still_frames_render_only_when_the_picture_changes() {
+        let (cfg, fake) = config_with(fake(1));
+        let mut p = Preview::new(cfg, Box::new(NullSink));
+        let t0 = Instant::now();
+        let mut proj = project();
+        let m = proj.media[0].clone();
+        proj.timeline.append(&m).unwrap();
+        p.request_still(&proj, Micros(200_000), t0).unwrap();
+        let due = t0 + STILL_DEBOUNCE;
+        poll_until(&mut p, due, |_, f| f.is_some());
+        assert_eq!(p.still_renders(), 1);
+        // an edit after the playhead does not change the picture: no render
+        let id = proj.timeline.clips[1].id;
+        proj.timeline
+            .trim(
+                id,
+                Micros(500_000),
+                Micros(2_000_000),
+                m.duration,
+                Micros(1),
+            )
+            .unwrap();
+        p.request_still(&proj, Micros(200_000), due).unwrap();
+        assert!(!p.busy());
+        for i in 0..5 {
+            assert!(p.poll(due + Duration::from_secs(i)).is_none());
+        }
+        assert_eq!(p.still_renders(), 1);
+        // 10 rapid edits that each change the picture: at most one render
+        let mut now = due + Duration::from_secs(10);
+        for i in 0..10 {
+            let id = proj.timeline.clips[0].id;
+            proj.timeline
+                .trim(
+                    id,
+                    Micros(40_000 * (i + 1)),
+                    Micros(2_000_000),
+                    m.duration,
+                    Micros(1),
+                )
+                .unwrap();
+            p.request_still(&proj, Micros(200_000), now).unwrap();
+            assert!(p.poll(now).is_none());
+            now += Duration::from_millis(10);
+        }
+        let f = poll_until(&mut p, now + STILL_DEBOUNCE, |_, f| f.is_some()).unwrap();
+        assert_eq!(f.pts, Micros(200_000));
+        assert_eq!(p.still_renders(), 2);
+        // the one render used one input
+        let calls = fake.calls.lock().unwrap();
+        let last = calls.last().unwrap();
+        assert_eq!(last.iter().filter(|a| *a == "-i").count(), 1);
+        assert!(last.iter().any(|a| a == "-frames:v"));
+        drop(calls);
+        // forgetting the frame forces a new render of the same picture
+        p.forget_frame();
+        p.request_still(&proj, Micros(200_000), now).unwrap();
+        assert!(p.busy());
+    }
+
+    // covers: REQ-035
+    #[test]
+    fn video_follows_the_wall_clock_when_audio_stalls() {
         let sink = FakeSink {
             ok: true,
             ..Default::default()
@@ -646,19 +1167,80 @@ mod tests {
         while buf.len() < 9_600 && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(5));
         }
-        assert_eq!(buf.len(), 9_600);
-        // the wall clock does not matter, only played samples do
-        assert_eq!(p.position(t0 + Duration::from_secs(10)), Micros::ZERO);
-        let mut out = vec![0f32; 4_800 * 2];
-        buf.pull(&mut out, 2, |s| s as f32);
-        assert_eq!(p.position(t0), Micros(100_000));
-        assert_eq!(out[0], 257.0);
-        // starved: silence, no progress
-        let mut out = vec![9i16; 4];
-        buf.pull(&mut out, 2, |s| s);
-        assert_eq!(out, vec![0; 4]);
-        assert_eq!(buf.played_frames(), 4_800);
+        assert_eq!(buf.len(), 9_600, "0.1 s of stereo audio decoded");
+        // The audio device stalls (nothing is pulled) for 1.2 s: the video clock goes on.
+        let t1 = t0 + Duration::from_millis(1_200);
+        assert_eq!(p.position(t1), Micros(1_200_000));
+        // When polled, the audio is moved to the wall clock: the backlog is dropped.
+        let _ = p.poll(t1);
+        let wall = 48_000 * 12 / 10;
+        let drift = buf.position_frames().abs_diff(wall);
+        assert!(drift <= 4_800, "drift {drift} frames > 100 ms");
         assert!(buf.is_empty());
+        // The device resumes: it plays from the corrected position.
+        let mut out = vec![0i16; 960];
+        buf.pull(&mut out, |s| s);
+        assert_eq!(buf.device_frames(), 480);
+        assert!(buf.position_frames().abs_diff(wall) <= 4_800);
+        p.pause(t1);
+    }
+
+    // covers: REQ-035
+    #[test]
+    fn audio_correction_drops_or_pads() {
+        assert_eq!(audio_correction(48_000, 48_000, 48_000), Correction::None);
+        assert_eq!(audio_correction(48_000, 49_000, 48_000), Correction::None);
+        assert_eq!(
+            audio_correction(0, 48_000, 48_000),
+            Correction::Drop(48_000)
+        );
+        assert_eq!(
+            audio_correction(10_000, 4_000, 48_000),
+            Correction::Pad(6_000)
+        );
+        // padding plays silence first, then the samples
+        let b = AudioBuffer::new(2);
+        b.push(&[5, 5, 6, 6]);
+        b.correct(Correction::Pad(1));
+        assert_eq!(b.position_frames(), 0);
+        let mut out = vec![9i16; 6];
+        b.pull(&mut out, |s| s);
+        assert_eq!(out, vec![0, 0, 5, 5, 6, 6]);
+        assert_eq!(b.position_frames(), 2);
+        // a drop larger than the buffer is paid by the next data
+        b.push(&[1, 1]);
+        b.correct(Correction::Drop(3));
+        assert!(b.is_empty());
+        assert_eq!(b.position_frames(), 5);
+        b.push(&[2, 2, 3, 3, 4, 4]);
+        assert_eq!(b.len(), 2);
+        let mut out = vec![0i16; 2];
+        b.pull(&mut out, |s| s);
+        assert_eq!(out, vec![4, 4]);
+        b.correct(Correction::None);
+        // starved: silence, the stream position does not move
+        let mut out = vec![9i16; 4];
+        b.pull(&mut out, |s| s);
+        assert_eq!(out, vec![0; 4]);
+        assert_eq!(b.position_frames(), 6);
+        assert_eq!(AudioBuffer::default().channels, 2);
+    }
+
+    // covers: REQ-039
+    #[test]
+    fn buffers_are_bounded_whatever_the_source_size() {
+        // frames in flight: FRAME_BUFFER frames of at most 360p preview size
+        let g = Geometry {
+            width: 7680,
+            height: 4320,
+            fps: Fps::new(30, 1).unwrap(),
+        }
+        .preview();
+        let frame_bytes = (g.width * g.height * 4) as usize;
+        assert!(FRAME_BUFFER * frame_bytes < 32 * 1024 * 1024);
+        // audio buffer: about one second
+        assert_eq!(AudioBuffer::CAP, 96_000);
+        assert_eq!(crate::ffmpeg::RUN_STDOUT_LIMIT, 16 * 1024 * 1024);
     }
 
     #[test]
@@ -672,11 +1254,22 @@ mod tests {
         let mut p = Preview::new(config(1), Box::new(FakeSink::default()));
         assert!(p.play(&Project::default(), Micros::ZERO, t0).is_err());
         assert!(p.seek(&Project::default(), Micros::ZERO, t0).is_ok());
-        // a sink that refuses to play falls back to the wall clock
+        // a sink that refuses to play: silent, wall clock
         p.play(&project(), Micros::ZERO, t0).unwrap();
         assert_eq!(p.position(t0 + Duration::from_millis(250)), Micros(250_000));
         let n = NullSink;
         assert_eq!(n.format(), (48_000, 2));
         let _ = default_sink().format();
+        // a missing source: the still frame cannot be prepared
+        let mut proj = project();
+        proj.media[0].missing = true;
+        let mut p = Preview::new(config(1), Box::new(NullSink));
+        assert!(p.request_still(&proj, Micros(10), t0).is_err());
+        // ffmpeg that cannot be started: the error reaches the UI and playback stops
+        let (cfg, _) = config_with(FakeRunner::default());
+        let mut p = Preview::new(cfg, Box::new(NullSink));
+        p.play(&project(), Micros::ZERO, t0).unwrap();
+        poll_until(&mut p, t0, |p, _| p.error.is_some());
+        assert!(!p.is_playing());
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "videolore"
-version = "0.1.6"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.100"
 license = "GPL-3.0-only"
@@ -9,11 +9,12 @@ readme = "README.md"
 description = "Non-destructive video editor for short social videos, built on ffmpeg"
 
 [features]
-default = ["audio"]
-# Audio output for the preview (cpal). Without it the preview is silent and video-clocked.
+default = ["audio", "stt"]
+# Audio output for the preview (cpal). Without it the preview is silent and wall-clocked.
 audio = ["dep:cpal"]
-# Reserved for speech-to-text subtitles (planned, empty for now).
-stt = []
+# Speech-to-text subtitle generation (whisper.cpp through whisper-rs) and the one-time model
+# download (ureq). Needs cmake, a C++ compiler and libclang to build.
+stt = ["dep:whisper-rs", "dep:ureq"]
 
 [dependencies]
 cpal = { version = "0.18.2", optional = true }
@@ -22,8 +23,16 @@ eframe = { version = "0.37.0", default-features = false, features = ["glow", "de
 rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
+sysinfo = { version = "0.40.3", default-features = false, features = ["system"] }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
+ureq = { version = "3.5.2", optional = true, default-features = false, features = ["rustls"] }
+whisper-rs = { version = "0.16.0", optional = true }
 
-[dev-dependencies]
-sha2 = "0.11.1"
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSNotification", "NSObject", "NSString", "NSURL"] }
+# Only to switch off winit's default macOS menu (Cmd+Q must reach the app); same version
+# and features as eframe's.
+winit = { version = "0.30.13", default-features = false }

@@ -4,15 +4,21 @@
 //! The egui user interface. Panels never mutate the state directly: they push
 //! [`Command`]s, which are run by [`AppState::dispatch`] at the end of the frame.
 
+pub mod effects;
 pub mod keymap;
 pub mod layout;
+pub mod media;
+pub mod modals;
+pub mod timeline;
 pub mod zoom;
 
 use crate::app::{AppState, Command};
+use crate::music::Mix;
+use crate::subtitles::LineId;
 use crate::time::{Micros, timecode};
 use eframe::egui::{
-    self, Align2, Button, Color32, ColorImage, Context, FontId, ProgressBar, Rect, Sense, Stroke,
-    StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder, Vec2, pos2, vec2,
+    self, Button, Color32, ColorImage, Context, Rect, Sense, TextureHandle, TextureOptions, Ui,
+    UiBuilder, Vec2, pos2, vec2,
 };
 use std::time::{Duration, Instant};
 
@@ -22,6 +28,12 @@ pub struct UiCache {
     texture: Option<TextureHandle>,
     serial: u64,
     title: String,
+    /// Volumes while a slider is dragged (committed as one undo step on release).
+    pub mix_drag: Option<Mix>,
+    /// Text of the subtitle line being edited.
+    pub line_edit: Option<(LineId, String)>,
+    /// The About text (built when the dialog opens).
+    pub about: Option<String>,
 }
 
 impl UiCache {
@@ -42,6 +54,11 @@ impl eframe::App for VideoloreApp {
     }
 }
 
+/// True while a dialog covers the window (shortcuts are off).
+pub fn modal_open(app: &AppState) -> bool {
+    (app.ffmpeg.is_err() && !app.ffmpeg_checking) || app.notice.is_some() || app.modal.is_some()
+}
+
 /// Draws one frame into the root `ui` and runs the commands it produced.
 pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Instant) {
     let ctx = root.ctx().clone();
@@ -54,33 +71,45 @@ pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Ins
         cache.title = title;
     }
 
-    let modal_open = app.ffmpeg.is_err() || app.notice.is_some();
-    let mut cmds = if modal_open {
+    let mut cmds = if modal_open(app) {
         Vec::new()
     } else {
         keymap::collect(ctx)
     };
+    // The window's close button: ask first when there are unsaved changes.
+    if ctx.input(|i| i.viewport().close_requested()) && !app.close_allowed {
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        cmds.push(Command::RequestClose);
+    }
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
         .show(root, |ui| {
             let r = layout::panels(ui.max_rect());
-            panel(ui, r.media, |ui| media_panel(ui, app, &mut cmds));
+            panel(ui, r.media, |ui| media::media_panel(ui, app, &mut cmds));
             panel(ui, r.preview, |ui| preview_panel(ui, app, cache, &mut cmds));
-            panel(ui, r.timeline, |ui| timeline_panel(ui, app, &mut cmds));
-            panel(ui, r.effects, |ui| effects_panel(ui, app, &mut cmds));
+            panel(ui, r.timeline, |ui| {
+                timeline::timeline_panel(ui, app, &mut cmds)
+            });
+            panel(ui, r.effects, |ui| {
+                effects::effects_panel(ui, app, cache, &mut cmds)
+            });
             let width = r.timeline.width();
             panel(ui, r.command_bar, |ui| {
                 command_bar(ui, app, width, &mut cmds)
             });
         });
-    modals(ctx, app, &mut cmds);
+    modals::modals(ctx, app, cache, &mut cmds);
 
     for c in cmds {
         if app.is_enabled(&c) {
             let _ = app.dispatch(c, now);
         }
     }
-    let busy = app.preview.is_playing() || app.is_exporting();
+    if app.quit_requested {
+        app.quit_requested = false;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+    let busy = app.busy();
     ctx.request_repaint_after(Duration::from_millis(if busy { 10 } else { 100 }));
 }
 
@@ -114,55 +143,14 @@ fn panel(ui: &mut Ui, rect: Rect, add: impl FnOnce(&mut Ui)) {
     });
 }
 
-fn button(ui: &mut Ui, app: &AppState, label: &str, cmd: Command, cmds: &mut Vec<Command>) {
+/// A button that is greyed out when the command cannot run.
+pub fn button(ui: &mut Ui, app: &AppState, label: &str, cmd: Command, cmds: &mut Vec<Command>) {
     if ui
         .add_enabled(app.is_enabled(&cmd), Button::new(label))
         .clicked()
     {
         cmds.push(cmd);
     }
-}
-
-fn media_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
-    ui.horizontal(|ui| {
-        ui.strong("Media");
-        button(ui, app, "Import…", Command::PickImport, cmds);
-        button(ui, app, "Add to timeline", Command::Append(None), cmds);
-    });
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        for m in &app.project.media {
-            let note = if m.missing {
-                " (missing)"
-            } else if !m.has_video() {
-                " (audio only)"
-            } else {
-                ""
-            };
-            let label = format!(
-                "{}{note}\n{}  {}",
-                m.name,
-                timecode(m.duration),
-                m.format.describe()
-            );
-            let r = ui.selectable_label(app.selected_media == Some(m.id), label);
-            if r.clicked() {
-                cmds.push(Command::SelectMedia(Some(m.id)));
-            }
-            if r.double_clicked() {
-                cmds.push(Command::Append(Some(m.id)));
-            }
-            r.context_menu(|ui| {
-                let cmd = Command::Append(Some(m.id));
-                if ui
-                    .add_enabled(app.is_enabled(&cmd), Button::new("Add to timeline"))
-                    .clicked()
-                {
-                    cmds.push(cmd);
-                    ui.close();
-                }
-            });
-        }
-    });
 }
 
 /// Largest rect with the aspect ratio of `size` that fits in `area`, centred.
@@ -215,273 +203,6 @@ fn preview_panel(ui: &mut Ui, app: &AppState, cache: &UiCache, cmds: &mut Vec<Co
     }
 }
 
-const CLIP_COLORS: [Color32; 4] = [
-    Color32::from_rgb(70, 110, 170),
-    Color32::from_rgb(90, 140, 90),
-    Color32::from_rgb(150, 100, 60),
-    Color32::from_rgb(120, 80, 150),
-];
-
-fn timeline_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
-    let tl = &app.project.timeline;
-    let fps = app.fps();
-    let width = ui.available_width();
-    let range = zoom::range(tl.duration().as_secs_f64(), width - 20.0, fps.as_f64());
-    let z = zoom::clamp(app.zoom, range);
-    if app.zoom != z {
-        cmds.push(Command::SetZoom(z));
-    }
-    let px = |t: Micros| (t.as_secs_f64() * z as f64) as f32;
-    let height = ui.available_height() - 16.0;
-    let content_w = px(tl.duration()) + 40.0;
-    egui::ScrollArea::horizontal().show(ui, |ui| {
-        let (rect, bg) =
-            ui.allocate_exact_size(vec2(content_w.max(width - 10.0), height), Sense::click());
-        let x0 = rect.min.x;
-        let t_at = |x: f32| Micros::from_secs_f64(((x - x0) / z).max(0.0) as f64);
-        let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 0.0, Color32::from_gray(30));
-        // ruler: a tick every second (or less often when zoomed out)
-        let step = (60.0 / z).ceil().max(1.0) as i64;
-        let ruler_h = 14.0;
-        let mut s = 0;
-        while (s as f32) * z <= content_w {
-            let x = x0 + s as f32 * z;
-            painter.line_segment(
-                [pos2(x, rect.min.y), pos2(x, rect.min.y + 5.0)],
-                Stroke::new(1.0_f32, Color32::GRAY),
-            );
-            painter.text(
-                pos2(x + 2.0, rect.min.y),
-                Align2::LEFT_TOP,
-                format!("{s}s"),
-                FontId::monospace(9.0),
-                Color32::GRAY,
-            );
-            s += step;
-        }
-        if bg.clicked()
-            && let Some(p) = bg.interact_pointer_pos()
-        {
-            cmds.push(Command::SelectClip(None));
-            cmds.push(Command::Seek(t_at(p.x)));
-        }
-        let clip_top = rect.min.y + ruler_h;
-        let clip_h = (rect.height() - ruler_h - 4.0).max(10.0);
-        let mut start = Micros::ZERO;
-        for (i, c) in tl.clips.iter().enumerate() {
-            let r = Rect::from_min_size(pos2(x0 + px(start), clip_top), vec2(px(c.len()), clip_h));
-            let resp = ui.interact(
-                r,
-                ui.scope_id().with(("clip", c.id.0)),
-                Sense::click_and_drag(),
-            );
-            let selected = app.selected_clip == Some(c.id);
-            let color = CLIP_COLORS[(c.media.0 as usize) % CLIP_COLORS.len()];
-            painter.rect_filled(r.shrink(1.0), 3.0, color);
-            if selected {
-                painter.rect_stroke(
-                    r,
-                    3.0,
-                    Stroke::new(2.0_f32, Color32::YELLOW),
-                    StrokeKind::Inside,
-                );
-            }
-            let name = app
-                .project
-                .media(c.media)
-                .map(|m| m.name.as_str())
-                .unwrap_or("?");
-            painter.text(
-                r.min + vec2(4.0, 4.0),
-                Align2::LEFT_TOP,
-                name,
-                FontId::proportional(11.0),
-                Color32::WHITE,
-            );
-            if resp.clicked()
-                && let Some(p) = resp.interact_pointer_pos()
-            {
-                cmds.push(Command::SelectClip(Some(c.id)));
-                cmds.push(Command::Seek(t_at(p.x)));
-            }
-            if resp.drag_stopped()
-                && let Some(p) = resp.interact_pointer_pos()
-            {
-                let to = drop_index(tl, t_at(p.x));
-                cmds.push(Command::SelectClip(Some(c.id)));
-                cmds.push(Command::MoveClip { clip: c.id, to });
-            }
-            let (fin, fout) = tl.fades_of(i);
-            let fade_color = Color32::from_black_alpha(160);
-            if fin > Micros::ZERO {
-                painter.add(egui::Shape::convex_polygon(
-                    vec![
-                        r.left_top(),
-                        pos2(r.min.x + px(fin), r.min.y),
-                        r.left_bottom(),
-                    ],
-                    fade_color,
-                    Stroke::NONE,
-                ));
-            }
-            if fout > Micros::ZERO {
-                painter.add(egui::Shape::convex_polygon(
-                    vec![
-                        pos2(r.max.x - px(fout), r.min.y),
-                        r.right_top(),
-                        r.right_bottom(),
-                    ],
-                    fade_color,
-                    Stroke::NONE,
-                ));
-            }
-            start = start + c.len();
-        }
-        // boundary handles: click to toggle the fade
-        let mut at = Micros::ZERO;
-        for b in 0..tl.clips.len().saturating_sub(1) {
-            at = at + tl.clips[b].len();
-            let center = pos2(x0 + px(at), clip_top + clip_h - 8.0);
-            let hr = Rect::from_center_size(center, vec2(12.0, 12.0));
-            let resp = ui
-                .interact(hr, ui.scope_id().with(("fade", b)), Sense::click())
-                .on_hover_text("Toggle fade");
-            let on = tl.has_fade(b);
-            painter.circle(
-                center,
-                5.0,
-                if on {
-                    Color32::BLACK
-                } else {
-                    Color32::from_gray(200)
-                },
-                Stroke::new(1.0_f32, Color32::WHITE),
-            );
-            if resp.clicked() {
-                cmds.push(Command::ToggleFade(b));
-            }
-        }
-        let xp = x0 + px(app.playhead);
-        painter.line_segment(
-            [pos2(xp, rect.min.y), pos2(xp, rect.max.y)],
-            Stroke::new(2.0_f32, Color32::RED),
-        );
-    });
-}
-
-/// Index a dragged clip should move to when dropped at time `t`.
-pub fn drop_index(tl: &crate::timeline::Timeline, t: Micros) -> usize {
-    match tl.locate(t) {
-        Some((i, start)) => {
-            let half = Micros(tl.clips[i].len().0 / 2);
-            if t - start < half { i } else { i + 1 }.min(tl.clips.len() - 1)
-        }
-        None => tl.clips.len().saturating_sub(1),
-    }
-}
-
-fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.strong("Clip");
-        let tl = &app.project.timeline;
-        match app.selected_clip.and_then(|id| tl.index_of(id)) {
-            None => {
-                ui.label("Select a clip on the timeline.");
-            }
-            Some(i) => clip_settings(ui, app, i, cmds),
-        }
-        ui.separator();
-        ui.strong("Export");
-        match app.output_description() {
-            Some(d) => ui.label(format!("Output: {d}")),
-            None => ui.label("Add clips to see the output format."),
-        };
-        if app.is_exporting() {
-            let s = &app.export_status;
-            let mode = match s.stream_copy {
-                Some(true) => "fast (no re-encoding)",
-                Some(false) => "re-encoding",
-                None => "preparing",
-            };
-            ui.label(format!("Exporting: {mode}"));
-            ui.add(ProgressBar::new(s.progress).show_percentage());
-            button(ui, app, "Cancel export", Command::CancelExport, cmds);
-        } else {
-            button(ui, app, "Export…", Command::PickExport, cmds);
-        }
-        ui.separator();
-        ui.strong("ffmpeg");
-        match &app.ffmpeg {
-            Ok(i) => ui.label(format!("{} ({})", i.ffmpeg.display(), i.version)),
-            Err(e) => ui.colored_label(Color32::LIGHT_RED, e),
-        };
-        button(ui, app, "Choose ffmpeg…", Command::PickFfmpeg, cmds);
-        ui.separator();
-        ui.strong("Shortcuts");
-        for (k, v) in keymap::HELP {
-            ui.label(format!("{k}: {v}"));
-        }
-    });
-}
-
-fn clip_settings(ui: &mut Ui, app: &AppState, i: usize, cmds: &mut Vec<Command>) {
-    let tl = &app.project.timeline;
-    let c = tl.clips[i];
-    let start = tl.start_of(i);
-    let name = app
-        .project
-        .media(c.media)
-        .map(|m| m.name.clone())
-        .unwrap_or_default();
-    ui.label(format!("Source: {name}"));
-    ui.label(format!(
-        "In {}  Out {}  Length {}",
-        timecode(c.src_in),
-        timecode(c.src_out),
-        timecode(c.len())
-    ));
-    let frame = app.fps().frame_duration();
-    let inside = app.playhead > start && app.playhead < start + c.len();
-    let offset = app.playhead - start;
-    let trim = |src_in: Micros, src_out: Micros| Command::SetTrim {
-        clip: c.id,
-        src_in,
-        src_out,
-    };
-    ui.horizontal(|ui| {
-        ui.label("Trim in:");
-        button(ui, app, "-1f", trim(c.src_in - frame, c.src_out), cmds);
-        button(ui, app, "+1f", trim(c.src_in + frame, c.src_out), cmds);
-        if ui.add_enabled(inside, Button::new("at playhead")).clicked() {
-            cmds.push(trim(c.src_in + offset, c.src_out));
-        }
-    });
-    ui.horizontal(|ui| {
-        ui.label("Trim out:");
-        button(ui, app, "-1f", trim(c.src_in, c.src_out - frame), cmds);
-        button(ui, app, "+1f", trim(c.src_in, c.src_out + frame), cmds);
-        if ui.add_enabled(inside, Button::new("at playhead")).clicked() {
-            cmds.push(trim(c.src_in, c.src_in + offset));
-        }
-    });
-    ui.horizontal(|ui| {
-        if i > 0 {
-            let mut on = tl.has_fade(i - 1);
-            if ui.checkbox(&mut on, "Fade in").changed() {
-                cmds.push(Command::ToggleFade(i - 1));
-            }
-        }
-        if i + 1 < tl.clips.len() {
-            let mut on = tl.has_fade(i);
-            if ui.checkbox(&mut on, "Fade out").changed() {
-                cmds.push(Command::ToggleFade(i));
-            }
-        }
-    });
-    button(ui, app, "Merge with next", Command::Merge, cmds);
-}
-
 fn command_bar(ui: &mut Ui, app: &AppState, timeline_width: f32, cmds: &mut Vec<Command>) {
     egui::ScrollArea::horizontal().show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -492,6 +213,7 @@ fn command_bar(ui: &mut Ui, app: &AppState, timeline_width: f32, cmds: &mut Vec<
                 ("Save as…", Command::PickSaveProjectAs),
                 ("Import…", Command::PickImport),
                 ("Add", Command::Append(None)),
+                ("Add music", Command::PlaceMusic(None)),
             ] {
                 button(ui, app, label, cmd, cmds);
             }
@@ -524,10 +246,19 @@ fn command_bar(ui: &mut Ui, app: &AppState, timeline_width: f32, cmds: &mut Vec<
             } else {
                 button(ui, app, "Export…", Command::PickExport, cmds);
             }
+            button(
+                ui,
+                app,
+                "Generate subtitles",
+                Command::GenerateSubtitles,
+                cmds,
+            );
+            button(ui, app, "Clear proxy cache", Command::ClearProxyCache, cmds);
+            button(ui, app, "About", Command::ShowAbout, cmds);
             ui.separator();
             ui.label("Zoom");
             let range = zoom::range(
-                app.project.timeline.duration().as_secs_f64(),
+                timeline::content_duration(app).as_secs_f64(),
                 timeline_width - 30.0,
                 app.fps().as_f64(),
             );
@@ -538,288 +269,18 @@ fn command_bar(ui: &mut Ui, app: &AppState, timeline_width: f32, cmds: &mut Vec<
             {
                 cmds.push(Command::SetZoom(zoom::from_slider(s, range)));
             }
-            if !app.status.is_empty() {
+            let status = if app.ffmpeg_checking {
+                crate::app::CHECKING_FFMPEG
+            } else {
+                app.status.as_str()
+            };
+            if !status.is_empty() {
                 ui.separator();
-                ui.label(&app.status);
+                ui.label(status);
             }
         });
     });
 }
 
-fn modals(ctx: &Context, app: &AppState, cmds: &mut Vec<Command>) {
-    if let Err(e) = &app.ffmpeg {
-        egui::Modal::new(egui::Id::unique("ffmpeg-missing")).show(ctx, |ui| {
-            ui.heading("ffmpeg is required");
-            ui.label(e);
-            ui.label(crate::ffmpeg::install_hint());
-            ui.label("You can also set VIDEOLORE_FFMPEG / VIDEOLORE_FFPROBE.");
-            ui.horizontal(|ui| {
-                if ui.button("Choose ffmpeg…").clicked() {
-                    cmds.push(Command::PickFfmpeg);
-                }
-                if ui.button("Retry").clicked() {
-                    cmds.push(Command::RetryFfmpeg);
-                }
-                if ui.button("Quit").clicked() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            });
-        });
-    } else if let Some(n) = &app.notice {
-        egui::Modal::new(egui::Id::unique("notice")).show(ctx, |ui| {
-            ui.label(n);
-            if ui.button("OK").clicked() {
-                cmds.push(Command::DismissNotice);
-            }
-        });
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::app::tests::{FakeDialogs, files, state};
-    use crate::preview::Frame;
-    use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, RawInput};
-
-    fn input(w: f32, h: f32, events: Vec<Event>) -> RawInput {
-        RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(w, h))),
-            events,
-            ..Default::default()
-        }
-    }
-
-    fn run(ctx: &Context, app: &mut AppState, cache: &mut UiCache, w: f32, h: f32, ev: Vec<Event>) {
-        let now = Instant::now();
-        // Headless: there is no painter, so texture deltas are discarded on purpose.
-        ctx.run_ui(input(w, h, ev), |ui| frame_ui(ui, app, cache, now))
-            .drop_without_applying_deltas();
-    }
-
-    fn loaded() -> (tempfile::TempDir, AppState) {
-        let dir = tempfile::tempdir().unwrap();
-        let f = files(dir.path());
-        let mut app = state(FakeDialogs::default());
-        let now = Instant::now();
-        app.dispatch(Command::Import(f), now).unwrap();
-        let a = app.project.media[0].id;
-        let b = app.project.media[1].id;
-        app.dispatch(Command::Append(Some(a)), now).unwrap();
-        app.dispatch(Command::Append(Some(b)), now).unwrap();
-        app.dispatch(Command::ToggleFade(0), now).unwrap();
-        (dir, app)
-    }
-
-    fn key(k: Key, m: Modifiers) -> Event {
-        Event::Key {
-            key: k,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: m,
-        }
-    }
-
-    // covers: REQ-024
-    #[test]
-    fn renders_all_panels_at_any_size() {
-        let (_d, mut app) = loaded();
-        let ctx = Context::default();
-        let mut cache = UiCache::default();
-        app.selected_clip = Some(app.project.timeline.clips[1].id);
-        app.selected_media = Some(app.project.media[0].id);
-        app.project.media[1].missing = true;
-        app.frame = Some(Frame {
-            pts: Micros::ZERO,
-            width: 4,
-            height: 2,
-            rgba: vec![255; 32],
-        });
-        app.frame_serial = 1;
-        app.status = "hello".into();
-        for (w, h) in [(1280.0, 800.0), (800.0, 500.0), (1920.0, 1080.0)] {
-            run(&ctx, &mut app, &mut cache, w, h, vec![]);
-        }
-        assert!(cache.has_texture());
-        app.frame_serial = 2;
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        app.frame.as_mut().unwrap().rgba.clear(); // malformed frame is ignored
-        app.frame_serial = 3;
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        app.frame = None;
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        assert!(!cache.has_texture());
-        // modals
-        app.notice = Some("note".into());
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        app.notice = None;
-        app.ffmpeg = Err("ffmpeg was not found".into());
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![key(Key::Space, Modifiers::NONE)],
-        );
-        assert!(!app.preview.is_playing());
-    }
-
-    // covers: REQ-025
-    #[test]
-    fn shortcuts_dispatch_commands() {
-        let (_d, mut app) = loaded();
-        let ctx = Context::default();
-        let mut cache = UiCache::default();
-        app.dispatch(Command::Seek(Micros(2_000_000)), Instant::now())
-            .unwrap();
-        let n = app.project.timeline.clips.len();
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![key(Key::B, Modifiers::COMMAND)],
-        );
-        assert_eq!(app.project.timeline.clips.len(), n + 1);
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![key(Key::Z, Modifiers::COMMAND)],
-        );
-        assert_eq!(app.project.timeline.clips.len(), n);
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![key(Key::Y, Modifiers::COMMAND)],
-        );
-        assert_eq!(app.project.timeline.clips.len(), n + 1);
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![Event::Copy]);
-        assert!(app.clipboard.is_some());
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![Event::Paste(String::new())],
-        );
-        assert_eq!(app.project.timeline.clips.len(), n + 2);
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![Event::Cut]);
-        assert_eq!(app.project.timeline.clips.len(), n + 1);
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![key(Key::Space, Modifiers::NONE)],
-        );
-        assert!(app.preview.is_playing());
-        assert!(app.title().starts_with('*'));
-        // the fake decoder produces no frames: playback ends on the next frame
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while app.preview.is_playing() && Instant::now() < deadline {
-            run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        }
-        assert!(!app.preview.is_playing());
-        // disabled commands are ignored
-        app.history.clear();
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![key(Key::Z, Modifiers::COMMAND)],
-        );
-        assert!(app.status.is_empty() || !app.status.contains("undo"));
-    }
-
-    // covers: REQ-012
-    #[test]
-    fn zoom_starts_at_fit_and_follows_the_slider() {
-        let (_d, mut app) = loaded();
-        let ctx = Context::default();
-        let mut cache = UiCache::default();
-        assert_eq!(app.zoom, 0.0);
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        let fit = app.zoom;
-        assert!(fit > 0.0);
-        // fit: the whole 10 s timeline fits in the panel width
-        assert!(fit * 10.0 <= 1280.0 * layout::TIMELINE_WIDTH);
-        let frame_level = zoom::PX_PER_FRAME_MAX * app.fps().as_f64() as f32;
-        app.dispatch(Command::SetZoom(1e6), Instant::now()).unwrap();
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        assert!((app.zoom - frame_level).abs() < 1e-3);
-    }
-
-    #[test]
-    fn clicking_the_timeline_selects_and_seeks() {
-        let (_d, mut app) = loaded();
-        let ctx = Context::default();
-        let mut cache = UiCache::default();
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        let r = layout::panels(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 800.0)));
-        let p = pos2(r.timeline.min.x + 60.0, r.timeline.center().y);
-        let press = |pressed| Event::PointerButton {
-            pos: p,
-            button: PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::NONE,
-        };
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![Event::PointerMoved(p), press(true)],
-        );
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![press(false)],
-        );
-        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-        assert_eq!(app.selected_clip, Some(app.project.timeline.clips[0].id));
-        assert!(app.playhead > Micros::ZERO);
-        run(
-            &ctx,
-            &mut app,
-            &mut cache,
-            1280.0,
-            800.0,
-            vec![Event::PointerGone],
-        );
-    }
-
-    #[test]
-    fn helpers() {
-        let (_d, app) = loaded();
-        let tl = &app.project.timeline;
-        assert_eq!(drop_index(tl, Micros(1_000_000)), 0);
-        assert_eq!(drop_index(tl, Micros(4_000_000)), 1);
-        assert_eq!(drop_index(tl, Micros(9_000_000)), 1);
-        assert_eq!(drop_index(tl, Micros(99_000_000)), 1);
-        let r = fit_rect(
-            Rect::from_min_size(Pos2::ZERO, vec2(200.0, 100.0)),
-            vec2(16.0, 9.0),
-        );
-        assert!((r.width() / r.height() - 16.0 / 9.0).abs() < 1e-3);
-        assert_eq!(r.height(), 100.0);
-        let z = fit_rect(Rect::from_min_size(Pos2::ZERO, vec2(2.0, 2.0)), Vec2::ZERO);
-        assert_eq!(z.area(), 0.0);
-    }
-}
+mod tests;

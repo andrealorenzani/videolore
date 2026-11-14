@@ -70,6 +70,11 @@ impl<T: Clone> History<T> {
         self.undo.clear();
         self.redo.clear();
     }
+
+    /// True when any kept snapshot (undo or redo) satisfies `f`.
+    pub fn any(&self, f: impl Fn(&T) -> bool) -> bool {
+        self.undo.iter().chain(self.redo.iter()).any(f)
+    }
 }
 
 #[cfg(test)]
@@ -111,6 +116,8 @@ mod tests {
         assert!(!h.can_redo());
         assert_eq!(h.redo(state), None);
         assert!(h.can_undo());
+        assert!(h.any(|s| *s == 100));
+        assert!(!h.any(|s| *s == 5));
         h.clear();
         assert!(!h.can_undo());
         assert_eq!(History::<i32>::with_cap(0).cap, 1);

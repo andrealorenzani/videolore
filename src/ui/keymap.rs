@@ -9,6 +9,8 @@ use eframe::egui::{Event, Key, Modifiers};
 
 /// Human-readable list shown in the UI.
 pub const HELP: &[(&str, &str)] = &[
+    ("Ctrl/Cmd+S", "Save"),
+    ("Ctrl/Cmd+Q", "Quit"),
     ("Ctrl/Cmd+B", "Split"),
     ("Ctrl/Cmd+X", "Cut"),
     ("Ctrl/Cmd+C", "Copy"),
@@ -41,6 +43,8 @@ fn key_command(key: Key, m: Modifiers) -> Option<Command> {
     match (m.command, m.shift, key) {
         (false, false, Key::Space) => Some(Command::PlayPause),
         (true, false, Key::B) => Some(Command::Split),
+        (true, false, Key::S) => Some(Command::SaveProject),
+        (true, false, Key::Q) => Some(Command::Quit),
         (true, false, Key::X) => Some(Command::Cut),
         (true, false, Key::C) => Some(Command::Copy),
         (true, false, Key::V) => Some(Command::Paste),
@@ -72,7 +76,7 @@ mod tests {
         }
     }
 
-    // covers: REQ-025
+    // covers: REQ-025, REQ-026, REQ-028
     #[test]
     fn shortcuts_map_to_commands() {
         let c = Modifiers::COMMAND;
@@ -107,6 +111,8 @@ mod tests {
             modifiers: c,
         };
         assert_eq!(command_for(&released), None);
-        assert_eq!(HELP.len(), 7);
+        assert_eq!(command_for(&key(Key::S, c)), Some(Command::SaveProject));
+        assert_eq!(command_for(&key(Key::Q, c)), Some(Command::Quit));
+        assert_eq!(HELP.len(), 9);
     }
 }

@@ -1,0 +1,8 @@
+NotoSans-Bold.ttf — Noto Sans Bold, version 2.015
+Licence: SIL Open Font License 1.1 (see OFL.txt)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+Downloaded from:
+  https://raw.githubusercontent.com/notofonts/notofonts.github.io/28b15b4b43b7bed62b5cf6e6b0b5ff5846270535/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf
+SHA-256: 1df075a380fc7cb898acf64c1f7b3b4dd780de3caa860178bf929de35817a913
+Font sources: https://github.com/notofonts/latin-greek-cyrillic
+Coverage: Latin, Greek and Cyrillic only.

@@ -20,6 +20,8 @@ jobs:
     env:
       # Integration tests must not be skipped in CI.
       VIDEOLORE_REQUIRE_FFMPEG: "1"
+      # Real speech recognition test (model cached below).
+      VIDEOLORE_STT_MODEL: ${{ github.workspace }}/.stt-model/ggml-tiny-q5_1.bin
     steps:
       - uses: actions/checkout@v7
         with:
@@ -27,17 +29,36 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy, llvm-tools-preview
-      - name: System packages (ffmpeg for tests, ALSA headers for cpal)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config
+      - name: System packages (ffmpeg for tests, ALSA headers, whisper.cpp build, speech fixture)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov
+          tool: cargo-llvm-cov,cargo-deny@0.20.2
+      - name: Speech model for the real transcription test (cached, checked by SHA-256)
+        id: stt-cache
+        uses: actions/cache@v4
+        with:
+          path: .stt-model
+          key: stt-model-818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7
+      - name: Download the speech model
+        if: steps.stt-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .stt-model
+          curl -fsSL --retry 3 -o .stt-model/ggml-tiny-q5_1.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny-q5_1.bin
+          echo "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7  .stt-model/ggml-tiny-q5_1.bin" | sha256sum -c -
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - run: cargo test --locked
+      - name: Licences, advisories and crate sources (cargo-deny)
+        run: cargo deny --locked check
+      - name: Rust crate notices are up to date
+        run: |
+          cargo install --locked cargo-about --version 0.9.3 --features cli
+          scripts/notices.sh --check
       - name: Version is the same everywhere
         run: scripts/version.sh check
       - name: Code coverage >= 85%
@@ -64,13 +85,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
-      - name: System packages (ffmpeg for tests, ALSA headers for cpal)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config
+      - name: System packages (ffmpeg for tests, ALSA headers, whisper.cpp build)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config cmake libclang-dev
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked --all-targets
       - run: cargo test --locked
 
   build:
+    # Bare executables on every push and pull request (artifacts only; releases get the
+    # installers from the package job).
     name: executable (${{ matrix.target }})
     needs: [check, msrv]
     strategy:
@@ -89,28 +112,82 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - name: System packages (ALSA headers for cpal)
+      - name: System packages (ALSA headers, whisper.cpp build)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config cmake libclang-dev
+      - name: libclang for bindgen (Windows)
+        if: runner.os == 'Windows'
+        run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
       - name: Build release executable
         run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Package
+      - name: Name the executable
         run: |
           name=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')
           version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           out="${name}-${version}-${{ matrix.target }}${{ matrix.ext }}"
           cp "target/${{ matrix.target }}/release/${name}${{ matrix.ext }}" "$out"
           echo "ASSET=$out" >> "$GITHUB_ENV"
-          notes="release/${version}/docs/changelog.md"
-          [[ -f "$notes" ]] && echo "NOTES=$notes" >> "$GITHUB_ENV" || true
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ASSET }}
           path: ${{ env.ASSET }}
-      - name: Create/attach GitHub release (tags v* only)
+
+  package:
+    # Installers with the bundled ffmpeg, on release tags (v*) and on demand.
+    name: installers (${{ matrix.target }})
+    needs: [check, msrv]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x86_64 }
+          - { os: macos-latest, target: macos-aarch64 }
+          - { os: windows-latest, target: windows-x86_64 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: System packages (ALSA headers, whisper.cpp build)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config cmake libclang-dev
+      - name: libclang for bindgen (Windows)
+        if: runner.os == 'Windows'
+        run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo-packager (pinned in packaging/tools.lock)
+        if: runner.os != 'Linux'
+        run: cargo install cargo-packager --locked --version 0.11.8
+      - name: Fetch the pinned ffmpeg (SHA-256 checked)
+        run: scripts/fetch-ffmpeg.sh ${{ matrix.target }} dist/ffmpeg-${{ matrix.target }}
+      - name: Build release executable
+        run: cargo build --release --locked
+      - name: Build the installers (with the ffmpeg smoke test)
+        run: scripts/package.sh ${{ matrix.target }}
+      - name: Third-party source archive
+        if: runner.os == 'Linux'
+        run: scripts/package.sh sources
+      - name: Release notes
+        run: |
+          notes="release/$(scripts/version.sh get)/docs/changelog.md"
+          [[ -f "$notes" ]] || notes=docs/changelog.md
+          echo "NOTES=$notes" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ matrix.target }}
+          path: dist/videolore-*
+      - name: Attach to the GitHub release (tags v* only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ env.ASSET }}
           body_path: ${{ env.NOTES }}
+          files: |
+            dist/*-setup.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.tar.gz
+            dist/*-third-party-source.tar.xz

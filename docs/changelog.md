@@ -2,6 +2,46 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
 
+## 0.2.0 — 2026-11-14 10:17 +0000
+Summary: the first complete version for people who are not editing experts. Projects can be saved and reopened, ffmpeg is included in the app, subtitles are generated offline, a music track is added, and every platform gets a one-click installer. All known limitations of 0.1.3 are resolved.
+
+- **Added**: save and open projects (`.vlproj`), Save and Save As, a title marker for unsaved changes; New, Open, closing the window and Quit ask Save / Discard / Cancel when there are unsaved changes (REQ-026, 027, 028).
+- **Added**: 0.1.x projects open unchanged; projects from a newer version are refused with a message and not modified (REQ-029).
+- **Added**: ffmpeg and ffprobe are bundled in every installer, so import, preview and export work without installing anything; a user-chosen ffmpeg (settings or environment variable) still overrides the bundled copy (REQ-030).
+- **Added**: About screen (also shown by the Windows installer) listing every bundled component with version, licence and where to get its source (REQ-031).
+- **Added**: installers, built and attached to every version tag: Windows setup (per user, no administrator rights, Start-menu entry), macOS disk image, Linux AppImage and `.tar.gz`; plus a third-party source archive. Installers are not code-signed in 0.2.0 (REQ-040, 042).
+- **Added**: application icon; `.vlproj` files open in videolore with a double-click; on Windows and Linux a second window opens with that project, on macOS the running window asks about unsaved changes (REQ-041).
+- **Added**: music track below the video track: audio files are placed, moved, trimmed, split and deleted; separate volume (0–100%) and mute for video audio and music; music does not move when the video is edited and is cut at the video end with a 0.5 s fade-out (REQ-019, 020, 043, 002).
+- **Added**: subtitles generated offline from the speech with whisper.cpp, in the background with progress and cancel; the speech model is downloaded once after a consent dialog (about 32 MB) or provided as a local file; language detected automatically with manual override; lines added, deleted, re-worded and re-timed; three style presets (Classic, Box, Word highlight) visible in the preview and burned into the export; subtitles follow the speech when the timeline is edited; regenerating asks before replacing edited lines (REQ-014–018, 044).
+- **Added**: preview proxies for big sources: a lower-resolution preview copy, made in the background with progress on the media item, stored outside the project and reused across sessions; the rule depends on resolution, cores and memory; export always uses the originals; the cache size is shown and can be cleared (REQ-038).
+- **Added**: job queue that keeps at most 3 ffmpeg/ffprobe processes running, by priority (preview, export, import analysis, background work) (REQ-033).
+- **Added**: still preview frame re-rendered only when the picture at the playhead changes, and bursts of edits are merged (REQ-034).
+- **Added**: HEVC in MP4 and MOV is tagged `hvc1`, so it plays on Apple devices, both with stream copy and re-encode (REQ-036).
+- **Changed**: import analysis runs in the background; several imports can run while editing, and the window is never blocked (REQ-032). Audio-only files are accepted into the media list.
+- **Changed**: playback keeps the video in real time when audio output stalls; audio is corrected towards the clock, with drift under 40 ms (REQ-035).
+- **Changed**: export runs one ffmpeg process with all clips grouped by source file, so a timeline of 200 segments from one source exports frame-accurately (REQ-037). Stream copy is used only when no fades, music, subtitles or volume changes are present and every cut is on a keyframe (REQ-023).
+- **Changed**: memory does not grow with the size of the source file (REQ-039).
+- **Changed**: project format version 2 (music, volumes, subtitles); saved projects can no longer be opened by 0.1.x.
+- **Changed**: the README gives one install section per operating system; the requirement to install ffmpeg 4.4 or newer is gone.
+- **Changed**: the Linux AppImage and `.tar.gz` add an application-menu entry and the `.vlproj` file type when run; "Remove from application menu" in the About screen undoes it.
+- **Changed**: the macOS default application menu is switched off so that Cmd+Q reaches the unsaved-changes prompt; the standard Hide and Minimize items are therefore not available.
+- **Changed**: `docs/business.md`, `docs/architecture.md` and `docs/code.md` became indexes with sub-documents per topic.
+- **Fixed**: the known limitations of 0.1.3 are resolved: unsaved-changes prompt (added); import probing on the UI thread (now background); an ffmpeg process per edit for the still frame (now only when the picture changes); video waiting for a stalled audio output (now real time); HEVC in MP4 not tagged `hvc1` (tagged); one ffmpeg input per clip (inputs grouped by source).
+- **Security**: the bundled ffmpeg and the packaging tools are pinned and checked by SHA-256; the installer build refuses an ffmpeg without the required encoders and filters; the speech model comes from a fixed revision over HTTPS, is checked by size and SHA-256 before use, and is the only network access, after consent; project files are limited to 16 MiB and validated after loading; cargo-deny checks licences, advisories and crate sources in CI.
+- **Removed**: the requirement to install ffmpeg before using videolore; the 0.1.3 known limitations listed above; the subtitle feature placeholder (`stt` feature is now real).
+- **Workflow**: the Documenter split the human docs into sub-documents; CI gained a `package` job (installers on Windows, macOS and Linux for version tags), cargo-deny and a notices-freshness check.
+- **Dependencies**: added sha2 (normal dependency), sysinfo, whisper-rs and ureq (optional, feature `stt`), cpal (optional, feature `audio`), and on macOS objc2, objc2-foundation and winit; cargo-packager is used only in CI.
+- **Quality**: 134 unit tests and 14 integration tests pass; fmt, clippy (default, no-default and all features, and cross-checks for macOS and Windows), cargo-deny, notices and version checks pass; line coverage 95.4%; feature coverage 44/44 implemented requirements.
+
+Known limitations (0.2.0):
+- Installers are unsigned: macOS Gatekeeper, Windows SmartScreen and the AppImage permission need a one-time confirmation.
+- Subtitle text in scripts other than Latin, Greek and Cyrillic may look different per computer or show boxes, and cannot be read in the subtitle editor.
+- Removing a file from the media list drops the undo history when an undo step refers to it.
+- Cleared preview copies are regenerated only after reopening the project or toggling proxies; a 1280x720 source never gets a proxy.
+- On Windows and Linux, double-clicking a project while videolore is open opens a second window.
+- Some Linux file managers do not start the program from the `.tar.gz` folder on double-click.
+- Speech is transcribed in 2-minute pieces; a word cut at a boundary can be lost.
+
 ## 0.1.6 — 2026-11-14 01:10 +0000
 - **Workflow**: tests are run only by the Principal Engineer, after coding, in a loop (run the suite, fix the code, rerun) until everything passes; it reports line coverage and feature coverage. No other agent or command runs tests, builds or coverage: `/add-feature` commits after static checks only, `/release` asks the Principal Engineer for a VERIFY run, the Documenter writes the coverage badge from the reported value. CI still reruns everything on GitHub.
 - **Added**: `scripts/coverage.sh --badge NN.N` writes the README coverage badge without running tests.

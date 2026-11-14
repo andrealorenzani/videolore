@@ -2,21 +2,74 @@
 // Copyright (C) 2026 Andrea Lorenzani
 
 //! Application state and the single command dispatcher: every button, menu entry and
-//! shortcut ends up in [`AppState::dispatch`].
+//! shortcut ends up in [`AppState::dispatch`]. Slow work (ffprobe, proxies, speech
+//! recognition, the ffmpeg check, export) runs on other threads; [`AppState::tick`]
+//! collects the results once per frame.
 
 use crate::export::{self, ExportEvent, ExportHandle, ExportJob};
 use crate::ffmpeg::{self, FfmpegInfo, Runner};
 use crate::history::History;
-use crate::media::{self, MediaId};
+use crate::jobs::{Limited, MAX_PROCESSES, Pool, Priority, Scheduler};
+use crate::machine::MachineInfo;
+use crate::media::{self, MediaId, MediaItem, MediaStatus, ProxyState};
+use crate::music::{Mix, MusicClipId};
 use crate::preview::{AudioSink, Frame, Preview, PreviewConfig};
-use crate::project::{self, Project};
+use crate::project::{self, Edit, Project, ProjectDoc};
+use crate::proxy::{self, ProxyCache, ProxyEvent, ProxyTask, ProxyWorker};
 use crate::render;
+use crate::stt::{
+    self, ModelEvent, ModelFetcher, ModelSource, ModelStore, SttEvent, SttHandle, SttJob,
+    TranscriberFactory,
+};
+use crate::subtitles::{LineId, Preset};
 use crate::time::{Fps, Micros};
-use crate::timeline::{Clip, ClipId, EditError, Timeline};
+use crate::timeline::{Clip, ClipId, EditError};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Instant;
+
+/// Answer to the "unsaved changes" prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsavedChoice {
+    Save,
+    Discard,
+    Cancel,
+}
+
+/// Answer to the speech-model consent dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConsentChoice {
+    /// Download the model (the only network access of the app).
+    Download,
+    /// Use a model file the user already has.
+    LocalFile,
+    Cancel,
+}
+
+/// What was interrupted by the "unsaved changes" prompt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingAction {
+    New,
+    /// Open a project: the given file, or ask for one.
+    Open(Option<PathBuf>),
+    /// The window's close button.
+    Close,
+    /// Cmd/Ctrl+Q.
+    Quit,
+}
+
+/// The dialog shown over the window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Modal {
+    Unsaved(PendingAction),
+    ModelConsent,
+    ConfirmRegenerate,
+    About,
+}
 
 /// Every user operation.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,8 +80,13 @@ pub enum Command {
     SaveProject,
     PickSaveProjectAs,
     SaveProjectAs(PathBuf),
+    /// The window is being closed.
+    RequestClose,
+    Quit,
+    ResolveUnsaved(UnsavedChoice),
     PickImport,
     Import(Vec<PathBuf>),
+    RemoveMedia(MediaId),
     SelectMedia(Option<MediaId>),
     /// Appends the given media (or the selected one) at the end of the track.
     Append(Option<MediaId>),
@@ -54,6 +112,44 @@ pub enum Command {
     ToggleFade(usize),
     /// Toggles the fade at the boundary nearest to the playhead.
     ToggleFadeAtPlayhead,
+    /// Puts the given audio file (or the selected one) on the music track at the playhead.
+    PlaceMusic(Option<MediaId>),
+    SelectMusic(Option<MusicClipId>),
+    MoveMusic {
+        clip: MusicClipId,
+        start: Micros,
+    },
+    TrimMusic {
+        clip: MusicClipId,
+        src_in: Micros,
+        src_out: Micros,
+    },
+    /// Splits the music clip under the playhead.
+    SplitMusic,
+    /// Deletes the selected music clip.
+    DeleteMusic,
+    SetMix(Mix),
+    GenerateSubtitles,
+    /// The user confirmed that manual subtitle edits may be replaced.
+    ConfirmRegenerate,
+    ModelConsent(ConsentChoice),
+    CancelSubtitles,
+    /// Adds a subtitle line at the playhead.
+    AddSubtitle,
+    DeleteSubtitle(LineId),
+    SetSubtitleText(LineId, String),
+    RetimeSubtitle {
+        line: LineId,
+        clip: ClipId,
+        start: Micros,
+        end: Micros,
+    },
+    SelectLine(Option<LineId>),
+    SetPreset(Preset),
+    /// A language code, or `None` to detect it.
+    SetLanguage(Option<String>),
+    SetProxiesEnabled(bool),
+    ClearProxyCache,
     Undo,
     Redo,
     PlayPause,
@@ -66,6 +162,9 @@ pub enum Command {
     PickFfmpeg,
     SetFfmpeg(PathBuf),
     RetryFfmpeg,
+    ShowAbout,
+    CloseModal,
+    RemoveDesktopIntegration,
     DismissNotice,
 }
 
@@ -76,13 +175,31 @@ pub trait Dialogs {
     fn pick_project_save(&mut self) -> Option<PathBuf>;
     fn pick_export(&mut self, extension: &str) -> Option<PathBuf>;
     fn pick_ffmpeg(&mut self) -> Option<PathBuf>;
+    fn pick_model_file(&mut self) -> Option<PathBuf>;
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// User settings persisted between runs.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub ffmpeg: Option<PathBuf>,
     pub ffprobe: Option<PathBuf>,
+    /// Low-resolution preview copies of big sources.
+    #[serde(default = "yes")]
+    pub proxies_enabled: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            ffmpeg: None,
+            ffprobe: None,
+            proxies_enabled: true,
+        }
+    }
 }
 
 impl Settings {
@@ -116,28 +233,86 @@ pub struct ExportStatus {
     pub stream_copy: Option<bool>,
 }
 
+/// A file to analyse with ffprobe.
+struct ProbeJob {
+    id: MediaId,
+    path: PathBuf,
+    ffprobe: PathBuf,
+    cancel: Arc<AtomicBool>,
+}
+
+type ProbeResult = (MediaId, Result<MediaItem, String>);
+
+/// A proxy to generate; progress and the result go to `events`.
+struct ProxyJob {
+    worker: ProxyWorker,
+    task: ProxyTask,
+    events: Sender<ProxyEvent>,
+}
+
+/// Message shown while the startup check of ffmpeg runs.
+pub const CHECKING_FFMPEG: &str = "checking ffmpeg…";
+
 pub struct AppState {
     pub project: Project,
     pub project_path: Option<PathBuf>,
+    /// The project as last saved or opened (for the unsaved-changes marker).
+    saved: ProjectDoc,
     pub dirty: bool,
-    pub history: History<Timeline>,
+    pub history: History<Edit>,
     pub selected_clip: Option<ClipId>,
     pub selected_media: Option<MediaId>,
+    pub selected_music: Option<MusicClipId>,
+    pub selected_line: Option<LineId>,
     pub playhead: Micros,
     pub clipboard: Option<Clip>,
     /// Timeline zoom in pixels per second (0 = fit all on next frame).
     pub zoom: f32,
     pub ffmpeg: Result<FfmpegInfo, String>,
+    /// True while the ffmpeg check runs in the background.
+    pub ffmpeg_checking: bool,
+    ffmpeg_check: Option<Receiver<Result<FfmpegInfo, String>>>,
     pub settings: Settings,
     settings_path: Option<PathBuf>,
+    sched: Arc<Scheduler>,
+    /// The unlimited runner; only ever used wrapped in a [`Limited`].
     runner: Arc<dyn Runner>,
     dialogs: Box<dyn Dialogs>,
+    pub machine: MachineInfo,
+    probes: Pool<ProbeJob, ProbeResult>,
+    probe_cancel: HashMap<MediaId, Arc<AtomicBool>>,
+    proxy_pool: Pool<ProxyJob, ()>,
+    proxy_events: (Sender<ProxyEvent>, Receiver<ProxyEvent>),
+    proxy_jobs: HashMap<MediaId, (String, Arc<AtomicBool>)>,
+    /// Where proxies are kept (`None`: no proxies).
+    pub proxy_cache: Option<ProxyCache>,
+    /// Bytes used by the proxy cache (refreshed when it changes).
+    pub proxy_cache_size: u64,
     pub preview: Preview,
     /// Latest preview frame and a counter that changes with it.
     pub frame: Option<Frame>,
     pub frame_serial: u64,
     export: Option<ExportHandle>,
     pub export_status: ExportStatus,
+    stt: Option<SttHandle>,
+    /// Subtitle generation progress (0..=1) while it runs.
+    pub stt_progress: Option<f32>,
+    /// Where the speech model is installed (`None`: generation unavailable).
+    pub model_store: Option<ModelStore>,
+    model_install: Option<(Receiver<ModelEvent>, Arc<AtomicBool>)>,
+    /// Model download progress (0..=1) while it runs.
+    pub model_progress: Option<f32>,
+    pub transcriber: TranscriberFactory,
+    pub fetcher: Option<Arc<dyn ModelFetcher>>,
+    /// Projects the OS asked to open (macOS Apple Events), drained every tick.
+    pub open_requests: fn() -> Vec<PathBuf>,
+    /// Whether this copy added itself to the Linux application menu.
+    pub desktop_integrated: bool,
+    pub modal: Option<Modal>,
+    /// The window may close (nothing unsaved, or the user chose).
+    pub close_allowed: bool,
+    /// The UI must close the window.
+    pub quit_requested: bool,
     /// One-line status message.
     pub status: String,
     /// Message shown in a modal dialog until dismissed.
@@ -145,13 +320,38 @@ pub struct AppState {
 }
 
 fn check_ffmpeg(runner: &dyn Runner, settings: &Settings) -> Result<FfmpegInfo, String> {
-    let (ff, fp) = ffmpeg::locate_both(settings.ffmpeg.as_deref(), settings.ffprobe.as_deref())
+    let located = ffmpeg::locate_both(settings.ffmpeg.as_deref(), settings.ffprobe.as_deref())
         .map_err(|e| e.to_string())?;
-    ffmpeg::check(runner, &ff, &fp).map_err(|e| e.to_string())
+    ffmpeg::check_located(runner, &located).map_err(|e| e.to_string())
+}
+
+fn probe_pool(sched: &Arc<Scheduler>, runner: &Arc<dyn Runner>) -> Pool<ProbeJob, ProbeResult> {
+    let limited = sched.runner(Priority::Probe, Arc::clone(runner));
+    Pool::new(MAX_PROCESSES as usize, move |j: ProbeJob| {
+        if j.cancel.load(Ordering::SeqCst) {
+            return None;
+        }
+        let r = limited.cancellable(Arc::clone(&j.cancel));
+        let result = media::probe(&r, &j.ffprobe, &j.path, j.id).map_err(|e| e.to_string());
+        (!j.cancel.load(Ordering::SeqCst)).then_some((j.id, result))
+    })
+}
+
+fn proxy_pool() -> Pool<ProxyJob, ()> {
+    Pool::new(1, |j: ProxyJob| {
+        if let Some(ev) = j.worker.generate(&j.task, &j.events) {
+            let _ = j.events.send(ev);
+        }
+        None
+    })
+}
+
+fn no_open_requests() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 impl AppState {
-    /// Real start-up: loads settings and checks the ffmpeg installation.
+    /// Real start-up: loads settings, starts the ffmpeg check in the background.
     pub fn new(
         runner: Arc<dyn Runner>,
         dialogs: Box<dyn Dialogs>,
@@ -162,43 +362,124 @@ impl AppState {
             .as_deref()
             .map(Settings::load)
             .unwrap_or_default();
-        let info = check_ffmpeg(runner.as_ref(), &settings);
-        let mut s = AppState::with_ffmpeg(info, runner, dialogs, sink);
+        let mut s = AppState::with_ffmpeg(Err(CHECKING_FFMPEG.to_string()), runner, dialogs, sink);
         s.settings = settings;
         s.settings_path = settings_path;
+        s.preview.proxies = s.settings.proxies_enabled;
+        s.machine = MachineInfo::detect();
+        s.proxy_cache = ProxyCache::default_dir().map(ProxyCache::new);
+        s.proxy_cache_size = s.proxy_cache.as_ref().map(ProxyCache::size).unwrap_or(0);
+        s.model_store = ModelStore::default_dir().map(ModelStore::new);
+        s.transcriber = stt::default_factory();
+        s.fetcher = stt::default_fetcher();
+        s.open_requests = crate::desktop::take_open_requests;
+        s.desktop_integrated = crate::desktop::self_integrating();
+        s.start_ffmpeg_check();
         s
     }
 
-    /// Start-up with an already known ffmpeg status (tests).
+    /// Start-up with an already known ffmpeg status and nothing outside the process: no
+    /// proxy cache, no speech model, no OS requests (tests).
     pub fn with_ffmpeg(
         ffmpeg: Result<FfmpegInfo, String>,
         runner: Arc<dyn Runner>,
         dialogs: Box<dyn Dialogs>,
         sink: Box<dyn AudioSink>,
     ) -> AppState {
-        let config = preview_config(&ffmpeg, &runner);
+        let sched = Scheduler::new(MAX_PROCESSES);
+        let config = preview_config(&ffmpeg, &sched, &runner);
+        let project = Project::default();
         AppState {
-            project: Project::default(),
+            saved: project.doc(),
+            project,
             project_path: None,
             dirty: false,
             history: History::default(),
             selected_clip: None,
             selected_media: None,
+            selected_music: None,
+            selected_line: None,
             playhead: Micros::ZERO,
             clipboard: None,
             zoom: 0.0,
             ffmpeg,
+            ffmpeg_checking: false,
+            ffmpeg_check: None,
             settings: Settings::default(),
             settings_path: None,
+            probes: probe_pool(&sched, &runner),
+            probe_cancel: HashMap::new(),
+            proxy_pool: proxy_pool(),
+            proxy_events: channel(),
+            proxy_jobs: HashMap::new(),
+            proxy_cache: None,
+            proxy_cache_size: 0,
+            sched,
             runner,
             dialogs,
+            machine: MachineInfo {
+                cores: 16,
+                ram_bytes: 64 * crate::machine::GIB,
+            },
             preview: Preview::new(config, sink),
             frame: None,
             frame_serial: 0,
             export: None,
             export_status: ExportStatus::default(),
+            stt: None,
+            stt_progress: None,
+            model_store: None,
+            model_install: None,
+            model_progress: None,
+            transcriber: Arc::new(|_, _| Err(stt::SttError::NotAvailable)),
+            fetcher: None,
+            open_requests: no_open_requests,
+            desktop_integrated: false,
+            modal: None,
+            close_allowed: false,
+            quit_requested: false,
             status: String::new(),
             notice: None,
+        }
+    }
+
+    /// The scheduler every ffmpeg/ffprobe process goes through.
+    pub fn scheduler(&self) -> &Arc<Scheduler> {
+        &self.sched
+    }
+
+    fn limited(&self, priority: Priority) -> Limited {
+        self.sched.runner(priority, Arc::clone(&self.runner))
+    }
+
+    fn start_ffmpeg_check(&mut self) {
+        let (tx, rx) = channel();
+        let runner = self.limited(Priority::Probe);
+        let settings = self.settings.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(check_ffmpeg(&runner, &settings));
+        });
+        self.ffmpeg = Err(CHECKING_FFMPEG.to_string());
+        self.ffmpeg_checking = true;
+        self.ffmpeg_check = Some(rx);
+    }
+
+    fn set_ffmpeg(&mut self, info: Result<FfmpegInfo, String>) {
+        self.ffmpeg = info;
+        self.ffmpeg_checking = false;
+        self.ffmpeg_check = None;
+        let mut preview = Preview::new(
+            preview_config(&self.ffmpeg, &self.sched, &self.runner),
+            crate::preview::default_sink(),
+        );
+        preview.proxies = self.settings.proxies_enabled;
+        self.preview = preview;
+        let now = Instant::now();
+        let t = self.playhead;
+        self.seek(t, now);
+        let ids: Vec<MediaId> = self.project.media.iter().map(|m| m.id).collect();
+        for id in ids {
+            self.maybe_proxy(id);
         }
     }
 
@@ -208,6 +489,10 @@ impl AppState {
         render::output_geometry(&self.project, &enc)
             .map(|g| g.fps)
             .unwrap_or(Fps { num: 30, den: 1 })
+    }
+
+    fn frame_len(&self) -> Micros {
+        self.fps().frame_duration()
     }
 
     fn encoders(&self) -> std::collections::BTreeSet<String> {
@@ -240,6 +525,11 @@ impl AppState {
         self.export_status.running
     }
 
+    /// Subtitle generation or model installation in progress.
+    pub fn is_generating(&self) -> bool {
+        self.stt.is_some() || self.model_install.is_some()
+    }
+
     /// The clip commands act on: the selection, else the clip under the playhead.
     pub fn target_clip(&self) -> Option<ClipId> {
         self.selected_clip
@@ -250,6 +540,21 @@ impl AppState {
                     .locate(self.playhead)
                     .map(|(i, _)| self.project.timeline.clips[i].id)
             })
+    }
+
+    /// True when `id` is on the video or music track.
+    fn media_in_use(&self, id: MediaId) -> bool {
+        let used = |e: &Edit| {
+            e.timeline.clips.iter().any(|c| c.media == id)
+                || e.music.clips.iter().any(|c| c.media == id)
+        };
+        used(&self.project.edit())
+    }
+
+    fn usable(&self, id: Option<MediaId>) -> Option<&MediaItem> {
+        id.or(self.selected_media)
+            .and_then(|id| self.project.media(id))
+            .filter(|m| m.is_ready() && !m.missing)
     }
 
     /// Whether a command can run now (used to disable buttons).
@@ -272,16 +577,30 @@ impl AppState {
                 .and_then(|c| tl.index_of(c))
                 .is_some_and(|i| i + 1 < tl.clips.len()),
             Command::ToggleFadeAtPlayhead => tl.clips.len() > 1,
-            Command::Append(id) => id
-                .or(self.selected_media)
-                .and_then(|id| self.project.media(id))
-                .is_some_and(|m| m.has_video() && !m.missing),
+            Command::Append(id) => self.usable(*id).is_some_and(MediaItem::has_video),
+            Command::PlaceMusic(id) => self
+                .usable(*id)
+                .is_some_and(|m| !m.has_video() && m.format.has_audio()),
+            Command::RemoveMedia(id) => {
+                self.project.media(*id).is_some() && !self.media_in_use(*id)
+            }
+            Command::SplitMusic => self.project.music.at(self.playhead).is_some(),
+            Command::DeleteMusic => self
+                .selected_music
+                .is_some_and(|id| self.project.music.get(id).is_some()),
             Command::PlayPause => has_ff && !tl.clips.is_empty(),
             Command::PickExport | Command::Export(_) => {
                 has_ff && !tl.clips.is_empty() && !self.is_exporting()
             }
             Command::CancelExport => self.is_exporting(),
             Command::PickImport | Command::Import(_) => has_ff,
+            Command::GenerateSubtitles => {
+                has_ff && stt::available() && !tl.clips.is_empty() && !self.is_generating()
+            }
+            Command::CancelSubtitles => self.is_generating(),
+            Command::AddSubtitle => tl.locate(self.playhead).is_some(),
+            Command::ClearProxyCache => self.proxy_cache.is_some(),
+            Command::RemoveDesktopIntegration => self.desktop_integrated,
             _ => true,
         }
     }
@@ -292,45 +611,72 @@ impl AppState {
         if let Err(e) = &r {
             self.status = e.clone();
         }
+        self.refresh_dirty();
         r
     }
 
-    fn dispatch_inner(&mut self, cmd: Command, now: Instant) -> Result<(), String> {
-        match cmd {
-            Command::NewProject => {
+    fn refresh_dirty(&mut self) {
+        self.dirty = self.project.doc() != self.saved;
+    }
+
+    /// Runs `action` now, or asks first when there are unsaved changes.
+    fn guarded(&mut self, action: PendingAction, now: Instant) -> Result<(), String> {
+        self.refresh_dirty();
+        if self.dirty {
+            self.modal = Some(Modal::Unsaved(action));
+            return Ok(());
+        }
+        self.continue_action(action, now)
+    }
+
+    fn continue_action(&mut self, action: PendingAction, now: Instant) -> Result<(), String> {
+        match action {
+            PendingAction::New => {
                 self.load_project(Project::default(), None, now);
                 self.status = "New project".into();
                 Ok(())
             }
-            Command::PickOpenProject => match self.dialogs.pick_project_open() {
-                Some(p) => self.dispatch_inner(Command::OpenProject(p), now),
+            PendingAction::Open(None) => match self.dialogs.pick_project_open() {
+                Some(p) => self.open_now(p, now),
                 None => Ok(()),
             },
-            Command::OpenProject(path) => {
-                let (p, missing) = project::load(&path).map_err(|e| e.to_string())?;
-                self.load_project(p, Some(path), now);
-                if !missing.is_empty() {
-                    self.notice = Some(format!(
-                        "These source files could not be found:\n{}",
-                        missing.join("\n")
-                    ));
-                }
-                self.status = "Project opened".into();
+            PendingAction::Open(Some(p)) => self.open_now(p, now),
+            PendingAction::Close | PendingAction::Quit => {
+                self.close_allowed = true;
+                self.quit_requested = true;
                 Ok(())
             }
-            Command::SaveProject => match self.project_path.clone() {
-                Some(p) => self.save_to(p),
-                None => self.dispatch_inner(Command::PickSaveProjectAs, now),
-            },
+        }
+    }
+
+    fn dispatch_inner(&mut self, cmd: Command, now: Instant) -> Result<(), String> {
+        match cmd {
+            Command::NewProject => self.guarded(PendingAction::New, now),
+            Command::PickOpenProject => self.guarded(PendingAction::Open(None), now),
+            Command::OpenProject(path) => self.guarded(PendingAction::Open(Some(path)), now),
+            Command::SaveProject => self.save_interactive().map(|_| ()),
             Command::PickSaveProjectAs => match self.dialogs.pick_project_save() {
-                Some(p) => self.dispatch_inner(Command::SaveProjectAs(p), now),
+                Some(p) => self.save_as(p),
                 None => Ok(()),
             },
-            Command::SaveProjectAs(mut p) => {
-                if p.extension().is_none() {
-                    p.set_extension(project::EXTENSION);
+            Command::SaveProjectAs(p) => self.save_as(p),
+            Command::RequestClose => self.guarded(PendingAction::Close, now),
+            Command::Quit => self.guarded(PendingAction::Quit, now),
+            Command::ResolveUnsaved(choice) => {
+                let Some(Modal::Unsaved(action)) = self.modal.take() else {
+                    return Ok(());
+                };
+                match choice {
+                    UnsavedChoice::Cancel => Ok(()),
+                    UnsavedChoice::Discard => self.continue_action(action, now),
+                    UnsavedChoice::Save => {
+                        if self.save_interactive()? {
+                            self.continue_action(action, now)
+                        } else {
+                            Ok(())
+                        }
+                    }
                 }
-                self.save_to(p)
             }
             Command::PickImport => {
                 let files = self.dialogs.pick_media();
@@ -340,25 +686,26 @@ impl AppState {
                 self.dispatch_inner(Command::Import(files), now)
             }
             Command::Import(files) => self.import(files),
+            Command::RemoveMedia(id) => self.remove_media(id),
             Command::SelectMedia(id) => {
                 self.selected_media = id;
                 Ok(())
             }
             Command::Append(id) => {
-                let id = id
-                    .or(self.selected_media)
-                    .ok_or("select a file in the media list first")?;
-                let m = self.project.media(id).cloned().ok_or("no such media")?;
-                self.edit(now, |tl| tl.append(&m).map(|_| ()))
+                let m = self
+                    .usable(id)
+                    .cloned()
+                    .ok_or("select a file that is ready in the media list first")?;
+                self.edit(now, |e| e.timeline.append(&m).map(|_| ()).map_err(err))
             }
             Command::SelectClip(id) => {
                 self.selected_clip = id;
                 Ok(())
             }
             Command::Split => {
-                let min = self.fps().frame_duration();
+                let min = self.frame_len();
                 let at = self.playhead;
-                self.edit(now, |tl| tl.split(at, min).map(|_| ()))
+                self.edit(now, |e| e.timeline.split(at, min).map(|_| ()).map_err(err))
             }
             Command::Copy => {
                 let id = self
@@ -373,7 +720,7 @@ impl AppState {
                     .target_clip()
                     .ok_or(EditError::NothingSelected.to_string())?;
                 let clip = self.project.timeline.get(id).copied();
-                self.edit(now, |tl| tl.remove(id).map(|_| ()))?;
+                self.edit(now, |e| e.timeline.remove(id).map(|_| ()).map_err(err))?;
                 if cmd == Command::Cut {
                     self.clipboard = clip;
                 }
@@ -387,11 +734,11 @@ impl AppState {
                 if self.project.media(clip.media).is_none() {
                     return Err("the copied clip's source is no longer in the project".into());
                 }
-                let min = self.fps().frame_duration();
+                let min = self.frame_len();
                 let at = self.playhead;
                 let mut new_id = None;
-                self.edit(now, |tl| {
-                    new_id = Some(tl.insert_at(&clip, at, min)?);
+                self.edit(now, |e| {
+                    new_id = Some(e.timeline.insert_at(&clip, at, min).map_err(err)?);
                     Ok(())
                 })?;
                 self.selected_clip = new_id;
@@ -401,7 +748,7 @@ impl AppState {
                 let id = self
                     .target_clip()
                     .ok_or(EditError::NothingSelected.to_string())?;
-                self.edit(now, |tl| tl.merge(id))
+                self.edit(now, |e| e.timeline.merge(id).map_err(err))
             }
             Command::SetTrim {
                 clip,
@@ -413,15 +760,17 @@ impl AppState {
                     .timeline
                     .get(clip)
                     .ok_or(EditError::NoSuchClip.to_string())?;
-                let dur = self
-                    .project
-                    .media(c.media)
-                    .map(|m| m.duration)
-                    .ok_or("no such media")?;
-                let min = self.fps().frame_duration();
-                self.edit(now, |tl| tl.trim(clip, src_in, src_out, dur, min))
+                let dur = self.duration_of(c.media)?;
+                let min = self.frame_len();
+                self.edit(now, |e| {
+                    e.timeline
+                        .trim(clip, src_in, src_out, dur, min)
+                        .map_err(err)
+                })
             }
-            Command::MoveClip { clip, to } => self.edit(now, |tl| tl.move_to(clip, to)),
+            Command::MoveClip { clip, to } => {
+                self.edit(now, |e| e.timeline.move_to(clip, to).map_err(err))
+            }
             Command::MoveLeft | Command::MoveRight => {
                 let id = self
                     .target_clip()
@@ -437,37 +786,250 @@ impl AppState {
                     i + 1
                 };
                 self.selected_clip = Some(id);
-                self.edit(now, |tl| tl.move_to(id, to))
+                self.edit(now, |e| e.timeline.move_to(id, to).map_err(err))
             }
-            Command::ToggleFade(b) => self.edit(now, |tl| tl.toggle_fade(b).map(|_| ())),
+            Command::ToggleFade(b) => {
+                self.edit(now, |e| e.timeline.toggle_fade(b).map(|_| ()).map_err(err))
+            }
             Command::ToggleFadeAtPlayhead => {
                 let (b, _) = self
                     .project
                     .timeline
                     .nearest_boundary(self.playhead)
                     .ok_or(EditError::NoSuchBoundary.to_string())?;
-                self.edit(now, |tl| tl.toggle_fade(b).map(|_| ()))
+                self.edit(now, |e| e.timeline.toggle_fade(b).map(|_| ()).map_err(err))
+            }
+            Command::PlaceMusic(id) => {
+                let m = self
+                    .usable(id)
+                    .cloned()
+                    .ok_or("select an audio file that is ready in the media list first")?;
+                let (at, min) = (self.playhead, self.frame_len());
+                let mut placed = None;
+                self.edit(now, |e| {
+                    placed = Some(e.music.place(&m, at, min).map_err(err)?);
+                    Ok(())
+                })?;
+                self.selected_music = placed;
+                Ok(())
+            }
+            Command::SelectMusic(id) => {
+                self.selected_music = id;
+                Ok(())
+            }
+            Command::MoveMusic { clip, start } => {
+                self.edit(now, |e| e.music.move_to(clip, start).map_err(err))
+            }
+            Command::TrimMusic {
+                clip,
+                src_in,
+                src_out,
+            } => {
+                let c = self.project.music.get(clip).ok_or("no such music clip")?;
+                let dur = self.duration_of(c.media)?;
+                let min = self.frame_len();
+                self.edit(now, |e| {
+                    e.music.trim(clip, src_in, src_out, dur, min).map_err(err)
+                })
+            }
+            Command::SplitMusic => {
+                let (at, min) = (self.playhead, self.frame_len());
+                self.edit(now, |e| e.music.split(at, min).map(|_| ()).map_err(err))
+            }
+            Command::DeleteMusic => {
+                let id = self.selected_music.ok_or("select a music clip first")?;
+                self.edit(now, |e| e.music.remove(id).map(|_| ()).map_err(err))?;
+                self.selected_music = None;
+                Ok(())
+            }
+            Command::SetMix(mut mix) => {
+                mix.video_volume = mix.video_volume.min(100);
+                mix.music_volume = mix.music_volume.min(100);
+                if mix == self.project.mix {
+                    return Ok(());
+                }
+                self.edit(now, |e| {
+                    e.mix = mix;
+                    Ok(())
+                })
+            }
+            Command::GenerateSubtitles => {
+                if !stt::available() {
+                    return Err("subtitle generation is not available in this build".into());
+                }
+                if self.project.subtitles.has_edits() {
+                    self.modal = Some(Modal::ConfirmRegenerate);
+                    return Ok(());
+                }
+                self.generate_subtitles()
+            }
+            Command::ConfirmRegenerate => {
+                self.modal = None;
+                self.generate_subtitles()
+            }
+            Command::ModelConsent(choice) => {
+                self.modal = None;
+                let store = self
+                    .model_store
+                    .clone()
+                    .ok_or("no folder for the speech model")?;
+                let source = match choice {
+                    ConsentChoice::Cancel => return Ok(()),
+                    ConsentChoice::Download => ModelSource::Download,
+                    ConsentChoice::LocalFile => match self.dialogs.pick_model_file() {
+                        Some(p) => ModelSource::LocalFile(p),
+                        None => return Ok(()),
+                    },
+                };
+                let cancel = Arc::new(AtomicBool::new(false));
+                let rx =
+                    stt::install_model(store, source, self.fetcher.clone(), Arc::clone(&cancel));
+                self.model_install = Some((rx, cancel));
+                self.model_progress = Some(0.0);
+                self.status = "Installing the speech model…".into();
+                Ok(())
+            }
+            Command::CancelSubtitles => {
+                if let Some(h) = &self.stt {
+                    h.cancel();
+                }
+                if let Some((_, c)) = &self.model_install {
+                    c.store(true, Ordering::SeqCst);
+                }
+                Ok(())
+            }
+            Command::AddSubtitle => {
+                let (at, min) = (self.playhead, self.frame_len());
+                let mut added = None;
+                self.edit(now, |e| {
+                    added = Some(
+                        e.subtitles
+                            .add_at(&e.timeline, at, "New subtitle", min)
+                            .map_err(err)?,
+                    );
+                    Ok(())
+                })?;
+                self.selected_line = added;
+                Ok(())
+            }
+            Command::DeleteSubtitle(id) => {
+                self.edit(now, |e| e.subtitles.delete(id).map_err(err))?;
+                if self.selected_line == Some(id) {
+                    self.selected_line = None;
+                }
+                Ok(())
+            }
+            Command::SetSubtitleText(id, text) => {
+                let cur = self
+                    .project
+                    .subtitles
+                    .get(id)
+                    .ok_or("no such subtitle line")?;
+                if cur.text == crate::subtitles::clean_text(&text) {
+                    return Ok(());
+                }
+                self.edit(now, |e| e.subtitles.set_text(id, &text).map_err(err))
+            }
+            Command::RetimeSubtitle {
+                line,
+                clip,
+                start,
+                end,
+            } => {
+                let min = self.frame_len();
+                self.edit(now, |e| {
+                    e.subtitles
+                        .retime(line, &e.timeline, clip, start, end, min)
+                        .map_err(err)
+                })
+            }
+            Command::SelectLine(id) => {
+                self.selected_line = id;
+                Ok(())
+            }
+            Command::SetPreset(p) => {
+                if p == self.project.subtitles.preset {
+                    return Ok(());
+                }
+                self.edit(now, |e| {
+                    e.subtitles.preset = p;
+                    Ok(())
+                })
+            }
+            Command::SetLanguage(lang) => {
+                if let Some(l) = &lang
+                    && !(2..=3).contains(&l.len())
+                {
+                    return Err(format!("'{l}' is not a language code"));
+                }
+                if let Some(l) = &lang
+                    && !l.chars().all(|c| c.is_ascii_lowercase())
+                {
+                    return Err(format!("'{l}' is not a language code"));
+                }
+                self.edit(now, |e| {
+                    e.subtitles.language_overridden = lang.is_some();
+                    e.subtitles.language = lang;
+                    Ok(())
+                })
+            }
+            Command::SetProxiesEnabled(on) => {
+                self.settings.proxies_enabled = on;
+                self.preview.proxies = on;
+                if let Some(sp) = &self.settings_path {
+                    self.settings.save(sp)?;
+                }
+                if on {
+                    let ids: Vec<MediaId> = self.project.media.iter().map(|m| m.id).collect();
+                    for id in ids {
+                        self.maybe_proxy(id);
+                    }
+                } else {
+                    let ids: Vec<MediaId> = self.proxy_jobs.keys().copied().collect();
+                    for id in ids {
+                        self.cancel_proxy(id);
+                    }
+                }
+                self.refresh_still(now);
+                Ok(())
+            }
+            Command::ClearProxyCache => {
+                let cache = self.proxy_cache.clone().ok_or("no proxy cache")?;
+                let busy: Vec<String> = self.proxy_jobs.values().map(|(k, _)| k.clone()).collect();
+                let freed = cache.clear(&busy);
+                for m in &mut self.project.media {
+                    if let ProxyState::Ready(p) = &m.proxy
+                        && !p.is_file()
+                    {
+                        m.proxy = ProxyState::None;
+                    }
+                }
+                self.proxy_cache_size = cache.size();
+                self.status = format!("Freed {} MB of proxies", freed / 1_000_000);
+                self.refresh_still(now);
+                Ok(())
             }
             Command::Undo => {
                 let prev = self
                     .history
-                    .undo(self.project.timeline.clone())
+                    .undo(self.project.edit())
                     .ok_or(EditError::NothingToUndo.to_string())?;
-                self.replace_timeline(prev, now);
+                self.replace_edit(prev, now);
                 Ok(())
             }
             Command::Redo => {
                 let next = self
                     .history
-                    .redo(self.project.timeline.clone())
+                    .redo(self.project.edit())
                     .ok_or(EditError::NothingToRedo.to_string())?;
-                self.replace_timeline(next, now);
+                self.replace_edit(next, now);
                 Ok(())
             }
             Command::PlayPause => {
                 if self.preview.is_playing() {
                     self.preview.pause(now);
                     self.playhead = self.preview.position(now);
+                    self.refresh_still(now);
                     Ok(())
                 } else {
                     self.preview.play(&self.project, self.playhead, now)
@@ -515,18 +1077,35 @@ impl AppState {
                 self.dispatch_inner(Command::RetryFfmpeg, now)
             }
             Command::RetryFfmpeg => {
-                self.ffmpeg = check_ffmpeg(self.runner.as_ref(), &self.settings);
-                self.preview = Preview::new(
-                    preview_config(&self.ffmpeg, &self.runner),
-                    crate::preview::default_sink(),
-                );
-                self.ffmpeg.as_ref().map(|_| ()).map_err(|e| e.clone())
+                self.start_ffmpeg_check();
+                Ok(())
+            }
+            Command::ShowAbout => {
+                self.modal = Some(Modal::About);
+                Ok(())
+            }
+            Command::CloseModal => {
+                self.modal = None;
+                Ok(())
+            }
+            Command::RemoveDesktopIntegration => {
+                crate::desktop::remove_integration().map_err(|e| e.to_string())?;
+                self.desktop_integrated = false;
+                self.status = "Removed from the application menu".into();
+                Ok(())
             }
             Command::DismissNotice => {
                 self.notice = None;
                 Ok(())
             }
         }
+    }
+
+    fn duration_of(&self, id: MediaId) -> Result<Micros, String> {
+        self.project
+            .media(id)
+            .map(|m| m.duration)
+            .ok_or_else(|| "no such media".to_string())
     }
 
     fn export_extension(&self) -> String {
@@ -540,55 +1119,242 @@ impl AppState {
             .unwrap_or_else(|| "mp4".into())
     }
 
+    /// Save; asks for a path when the project was never saved. `Ok(false)`: the user
+    /// cancelled the file dialog.
+    fn save_interactive(&mut self) -> Result<bool, String> {
+        match self.project_path.clone() {
+            Some(p) => self.save_to(p).map(|_| true),
+            None => match self.dialogs.pick_project_save() {
+                Some(p) => self.save_as(p).map(|_| true),
+                None => Ok(false),
+            },
+        }
+    }
+
+    fn save_as(&mut self, mut p: PathBuf) -> Result<(), String> {
+        if p.extension().is_none() {
+            p.set_extension(project::EXTENSION);
+        }
+        self.save_to(p)
+    }
+
     fn save_to(&mut self, path: PathBuf) -> Result<(), String> {
         project::save(&self.project, &path).map_err(|e| e.to_string())?;
         self.project_path = Some(path);
-        self.dirty = false;
+        self.saved = self.project.doc();
         self.status = "Project saved".into();
         Ok(())
     }
 
+    fn open_now(&mut self, path: PathBuf, now: Instant) -> Result<(), String> {
+        let (p, missing) = project::load(&path).map_err(|e| e.to_string())?;
+        self.load_project(p, Some(path), now);
+        if !missing.is_empty() {
+            self.notice = Some(format!(
+                "These source files could not be found:\n{}",
+                missing.join("\n")
+            ));
+        }
+        self.status = "Project opened".into();
+        Ok(())
+    }
+
+    /// Stops everything that belongs to the current project.
+    fn cancel_project_jobs(&mut self) {
+        for c in self.probe_cancel.values() {
+            c.store(true, Ordering::SeqCst);
+        }
+        self.probe_cancel.clear();
+        for (_, c) in self.proxy_jobs.values() {
+            c.store(true, Ordering::SeqCst);
+        }
+        self.proxy_jobs.clear();
+        // fresh pools and channels: late results of the old project go nowhere
+        self.probes = probe_pool(&self.sched, &self.runner);
+        self.proxy_pool = proxy_pool();
+        self.proxy_events = channel();
+        self.stt = None;
+        self.stt_progress = None;
+    }
+
     fn load_project(&mut self, p: Project, path: Option<PathBuf>, now: Instant) {
+        self.cancel_project_jobs();
         self.preview.invalidate(now);
+        self.preview.forget_frame();
+        self.saved = p.doc();
         self.project = p;
         self.project_path = path;
-        self.dirty = false;
         self.history.clear();
         self.selected_clip = None;
         self.selected_media = None;
+        self.selected_music = None;
+        self.selected_line = None;
         self.clipboard = None;
         self.frame = None;
         self.zoom = 0.0;
+        self.close_allowed = false;
+        let ids: Vec<MediaId> = self.project.media.iter().map(|m| m.id).collect();
+        for id in ids {
+            self.maybe_proxy(id);
+        }
         self.seek(Micros::ZERO, now);
+        self.refresh_dirty();
     }
 
+    /// Adds the files to the list at once ("analysing") and probes them in the background.
     fn import(&mut self, files: Vec<PathBuf>) -> Result<(), String> {
         let info = self.ffmpeg.as_ref().map_err(|e| e.clone())?;
         let ffprobe = info.ffprobe.clone();
-        let mut errors = Vec::new();
-        let mut added = 0;
-        for f in files {
+        let n = files.len();
+        for path in files {
             let id = self.project.new_media_id();
-            match media::probe(self.runner.as_ref(), &ffprobe, &f, id) {
-                Ok(m) => {
-                    self.selected_media = Some(m.id);
-                    self.project.add_media(m);
-                    added += 1;
-                }
-                Err(e) => errors.push(e.to_string()),
+            self.project.add_media(MediaItem::analysing(id, &path));
+            let cancel = Arc::new(AtomicBool::new(false));
+            self.probe_cancel.insert(id, Arc::clone(&cancel));
+            self.probes.submit(ProbeJob {
+                id,
+                path,
+                ffprobe: ffprobe.clone(),
+                cancel,
+            });
+        }
+        self.status = format!("Analysing {n} file(s)…");
+        Ok(())
+    }
+
+    fn remove_media(&mut self, id: MediaId) -> Result<(), String> {
+        let m = self.project.media(id).ok_or("no such media")?;
+        if self.media_in_use(id) {
+            return Err(format!("'{}' is used on the timeline", m.name));
+        }
+        let name = m.name.clone();
+        if let Some(c) = self.probe_cancel.remove(&id) {
+            c.store(true, Ordering::SeqCst);
+        }
+        self.cancel_proxy(id);
+        self.project.media.retain(|m| m.id != id);
+        // Subtitle lines of the file go too; an undo step must never bring back a clip
+        // whose file is gone, so the history is dropped when it refers to the file.
+        self.project.subtitles.lines.retain(|l| l.media != id);
+        if self.history.any(|e| {
+            e.timeline.clips.iter().any(|c| c.media == id)
+                || e.music.clips.iter().any(|c| c.media == id)
+                || e.subtitles.lines.iter().any(|l| l.media == id)
+        }) {
+            self.history.clear();
+        }
+        if self.selected_media == Some(id) {
+            self.selected_media = None;
+        }
+        if self.clipboard.is_some_and(|c| c.media == id) {
+            self.clipboard = None;
+        }
+        self.status = format!("Removed {name}");
+        Ok(())
+    }
+
+    /// Queues a proxy for `id` when the source is big for this machine.
+    fn maybe_proxy(&mut self, id: MediaId) {
+        if !self.settings.proxies_enabled || self.proxy_jobs.contains_key(&id) {
+            return;
+        }
+        let (Some(cache), Ok(info)) = (&self.proxy_cache, &self.ffmpeg) else {
+            return;
+        };
+        let Some(m) = self.project.media(id) else {
+            return;
+        };
+        let wanted = m.is_ready()
+            && !m.missing
+            && m.has_video()
+            && matches!(m.proxy, ProxyState::None)
+            && proxy::format_needs_proxy(&m.format, self.machine);
+        if !wanted {
+            return;
+        }
+        let Ok(key) = proxy::key_of(&m.path) else {
+            return;
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let job = ProxyJob {
+            worker: ProxyWorker {
+                runner: self.limited(Priority::Background),
+                ffmpeg: info.ffmpeg.clone(),
+                version: info.version,
+                cache: cache.clone(),
+            },
+            task: ProxyTask {
+                media: id,
+                source: m.path.clone(),
+                key: key.clone(),
+                format: m.format.clone(),
+                duration: m.duration,
+                cancel: Arc::clone(&cancel),
+            },
+            events: self.proxy_events.0.clone(),
+        };
+        self.proxy_jobs.insert(id, (key, cancel));
+        self.proxy_pool.submit(job);
+        if let Some(m) = self.project.media.iter_mut().find(|m| m.id == id) {
+            m.proxy = ProxyState::Queued;
+        }
+    }
+
+    fn cancel_proxy(&mut self, id: MediaId) {
+        if let Some((_, c)) = self.proxy_jobs.remove(&id) {
+            c.store(true, Ordering::SeqCst);
+            if let Some(m) = self.project.media.iter_mut().find(|m| m.id == id)
+                && matches!(m.proxy, ProxyState::Queued | ProxyState::Generating(_))
+            {
+                m.proxy = ProxyState::None;
             }
         }
-        if added > 0 {
-            self.dirty = true;
+    }
+
+    fn generate_subtitles(&mut self) -> Result<(), String> {
+        if self.stt.is_some() {
+            return Err("subtitles are already being generated".into());
         }
-        self.status = format!("Imported {added} file(s)");
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            let msg = format!("Some files could not be imported:\n{}", errors.join("\n"));
-            self.notice = Some(msg.clone());
-            Err(msg)
+        let info = self.ffmpeg.as_ref().map_err(|e| e.clone())?;
+        let store = self
+            .model_store
+            .clone()
+            .ok_or("no folder for the speech model")?;
+        if !store.is_installed() {
+            self.modal = Some(Modal::ModelConsent);
+            return Ok(());
         }
+        let mut sources: Vec<(MediaId, PathBuf)> = Vec::new();
+        for c in &self.project.timeline.clips {
+            if sources.iter().any(|(id, _)| *id == c.media) {
+                continue;
+            }
+            if let Some(m) = self.project.media(c.media)
+                && m.format.has_audio()
+                && !m.missing
+            {
+                sources.push((m.id, m.path.clone()));
+            }
+        }
+        if sources.is_empty() {
+            return Err("the clips on the timeline have no sound to transcribe".into());
+        }
+        let subs = &self.project.subtitles;
+        let job = SttJob {
+            sources,
+            language: subs.language.clone().filter(|_| subs.language_overridden),
+            ffmpeg: info.ffmpeg.clone(),
+            model: store.path(),
+            threads: self.machine.stt_threads(),
+        };
+        self.stt = Some(stt::start(
+            job,
+            self.limited(Priority::Background),
+            Arc::clone(&self.transcriber),
+        ));
+        self.stt_progress = Some(0.0);
+        self.status = "Generating subtitles…".into();
+        Ok(())
     }
 
     fn start_export(&mut self, path: PathBuf) -> Result<(), String> {
@@ -604,8 +1370,10 @@ impl AppState {
             ffprobe: info.ffprobe.clone(),
             version: info.version,
             encoders: info.encoders.clone(),
+            can_burn_subtitles: info.has_subtitles(),
         };
-        self.export = Some(export::start(job, Arc::clone(&self.runner)));
+        let runner: Arc<dyn Runner> = Arc::new(self.limited(Priority::Export));
+        self.export = Some(export::start(job, runner));
         self.export_status = ExportStatus {
             running: true,
             progress: 0.0,
@@ -615,29 +1383,42 @@ impl AppState {
         Ok(())
     }
 
-    /// Applies an edit to a copy of the timeline; on success records undo and refreshes.
+    /// Applies an edit to a copy of the editable state; on success records undo and
+    /// refreshes.
     fn edit(
         &mut self,
         now: Instant,
-        f: impl FnOnce(&mut Timeline) -> Result<(), EditError>,
+        f: impl FnOnce(&mut Edit) -> Result<(), String>,
     ) -> Result<(), String> {
-        let before = self.project.timeline.clone();
-        let mut tl = before.clone();
-        f(&mut tl).map_err(|e| e.to_string())?;
+        let before = self.project.edit();
+        let mut e = before.clone();
+        f(&mut e)?;
         self.history.record(before);
-        self.replace_timeline(tl, now);
+        self.replace_edit(e, now);
         Ok(())
     }
 
-    fn replace_timeline(&mut self, tl: Timeline, now: Instant) {
-        self.project.timeline = tl;
-        self.dirty = true;
+    fn replace_edit(&mut self, e: Edit, now: Instant) {
+        self.project.set_edit(e);
         if let Some(id) = self.selected_clip
             && self.project.timeline.get(id).is_none()
         {
             self.selected_clip = None;
         }
-        self.preview.invalidate(now);
+        if let Some(id) = self.selected_music
+            && self.project.music.get(id).is_none()
+        {
+            self.selected_music = None;
+        }
+        if let Some(id) = self.selected_line
+            && self.project.subtitles.get(id).is_none()
+        {
+            self.selected_line = None;
+        }
+        if self.preview.is_playing() {
+            self.preview.invalidate(now);
+            self.playhead = self.preview.position(now);
+        }
         let t = self.playhead;
         self.seek(t, now);
     }
@@ -648,6 +1429,7 @@ impl AppState {
         self.playhead = t;
         if self.project.timeline.clips.is_empty() {
             self.preview.invalidate(now);
+            self.preview.forget_frame();
             self.frame = None;
             return;
         }
@@ -656,8 +1438,31 @@ impl AppState {
         }
     }
 
-    /// Per-frame housekeeping: preview frames, playhead, export events.
+    /// Asks for the picture at the playhead again (it is rendered only if it changed).
+    fn refresh_still(&mut self, now: Instant) {
+        if !self.preview.is_playing()
+            && !self.project.timeline.clips.is_empty()
+            && self.ffmpeg.is_ok()
+        {
+            let t = self.playhead;
+            let _ = self.preview.request_still(&self.project, t, now);
+        }
+    }
+
+    /// Per-frame housekeeping: background results, preview frames, playhead, export.
     pub fn tick(&mut self, now: Instant) {
+        if let Some(rx) = &self.ffmpeg_check
+            && let Ok(r) = rx.try_recv()
+        {
+            self.set_ffmpeg(r);
+        }
+        for p in (self.open_requests)() {
+            let _ = self.dispatch(Command::OpenProject(p), now);
+        }
+        self.tick_probes();
+        self.tick_proxies(now);
+        self.tick_stt(now);
+        self.tick_model();
         if let Some(f) = self.preview.poll(now) {
             self.frame = Some(f);
             self.frame_serial += 1;
@@ -693,27 +1498,157 @@ impl AppState {
         }
     }
 
+    fn tick_probes(&mut self) {
+        let results = self.probes.results();
+        if results.is_empty() {
+            return;
+        }
+        let mut rejected = Vec::new();
+        for (id, r) in results {
+            if self.probe_cancel.remove(&id).is_none() {
+                continue; // removed meanwhile
+            }
+            let Some(slot) = self.project.media.iter_mut().find(|m| m.id == id) else {
+                continue;
+            };
+            match r {
+                Ok(item) => {
+                    *slot = item;
+                    if self.selected_media.is_none() {
+                        self.selected_media = Some(id);
+                    }
+                    self.maybe_proxy(id);
+                }
+                Err(e) => {
+                    slot.status = MediaStatus::Rejected(e.clone());
+                    rejected.push(e);
+                }
+            }
+        }
+        if self.probe_cancel.is_empty() {
+            self.status = if rejected.is_empty() {
+                "Import finished".into()
+            } else {
+                format!("Some files could not be imported: {}", rejected.join("; "))
+            };
+        }
+        self.refresh_dirty();
+    }
+
+    fn tick_proxies(&mut self, now: Instant) {
+        let events: Vec<ProxyEvent> = self.proxy_events.1.try_iter().collect();
+        let mut changed = false;
+        for ev in events {
+            let (id, state) = match ev {
+                ProxyEvent::Progress(id, p) => (id, ProxyState::Generating(p)),
+                ProxyEvent::Ready(id, p) => (id, ProxyState::Ready(p)),
+                ProxyEvent::Failed(id, e) => (id, ProxyState::Failed(e)),
+            };
+            if !self.proxy_jobs.contains_key(&id) {
+                continue; // cancelled
+            }
+            if !matches!(state, ProxyState::Generating(_)) {
+                self.proxy_jobs.remove(&id);
+                changed = true;
+            }
+            if let Some(m) = self.project.media.iter_mut().find(|m| m.id == id) {
+                m.proxy = state;
+            }
+        }
+        if changed {
+            self.proxy_cache_size = self.proxy_cache.as_ref().map(ProxyCache::size).unwrap_or(0);
+            self.refresh_still(now);
+        }
+    }
+
+    fn tick_stt(&mut self, now: Instant) {
+        let Some(h) = &self.stt else { return };
+        let events: Vec<SttEvent> = h.rx.try_iter().collect();
+        for ev in events {
+            match ev {
+                SttEvent::Progress(p) => self.stt_progress = Some(p),
+                SttEvent::Done { language, lines } => {
+                    self.stt = None;
+                    self.stt_progress = None;
+                    let n = lines.len();
+                    let _ = self.edit(now, |e| {
+                        e.subtitles.replace_all(lines, language);
+                        Ok(())
+                    });
+                    self.refresh_dirty();
+                    self.status = format!("Generated {n} subtitle line(s)");
+                }
+                SttEvent::Failed(m) => {
+                    self.stt = None;
+                    self.stt_progress = None;
+                    self.notice = Some(format!("Subtitles could not be generated: {m}"));
+                    self.status = "Subtitle generation failed".into();
+                }
+                SttEvent::Cancelled => {
+                    self.stt = None;
+                    self.stt_progress = None;
+                    self.status = "Subtitle generation cancelled".into();
+                }
+            }
+        }
+    }
+
+    fn tick_model(&mut self) {
+        let Some((rx, _)) = &self.model_install else {
+            return;
+        };
+        let events: Vec<ModelEvent> = rx.try_iter().collect();
+        for ev in events {
+            match ev {
+                ModelEvent::Progress(p) => self.model_progress = Some(p),
+                ModelEvent::Installed(_) => {
+                    self.model_install = None;
+                    self.model_progress = None;
+                    self.status = "Speech model installed".into();
+                    if let Err(e) = self.generate_subtitles() {
+                        self.status = e;
+                    }
+                }
+                ModelEvent::Failed(m) => {
+                    self.model_install = None;
+                    self.model_progress = None;
+                    self.notice = Some(format!("The speech model could not be installed: {m}"));
+                }
+            }
+        }
+    }
+
     fn finish_export(&mut self, status: String) {
         self.export = None;
         self.export_status.running = false;
         self.status = status;
     }
 
-    /// Window title.
+    /// Window title: project name, a dot when there are unsaved changes.
     pub fn title(&self) -> String {
         let name = self
             .project_path
             .as_deref()
             .map(media::display_name)
-            .unwrap_or_else(|| "untitled".into());
-        format!("{}{name} — videolore", if self.dirty { "* " } else { "" })
+            .unwrap_or_else(|| "Untitled".into());
+        format!("{name}{} — videolore", if self.dirty { " •" } else { "" })
+    }
+
+    /// True while background work may change what is shown (repaint soon).
+    pub fn busy(&self) -> bool {
+        self.preview.busy()
+            || self.is_exporting()
+            || self.is_generating()
+            || self.ffmpeg_checking
+            || !self.probe_cancel.is_empty()
+            || !self.proxy_jobs.is_empty()
     }
 
     /// Waits for a running export (tests and shutdown).
     pub fn wait_export(&mut self, now: Instant) {
         if let Some(h) = self.export.take() {
             let events = h.join();
-            let (tx, rx) = std::sync::mpsc::channel();
+            let (tx, rx) = channel();
             for e in events {
                 let _ = tx.send(e);
             }
@@ -723,12 +1658,17 @@ impl AppState {
     }
 }
 
+fn err(e: impl std::fmt::Display) -> String {
+    e.to_string()
+}
+
 fn preview_config(
     ffmpeg: &Result<FfmpegInfo, String>,
+    sched: &Arc<Scheduler>,
     runner: &Arc<dyn Runner>,
 ) -> Option<PreviewConfig> {
     ffmpeg.as_ref().ok().map(|i| PreviewConfig {
-        runner: Arc::clone(runner),
+        runner: sched.runner(Priority::Preview, Arc::clone(runner)),
         ffmpeg: i.ffmpeg.clone(),
         version: i.version,
         encoders: i.encoders.clone(),
@@ -736,475 +1676,4 @@ fn preview_config(
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
-    use super::*;
-    use crate::ffmpeg::FfVersion;
-    use crate::ffmpeg::fake::{FakeRunner, ok};
-    use crate::media::tests::MP4_JSON;
-    use crate::preview::NullSink;
-
-    #[derive(Default, Clone)]
-    pub struct FakeDialogs {
-        pub media: Vec<PathBuf>,
-        pub open: Option<PathBuf>,
-        pub save: Option<PathBuf>,
-        pub export: Option<PathBuf>,
-        pub ffmpeg: Option<PathBuf>,
-    }
-
-    impl Dialogs for FakeDialogs {
-        fn pick_media(&mut self) -> Vec<PathBuf> {
-            self.media.clone()
-        }
-        fn pick_project_open(&mut self) -> Option<PathBuf> {
-            self.open.clone()
-        }
-        fn pick_project_save(&mut self) -> Option<PathBuf> {
-            self.save.clone()
-        }
-        fn pick_export(&mut self, _extension: &str) -> Option<PathBuf> {
-            self.export.clone()
-        }
-        fn pick_ffmpeg(&mut self) -> Option<PathBuf> {
-            self.ffmpeg.clone()
-        }
-    }
-
-    const AUDIO_JSON: &str = r#"{"streams":[{"codec_type":"audio","codec_name":"mp3"}],
-        "format":{"format_name":"mp3","duration":"3.0"}}"#;
-
-    /// ffprobe answers by file name; ffmpeg writes its output and reports progress.
-    pub fn runner() -> FakeRunner {
-        FakeRunner::default().on(|prog, a| {
-            let last = a.last()?.clone();
-            if prog.ends_with("ffprobe") {
-                if a.iter().any(|x| x == "nokey") {
-                    return ok("0.0\n");
-                }
-                if last.ends_with(".mp3") {
-                    return ok(AUDIO_JSON);
-                }
-                if last.ends_with(".mp4") {
-                    return ok(MP4_JSON);
-                }
-                return crate::ffmpeg::fake::fail("Invalid data found");
-            }
-            if let Some(out) = last.strip_prefix("file:") {
-                std::fs::write(out, b"exported").ok()?;
-                return ok("out_time_us=2500000\nprogress=end\n");
-            }
-            ok("")
-        })
-    }
-
-    pub fn info() -> FfmpegInfo {
-        FfmpegInfo {
-            ffmpeg: "/usr/bin/ffmpeg".into(),
-            ffprobe: "/usr/bin/ffprobe".into(),
-            version: FfVersion::Release(6, 1, 1),
-            filters: Default::default(),
-            encoders: ["libx264", "aac"].iter().map(|s| s.to_string()).collect(),
-        }
-    }
-
-    pub fn state(dialogs: FakeDialogs) -> AppState {
-        AppState::with_ffmpeg(
-            Ok(info()),
-            Arc::new(runner()),
-            Box::new(dialogs),
-            Box::new(NullSink),
-        )
-    }
-
-    /// Two 5 s video files and one audio file in `dir`.
-    pub fn files(dir: &Path) -> Vec<PathBuf> {
-        ["a.mp4", "b.mp4", "song.mp3"]
-            .iter()
-            .map(|n| {
-                let p = dir.join(n);
-                std::fs::write(&p, n.as_bytes()).unwrap();
-                p
-            })
-            .collect()
-    }
-
-    fn s(n: i64) -> Micros {
-        Micros(n * 1_000_000)
-    }
-
-    // covers: REQ-025, REQ-005, REQ-006, REQ-007, REQ-008, REQ-009, REQ-010, REQ-011, REQ-004
-    #[test]
-    fn every_edit_goes_through_the_dispatcher() {
-        let dir = tempfile::tempdir().unwrap();
-        let f = files(dir.path());
-        let mut app = state(FakeDialogs {
-            media: f.clone(),
-            ..Default::default()
-        });
-        let now = Instant::now();
-        let run = |app: &mut AppState, c: Command| app.dispatch(c, now);
-        run(&mut app, Command::PickImport).unwrap();
-        assert_eq!(app.project.media.len(), 3);
-        let (a, b, song) = (
-            app.project.media[0].id,
-            app.project.media[1].id,
-            app.project.media[2].id,
-        );
-        // REQ-005 append
-        run(&mut app, Command::Append(Some(a))).unwrap();
-        run(&mut app, Command::SelectMedia(Some(b))).unwrap();
-        run(&mut app, Command::Append(None)).unwrap();
-        assert!(!app.is_enabled(&Command::Append(Some(song))));
-        assert!(run(&mut app, Command::Append(Some(song))).is_err());
-        assert_eq!(app.project.timeline.duration(), s(10));
-        // REQ-006 split at the playhead
-        run(&mut app, Command::Seek(s(2))).unwrap();
-        assert!(app.is_enabled(&Command::Split));
-        run(&mut app, Command::Split).unwrap();
-        assert_eq!(app.project.timeline.clips.len(), 3);
-        assert_eq!(app.project.timeline.duration(), s(10));
-        // REQ-008 merge back (enabled only for contiguous parts)
-        let first = app.project.timeline.clips[0].id;
-        run(&mut app, Command::SelectClip(Some(first))).unwrap();
-        assert!(app.is_enabled(&Command::Merge));
-        run(&mut app, Command::Merge).unwrap();
-        assert_eq!(app.project.timeline.clips.len(), 2);
-        assert!(!app.is_enabled(&Command::Merge));
-        // REQ-007 copy / paste at playhead (ripple) / cut
-        run(&mut app, Command::Copy).unwrap();
-        run(&mut app, Command::Seek(s(5))).unwrap();
-        run(&mut app, Command::Paste).unwrap();
-        assert_eq!(app.project.timeline.duration(), s(15));
-        let pasted = app.selected_clip.unwrap();
-        assert_eq!(app.project.timeline.index_of(pasted), Some(1));
-        run(&mut app, Command::Cut).unwrap();
-        assert_eq!(app.project.timeline.duration(), s(10));
-        assert!(app.clipboard.is_some());
-        // REQ-009 trim
-        let c0 = app.project.timeline.clips[0].id;
-        run(
-            &mut app,
-            Command::SetTrim {
-                clip: c0,
-                src_in: s(1),
-                src_out: s(99),
-            },
-        )
-        .unwrap();
-        assert_eq!(app.project.timeline.clips[0].src_in, s(1));
-        assert_eq!(app.project.timeline.clips[0].src_out, s(5));
-        // REQ-010 move
-        run(&mut app, Command::SelectClip(Some(c0))).unwrap();
-        assert!(!app.is_enabled(&Command::MoveLeft));
-        run(&mut app, Command::MoveRight).unwrap();
-        assert_eq!(app.project.timeline.index_of(c0), Some(1));
-        run(&mut app, Command::MoveLeft).unwrap();
-        run(&mut app, Command::MoveClip { clip: c0, to: 1 }).unwrap();
-        assert_eq!(app.project.timeline.index_of(c0), Some(1));
-        // REQ-011 fades
-        run(&mut app, Command::Seek(s(4))).unwrap();
-        run(&mut app, Command::ToggleFadeAtPlayhead).unwrap();
-        assert!(app.project.timeline.has_fade(0));
-        run(&mut app, Command::ToggleFade(0)).unwrap();
-        assert!(!app.project.timeline.has_fade(0));
-        // REQ-004 undo / redo
-        let before = app.project.timeline.clone();
-        run(&mut app, Command::Undo).unwrap();
-        assert!(app.project.timeline.has_fade(0));
-        run(&mut app, Command::Redo).unwrap();
-        assert_eq!(app.project.timeline, before);
-        assert!(run(&mut app, Command::Redo).is_err());
-        // delete
-        run(&mut app, Command::SelectClip(Some(c0))).unwrap();
-        run(&mut app, Command::Delete).unwrap();
-        assert_eq!(app.project.timeline.clips.len(), 1);
-        assert!(app.selected_clip.is_none());
-        // misc
-        run(&mut app, Command::SetZoom(-3.0)).unwrap();
-        assert_eq!(app.zoom, 0.0);
-        run(&mut app, Command::StepFrames(3)).unwrap();
-        assert_eq!(app.playhead, Micros(4_100_000));
-        assert!(app.dirty);
-        assert!(app.title().starts_with("* untitled"));
-    }
-
-    // covers: REQ-004
-    #[test]
-    fn fifty_operations_can_be_undone() {
-        let dir = tempfile::tempdir().unwrap();
-        let f = files(dir.path());
-        let mut app = state(FakeDialogs::default());
-        let now = Instant::now();
-        app.dispatch(Command::Import(vec![f[0].clone()]), now)
-            .unwrap();
-        for _ in 0..50 {
-            app.dispatch(Command::Append(None), now).unwrap();
-        }
-        assert_eq!(app.project.timeline.clips.len(), 50);
-        for _ in 0..50 {
-            app.dispatch(Command::Undo, now).unwrap();
-        }
-        assert!(app.project.timeline.clips.is_empty());
-        assert!(!app.is_enabled(&Command::Undo));
-        for _ in 0..50 {
-            app.dispatch(Command::Redo, now).unwrap();
-        }
-        assert_eq!(app.project.timeline.clips.len(), 50);
-    }
-
-    // covers: REQ-002
-    #[test]
-    fn unreadable_import_is_reported_without_crashing() {
-        let dir = tempfile::tempdir().unwrap();
-        let bad = dir.path().join("notes.txt");
-        std::fs::write(&bad, "hello").unwrap();
-        let mut f = files(dir.path());
-        f.push(bad);
-        f.push(dir.path().join("gone.mp4"));
-        let mut app = state(FakeDialogs::default());
-        let e = app
-            .dispatch(Command::Import(f), Instant::now())
-            .unwrap_err();
-        assert!(e.contains("notes.txt"));
-        assert!(e.contains("gone.mp4"));
-        assert_eq!(app.project.media.len(), 3);
-        assert!(app.notice.is_some());
-        app.dispatch(Command::DismissNotice, Instant::now())
-            .unwrap();
-        assert!(app.notice.is_none());
-        // audio-only is in the list but cannot go on the video track
-        let song = app.project.media[2].clone();
-        assert!(!song.has_video());
-        assert!(!app.is_enabled(&Command::Append(Some(song.id))));
-    }
-
-    // covers: REQ-003
-    #[test]
-    fn save_and_open_through_commands() {
-        let dir = tempfile::tempdir().unwrap();
-        let f = files(dir.path());
-        let proj = dir.path().join("my");
-        let mut app = state(FakeDialogs {
-            save: Some(proj.clone()),
-            open: Some(proj.with_extension("vlproj")),
-            ..Default::default()
-        });
-        let now = Instant::now();
-        app.dispatch(Command::Import(f.clone()), now).unwrap();
-        app.dispatch(Command::Append(Some(app.project.media[0].id)), now)
-            .unwrap();
-        app.dispatch(Command::SaveProject, now).unwrap(); // no path yet: asks
-        let saved = proj.with_extension("vlproj");
-        assert_eq!(app.project_path.as_deref(), Some(saved.as_path()));
-        assert!(!app.dirty);
-        assert_eq!(app.title(), "my.vlproj — videolore");
-        app.dispatch(Command::SaveProject, now).unwrap();
-        let snapshot = app.project.clone();
-        app.dispatch(Command::NewProject, now).unwrap();
-        assert!(app.project.media.is_empty());
-        std::fs::remove_file(&f[1]).unwrap();
-        app.dispatch(Command::PickOpenProject, now).unwrap();
-        assert_eq!(app.project.timeline, snapshot.timeline);
-        assert!(app.notice.as_deref().unwrap().contains("b.mp4"));
-        assert!(app.project.media[1].missing);
-        assert!(
-            app.dispatch(Command::OpenProject(dir.path().join("none.vlproj")), now)
-                .is_err()
-        );
-        assert!(!app.status.is_empty());
-    }
-
-    // covers: REQ-021, REQ-001
-    #[test]
-    fn export_through_commands() {
-        let dir = tempfile::tempdir().unwrap();
-        let f = files(dir.path());
-        let out = dir.path().join("out.mp4");
-        let mut app = state(FakeDialogs {
-            export: Some(out.clone()),
-            ..Default::default()
-        });
-        let now = Instant::now();
-        assert!(!app.is_enabled(&Command::PickExport));
-        app.dispatch(Command::Import(f.clone()), now).unwrap();
-        app.dispatch(Command::Append(Some(app.project.media[0].id)), now)
-            .unwrap();
-        assert!(
-            app.output_description()
-                .unwrap()
-                .contains("same as sources")
-        );
-        // refuse to overwrite a source
-        assert!(app.dispatch(Command::Export(f[0].clone()), now).is_err());
-        app.dispatch(Command::PickExport, now).unwrap();
-        assert!(app.is_exporting());
-        assert!(app.is_enabled(&Command::CancelExport));
-        assert!(app.dispatch(Command::Export(out.clone()), now).is_err());
-        app.wait_export(now);
-        assert!(!app.is_exporting());
-        assert_eq!(app.export_status.stream_copy, Some(true));
-        assert_eq!(app.export_status.progress, 1.0);
-        assert!(app.status.starts_with("Exported to"));
-        assert_eq!(std::fs::read(&out).unwrap(), b"exported");
-        // sources untouched
-        assert_eq!(std::fs::read(&f[0]).unwrap(), b"a.mp4");
-        app.dispatch(Command::CancelExport, now).unwrap();
-    }
-
-    #[test]
-    fn export_failure_shows_notice() {
-        let dir = tempfile::tempdir().unwrap();
-        let f = files(dir.path());
-        let failing = FakeRunner::default().on(|prog, a| {
-            if prog.ends_with("ffprobe") {
-                return if a.iter().any(|x| x == "nokey") {
-                    ok("0.0\n")
-                } else {
-                    ok(MP4_JSON)
-                };
-            }
-            crate::ffmpeg::fake::fail("disk full")
-        });
-        let mut app = AppState::with_ffmpeg(
-            Ok(info()),
-            Arc::new(failing),
-            Box::new(FakeDialogs::default()),
-            Box::new(NullSink),
-        );
-        let now = Instant::now();
-        app.dispatch(Command::Import(vec![f[0].clone()]), now)
-            .unwrap();
-        app.dispatch(Command::Append(None), now).unwrap();
-        app.dispatch(Command::Export(dir.path().join("o.mp4")), now)
-            .unwrap();
-        app.wait_export(now);
-        assert!(app.notice.as_deref().unwrap().contains("disk full"));
-        assert_eq!(app.status, "Export failed");
-    }
-
-    #[test]
-    fn without_ffmpeg_everything_degrades_gracefully() {
-        let dir = tempfile::tempdir().unwrap();
-        let settings = dir.path().join("cfg/settings.json");
-        let mut app = AppState::with_ffmpeg(
-            Err("ffmpeg was not found".into()),
-            Arc::new(FakeRunner::default()),
-            Box::new(FakeDialogs {
-                ffmpeg: Some(dir.path().join("my-ffmpeg")),
-                ..Default::default()
-            }),
-            Box::new(NullSink),
-        );
-        app.settings_path = Some(settings.clone());
-        let now = Instant::now();
-        assert!(!app.is_enabled(&Command::PickImport));
-        assert!(app.dispatch(Command::Import(vec![]), now).is_err());
-        assert!(
-            app.dispatch(Command::Export(dir.path().join("x.mp4")), now)
-                .is_err()
-        );
-        assert!(app.dispatch(Command::PlayPause, now).is_err());
-        // choosing a binary saves the setting and re-checks
-        assert!(app.dispatch(Command::PickFfmpeg, now).is_err());
-        assert_eq!(
-            Settings::load(&settings).ffmpeg,
-            Some(dir.path().join("my-ffmpeg"))
-        );
-        assert_eq!(
-            Settings::load(&dir.path().join("none")),
-            Settings::default()
-        );
-        assert_eq!(app.fps(), Fps { num: 30, den: 1 });
-        assert!(app.output_description().is_none());
-        assert_eq!(app.export_extension(), "mp4");
-    }
-
-    #[test]
-    fn dialogs_cancelled_do_nothing() {
-        let mut app = state(FakeDialogs::default());
-        let now = Instant::now();
-        for c in [
-            Command::PickImport,
-            Command::PickOpenProject,
-            Command::PickSaveProjectAs,
-            Command::PickExport,
-            Command::PickFfmpeg,
-            Command::CancelExport,
-        ] {
-            app.dispatch(c, now).unwrap();
-        }
-        for c in [
-            Command::Copy,
-            Command::Cut,
-            Command::Paste,
-            Command::Merge,
-            Command::MoveLeft,
-            Command::Undo,
-            Command::ToggleFadeAtPlayhead,
-            Command::Append(None),
-            Command::SetTrim {
-                clip: ClipId(1),
-                src_in: Micros::ZERO,
-                src_out: Micros(1),
-            },
-        ] {
-            assert!(app.dispatch(c.clone(), now).is_err(), "{c:?}");
-        }
-    }
-
-    #[test]
-    fn play_pause_and_tick() {
-        let dir = tempfile::tempdir().unwrap();
-        let f = files(dir.path());
-        // Preview streams stay open until killed, so the end of stream cannot race the clock.
-        let mut app = AppState::with_ffmpeg(
-            Ok(info()),
-            Arc::new(runner().holding_streams()),
-            Box::new(FakeDialogs::default()),
-            Box::new(NullSink),
-        );
-        let t0 = Instant::now();
-        app.dispatch(Command::Import(vec![f[0].clone()]), t0)
-            .unwrap();
-        app.dispatch(Command::Append(None), t0).unwrap();
-        app.dispatch(Command::PlayPause, t0).unwrap();
-        assert!(app.preview.is_playing());
-        app.tick(t0 + std::time::Duration::from_millis(500));
-        assert_eq!(app.playhead, Micros(500_000));
-        app.dispatch(
-            Command::PlayPause,
-            t0 + std::time::Duration::from_millis(600),
-        )
-        .unwrap();
-        assert!(!app.preview.is_playing());
-        assert_eq!(app.playhead, Micros(600_000));
-        // paste of a clip whose source was removed is refused
-        app.clipboard = Some(Clip {
-            id: ClipId(9),
-            media: MediaId(99),
-            src_in: Micros::ZERO,
-            src_out: Micros(1),
-        });
-        assert!(app.dispatch(Command::Paste, t0).is_err());
-    }
-
-    #[test]
-    fn settings_round_trip() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = dir.path().join("a/b/settings.json");
-        let s = Settings {
-            ffmpeg: Some("/x/ffmpeg".into()),
-            ffprobe: None,
-        };
-        s.save(&p).unwrap();
-        assert_eq!(Settings::load(&p), s);
-        assert!(Settings::default_path().is_some() || cfg!(not(unix)));
-        let app = AppState::new(
-            Arc::new(FakeRunner::default()),
-            Box::new(FakeDialogs::default()),
-            Box::new(NullSink),
-            Some(p),
-        );
-        assert_eq!(app.settings, s);
-    }
-}
+pub(crate) mod tests;

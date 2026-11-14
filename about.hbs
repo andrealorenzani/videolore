@@ -1,0 +1,20 @@
+Rust crates compiled into videolore
+===================================
+
+videolore is built from the Rust crates listed below. Each licence text is followed by
+the crates it applies to.
+{{#each licenses}}
+
+------------------------------------------------------------------------------
+{{{name}}} ({{{id}}})
+Used by:
+{{#each used_by}}
+{{#if (eq crate.name "videolore")}}
+  videolore (this program)
+{{else}}
+  {{{crate.name}}} {{{crate.version}}}
+{{/if}}
+{{/each}}
+
+{{{text}}}
+{{/each}}

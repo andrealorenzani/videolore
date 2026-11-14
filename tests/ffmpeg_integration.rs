@@ -14,9 +14,11 @@ use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 use videolore::export::{self, ExportEvent, ExportJob};
 use videolore::ffmpeg::{self, FfmpegInfo, SystemRunner};
+use videolore::jobs::{Limited, MAX_PROCESSES, Priority, Scheduler};
 use videolore::media::{self, MediaItem};
 use videolore::preview::{NullSink, Preview, PreviewConfig};
 use videolore::project::{self, Project};
+use videolore::render::{self, Plan};
 use videolore::time::Micros;
 
 struct Env {
@@ -24,17 +26,26 @@ struct Env {
     dir: tempfile::TempDir,
 }
 
+fn required() -> bool {
+    std::env::var("VIDEOLORE_REQUIRE_FFMPEG").as_deref() == Ok("1")
+}
+
+/// A runner limited like the app's (3 processes) at `priority`.
+fn limited(priority: Priority) -> Limited {
+    Scheduler::new(MAX_PROCESSES).runner(priority, Arc::new(SystemRunner))
+}
+
 fn setup() -> Option<Env> {
     let found = ffmpeg::locate_both(None, None)
         .map_err(|e| e.to_string())
-        .and_then(|(f, p)| ffmpeg::check(&SystemRunner, &f, &p).map_err(|e| e.to_string()));
+        .and_then(|l| ffmpeg::check_located(&SystemRunner, &l).map_err(|e| e.to_string()));
     match found {
         Ok(info) => Some(Env {
             info,
             dir: tempfile::tempdir().unwrap(),
         }),
         Err(e) => {
-            if std::env::var("VIDEOLORE_REQUIRE_FFMPEG").as_deref() == Ok("1") {
+            if required() {
                 panic!("ffmpeg is required but unusable: {e}");
             }
             eprintln!("skipping: ffmpeg unavailable ({e})");
@@ -70,10 +81,59 @@ impl Env {
             c.args(["-c:a", "aac"]);
         }
         c.args(["-c:v", venc, "-pix_fmt", "yuv420p", "-g"])
-            .arg(fps.to_string())
-            .arg(&out);
+            .arg(fps.to_string());
+        if venc == "libx264" {
+            c.args(["-preset", "ultrafast"]);
+        }
+        c.arg(&out);
         assert!(c.status().unwrap().success(), "fixture {name}");
         out
+    }
+
+    /// Runs ffmpeg with `args` (fixtures), asserting success.
+    fn ffmpeg(&self, args: &[&str]) {
+        let ok = Command::new(&self.info.ffmpeg)
+            .args(["-hide_banner", "-loglevel", "error", "-y"])
+            .args(args)
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "ffmpeg {args:?}");
+    }
+
+    /// `codec_tag_string` of the first video stream.
+    fn video_tag(&self, file: &Path) -> String {
+        let o = Command::new(&self.info.ffprobe)
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_tag_string",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(file)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&o.stdout).trim().to_string()
+    }
+
+    /// Luma (Y plane) mean of every frame of a `w`x`h` video.
+    fn luma_means(&self, file: &Path, w: usize, h: usize) -> Vec<f64> {
+        let o = Command::new(&self.info.ffmpeg)
+            .args(["-hide_banner", "-loglevel", "error", "-i"])
+            .arg(file)
+            .args(["-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1"])
+            .output()
+            .unwrap();
+        assert!(o.status.success());
+        let frame = w * h * 3 / 2;
+        o.stdout
+            .chunks_exact(frame)
+            .map(|f| mean(&f[..w * h]))
+            .collect()
     }
 
     fn audio_only(&self, name: &str) -> PathBuf {
@@ -113,6 +173,7 @@ impl Env {
             ffprobe: self.info.ffprobe.clone(),
             version: self.info.version,
             encoders: self.info.encoders.clone(),
+            can_burn_subtitles: self.info.has_subtitles(),
         }
     }
 
@@ -336,7 +397,7 @@ fn cancel_mid_export_leaves_nothing_behind() {
     }
     p.timeline.toggle_fade(0).unwrap(); // force a (slow) re-encode
     let out = env.dir.path().join("cancelled.mp4");
-    let h = export::start(env.job(&p, &out), Arc::new(SystemRunner));
+    let h = export::start(env.job(&p, &out), Arc::new(limited(Priority::Export)));
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut last = None;
     while Instant::now() < deadline {
@@ -370,17 +431,16 @@ fn preview_delivers_rgba_frames_of_expected_size() {
     p.timeline.append(&m).unwrap();
     p.timeline.toggle_fade(0).unwrap();
     let cfg = PreviewConfig {
-        runner: Arc::new(SystemRunner),
+        runner: limited(Priority::Preview),
         ffmpeg: env.info.ffmpeg.clone(),
         version: env.info.version,
         encoders: env.info.encoders.clone(),
     };
     let mut pv = Preview::new(Some(cfg), Box::new(NullSink));
-    let now = Instant::now();
-    pv.seek(&p, Micros(2_500_000), now).unwrap();
+    pv.seek(&p, Micros(2_500_000), Instant::now()).unwrap();
     let deadline = Instant::now() + Duration::from_secs(30);
     let frame = loop {
-        if let Some(f) = pv.poll(now) {
+        if let Some(f) = pv.poll(Instant::now()) {
             break f;
         }
         assert!(Instant::now() < deadline, "no preview frame");
@@ -401,4 +461,320 @@ fn preview_delivers_rgba_frames_of_expected_size() {
     }
     assert_eq!(got, 3);
     pv.pause(Instant::now());
+}
+
+/// Two HEVC clips in MP4: stream copy and re-encode both carry the Apple `hvc1` tag.
+// covers: REQ-036
+#[test]
+fn hevc_in_mp4_is_tagged_hvc1() {
+    let Some(env) = setup() else { return };
+    if !env.info.encoders.contains("libx265") {
+        assert!(!required(), "the CI ffmpeg must have libx265");
+        eprintln!("skipping: no libx265");
+        return;
+    }
+    let mut p = Project::default();
+    for name in ["h1.mp4", "h2.mp4"] {
+        let out = env.dir.path().join(name);
+        env.ffmpeg(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=320x240:rate=25:duration=1",
+            "-c:v",
+            "libx265",
+            "-preset",
+            "ultrafast",
+            "-x265-params",
+            "log-level=error",
+            "-pix_fmt",
+            "yuv420p",
+            "-tag:v",
+            "hev1",
+            out.to_str().unwrap(),
+        ]);
+        let m = env.probe(&mut p, &out);
+        p.timeline.append(&m).unwrap();
+    }
+    let (r, ev) = env.export(&p, &env.dir.path().join("copy.mp4"));
+    assert_eq!(ev[0], ExportEvent::Started { stream_copy: true });
+    assert_eq!(env.video_tag(&r.unwrap()), "hvc1");
+    p.timeline.toggle_fade(0).unwrap();
+    let (r, ev) = env.export(&p, &env.dir.path().join("reencoded.mp4"));
+    assert_eq!(ev[0], ExportEvent::Started { stream_copy: false });
+    assert_eq!(env.video_tag(&r.unwrap()), "hvc1");
+}
+
+/// 200 short pieces cut in order from one source: one input in the graph, every output
+/// frame is the expected source frame.
+// covers: REQ-037
+#[test]
+fn two_hundred_segments_of_one_source_are_frame_accurate() {
+    let Some(env) = setup() else { return };
+    if !env.info.encoders.contains("libx264") {
+        assert!(!required());
+        return;
+    }
+    // each source frame has its own flat grey level: Y = (37 * frame) mod 200 + 20
+    let src = env.dir.path().join("grey.mp4");
+    env.ffmpeg(&[
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=black:s=64x64:r=25:d=25,format=yuv420p,geq=lum='mod(N*37,200)+20':cb=128:cr=128",
+        "-c:v",
+        "libx264",
+        "-qp",
+        "0",
+        "-preset",
+        "ultrafast",
+        "-g",
+        "250",
+        "-pix_fmt",
+        "yuv420p",
+        src.to_str().unwrap(),
+    ]);
+    let mut p = Project::default();
+    let m = env.probe(&mut p, &src);
+    let frame = Micros(40_000);
+    for i in 0..200i64 {
+        let id = p.timeline.append(&m).unwrap();
+        let start = Micros(frame.0 * 3 * i);
+        p.timeline
+            .trim(id, start, start + Micros(frame.0 * 2), m.duration, frame)
+            .unwrap();
+    }
+    assert_eq!(p.timeline.clips.len(), 200);
+    let plan = render::plan_export(&p, &env.info.encoders, |_, _| false).unwrap();
+    match &plan {
+        Plan::Reencode { graph, .. } => assert_eq!(graph.inputs.len(), 1),
+        other => panic!("expected a re-encode, got {other:?}"),
+    }
+    let (r, _) = env.export(&p, &env.dir.path().join("cuts.mp4"));
+    let means = env.luma_means(&r.unwrap(), 64, 64);
+    assert_eq!(means.len(), 400);
+    for (k, got) in means.iter().enumerate() {
+        let src_frame = 3 * (k / 2) + k % 2;
+        let want = ((37 * src_frame) % 200 + 20) as f64;
+        assert!(
+            (got - want).abs() < 9.0,
+            "output frame {k}: luma {got:.1}, expected {want} (source frame {src_frame})"
+        );
+    }
+}
+
+/// Music mixed under a silent video: nothing before the music clip, sound during it,
+/// faded out at the video end; half volume is about a quarter of the level.
+// covers: REQ-020, REQ-043, REQ-019
+#[test]
+fn music_is_mixed_cut_and_faded_at_the_video_end() {
+    let Some(env) = setup() else { return };
+    let mut p = Project::default();
+    let v = env.clip("mute.mp4", 320, 240, 25, 3, false);
+    let song = env.dir.path().join("song.m4a");
+    env.ffmpeg(&[
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=1000:sample_rate=48000:duration=5",
+        "-c:a",
+        "aac",
+        song.to_str().unwrap(),
+    ]);
+    let mv = env.probe(&mut p, &v);
+    let ms = env.probe(&mut p, &song);
+    p.timeline.append(&mv).unwrap();
+    p.music
+        .place(&ms, Micros(1_000_000), Micros(40_000))
+        .unwrap();
+    let (r, ev) = env.export(&p, &env.dir.path().join("music.mp4"));
+    assert_eq!(ev[0], ExportEvent::Started { stream_copy: false });
+    let r = r.unwrap();
+    let mut q = Project::default();
+    let out = env.probe(&mut q, &r);
+    assert!(out.format.has_audio());
+    // music past the video end is cut there
+    assert!(
+        near(out.duration, Micros(3_000_000), Micros(120_000)),
+        "{:?}",
+        out.duration
+    );
+    let before = env.audio_peak(&r, 0.2, 0.6);
+    let during = env.audio_peak(&r, 1.5, 0.5);
+    let at_end = env.audio_peak(&r, 2.88, 0.08);
+    assert!(before < 50, "no music before the clip: {before}");
+    // lavfi sine is 1/8 of full scale (about 4096)
+    assert!(during > 1500, "music plays: {during}");
+    assert!(
+        at_end * 2 < during,
+        "faded out at the end: {at_end} vs {during}"
+    );
+    // music at 50%: gain (0.5)^2 = 0.25
+    p.mix.music_volume = 50;
+    let (half, _) = env.export(&p, &env.dir.path().join("half.mp4"));
+    let ratio = env.audio_peak(&half.unwrap(), 1.5, 0.5) as f64 / during as f64;
+    assert!((0.18..0.33).contains(&ratio), "50% volume ratio {ratio}");
+}
+
+/// Subtitles are burned into the exported picture.
+// covers: REQ-017
+#[test]
+fn subtitles_are_burned_in() {
+    let Some(env) = setup() else { return };
+    if !env.info.has_subtitles() {
+        assert!(!required(), "the CI ffmpeg must have libass");
+        return;
+    }
+    let mut p = Project::default();
+    let v = env.clip("talk.mp4", 640, 360, 25, 2, true);
+    let m = env.probe(&mut p, &v);
+    p.timeline.append(&m).unwrap();
+    // reference: same re-encode without subtitles (a fade forces the re-encode)
+    p.timeline.append(&m).unwrap();
+    p.timeline.toggle_fade(0).unwrap();
+    let (plain, _) = env.export(&p, &env.dir.path().join("plain.mp4"));
+    p.subtitles
+        .add_at(&p.timeline, Micros::ZERO, "HELLO SUBTITLES", Micros(40_000))
+        .unwrap();
+    let (burned, _) = env.export(&p, &env.dir.path().join("burned.mp4"));
+    let a = env.frame_rgb(&plain.unwrap(), 0.5);
+    let b = env.frame_rgb(&burned.unwrap(), 0.5);
+    assert_eq!(a.len(), b.len());
+    let diff: u64 = a
+        .iter()
+        .zip(&b)
+        .map(|(x, y)| u64::from(x.abs_diff(*y)))
+        .sum();
+    assert!(
+        diff > (a.len() as u64) / 50,
+        "the text changes the picture ({diff})"
+    );
+}
+
+/// A real proxy from a 1440p source: small, same length, written to the cache.
+// covers: REQ-038
+#[test]
+fn proxy_is_generated_from_a_big_source() {
+    let Some(env) = setup() else { return };
+    if !env.info.encoders.contains("libx264") {
+        assert!(!required());
+        return;
+    }
+    let mut p = Project::default();
+    let big = env.clip("big.mp4", 2560, 1440, 25, 1, true);
+    let m = env.probe(&mut p, &big);
+    let cache = videolore::proxy::ProxyCache::new(env.dir.path().join("proxies"));
+    let worker = videolore::proxy::ProxyWorker {
+        runner: limited(Priority::Background),
+        ffmpeg: env.info.ffmpeg.clone(),
+        version: env.info.version,
+        cache: cache.clone(),
+    };
+    let task = videolore::proxy::ProxyTask {
+        media: m.id,
+        source: m.path.clone(),
+        key: videolore::proxy::key_of(&m.path).unwrap(),
+        format: m.format.clone(),
+        duration: m.duration,
+        cancel: Arc::new(AtomicBool::new(false)),
+    };
+    let (tx, _rx) = channel();
+    let ev = worker.generate(&task, &tx).unwrap();
+    let videolore::proxy::ProxyEvent::Ready(_, path) = ev else {
+        panic!("proxy failed: {ev:?}");
+    };
+    assert_eq!(cache.lookup(&m.path), Some(path.clone()));
+    let mut q = Project::default();
+    let pm = env.probe(&mut q, &path);
+    assert_eq!((pm.format.width, pm.format.height), (960, 540));
+    assert!(near(pm.duration, m.duration, Micros(100_000)));
+    assert!(cache.size() > 0);
+}
+
+/// Memory does not grow with the length of the source: preview of a long file costs the
+/// same as a short one.
+// covers: REQ-039
+#[test]
+fn memory_does_not_grow_with_source_length() {
+    let Some(env) = setup() else { return };
+    let short = env.clip("short.mp4", 640, 360, 25, 2, true);
+    let long = env.clip("long.mp4", 640, 360, 25, 120, true);
+    let use_file = |file: &Path| {
+        let mut p = Project::default();
+        let m = env.probe(&mut p, file);
+        p.timeline.append(&m).unwrap();
+        let cfg = PreviewConfig {
+            runner: limited(Priority::Preview),
+            ffmpeg: env.info.ffmpeg.clone(),
+            version: env.info.version,
+            encoders: env.info.encoders.clone(),
+        };
+        let mut pv = Preview::new(Some(cfg), Box::new(NullSink));
+        pv.play(&p, Micros::ZERO, Instant::now()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut got = 0;
+        let mut peak = 0;
+        while got < 20 && Instant::now() < deadline {
+            if pv.poll(Instant::now()).is_some() {
+                got += 1;
+            }
+            peak = peak.max(videolore::machine::own_rss());
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        pv.pause(Instant::now());
+        assert!(got > 0);
+        peak
+    };
+    let small = use_file(&short);
+    let big = use_file(&long);
+    assert!(
+        big <= small + 200 * 1024 * 1024,
+        "peak memory {big} with the long source vs {small}"
+    );
+}
+
+/// Real speech recognition with the pinned model (CI provides it with
+/// VIDEOLORE_STT_MODEL; espeak-ng makes the speech).
+// covers: REQ-014, REQ-015
+#[cfg(feature = "stt")]
+#[test]
+fn real_speech_is_transcribed() {
+    let Some(env) = setup() else { return };
+    let Ok(model) = std::env::var("VIDEOLORE_STT_MODEL") else {
+        eprintln!("skipping: VIDEOLORE_STT_MODEL not set");
+        return;
+    };
+    let wav = env.dir.path().join("speech.wav");
+    let spoke = Command::new("espeak-ng")
+        .args(["-s", "140", "-w"])
+        .arg(&wav)
+        .arg("hello world, this is videolore")
+        .status();
+    if !spoke.is_ok_and(|s| s.success()) {
+        assert!(!required(), "espeak-ng is needed for the speech test");
+        return;
+    }
+    let job = videolore::stt::SttJob {
+        sources: vec![(videolore::media::MediaId(1), wav)],
+        language: None,
+        ffmpeg: env.info.ffmpeg.clone(),
+        model: model.into(),
+        threads: 2,
+    };
+    let mut t = videolore::stt::whisper::WhisperTranscriber::load(&job.model, 2).unwrap();
+    let (tx, _rx) = channel();
+    let runner = limited(Priority::Background);
+    let (lang, lines) = videolore::stt::run(
+        &job,
+        &runner as &dyn videolore::ffmpeg::Runner,
+        &mut t,
+        &Arc::new(AtomicBool::new(false)),
+        &tx,
+    )
+    .unwrap();
+    assert_eq!(lang.as_deref(), Some("en"));
+    let text: String = lines.iter().map(|l| l.text.to_lowercase() + " ").collect();
+    assert!(text.contains("hello"), "{text}");
+    let words: Vec<_> = lines.iter().flat_map(|l| &l.words).collect();
+    assert!(words.windows(2).all(|w| w[0].start <= w[1].start));
 }

@@ -47,4 +47,10 @@ impl Dialogs for NativeDialogs {
     fn pick_ffmpeg(&mut self) -> Option<PathBuf> {
         rfd::FileDialog::new().pick_file()
     }
+
+    fn pick_model_file(&mut self) -> Option<PathBuf> {
+        rfd::FileDialog::new()
+            .add_filter("Speech model", &["bin"])
+            .pick_file()
+    }
 }

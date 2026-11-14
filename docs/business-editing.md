@@ -1,0 +1,72 @@
+# Business — Editing
+
+Back to the [index](business.md).
+
+## Features
+- **Media list**: import video and audio files; each item shows "analysing" while it is inspected, then its name and duration, or a clear rejection message. Importing never freezes the window.
+- **Projects**: New, Open, Save and Save As; the window title shows the project name and a marker when there are unsaved changes; closing, quitting, opening or starting a new project with unsaved changes asks to Save, Discard or Cancel.
+- **Timeline editing**: append, split, cut/copy/paste, merge, trim and reorder segments; the timeline closes gaps automatically. Undo/redo of at least 50 steps.
+- **Transitions**: fade through black between clips.
+- **Preview**: play, pause and seek, with fades, music and subtitles visible. Video keeps playing in real time even if audio output stalls.
+- **Proxies**: very large sources get a smaller preview copy automatically, so preview stays smooth; export always uses the originals.
+- **Layout**: fixed five-panel window with a command bar and keyboard shortcuts.
+
+## Requirements
+
+### Media and projects
+- REQ-001 (implemented): Editing is non-destructive; source media files are never modified.
+- REQ-002 (implemented): Media files (video and audio) can be imported into a media list showing name and duration; unsupported files are rejected with a clear message. Audio-only files are accepted into the list and can be placed on the music track (not on the video track).
+- REQ-003 (implemented): A project can be saved and reopened; missing source files are reported by file name and the project still opens.
+- REQ-004 (implemented): Undo and redo support at least 50 steps.
+- REQ-026 (implemented): Save writes the current project file; Save As asks for a path; Save on a project never saved before behaves as Save As. Acceptance: Save As `a.vlproj`, edit, Save — `a.vlproj` is updated with no dialog.
+- REQ-027 (implemented): The window title shows the project name and an unsaved-changes marker; saving clears the marker, and undoing back to the saved state also clears it.
+- REQ-028 (implemented): New, Open, closing the window or quitting with unsaved changes asks Save / Discard / Cancel. Save saves and then continues (a failed save or a cancelled Save As stops the action); Discard continues without saving; Cancel returns to the editor unchanged. No prompt appears when there are no unsaved changes.
+- REQ-029 (implemented): Projects created with 0.1.x open in 0.2.0 and produce the same result; project files from a newer version are refused with a clear message and left untouched.
+
+### Timeline
+- REQ-005 (implemented): A media item can be appended to the end of the timeline.
+- REQ-006 (implemented): A segment can be split at the playhead.
+- REQ-007 (implemented): Segments can be cut, copied and pasted; the timeline ripples so no gaps remain.
+- REQ-008 (implemented): Contiguous segments from the same source with contiguous source ranges can be merged; the action is disabled otherwise.
+- REQ-009 (implemented): A segment can be trimmed at either edge, within the bounds of its source.
+- REQ-010 (implemented): Segments can be reordered; the timeline ripples.
+- REQ-011 (implemented): A transition between clips is a fade-out followed by a fade-in through black, on video and audio, and can be removed; each fade lasts 0.5 s, or half the clip length for clips shorter than 1 s, so fades never overlap.
+- REQ-012 (implemented): A zoom slider scales the timeline from showing the whole project to single-frame level.
+
+### Preview
+- REQ-013 (implemented): The preview supports play, pause and seek, and shows effects.
+- REQ-034 (implemented): The still preview frame is re-rendered only when the picture at the playhead actually changes, and bursts of edits are combined. Acceptance: an edit that does not change the frame at the playhead causes no render; 10 rapid edits cause at most 1 render.
+- REQ-035 (implemented): During playback, video continues in real time if audio output stalls; audio catches up or skips. Acceptance: with a simulated stall video time keeps advancing, and audio/video drift is at most 100 ms after audio resumes.
+
+### Layout and commands
+- REQ-024 (implemented): The window has a fixed five-panel layout: top 60% (media list 30%, preview 70%), middle 30% (timeline 70%, effects 30%), bottom 10% command bar including the zoom slider. The music track and the subtitle list fit inside the existing panels without changing these proportions.
+- REQ-025 (implemented): Every operation is reachable from the command bar or panels (including Save, Save As, Clear proxy cache, Generate subtitles and About / third-party notices); keyboard shortcuts exist for split, cut, copy, paste, undo, redo and play/pause.
+
+### Responsiveness and performance
+- REQ-032 (implemented): Importing never freezes the window: each item shows "analysing" and then its name and duration, or its rejection; several imports can run while the user keeps editing. Acceptance: importing 10 files does not block user input.
+- REQ-033 (implemented): No more than 3 ffmpeg/ffprobe processes run at the same time; extra work waits in a queue and requests that became obsolete (for example an older preview frame) are dropped. Acceptance: 20 imports plus an export plus preview never exceed 3 processes, and all jobs complete.
+- REQ-038 (implemented): A source that is "big for this machine" gets a lower-resolution preview copy (proxy), generated in the background with progress shown on its media item; preview and timeline use it once ready (the original until then); export always uses the originals. Proxies are stored in a cache outside the project folder, reused across sessions and recreated if missing; the cache size is shown and a command clears it. Proxies are on by default and can be switched off in settings. A source is big when it exceeds 1920x1080 pixels, or 1280x720 pixels on a machine with fewer than 8 logical cores or less than 8 GB of RAM. Acceptance: the decision is the same for the same resolution, cores and RAM; the exported file is identical with proxies on or off.
+- REQ-039 (implemented): The application's memory use does not grow with the size of the source file. Acceptance: peak memory when importing and previewing a 4 GB source is at most the peak with a 100 MB source of the same resolution plus 200 MB.
+
+## Key decisions
+- When several jobs wait, the order is: preview first, then export, then import analysis, then background work (proxies, subtitle preparation). Proxy generation gives way to preview and export and restarts later.
+- The 3-process limit applies to ffmpeg/ffprobe; speech recognition for subtitles has its own separate limit.
+- Proxies are never used for export, so output quality never depends on them.
+- The proxy size rule is an assumption that may be tuned in later versions; it always gives the same answer on the same machine.
+- Undoing back to the saved state counts as "no unsaved changes".
+- Projects are saved in a newer format from 0.2.0 on: a 0.1.x project saved with 0.2.0 can no longer be opened by 0.1.x.
+- On macOS, Cmd+Q also goes through the unsaved-changes prompt (Ctrl+Q elsewhere).
+- Default shortcuts follow common conventions (Ctrl/Cmd+X/C/V/Z, Space for play/pause, Ctrl/Cmd+B for split, Ctrl/Cmd+S to save, Ctrl/Cmd+Q to quit); exact bindings are an engineering choice.
+- Letterboxing color is black.
+
+## Known limitations
+- The proxy cache is never cleaned automatically; use "Clear proxy cache" (command bar) or "Clear preview copies" (settings).
+- Removing a file from the media list also drops the undo history when an undo step refers to it.
+- After the proxies of a project are cleared, they are regenerated only after reopening the project or toggling proxies.
+- A 1280x720 source never gets a proxy, even on a machine with fewer than 8 cores or 8 GB of RAM (the rule is "larger than").
+- On macOS the standard Hide and Minimize menu items are not available.
+- The memory acceptance test runs on a few minutes of video, not 4 GB; assumption: since nothing in the application grows with file size, the result holds for larger files.
+
+## Out of scope
+- Recent-projects list, autosave, crash recovery.
+- Resizable or dockable panels.
