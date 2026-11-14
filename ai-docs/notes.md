@@ -56,3 +56,9 @@
 - open: business.md says "Projects saved by 0.2.0 cannot be opened by 0.1.x"; README says "this version" (both acceptable, not changed)
 - open: docs/workflow.md and .claude/ untouched in the release
 - open: no commit made by documenter in release 0.4.2 (caller commits)
+- 0.4.3 dev (2026-11-14 22:35 +0000): version set via scripts/version.sh set 0.4.3 (consistent); changelog 0.4.3 entry replaces "No changes since 0.4.2" line (Fixed/Added/Changed/Quality); coverage badge 96.3 (PE), features 65/65
+- 0.4.3 roadmap: 5 items added (CI installer-config check under Quality; 4 under Packaging: installer job before release, pin NSIS toolchain, licence page encoding, 0.4.2 macOS/Windows installers missing)
+- 0.4.3 README: latest changes 0.4.3, 0.4.2, 0.4.0 (0.3.0 dropped); known limitation "0.4.2 release has only Linux installers"; poem replaced (10 verses, 1-9 end with backslash)
+- 0.4.3 links: 0 dead links, 0 bad anchors, all sub-docs linked; no forbidden words in README (only GitHub workflow URLs)
+- open: README Installation still says "Each release has one installer per system" (true from 0.4.3 on if installer job passes; limitation line covers 0.4.2)
+- open: docs/workflow.md and .claude/ untouched in 0.4.3; no commit made by documenter (caller commits)

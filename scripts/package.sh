@@ -9,6 +9,7 @@
 #   scripts/package.sh windows-x86_64   -> videolore-${VERSION}-windows-x86_64-setup.exe
 #   scripts/package.sh macos-aarch64    -> videolore-${VERSION}-macos-aarch64.dmg
 #   scripts/package.sh sources          -> videolore-${VERSION}-third-party-source.tar.xz
+#   scripts/package.sh windows-x86_64|macos-aarch64 --config-only -> only dist/stage-*/Packager.toml
 # Output goes to dist/. Tools: cargo-packager (Windows, macOS; version in
 # packaging/tools.lock), appimagetool + type2 runtime (Linux, pinned by SHA-256), curl, git.
 set -euo pipefail
@@ -76,6 +77,77 @@ stage_notices() {
     cp packaging/ffmpeg.lock "$1/notices/ffmpeg-builds.txt"
     cp assets/fonts/OFL.txt assets/fonts/SOURCE.txt "$1/fonts/"
 }
+
+# Absolute path in the form the native tools understand (D:/a/... under Git Bash on
+# Windows), safe inside a TOML basic string.
+native_path() {
+    local p="$1"
+    [[ "$p" == /* ]] || p="$PWD/$p"
+    if command -v cygpath >/dev/null 2>&1; then cygpath -m "$p"; else printf '%s\n' "$p"; fi
+}
+
+# Writes $stage/Packager.toml for cargo-packager (Windows NSIS, macOS app).
+# cargo-packager reads every relative path from the directory of the config file, so
+# every path written here is absolute. Keys and values follow cargo-packager 0.11.8
+# (packaging/tools.lock): enum values are camelCase ("editor", "currentUser"), the NSIS
+# install mode key is "installMode" (it has no "install-mode" alias), and "name" must be
+# set: without it cargo-packager tries to enter the config file as if it were a folder
+# to look for a Cargo.toml, and stops with "Not a directory".
+packager_config() {
+    local root res formats dll
+    root=$(native_path "$PWD")
+    res=$(native_path "$stage/res")
+    local resources='"'"$res/notices"'", "'"$res/fonts"'"'
+    if [[ "$target" == windows-x86_64 ]]; then
+        # the DLLs of the shared ffmpeg build go next to ffmpeg.exe (the install folder)
+        for dll in "$ffdir"/*.dll; do
+            [[ -e "$dll" ]] || continue
+            resources+=', { src = "'"$(native_path "$dll")"'", target = "'"$(basename "$dll")"'" }'
+        done
+        formats='["nsis"]'
+    else
+        formats='["app"]'
+    fi
+    mkdir -p "$stage"
+    cat >"$stage/Packager.toml" <<TOML
+name = "videolore"
+product-name = "videolore"
+identifier = "io.github.andrealorenzani.videolore"
+version = "${VERSION}"
+description = "Non-destructive video editor for short social videos"
+authors = ["Andrea Lorenzani"]
+publisher = "Andrea Lorenzani"
+license-file = "${root}/packaging/notices/third-party.txt"
+out-dir = "$(native_path "$stage/out")"
+binaries-dir = "$(native_path "$stage/bin")"
+binaries = [
+    { path = "videolore", main = true },
+    { path = "ffmpeg", main = false },
+    { path = "ffprobe", main = false },
+]
+icons = ["${root}/assets/icon/icon.png", "${root}/assets/icon/icon.ico", "${root}/assets/icon/icon.icns"]
+resources = [${resources}]
+formats = ${formats}
+file-associations = [
+    { extensions = ["vlproj"], name = "videolore project", description = "videolore project", mime-type = "application/x-videolore-project", role = "editor" },
+]
+
+[nsis]
+installMode = "currentUser"
+
+[macos]
+minimum-system-version = "11.0"
+TOML
+}
+
+# package.sh TARGET --config-only: only writes $stage/Packager.toml (no ffmpeg, no
+# build), so the configuration can be checked on any machine.
+if [[ "${2:-}" == --config-only ]]; then
+    case "$target" in
+    windows-x86_64 | macos-aarch64) packager_config; echo "$stage/Packager.toml"; exit 0 ;;
+    *) echo "--config-only is for windows-x86_64 and macos-aarch64" >&2; exit 2 ;;
+    esac
+fi
 
 [[ -d "$ffdir" || "$target" == sources ]] || scripts/fetch-ffmpeg.sh "$target" "$ffdir"
 
@@ -153,50 +225,18 @@ windows-x86_64 | macos-aarch64)
     rm -rf "$stage" && mkdir -p "$stage/bin" "$stage/res"
     cp "target/release/videolore$ext" "$ffdir/ffmpeg$ext" "$ffdir/ffprobe$ext" "$stage/bin/"
     stage_notices "$stage/res"
-    resources='"'"$stage/res/notices"'", "'"$stage/res/fonts"'"'
-    if [[ "$target" == windows-x86_64 ]]; then
-        # the DLLs of the shared ffmpeg build go next to ffmpeg.exe
-        for dll in "$ffdir"/*.dll; do
-            resources+=', { src = "'"$dll"'", target = "'"$(basename "$dll")"'" }'
-        done
-        formats='["nsis"]'
-    else
-        formats='["app"]'
+    if [[ "$target" == windows-x86_64 ]] && ! compgen -G "$ffdir/*.dll" >/dev/null; then
+        echo "the Windows ffmpeg build has no DLLs in $ffdir: it would not start" >&2; exit 1
     fi
-    cat >"$stage/Packager.toml" <<TOML
-product-name = "videolore"
-identifier = "io.github.andrealorenzani.videolore"
-version = "${VERSION}"
-description = "Non-destructive video editor for short social videos"
-authors = ["Andrea Lorenzani"]
-publisher = "Andrea Lorenzani"
-license-file = "packaging/notices/third-party.txt"
-out-dir = "$stage/out"
-binaries-dir = "$stage/bin"
-binaries = [
-    { path = "videolore", main = true },
-    { path = "ffmpeg", main = false },
-    { path = "ffprobe", main = false },
-]
-icons = ["assets/icon/icon.png", "assets/icon/icon.ico", "assets/icon/icon.icns"]
-resources = [${resources}]
-formats = ${formats}
-file-associations = [
-    { extensions = ["vlproj"], name = "videolore project", description = "videolore project", mime-type = "application/x-videolore-project", role = "Editor" },
-]
-
-[nsis]
-install-mode = "currentUser"
-
-[macos]
-minimum-system-version = "11.0"
-TOML
+    packager_config
     cargo packager --release --config "$stage/Packager.toml"
     if [[ "$target" == windows-x86_64 ]]; then
         setup=$(find "$stage/out" -name '*-setup.exe' | head -1)
+        [[ -n "$setup" ]] || { echo "cargo-packager made no setup.exe in $stage/out" >&2; exit 1; }
         cp "$setup" "$dist/videolore-${VERSION}-windows-x86_64-setup.exe"
     else
         app=$(find "$stage/out" -maxdepth 2 -name '*.app' -type d | head -1)
+        [[ -n "$app" ]] || { echo "cargo-packager made no .app in $stage/out" >&2; exit 1; }
         # ad-hoc re-seal so the nested ffmpeg/ffprobe are covered by the bundle signature
         codesign --force --deep --sign - "$app"
         codesign --verify --deep "$app"
@@ -205,8 +245,13 @@ TOML
         mkdir -p "$dmgroot"
         cp -R "$app" "$dmgroot/videolore.app"
         ln -s /Applications "$dmgroot/Applications"
-        hdiutil create -volname videolore -srcfolder "$dmgroot" -ov -format UDZO \
-            "$dist/videolore-${VERSION}-macos-aarch64.dmg"
+        # hdiutil sometimes fails with "Resource busy" on CI machines: retry a few times
+        for attempt in 1 2 3 4 5; do
+            hdiutil create -volname videolore -srcfolder "$dmgroot" -ov -format UDZO \
+                "$dist/videolore-${VERSION}-macos-aarch64.dmg" && break
+            [[ $attempt -lt 5 ]] || { echo "hdiutil failed $attempt times" >&2; exit 1; }
+            sleep 5
+        done
     fi
     ;;
 sources)

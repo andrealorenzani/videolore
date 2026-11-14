@@ -36,11 +36,16 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Measured quality goals** — the numbers of the quality goals (detection time, regressions, speed) are assumptions to confirm with measurements. (source: 0.3.0, assumption)
 
 ## Quality
+- **Check the installer configuration on every push** — install cargo-packager 0.11.8 in a Linux job, run `scripts/package.sh <target> --config-only` and build the deb and app formats from stub binaries, so packaging errors are not found only at release time. (source: 0.4.3, release of 0.4.2)
 - **Split the hardware developer document** — [code-hardware](code-hardware.md) is 237 lines and mixes the check, the export, the tests and the QG-05 results; split it into smaller documents. (source: 0.4.2, documentation size)
 - **Large-file memory test** — the memory acceptance test runs on a few minutes of video, not 4 GB; add a run on a large file. (source: 0.4.2, assumption in the product documentation)
 - **Stable computer identity on virtual machines** — a virtual machine or container whose number of cores changes between starts is treated as a new computer; with custom settings this only shows a notice. (source: 0.3.0, known limitation)
 
 ## Packaging
+- **Run the installer job before each release** — a manual run, or on pull requests that touch `scripts/package.sh`, `packaging/` or `assets/icon/`; the 0.4.2 macOS and Windows failures were found only at release time. (source: 0.4.3, release of 0.4.2)
+- **Pin the Windows installer toolchain** — the NSIS toolchain that cargo-packager downloads on Windows should get a fixed version and SHA-256 in `packaging/tools.lock`, like the other downloads. (source: 0.4.3)
+- **Licence page encoding** — the NSIS licence page shows `third-party.txt`; non-ASCII text without a byte-order mark may look garbled (cosmetic, not verified). (source: 0.4.3)
+- **macOS and Windows installers for 0.4.2** — the 0.4.2 GitHub release has only the Linux installers; provide the macOS and Windows installers with the next release. (source: 0.4.3, release of 0.4.2)
 - **Code signing and notarisation** — installers are unsigned, so Windows and macOS warn on first launch. Postponed, not rejected. (source: 0.2.0, decision)
 - **Linux file managers and the archive** — some file managers do not start the program from the extracted `.tar.gz` on double-click; ship a fix or a launcher that works in them. (source: 0.2.0, known limitation)
 - **Legal review of source offers** — the way the source code of bundled components is offered has not been reviewed by a lawyer. (source: 0.2.0, assumption)

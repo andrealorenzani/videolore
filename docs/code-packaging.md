@@ -15,6 +15,26 @@ workflow):
 
 The installers are not code-signed (Gatekeeper / SmartScreen show a warning the first time).
 
+### cargo-packager configuration (Windows and macOS)
+
+`scripts/package.sh` writes `dist/stage-<target>/Packager.toml` and runs
+`cargo packager --release --config` on it. Rules for that file (cargo-packager 0.11.8 rejects
+unknown keys and wrong enum spellings):
+
+- Every path is absolute: cargo-packager reads relative paths from the folder of the
+  configuration file, not from the repository. Under Git Bash on Windows the paths are written
+  as `D:/...` (`cygpath -m`).
+- `name = "videolore"` must be present; without it cargo-packager stops with "Not a directory".
+- Enum values are camelCase: `role = "editor"`, `installMode = "currentUser"` (the NSIS key is
+  `installMode`; `install-mode` is not accepted).
+
+`scripts/package.sh windows-x86_64 --config-only` (or `macos-aarch64`) only writes the
+configuration, with no ffmpeg and no build. A unit test
+(`packager_config_is_valid_for_cargo_packager` in `src/packaging.rs`) generates both and checks keys, enum values and
+paths. To check a configuration with the real tool on Linux, stage stub files in
+`dist/stage-<target>/bin` and `res/` and run `cargo packager --config <file> -f deb` (or
+`-f app`, which also builds on Linux; `-f nsis` needs `makensis`).
+
 ## Bundled ffmpeg
 
 - Pinned in `packaging/ffmpeg.lock` (URL + SHA-256 per platform, version, licence, build-script

@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.4.2-blue)
+![version](https://img.shields.io/badge/version-0.4.3-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-96.3%25-brightgreen)
@@ -88,6 +88,7 @@ The About screen lists every bundled third-party component with its version, lic
 
 ### Known limitations
 - Installers are not code-signed: each system asks for a one-time confirmation (see Installation).
+- The 0.4.2 release has only the Linux installers; the macOS and Windows installers are provided with the next release.
 - On Windows and Linux, generating subtitles needs a processor with AVX2, FMA and F16C (see System requirements). On older processors it is not available and a message says so; this check was tested with simulated processors, not on old hardware.
 - **Faster export** needs NVIDIA graphics driver 610 or newer; with an older driver the normal method is used, and Settings → Advanced says why.
 - **Faster export on Linux** (Intel and AMD) needs the system's video acceleration library (libva) and the graphics driver. With the bundled ffmpeg it needs libva 2.21 or newer: Ubuntu 24.04 has 2.20, so the hardware is skipped there and the normal method is used. A system ffmpeg chosen in Advanced can still use the hardware.
@@ -108,9 +109,9 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **0.4.3** — The macOS and Windows installers build correctly again. The 0.4.2 release has only the Linux installers.
 - **0.4.2** — Faster export finds the computer's video hardware reliably, even on a busy computer: a slow hardware test gets a second, longer try, and an uncertain check is repeated in the background.
 - **0.4.0** — Export: Faster or Best quality in Settings. Faster uses your computer's video hardware (NVIDIA, Intel, AMD, Apple) when it can, and every file made that way is checked, with an automatic redo by the normal method on any problem; Best quality stays the default and is unchanged. Linux drivers that only offer constant-quality encoding are supported, and older system libva versions are skipped without a crash.
-- **0.3.0** — Automatic setup for your computer at first start, with a Settings window (Ctrl/Cmd+,) for preview quality, subtitle quality and how hard videolore works; three subtitle quality levels, with larger and more accurate speech models that you approve; older processors get a clear message instead of a crash; safer handling of project, settings and download files; export and fast subtitles as quick as before.
 
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
@@ -122,13 +123,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani gave the timeline a way to close its own gaps,\
-and laid fades through black between the clips, with a music track of its own,\
-and kept every source file untouched, so projects can be saved, reopened and trusted,\
-then bundled ffmpeg into the installers, so that nothing else has to be installed,\
-and taught videolore to write subtitles on your own computer, in three styles and three quality levels,\
-and set the program up for each computer at the first start, with plain settings anyone can read,\
-and hardened every door the files pass through, so a broken project or a doubtful download finds no way in,\
-and built Faster export on the video hardware, checking every file and falling back quietly when the hardware falls short,\
-and kept line coverage at 96.3 percent, with every finished requirement held by a test,\
-thank you, Andrea, for carrying videolore from its first version to this MVP release, and for every line you gave it.
+Andrea Lorenzani read the installer job's errors, one by one, and did not look away,\
+and set the file association to the spelling the packager expects, editor in lower case,\
+and renamed the install key so the Windows setup speaks the language its tool knows,\
+and gave the packager configuration its missing name, so it no longer stops with a folder error,\
+and made every path absolute, so the tool finds the icons and the notices wherever it runs,\
+and taught the script to say plainly when a DLL or an installer is missing, instead of failing in silence,\
+and wrote a test that checks both configurations against the real rules, so the mistakes cannot return unseen,\
+and tried the packager on a Linux machine with the real tool, building the deb and app formats from both files,\
+and gave the macOS disk image up to five tries, so one busy moment does not end the build,\
+thank you, Andrea, for fixing the installers patiently, step by step, and for keeping every Linux package running all along.
