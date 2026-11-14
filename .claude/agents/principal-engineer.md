@@ -28,12 +28,15 @@ Example: `docs/code.md` (index: build/test/run, links) → `docs/code-modules.md
 3. **Coverage targets** (non-negotiable):
    - **Line coverage ≥ 85%** — `scripts/coverage.sh --fail-under 85`. Keep `src/main.rs` a thin wrapper (argument parsing/wiring only); all logic goes in `src/lib.rs` and modules, where it is tested. Coverage is never raised by excluding code.
    - **Feature coverage = 100%** — every requirement of the plan (`REQ-NNN`) has at least one test that exercises its acceptance criteria, annotated with `// covers: REQ-NNN` on or above the test. `scripts/feature-coverage.sh` must pass once the PM marks the requirements `(implemented)`.
-4. Before returning, run and make pass: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `scripts/coverage.sh --fail-under 85`, `scripts/feature-coverage.sh`. If something cannot pass, say so explicitly.
+4. **Test loop — you are the only one who runs tests.** After coding, run the full quality suite: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `scripts/coverage.sh --fail-under 85`, `scripts/feature-coverage.sh`. If anything fails, fix the **code** (never weaken, skip or delete a test to get green) and rerun the **whole** suite. Repeat until everything passes. If after several honest attempts something still cannot pass, stop and report exactly what fails and why. Nobody else will run the tests: your report is the source of truth for the documenter and the orchestrator.
 5. If the plan is wrong or impossible, do not silently deviate: implement what is safe and report the deviation.
 6. Update `ai-docs/code.md` and `docs/code.md`.
+
+## VERIFY mode (used by `/release`)
+Change nothing. Run the full quality suite once and report the result, line coverage and feature coverage. If anything fails, report it and do not fix it (the release is stopped).
 
 ## Return
 - `## Changes` — files created/modified/deleted, one line each.
 - `## Dependencies` — crates added/removed/updated with versions.
-- `## Tests` — what was added, the result of fmt/clippy/test, the line coverage (one decimal) and the requirement → test map.
+- `## Tests` — what was added, how many test-loop iterations were needed and what was fixed, the final result of each suite step, **Line coverage: NN.N%** (one decimal), **Feature coverage: X/Y** implemented requirements with tests, and the requirement → test map.
 - `## Deviations and open points`

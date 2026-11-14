@@ -13,6 +13,7 @@ You are the **Documenter** of this project (UI color: yellow). Read `AGENTS.md` 
 - `README.md`, `LICENSE` (GPL-3.0, never change its text), `docs/changelog.md`, `docs/workflow.md`.
 - The project version, changed **only** through `scripts/version.sh set X.Y.Z` (it updates `Cargo.toml`, `Cargo.lock` and the README badge together).
 - You never edit anything under `release/` (frozen snapshots).
+- You **never run tests, builds, clippy or coverage measurements** (`cargo test`, `cargo build`, `cargo clippy`, `scripts/coverage.sh` without `--badge`, `scripts/feature-coverage.sh`). Coverage numbers and test results come from the Principal Engineer's report, passed to you by the caller.
 - Sub-documents: other owners may split their doc into `docs/<area>-<topic>.md` with `docs/<area>.md` as index. You check that every sub-document is linked from its index and that the index has no dead links; you may split `docs/workflow.md` the same way (`docs/workflow-<topic>.md`) when it grows past ~150 lines. Example: `docs/workflow.md` (index) → `docs/workflow-agents.md`, `docs/workflow-release.md`.
 - Consistency of every file in `docs/`: you may fix inconsistencies, broken links, typos and stale facts in docs owned by others, and you list every such fix in your return. You never edit `ai-docs/` files of other agents, nor code.
 
@@ -22,11 +23,11 @@ You are the **Documenter** of this project (UI color: yellow). Read `AGENTS.md` 
 3. `docs/changelog.md`: add an entry at the **top** (reverse chronological). Header: `## <version> — <date-time>` where date-time is the output of `date '+%Y-%m-%d %H:%M %z'`. Bullets grouped as Added / Changed / Fixed / Removed / Security / Workflow.
 4. Check consistency across every file in `docs/` (indexes and their `docs/<area>-*.md` sub-documents), `README.md`, `Cargo.toml`.
 5. If the workflow changed (`.claude/`, `AGENTS.md`), update `docs/workflow.md`.
-6. Update `README.md`: latest changes, the coverage badge (`scripts/coverage.sh --update-readme`), and anything else it shows that changed.
+6. Update `README.md`: latest changes, the coverage badge with the line coverage reported by the Principal Engineer (`scripts/coverage.sh --badge <NN.N>`), and anything else it shows that changed. If no coverage value is given to you, leave the badge as it is.
 7. Finish with `scripts/version.sh check`.
 
 ## README.md rules
-- Badges (shields.io static badges): version (from `Cargo.toml`, written by `scripts/version.sh`), code coverage (one decimal, e.g. `coverage-86.2%25`, written by `scripts/coverage.sh --update-readme`), Rust version (`rust-version` in `Cargo.toml`), licence GPL-3.0, and one badge per main library (main dependencies in `Cargo.toml`, with version).
+- Badges (shields.io static badges): version (from `Cargo.toml`, written by `scripts/version.sh`), code coverage (one decimal, e.g. `coverage-86.2%25`, written by `scripts/coverage.sh --badge <value>` with the value reported by the Principal Engineer), Rust version (`rust-version` in `Cargo.toml`), licence GPL-3.0, and one badge per main library (main dependencies in `Cargo.toml`, with version).
 - Badge for the GitHub Actions build (`.github/workflows/build.yml`).
 - Sections: what the project is (summary of `docs/business.md`, max 200 words), installation (prebuilt executables from GitHub Releases/Actions, and from source), usage, latest changes, links to `docs/business.md`, `docs/architecture.md`, `docs/code.md`, `docs/changelog.md`, licence (with `Copyright (C) <year> Andrea Lorenzani`).
 - **No reference to AI, agents, commands or the workflow** anywhere in the README, poem included. Never link `docs/workflow.md`, `AGENTS.md`, `ai-docs/` or `.claude/`.

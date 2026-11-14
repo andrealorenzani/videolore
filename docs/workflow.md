@@ -31,7 +31,7 @@ user feature
   -> product-manager (PLAN) -> [SEVERE ambiguities? ask user -> product-manager (PLAN, final)]
   -> compact brief (request + business plan + answers)
   -> architect (PLAN) -> [SEVERE PRODUCT-CHANGING questions? ask user -> architect (PLAN, final)]
-  -> parallel: product-manager (UPDATE) | architect (UPDATE) | principal-engineer (implement + tests)
+  -> parallel: product-manager (UPDATE) | architect (UPDATE) | principal-engineer (implement, then test loop: run suite -> fix code -> rerun until green; reports line + feature coverage)
   -> documenter (changelog, README + poem, docs consistency)
   -> report to user
 ```
@@ -45,7 +45,7 @@ MINOR ambiguities and TECHNICAL questions are decided by the agents and recorded
 4b. `release/<version>/` snapshots (README, docs, ai-docs) are immutable: deny rule `Edit(release/**)` in `.claude/settings.json` + `scripts/release-guard.sh` in CI. Andrea deletes old ones manually.
 5. README is for users: no reference to AI/agents/workflow; "Latest changes" by version, never by date; every README change ends with a new 10-verse poem for Andrea Lorenzani, verses 1-9 ending with `\` so GitHub shows one verse per line.
 6. Workflow changes only via `/change-workflow`.
-7. Code passes `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`; line coverage ≥ 85% and feature coverage 100% (`REQ-NNN (implemented)` in `docs/business.md` and `docs/business-*.md` ↔ `// covers: REQ-NNN` in tests); README coverage badge with one decimal. CI enforces all of it.
+7. **Only the Principal Engineer runs tests**, after coding, looping (fix code, rerun) until the suite passes; it reports line coverage and feature coverage, which everyone else uses (the Documenter writes the badge with `scripts/coverage.sh --badge`). No other agent or command runs tests, builds or coverage; `/release` asks the Principal Engineer for a VERIFY run. CI reruns everything independently. Code passes `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`; line coverage ≥ 85% and feature coverage 100% (`REQ-NNN (implemented)` in `docs/business.md` and `docs/business-*.md` ↔ `// covers: REQ-NNN` in tests); README coverage badge with one decimal. CI enforces all of it.
 8. Every development ends with a commit with a single human-readable line (no prefixes, body or trailers). Push only on request.
 9. `LICENSE` is the unmodified GPL-3.0 text; Andrea Lorenzani's copyright is in the README and in the header of each `.rs` file.
 
@@ -59,7 +59,7 @@ None yet. Project skills go in `.claude/skills/<name>/SKILL.md`.
 | Script | Purpose |
 |---|---|
 | `scripts/version.sh` | `get`, `next-patch`, `next-major`, `set X.Y.Z` (all locations, all-or-nothing: restored if any step fails; no build needed), `check` |
-| `scripts/coverage.sh` | line coverage with one decimal (`cargo llvm-cov`), `--update-readme`, `--fail-under N` |
+| `scripts/coverage.sh` | line coverage with one decimal (`cargo llvm-cov`), `--update-readme`, `--fail-under N` (Principal Engineer and CI only); `--badge NN.N` writes the README badge without running tests (Documenter) |
 | `scripts/feature-coverage.sh` | every implemented `REQ-NNN` (in `docs/business.md` and `docs/business-*.md`) has a `covers:` test |
 | `scripts/collect-release.sh` | snapshot README, docs, ai-docs into `release/<version>/` |
 | `scripts/release-guard.sh` | fail if a file under `release/` was modified/renamed |
@@ -110,3 +110,4 @@ Used by `/clone-workflow`.
 - 2026-11-13 — v0.1.2: version changed everywhere via `scripts/version.sh`; `/release` command with frozen `release/<version>/` snapshots, tag and push; coverage ≥ 85% and feature coverage 100% for the Principal Engineer; README coverage badge.
 - 2026-11-14 — v0.1.4: `scripts/version.sh set` all-or-nothing with rollback and no build; owners may split `docs/<area>.md` into `docs/<area>-<topic>.md` sub-documents with the main doc as index.
 - 2026-11-14 — v0.1.5: CI on the latest stable Rust (1.100) and a separate MSRV job; GitHub Actions on current major versions; policy "follow the latest Rust and libraries" recorded in `docs/architecture.md`.
+- 2026-11-14 — v0.1.6: tests run only by the Principal Engineer after coding, in a fix-and-rerun loop until green; it reports line and feature coverage; no other agent or command runs tests (`/release` uses a Principal Engineer VERIFY run; badge via `scripts/coverage.sh --badge`).

@@ -19,7 +19,7 @@ Software architecture: components and boundaries, data flow, interfaces, non-fun
 You may split `docs/architecture.md` into sub-documents named `docs/architecture-<topic>.md`, and you **should** do it when it becomes too large: more than ~150 lines, or several distinct topics that a reader would want to open separately. `docs/architecture.md` then stays as the **index**: a short introduction plus a list of links to each sub-document with one line on what it contains. Sub-documents follow the same rules (human-readable, owned by you, no AI references) and every sub-document must be linked from the index.
 Example: `docs/architecture.md` (index: overview, component map, links) → `docs/architecture-ffmpeg.md` (integration and export tiers), `docs/architecture-security.md`, `docs/architecture-dependencies.md`.
 
-You may read every other file; you never edit files you do not own. Bash is for read-only inspection (`cargo tree`, `cargo metadata`, `cargo search`), never for changes.
+You may read every other file; you never edit files you do not own. Bash is for read-only inspection (`cargo tree`, `cargo metadata`, `cargo search`), never for changes, and never to run tests, builds or coverage (only the Principal Engineer does).
 
 ## Modes (the caller tells you which one)
 

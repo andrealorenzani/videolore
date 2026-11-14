@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.1.5-blue)
+![version](https://img.shields.io/badge/version-0.1.6-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-96.0%25-brightgreen)
@@ -67,13 +67,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-When a fresh Rust brought new lints and the build turned red and grey,\
-Andrea Lorenzani chose to climb the newer way;\
-no old pin was kept to hide the warnings from the light,\
-each line of code was mended until the checks shone bright;\
-egui grew to version thirty-seven, and rfd to eighteen too,\
-the window kept its shape, the new API came through;\
-the minimum Rust was lifted to the newest stable stair,\
-and a second job now guards that floor with proof and care;\
-a test that stumbled once in sixteen now stands steady and clear,\
-and the editor keeps its promise, rising with the year.
+Andrea Lorenzani set one steady hand to test,\
+the one that wrote the code, before it takes its rest:\
+it runs the trial through, and should a single fail,\
+it mends the code itself and runs the whole tale.\
+No second voice re-checks what the first has proved,\
+no double work, no doubt, no effort wasted or moved;\
+the numbers that it finds, each coverage and each need,\
+are handed on as truth for all the rest to read.\
+And still, upon the shore, the distant builders check:\
+a careful captain's ship, and a watchman on the deck.

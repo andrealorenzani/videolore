@@ -2,6 +2,10 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
 
+## 0.1.6 — 2026-11-14 01:10 +0000
+- **Workflow**: tests are run only by the Principal Engineer, after coding, in a loop (run the suite, fix the code, rerun) until everything passes; it reports line coverage and feature coverage. No other agent or command runs tests, builds or coverage: `/add-feature` commits after static checks only, `/release` asks the Principal Engineer for a VERIFY run, the Documenter writes the coverage badge from the reported value. CI still reruns everything on GitHub.
+- **Added**: `scripts/coverage.sh --badge NN.N` writes the README coverage badge without running tests.
+
 ## 0.1.5 — 2026-11-14 01:03 +0000
 Summary: the project follows the latest Rust (1.100) and the latest libraries (egui/eframe 0.37, rfd 0.18); the editing features are unchanged.
 

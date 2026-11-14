@@ -39,13 +39,13 @@ In a **single message**, call in parallel:
 - `product-manager` in **UPDATE mode** with the final plan.
 - `architect` in **UPDATE mode** with the final plan.
 - `principal-engineer` with the final plan: implement it, update `ai-docs/code.md` and `docs/code.md`, return the changes made.
-Wait for all three. If the Principal Engineer reports failing checks or deviations, tell the user and ask whether to continue to documentation or fix first.
+Wait for all three. The Principal Engineer runs the tests itself after coding and loops (fix code, rerun) until they pass; its report contains the results, the line coverage and the feature coverage. You do not run any test. If the Principal Engineer reports checks it could not make pass, or deviations, tell the user and ask whether to continue to documentation or fix first.
 
 ## Phase 5 — Documentation (`documenter`)
-Call the `documenter` agent with: the **target version**, the final plan, the Principal Engineer's result, and the lists of changes from PM and Architect. It updates the changelog, README (with its poem) and keeps `docs/` consistent. This step is mandatory (rule 1 of `AGENTS.md`).
+Call the `documenter` agent with: the **target version**, the final plan, the Principal Engineer's result (including line coverage and feature coverage), and the lists of changes from PM and Architect. It updates the changelog, README (with its poem) and keeps `docs/` consistent. This step is mandatory (rule 1 of `AGENTS.md`).
 
 ## Commit
-Run `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && scripts/coverage.sh --fail-under 85 && scripts/feature-coverage.sh && scripts/version.sh check`, then `git add -A` and commit with a **single human-readable line** describing the feature for a human (no prefixes, no body, no trailers, no mention of agents/AI). Do not push unless the user asks.
+Do **not** run tests (only the Principal Engineer does). Run only the static checks `scripts/version.sh check && scripts/release-guard.sh`, then `git add -A` and commit with a **single human-readable line** describing the feature for a human (no prefixes, no body, no trailers, no mention of agents/AI). Do not push unless the user asks.
 
 ## Finish
-Report to the user in a few lines: target version, what was built, files changed, test result, decisions taken with defaults, open points.
+Report to the user in a few lines: target version, what was built, files changed, test results with line and feature coverage as reported by the Principal Engineer, decisions taken with defaults, open points.
