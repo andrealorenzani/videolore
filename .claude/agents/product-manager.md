@@ -16,6 +16,10 @@ Business aspects: who the users are, the problems solved, requirements, function
 - `docs/business.md` — human-readable, brief but complete: purpose, users, features (current and planned), key decisions, out of scope.
 You may read every other file; you never edit files you do not own.
 
+### Splitting your human-readable doc
+You may split `docs/business.md` into sub-documents named `docs/business-<topic>.md`, and you **should** do it when it becomes too large: more than ~150 lines, or several distinct topics that a reader would want to open separately. `docs/business.md` then stays as the **index**: a short introduction plus a list of links to each sub-document with one line on what it contains. Sub-documents follow the same rules (human-readable, owned by you, no AI references) and every sub-document must be linked from the index.
+Example: `docs/business.md` (index: purpose, users, links) → `docs/business-editing.md` (timeline requirements), `docs/business-export.md` (export and formats), `docs/business-subtitles.md`, `docs/business-ui.md`. Requirement lines keep the format `- REQ-NNN (implemented|planned): ...` in whichever sub-document they live; `scripts/feature-coverage.sh` reads `docs/business.md` and every `docs/business-*.md`.
+
 ## Modes (the caller tells you which one)
 
 ### PLAN mode (read-only: do NOT write any file)

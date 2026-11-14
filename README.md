@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.1.3-blue)
+![version](https://img.shields.io/badge/version-0.1.4-blue)
 ![rust](https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-96.4%25-brightgreen)
@@ -52,6 +52,7 @@ The window has five panels: the media list (import files here) and the preview a
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md)
 
 ## Latest changes
+- **0.1.4** — Maintenance: version numbering is updated more reliably.
 - **0.1.3** — First real editor: import media, cut, join and trim clips on one timeline, fade between clips, preview with sound, save and open projects, and export to one file with progress and cancel.
 - **0.1.2** — Code coverage measured on every build and shown in the badge above; every tagged version is published as a GitHub release with its executables and release notes.
 - **0.1.1** — Prebuilt executables for Linux, macOS and Windows built automatically on GitHub; copyright notice added.
@@ -65,13 +66,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani raised a window wide and clear,\
-five panels in their places, each with its own sphere;\
-he taught the clips to ripple, closing every gap,\
-so split and join come true with a single keystroke's tap.\
-He wove each join through black with a fade that glides,\
-and taught the preview sound to play as the frame rides;\
-he kept each source file safe, untouched and whole,\
-and let a cancelled export leave no partial scrap or hole.\
-He proved each need with tests, and coverage climbed to ninety-six,\
-and every cut lands true, the way a careful hand can fix.
+Andrea Lorenzani found a number left behind,\
+a badge that told the past while code had changed its mind;\
+he would not let a version limp on half its way,\
+so now it moves complete, or it stays where it lay.\
+No failing build can leave a crooked count in place,\
+each change is all-or-nothing, tidy, sure, with grace.\
+He opened up the pages so each tale can grow,\
+an index at the front and chapters in a row;\
+and one day, when they swell, they'll split as rivers do,\
+each stream with its own name, each name still leading through.

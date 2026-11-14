@@ -27,10 +27,18 @@ case "${1:-}" in
   set)
     v="${2:?usage: set X.Y.Z}"
     [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid version: $v" >&2; exit 1; }
+    # All-or-nothing: back up every location, restore them all if any step fails.
+    backup=$(mktemp -d)
+    cp Cargo.toml Cargo.lock README.md "$backup/"
+    restore() { cp "$backup/Cargo.toml" "$backup/Cargo.lock" "$backup/README.md" .; rm -rf "$backup"; echo "version.sh: failed, nothing changed" >&2; }
+    trap 'restore; exit 1' ERR
     sed -i "/^\[package\]/,/^\[/ s/^version = \".*\"/version = \"$v\"/" Cargo.toml
-    cargo check -q --offline 2>/dev/null || cargo check -q
     sed -i "s/badge\/version-[0-9][0-9.]*-/badge\/version-$v-/" README.md
-    check ;;
+    # Rewrite only this package's entry in Cargo.lock: no build, no system libraries needed.
+    cargo update --workspace --offline -q 2>/dev/null || cargo update --workspace -q
+    check
+    trap - ERR
+    rm -rf "$backup" ;;
   check) check ;;
   *) sed -n '2,8p' "$0"; exit 1 ;;
 esac

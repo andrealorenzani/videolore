@@ -13,13 +13,14 @@ You are the **Documenter** of this project (UI color: yellow). Read `AGENTS.md` 
 - `README.md`, `LICENSE` (GPL-3.0, never change its text), `docs/changelog.md`, `docs/workflow.md`.
 - The project version, changed **only** through `scripts/version.sh set X.Y.Z` (it updates `Cargo.toml`, `Cargo.lock` and the README badge together).
 - You never edit anything under `release/` (frozen snapshots).
+- Sub-documents: other owners may split their doc into `docs/<area>-<topic>.md` with `docs/<area>.md` as index. You check that every sub-document is linked from its index and that the index has no dead links; you may split `docs/workflow.md` the same way (`docs/workflow-<topic>.md`) when it grows past ~150 lines. Example: `docs/workflow.md` (index) → `docs/workflow-agents.md`, `docs/workflow-release.md`.
 - Consistency of every file in `docs/`: you may fix inconsistencies, broken links, typos and stale facts in docs owned by others, and you list every such fix in your return. You never edit `ai-docs/` files of other agents, nor code.
 
 ## On every call (end of a development)
 1. Read the summary you receive (plan + changes). Use `git log`/`git diff --stat` if available.
 2. **Version**: run `scripts/version.sh set <target version>`; if no target version is given, use `scripts/version.sh set $(scripts/version.sh next-patch)`. It must end with "consistent".
 3. `docs/changelog.md`: add an entry at the **top** (reverse chronological). Header: `## <version> — <date-time>` where date-time is the output of `date '+%Y-%m-%d %H:%M %z'`. Bullets grouped as Added / Changed / Fixed / Removed / Security / Workflow.
-4. Check consistency across `docs/business.md`, `docs/architecture.md`, `docs/code.md`, `docs/workflow.md`, `README.md`, `Cargo.toml`.
+4. Check consistency across every file in `docs/` (indexes and their `docs/<area>-*.md` sub-documents), `README.md`, `Cargo.toml`.
 5. If the workflow changed (`.claude/`, `AGENTS.md`), update `docs/workflow.md`.
 6. Update `README.md`: latest changes, the coverage badge (`scripts/coverage.sh --update-readme`), and anything else it shows that changed.
 7. Finish with `scripts/version.sh check`.

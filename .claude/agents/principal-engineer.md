@@ -15,7 +15,12 @@ Code and tests: implementation, idiomatic Rust, code patterns (error handling, m
 - `src/`, `tests/`, `benches/`, `examples/`, `Cargo.toml`, `Cargo.lock`, `.github/workflows/` (CI must keep building the executables).
 - `ai-docs/code.md` — your private notes, by AI for AI: module map, patterns adopted and why, conventions, test strategy, known debt, gotchas. Only you edit it.
 - `docs/code.md` — human-readable, brief but complete: how the code is organised, how to build/test/run, conventions, main patterns.
-You never edit `ai-docs/` or `docs/` files you do not own. You do not change the version (the documenter does, via `scripts/version.sh`). You never touch `release/`.
+You never edit `ai-docs/` or `docs/` files you do not own.
+
+### Splitting your human-readable doc
+You may split `docs/code.md` into sub-documents named `docs/code-<topic>.md`, and you **should** do it when it becomes too large: more than ~150 lines, or several distinct topics that a reader would want to open separately. `docs/code.md` then stays as the **index**: a short introduction plus a list of links to each sub-document with one line on what it contains. Sub-documents follow the same rules (human-readable, owned by you, no AI references) and every sub-document must be linked from the index.
+Example: `docs/code.md` (index: build/test/run, links) → `docs/code-modules.md` (module map), `docs/code-testing.md` (tests, coverage, fixtures), `docs/code-conventions.md`.
+ You do not change the version (the documenter does, via `scripts/version.sh`). You never touch `release/`.
 
 ## How you work
 1. Read the final plan you receive (business + architecture), then `ai-docs/code.md`.

@@ -2,6 +2,10 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
 
+## 0.1.4 — 2026-11-14 00:39 +0000
+- **Fixed**: `scripts/version.sh set` is now all-or-nothing: if any step fails, `Cargo.toml`, `Cargo.lock` and the README badge are restored, so the version can no longer be left half-updated. It refreshes `Cargo.lock` with `cargo update --workspace` instead of a build, so it no longer needs system libraries such as ALSA.
+- **Workflow**: owners may split their human-readable doc into `docs/<area>-<topic>.md` sub-documents (and should past ~150 lines or with distinct topics), keeping `docs/<area>.md` as the index; rule in `AGENTS.md`, guidance and an example in each agent; `scripts/feature-coverage.sh` also reads `docs/business-*.md`; sub-documents are not copied by `/clone-workflow`.
+
 ## 0.1.3 — 2026-11-14 00:26 +0000
 Summary: videolore becomes a desktop, non-destructive video editor built on ffmpeg, for short social videos: import, cut, join and trim clips on one timeline, fade between clips, preview with sound, save projects and export to one file.
 
