@@ -225,6 +225,8 @@ pub fn remove_integration() -> io::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
+// Objective-C runtime calls (objc2 `define_class!`/`msg_send!`): see the SAFETY comments.
+#[allow(unsafe_code)]
 pub mod macos {
     //! Apple Event `odoc` handler: Finder sends the double-clicked project to the running
     //! app. The handler is registered when the application is about to finish launching

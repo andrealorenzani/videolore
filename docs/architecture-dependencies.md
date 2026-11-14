@@ -2,7 +2,7 @@
 
 Part of [Architecture](architecture.md).
 
-Exact versions are in `Cargo.toml` and `Cargo.lock`, which are the source of truth; the versions below are those chosen for 0.2.0. All crates are kept on their latest releases and all licences are compatible with GPL-3.0 (checked in CI by `cargo-deny`).
+Exact versions are in `Cargo.toml` and `Cargo.lock`, which are the source of truth; the versions below are those reviewed for 0.3.0. All crates are kept on their latest releases and all licences are compatible with GPL-3.0 (checked in CI by `cargo-deny`).
 
 ## Build features
 | Feature | Default | What it adds |
@@ -20,13 +20,15 @@ Exact versions are in `Cargo.toml` and `Cargo.lock`, which are the source of tru
 | `rfd` | 0.18 | MIT | Native open/save dialogs. |
 | `serde`, `serde_json` | 1.0 | MIT/Apache-2.0 | Projects, settings, `ffprobe` output. |
 | `thiserror` | 2.0 | MIT/Apache-2.0 | Error types. |
-| `directories` | 6.0 | MIT/Apache-2.0 | Platform folders for settings, proxy cache and speech model. |
-| `tempfile` | 3.27 | MIT/Apache-2.0 | Private temporary folders (filter graphs, preview scripts, subtitle files, audio extraction). |
-| `sha2` | 0.11.1 | MIT/Apache-2.0 | Proxy cache names and speech model verification; also used by tests to prove sources are never modified. Was test-only before 0.2.0. |
-| `sysinfo` | 0.40.3 | MIT | Machine RAM for the proxy rule, and memory measurement in tests. Only the "system" part is enabled. |
+| `directories` | 6.0 | MIT/Apache-2.0 | Platform folders for settings, preview-copy cache, work folders and speech models. |
+| `tempfile` | 3.27 | MIT/Apache-2.0 | Random-named private folders and files (since 0.3.0 created inside `videolore`'s own work folder). |
+| `sha2` | 0.11.1 | MIT/Apache-2.0 | Proxy cache names and speech model verification (uses the processor's SHA instructions where available); also used by tests to prove sources are never modified and to name cached test media. |
+| `sysinfo` | 0.40.3 | MIT | Machine memory and physical cores for the recommended settings and the proxy rule, and memory measurement in tests. Only the "system" part is enabled. Replacing it would need platform-specific unsafe code. |
 | `whisper-rs` (feature `stt`) | 0.16.0 | Unlicense (whisper.cpp: MIT) | Local speech-to-text. |
-| `ureq` (feature `stt`) | 3.5.2 | MIT/Apache-2.0 | HTTPS download of the speech model. Uses `rustls` (with `ring` and `webpki-roots`), so no system OpenSSL. Chosen over `reqwest`, which needs an async runtime. |
+| `ureq` (feature `stt`) | 3.5.2 | MIT/Apache-2.0 | HTTPS download of the speech models. Uses `rustls` (with `ring` and `webpki-roots`), so no system OpenSSL. Chosen over `reqwest`, which needs an async runtime. |
 | `objc2`, `objc2-foundation` (macOS only) | 0.6.5 / 0.3.2 | MIT | Receive "open document" events from Finder. |
+
+**0.3.0 review.** Every crate was checked for speed, maintenance and latest version: none is dropped and none is added. Machine detection uses the Rust standard library (cores, processor features) plus `sysinfo`; crash-safe locking of work folders uses the standard library's file locks. `eframe` keeps its OpenGL (`glow`) renderer; the `wgpu` renderer was not chosen because it is heavier.
 
 Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDLA-Permissive-2.0). Both are listed in the notices and allowed by the CI licence check.
 
@@ -36,7 +38,7 @@ Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDL
 | `ffmpeg`, `ffprobe` (GPL builds: BtbN for Windows/Linux, Martin Riedl for macOS) | GPL-3.0-or-later (includes x264, x265: GPL-2.0-or-later; libass and others) | All media decoding, encoding and subtitle rendering. See [ffmpeg](architecture-ffmpeg.md). |
 | Noto Sans Bold | SIL Open Font License 1.1 | Subtitle font. |
 
-Downloaded after consent, not bundled: the whisper "tiny" multilingual model (`ggml-tiny-q5_1.bin`, MIT). See [subtitles](architecture-subtitles.md).
+Downloaded after consent, not bundled: the whisper models of the three subtitle quality levels (`ggml-tiny-q5_1.bin`, `ggml-small-q5_1.bin`, `ggml-large-v3-turbo-q5_0.bin`, all MIT). See [subtitles](architecture-subtitles.md#subtitle-quality-levels-030).
 
 ## Tools used only to build, test or package
 Not part of `videolore`; not linked.
@@ -47,7 +49,9 @@ Not part of `videolore`; not linked.
 | appimagetool | pinned in `packaging/tools.lock` | Linux AppImage. |
 | cargo-deny | 0.20.2 | Licence, advisory and banned-crate checks. |
 | cargo-about | 0.9.3 | Generates the Rust crate notices. |
-| `espeak-ng` | system package | Synthetic speech for the speech-to-text test. |
+| `espeak-ng` | system package | Synthetic speech for the speech-to-text and accuracy tests. |
+| cargo-llvm-cov | installed in CI | Line coverage; since 0.3.0 CI runs the tests once, under coverage. |
+| `qemu-user` (optional) | system package | Running the tests on an emulated older processor to confirm the old-processor check. |
 | `cmake`, libclang, C++ compiler | system | Building whisper.cpp. |
 | `ffmpeg` (Ubuntu package) | system | Integration tests in CI. |
 | `rsvg-convert` / ImageMagick | system | Generating icon files once (`scripts/icons.sh`), not needed to build. |

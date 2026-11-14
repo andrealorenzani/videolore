@@ -185,7 +185,12 @@ pub enum MediaError {
     NoDuration(String),
     #[error("could not run ffprobe: {0}")]
     Ffprobe(String),
+    #[error("'{0}' could not be analysed in time")]
+    TooSlow(String),
 }
+
+/// Longest time ffprobe may take on one file.
+pub const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn num_u64(v: &Value) -> Option<u64> {
     match v {
@@ -302,11 +307,28 @@ pub fn parse_ffprobe(json: &str, path: &Path) -> Result<(Micros, MediaFormat), M
     Ok((Micros::from_secs_f64(duration), f))
 }
 
-/// The file name shown to users.
+/// The file name shown to users. Control characters and text-direction overrides (which
+/// could make a name look like another) are shown as U+FFFD.
 pub fn display_name(path: &Path) -> String {
-    path.file_name()
+    let raw = path
+        .file_name()
         .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.display().to_string())
+        .unwrap_or_else(|| path.display().to_string());
+    sanitize_for_display(&raw)
+}
+
+/// Replaces control characters and bidirectional overrides/isolates with U+FFFD.
+pub fn sanitize_for_display(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            let bidi = matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
+            if c.is_control() || bidi {
+                '\u{FFFD}'
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 /// Runs ffprobe on `path` and builds a [`MediaItem`].
@@ -315,6 +337,17 @@ pub fn probe(
     ffprobe: &Path,
     path: &Path,
     id: MediaId,
+) -> Result<MediaItem, MediaError> {
+    probe_within(runner, ffprobe, path, id, PROBE_TIMEOUT)
+}
+
+/// [`probe`] with a custom time limit.
+pub fn probe_within(
+    runner: &dyn Runner,
+    ffprobe: &Path,
+    path: &Path,
+    id: MediaId,
+    timeout: std::time::Duration,
 ) -> Result<MediaItem, MediaError> {
     let name = display_name(path);
     if !path.is_file() {
@@ -332,9 +365,13 @@ pub fn probe(
         "-show_streams",
     ]);
     args.push(file_arg(&abs));
-    let out = runner
-        .run(ffprobe, &args)
-        .map_err(|e| MediaError::Ffprobe(e.to_string()))?;
+    let out = runner.run_within(ffprobe, &args, timeout).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::TimedOut {
+            MediaError::TooSlow(name.clone())
+        } else {
+            MediaError::Ffprobe(e.to_string())
+        }
+    })?;
     if !out.success {
         return Err(MediaError::Unreadable(name));
     }
@@ -355,6 +392,52 @@ pub fn probe(
 pub(crate) mod tests {
     use super::*;
     use crate::ffmpeg::fake::{FakeRunner, fail, ok};
+
+    use crate::ffmpeg::CmdOutput;
+
+    /// A runner whose processes never finish on their own (real `run_within`).
+    struct Stuck(FakeRunner);
+
+    impl Runner for Stuck {
+        fn run(&self, p: &Path, a: &[std::ffi::OsString]) -> std::io::Result<CmdOutput> {
+            self.0.run(p, a)
+        }
+        fn spawn_in(
+            &self,
+            p: &Path,
+            a: &[std::ffi::OsString],
+            c: Option<&Path>,
+        ) -> std::io::Result<Box<dyn crate::ffmpeg::Process>> {
+            self.0.spawn_in(p, a, c)
+        }
+    }
+
+    // covers: REQ-057
+    #[test]
+    fn hostile_names_and_slow_files_are_handled() {
+        // control characters and direction overrides never reach the screen as such
+        let name = display_name(Path::new("/x/evil\u{202E}4pm.exe\nline\u{2066}.mp4"));
+        assert_eq!(name, "evil\u{FFFD}4pm.exe\u{FFFD}line\u{FFFD}.mp4");
+        assert_eq!(display_name(Path::new("/x/holiday.mp4")), "holiday.mp4");
+        // ffprobe that never answers is stopped
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("slow.mp4");
+        std::fs::write(&f, b"x").unwrap();
+        let stuck = Stuck(FakeRunner::default().on(|_, _| ok("")).holding_streams());
+        let t = std::time::Instant::now();
+        let e = probe_within(
+            &stuck,
+            Path::new("ffprobe"),
+            &f,
+            MediaId(1),
+            std::time::Duration::from_millis(50),
+        )
+        .unwrap_err();
+        assert_eq!(e, MediaError::TooSlow("slow.mp4".into()));
+        assert!(e.to_string().contains("in time"));
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
+        assert_eq!(PROBE_TIMEOUT.as_secs(), 30);
+    }
 
     pub const MP4_JSON: &str = r#"{
       "streams": [

@@ -64,6 +64,10 @@ pub struct ExportJob {
     pub encoders: BTreeSet<String>,
     /// The ffmpeg has the `subtitles` filter (needed when there are subtitles).
     pub can_burn_subtitles: bool,
+    /// ffmpeg threads ("How hard videolore works"); `None`: ffmpeg decides.
+    pub threads: Option<u32>,
+    /// Root of the private work folder (subtitle file, font, crash cleanup).
+    pub work_root: PathBuf,
 }
 
 /// `<dir>/.<name>.videolore-partial`.
@@ -186,28 +190,31 @@ pub fn run(
     let _ = tx.send(ExportEvent::Started {
         stream_copy: matches!(plan, Plan::StreamCopy { .. }),
     });
-    let tmp = tempfile::Builder::new()
-        .prefix("videolore-")
-        .tempdir()
-        .map_err(|e| ExportError::Io(e.to_string()))?;
-    let list = tmp.path().join("list.ffconcat");
-    let script = tmp.path().join("graph.txt");
+    let io = |e: std::io::Error| ExportError::Io(e.to_string());
+    if plan.subtitles().is_some() && !job.can_burn_subtitles {
+        return Err(ExportError::NoSubtitleFilter);
+    }
+    let work = crate::scratch::Work::new(&job.work_root).map_err(io)?;
+    let list = work.path().join("list.ffconcat");
+    let script = work.path().join("graph.txt");
     let paths = ExportPaths {
         output: &partial,
         concat_list: &list,
         graph_script: &script,
     };
-    let io = |e: std::io::Error| ExportError::Io(e.to_string());
     if let Some(doc) = plan.subtitles() {
-        if !job.can_burn_subtitles {
-            return Err(ExportError::NoSubtitleFilter);
-        }
-        write_subtitles(tmp.path(), doc).map_err(io)?;
+        write_subtitles(work.path(), doc).map_err(io)?;
     }
-    let args = render::export_args(&plan, &paths, job.version).map_err(io)?;
-    let result = execute(job, runner, &args, tmp.path(), cancel, tx);
+    let args = render::export_args(&plan, &paths, job.version, job.threads).map_err(io)?;
+    // The partial file is private until it is complete; a crash leaves it listed in the
+    // work folder, so the next start removes it.
+    work.register(&partial).map_err(io)?;
+    drop(crate::scratch::create_private_file(&partial).map_err(io)?);
+    let result = execute(job, runner, &args, work.path(), cancel, tx);
     match result {
-        Ok(()) => match std::fs::rename(&partial, &output) {
+        Ok(()) => match crate::scratch::publish(&partial)
+            .and_then(|()| std::fs::rename(&partial, &output))
+        {
             Ok(()) => Ok(output),
             Err(e) => {
                 let _ = std::fs::remove_file(&partial);
@@ -304,6 +311,8 @@ mod tests {
             version: FfVersion::Release(6, 1, 0),
             encoders: ["libx264", "aac"].iter().map(|s| s.to_string()).collect(),
             can_burn_subtitles: true,
+            threads: None,
+            work_root: dir.join("work"),
         }
     }
 
@@ -417,14 +426,15 @@ mod tests {
         assert_eq!(ev[0], ExportEvent::Started { stream_copy: false });
         assert!(matches!(ev.last(), Some(ExportEvent::Done(_))));
         assert!(seen.lock().unwrap().is_some());
-        // ffmpeg ran inside a temporary folder holding the ASS file and the font
+        // ffmpeg ran inside a private work folder holding the ASS file and the font
         let cwd = fake.cwds.lock().unwrap().last().cloned().flatten().unwrap();
         assert!(
             cwd.file_name()
                 .unwrap()
                 .to_string_lossy()
-                .starts_with("videolore-")
+                .starts_with("job-")
         );
+        assert!(cwd.starts_with(&j.work_root));
         assert!(!cwd.exists(), "the working folder is removed afterwards");
         // an ffmpeg without libass cannot export subtitles
         j.can_burn_subtitles = false;

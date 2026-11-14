@@ -18,6 +18,7 @@ pub const HELP: &[(&str, &str)] = &[
     ("Ctrl/Cmd+Z", "Undo"),
     ("Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y", "Redo"),
     ("Space", "Play/Pause"),
+    ("Ctrl/Cmd+,", "Settings"),
 ];
 
 /// The command bound to an input event, if any.
@@ -45,6 +46,7 @@ fn key_command(key: Key, m: Modifiers) -> Option<Command> {
         (true, false, Key::B) => Some(Command::Split),
         (true, false, Key::S) => Some(Command::SaveProject),
         (true, false, Key::Q) => Some(Command::Quit),
+        (true, false, Key::Comma) => Some(Command::OpenSettings),
         (true, false, Key::X) => Some(Command::Cut),
         (true, false, Key::C) => Some(Command::Copy),
         (true, false, Key::V) => Some(Command::Paste),
@@ -113,6 +115,10 @@ mod tests {
         assert_eq!(command_for(&released), None);
         assert_eq!(command_for(&key(Key::S, c)), Some(Command::SaveProject));
         assert_eq!(command_for(&key(Key::Q, c)), Some(Command::Quit));
-        assert_eq!(HELP.len(), 9);
+        assert_eq!(
+            command_for(&key(Key::Comma, c)),
+            Some(Command::OpenSettings)
+        );
+        assert_eq!(HELP.len(), 10);
     }
 }

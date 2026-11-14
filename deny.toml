@@ -12,6 +12,11 @@ targets = [
 [advisories]
 # Unmaintained crates deep in the GUI stack are reported but do not fail the build.
 unmaintained = "workspace"
+# A yanked crate version fails the build like a vulnerability.
+yanked = "deny"
+# Advisories known not to affect videolore. Every entry needs its reason, e.g.
+#   "RUSTSEC-2026-0000", # only in the X feature, which videolore does not enable
+ignore = []
 
 [licenses]
 allow = [

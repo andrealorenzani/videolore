@@ -81,6 +81,18 @@ pub fn components(ffmpeg: Option<&FfmpegInfo>) -> Vec<Component> {
             "MIT",
             "https://huggingface.co/ggerganov/whisper.cpp",
         ),
+        c(
+            "ggml-small-q5_1.bin",
+            "pinned by SHA-256",
+            "MIT",
+            "https://huggingface.co/ggerganov/whisper.cpp",
+        ),
+        c(
+            "ggml-large-v3-turbo-q5_0.bin",
+            "pinned by SHA-256",
+            "MIT",
+            "https://huggingface.co/ggerganov/whisper.cpp",
+        ),
     ]
 }
 
@@ -132,6 +144,10 @@ mod tests {
             "whisper.cpp",
         ] {
             assert!(names.contains(&n), "{n} missing");
+        }
+        // every speech file offered by Subtitle quality is listed
+        for m in crate::stt::builtin_models() {
+            assert!(names.contains(&m.file.as_str()), "{} missing", m.file);
         }
         for c in &list {
             assert!(!c.version.is_empty() && c.source.starts_with("https://"));

@@ -74,6 +74,14 @@ case "$target" in
 linux-x86_64)
     exe=target/release/videolore
     smoke_test "$ffdir/ffmpeg"
+    # The packages must run on current Ubuntu LTS and Fedora: refuse an executable that
+    # needs a newer glibc than Ubuntu 24.04's 2.39.
+    max_glibc="2.39"
+    need=$(objdump -T "$exe" | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sed 's/GLIBC_//' | sort -V | tail -1)
+    if [[ "$(printf '%s\n%s\n' "$need" "$max_glibc" | sort -V | tail -1)" != "$max_glibc" ]]; then
+        echo "videolore needs glibc $need, newer than $max_glibc" >&2; exit 1
+    fi
+    echo "glibc needed: $need (limit $max_glibc)"
     # --- AppImage: hand-built AppDir + appimagetool with the pinned static runtime
     appdir="$stage/AppDir"
     rm -rf "$stage" && mkdir -p "$appdir/usr/bin" "$appdir/usr/share/videolore"

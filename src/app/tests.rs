@@ -8,6 +8,7 @@ use crate::ffmpeg::FfVersion;
 use crate::ffmpeg::fake::{FakeRunner, ok};
 use crate::media::tests::MP4_JSON;
 use crate::preview::NullSink;
+use crate::settings::{PreviewQuality, SubtitleQuality};
 use std::sync::atomic::AtomicUsize;
 use std::time::Duration;
 
@@ -653,11 +654,46 @@ fn music_track_commands_are_undoable_and_independent_of_video_edits() {
     assert_eq!(app.project.mix, Mix::default());
 }
 
-/// Speech model + transcriber fakes installed on `app`; returns the model bytes.
-fn with_fake_speech(app: &mut AppState, dir: &Path) -> Vec<u8> {
+/// Serves, for each built-in address, the file `store_for` expects for that level.
+pub struct LevelFetcher {
+    pub store: ModelStore,
+    pub body: Vec<u8>,
+    pub calls: Arc<AtomicUsize>,
+}
+
+impl ModelFetcher for LevelFetcher {
+    fn fetch(
+        &self,
+        url: &str,
+        max_bytes: u64,
+        out: &mut dyn std::io::Write,
+        progress: &mut dyn FnMut(u64),
+        cancel: &AtomicBool,
+    ) -> Result<(), stt::SttError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let i = self
+            .store
+            .specs
+            .iter()
+            .position(|s| s.url == url)
+            .expect("a built-in address");
+        let body = crate::stt::tests::level_body(&self.body, i);
+        crate::stt::tests::FakeFetcher::new(body).fetch(url, max_bytes, out, progress, cancel)
+    }
+}
+
+/// Speech files + transcriber fakes installed on `app` (Subtitle quality: Fast); returns
+/// the base bytes of the fake files (see `stt::tests::store_for`).
+pub fn with_fake_speech(app: &mut AppState, dir: &Path) -> Vec<u8> {
     let body = b"tiny fake model".to_vec();
-    app.model_store = Some(crate::stt::tests::store_for(dir, &body));
-    app.fetcher = Some(Arc::new(crate::stt::tests::FakeFetcher(body.clone())));
+    let store = crate::stt::tests::store_for(dir, &body);
+    app.fetcher = Some(Arc::new(LevelFetcher {
+        store: store.clone(),
+        body: body.clone(),
+        calls: Arc::new(AtomicUsize::new(0)),
+    }));
+    app.model_store = Some(store);
+    app.settings.subtitle_quality = SubtitleQuality::Fast;
     app.transcriber = Arc::new(|_, _| {
         Ok(Box::new(crate::stt::tests::FakeTranscriber::default()) as Box<dyn stt::Transcriber>)
     });
@@ -684,7 +720,7 @@ fn subtitles_are_generated_after_consent_and_edited_with_undo() {
     let body = with_fake_speech(&mut app, dir.path());
     // consent comes before any download
     app.dispatch(Command::GenerateSubtitles, now).unwrap();
-    assert_eq!(app.modal, Some(Modal::ModelConsent));
+    assert_eq!(app.modal, Some(Modal::ModelConsent(SubtitleQuality::Fast)));
     assert!(!app.model_store.as_ref().unwrap().dir.exists());
     app.dispatch(Command::ModelConsent(ConsentChoice::Cancel), now)
         .unwrap();
@@ -695,7 +731,12 @@ fn subtitles_are_generated_after_consent_and_edited_with_undo() {
     assert!(app.is_generating());
     assert!(app.is_enabled(&Command::CancelSubtitles));
     settle(&mut app);
-    assert!(app.model_store.as_ref().unwrap().is_installed());
+    assert!(
+        app.model_store
+            .as_ref()
+            .unwrap()
+            .is_installed(SubtitleQuality::Fast)
+    );
     // the fake transcriber hears one word per second of the 3 s extracted
     assert_eq!(app.project.subtitles.lines.len(), 3);
     assert_eq!(app.project.subtitles.language.as_deref(), Some("it"));
@@ -772,16 +813,22 @@ fn subtitles_are_generated_after_consent_and_edited_with_undo() {
     // a local model file must be the pinned one
     let other = tempfile::tempdir().unwrap();
     let local = other.path().join("model.bin");
-    std::fs::write(&local, &body).unwrap();
+    std::fs::write(&local, crate::stt::tests::level_body(&body, 0)).unwrap();
     let mut app2 = state(FakeDialogs {
         model: Some(local),
         ..Default::default()
     });
     with_fake_speech(&mut app2, other.path());
+    app2.modal = Some(Modal::ModelConsent(SubtitleQuality::Fast));
     app2.dispatch(Command::ModelConsent(ConsentChoice::LocalFile), now)
         .unwrap();
     settle(&mut app2);
-    assert!(app2.model_store.as_ref().unwrap().is_installed());
+    assert!(
+        app2.model_store
+            .as_ref()
+            .unwrap()
+            .is_installed(SubtitleQuality::Fast)
+    );
     // the timeline is empty: nothing to transcribe
     assert!(app2.status.contains("no sound") || app2.status.contains("installed"));
 }
@@ -801,17 +848,26 @@ fn subtitle_generation_can_be_cancelled_and_failures_are_reported() {
     }
     with_fake_speech(&mut app, dir.path());
     // a failing download is reported and nothing is installed
-    app.fetcher = Some(Arc::new(crate::stt::tests::FakeFetcher(b"wrong".to_vec())));
+    app.fetcher = Some(Arc::new(crate::stt::tests::FakeFetcher::new(
+        b"wrong".to_vec(),
+    )));
+    app.modal = Some(Modal::ModelConsent(SubtitleQuality::Fast));
     app.dispatch(Command::ModelConsent(ConsentChoice::Download), now)
         .unwrap();
     settle(&mut app);
-    assert!(app.notice.take().unwrap().contains("speech model"));
+    assert!(
+        app.notice
+            .take()
+            .unwrap()
+            .contains("speech recognition file")
+    );
     // install, then cancel a running generation
     with_fake_speech(&mut app, dir.path());
     app.transcriber = Arc::new(|_, _| {
         std::thread::sleep(Duration::from_millis(100));
         Ok(Box::new(crate::stt::tests::FakeTranscriber::default()) as Box<dyn stt::Transcriber>)
     });
+    app.modal = Some(Modal::ModelConsent(SubtitleQuality::Fast));
     app.dispatch(Command::ModelConsent(ConsentChoice::Download), now)
         .unwrap();
     // the model arrives and generation starts by itself
@@ -847,10 +903,7 @@ fn big_sources_get_a_proxy_that_only_the_preview_uses() {
     let small = files(dir.path())[0].clone();
     let mut app = state(FakeDialogs::default());
     app.proxy_cache = Some(ProxyCache::new(cache.clone()));
-    app.machine = MachineInfo {
-        cores: 4,
-        ram_bytes: 4 * crate::machine::GIB,
-    };
+    app.machine = Machine::simulated(4, 4, 4 * GIB);
     app.dispatch(Command::Import(vec![big.clone(), small]), Instant::now())
         .unwrap();
     settle(&mut app);
@@ -875,13 +928,21 @@ fn big_sources_get_a_proxy_that_only_the_preview_uses() {
     )
     .unwrap();
     assert_eq!(segs[0].path, proxy);
-    // switching proxies off is saved and used by the preview
+    // Preview quality "Original" is saved and used by the preview
     let settings = dir.path().join("settings.json");
     app.settings_path = Some(settings.clone());
-    app.dispatch(Command::SetProxiesEnabled(false), Instant::now())
-        .unwrap();
+    app.dispatch(
+        Command::SetPreviewQuality(PreviewQuality::Original),
+        Instant::now(),
+    )
+    .unwrap();
     assert!(!app.preview.proxies);
-    assert!(!Settings::load(&settings).proxies_enabled);
+    assert_eq!(app.project.media[0].proxy, ProxyState::None);
+    assert_eq!(
+        read_settings(&settings).preview_quality,
+        PreviewQuality::Original
+    );
+    assert!(proxy.exists(), "the copy stays in the cache");
     // clearing the cache deletes our files only
     let foreign = cache.join("keep-me.txt");
     std::fs::write(&foreign, "x").unwrap();
@@ -891,17 +952,26 @@ fn big_sources_get_a_proxy_that_only_the_preview_uses() {
     assert_eq!(app.project.media[0].proxy, ProxyState::None);
     assert_eq!(app.proxy_cache_size, 0);
     // on again: proxies are made again
-    app.dispatch(Command::SetProxiesEnabled(true), Instant::now())
-        .unwrap();
+    app.dispatch(
+        Command::SetPreviewQuality(PreviewQuality::Automatic),
+        Instant::now(),
+    )
+    .unwrap();
     settle(&mut app);
     assert!(app.project.media[0].proxy_path().is_some());
     // a new project cancels pending work
-    app.dispatch(Command::SetProxiesEnabled(false), Instant::now())
-        .unwrap();
+    app.dispatch(
+        Command::SetPreviewQuality(PreviewQuality::Original),
+        Instant::now(),
+    )
+    .unwrap();
     app.dispatch(Command::ClearProxyCache, Instant::now())
         .unwrap();
-    app.dispatch(Command::SetProxiesEnabled(true), Instant::now())
-        .unwrap();
+    app.dispatch(
+        Command::SetPreviewQuality(PreviewQuality::Automatic),
+        Instant::now(),
+    )
+    .unwrap();
     app.dirty = false;
     app.saved = app.project.doc();
     app.dispatch(Command::NewProject, Instant::now()).unwrap();
@@ -1008,17 +1078,20 @@ fn without_ffmpeg_everything_degrades_gracefully() {
     }
     assert!(!app.ffmpeg_checking);
     assert_eq!(
-        Settings::load(&settings).ffmpeg,
+        read_settings(&settings).ffmpeg,
         Some(dir.path().join("my-ffmpeg"))
     );
-    assert_eq!(
-        Settings::load(&dir.path().join("none")),
-        Settings::default()
+    // a relative path is refused; the included ffmpeg can be chosen again
+    assert!(
+        app.dispatch(Command::SetFfmpeg("ffmpeg".into()), now)
+            .is_err()
     );
+    app.dispatch(Command::ResetFfmpeg, now).unwrap();
+    assert_eq!(read_settings(&settings).ffmpeg, None);
     assert_eq!(app.fps(), Fps { num: 30, den: 1 });
     assert!(app.output_description().is_none());
     assert_eq!(app.export_extension(), "mp4");
-    assert!(app.generate_subtitles().is_err());
+    assert!(app.generate_subtitles(None).is_err());
 }
 
 #[test]
@@ -1063,12 +1136,17 @@ fn dialogs_cancelled_do_nothing() {
         assert!(app.dispatch(c.clone(), now).is_err(), "{c:?}");
     }
     // the model consent needs a folder for the model
+    app.modal = Some(Modal::ModelConsent(SubtitleQuality::Fast));
     assert!(
         app.dispatch(Command::ModelConsent(ConsentChoice::Download), now)
             .is_err()
     );
     let dir = tempfile::tempdir().unwrap();
     with_fake_speech(&mut app, dir.path());
+    // without the dialog nothing happens
+    app.dispatch(Command::ModelConsent(ConsentChoice::LocalFile), now)
+        .unwrap();
+    app.modal = Some(Modal::ModelConsent(SubtitleQuality::Fast));
     app.dispatch(Command::ModelConsent(ConsentChoice::LocalFile), now)
         .unwrap();
     assert!(!app.is_generating());
@@ -1127,30 +1205,35 @@ fn play_pause_and_tick() {
     assert!(app.project.media.is_empty());
 }
 
+pub fn read_settings(p: &Path) -> Settings {
+    serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap()
+}
+
+// covers: REQ-049, REQ-045
 #[test]
-fn settings_round_trip_and_background_ffmpeg_check() {
+fn upgrade_from_0_2_and_background_ffmpeg_check() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("a/b/settings.json");
-    let s = Settings {
-        ffmpeg: Some("/x/ffmpeg".into()),
-        ffprobe: None,
-        proxies_enabled: false,
-    };
-    s.save(&p).unwrap();
-    assert_eq!(Settings::load(&p), s);
-    // older settings files have no proxy switch: on by default
-    std::fs::write(&p, r#"{"ffmpeg":null,"ffprobe":null}"#).unwrap();
-    assert!(Settings::load(&p).proxies_enabled);
-    s.save(&p).unwrap();
-    assert!(Settings::default_path().is_some() || cfg!(not(unix)));
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(
+        &p,
+        r#"{"ffmpeg":"/x/ffmpeg","ffprobe":"/x/ffprobe","proxies_enabled":false}"#,
+    )
+    .unwrap();
     let mut app = AppState::new(
         Arc::new(crate::ffmpeg::fake::healthy()),
         Box::new(FakeDialogs::default()),
         Box::new(NullSink),
-        Some(p),
+        Some(p.clone()),
     );
-    assert_eq!(app.settings, s);
+    assert_eq!(app.settings.preview_quality, PreviewQuality::Original);
+    assert_eq!(app.settings.ffmpeg, Some("/x/ffmpeg".into()));
     assert!(!app.preview.proxies);
+    assert_eq!(
+        app.banner.as_ref().map(|b| b.text.as_str()),
+        Some(settings::SETUP_NOTICE)
+    );
+    assert_eq!(read_settings(&p), app.settings, "the upgrade is saved");
     // the window opens at once; the check runs in the background
     assert!(app.ffmpeg_checking);
     assert!(!app.is_enabled(&Command::PickImport));
@@ -1160,5 +1243,15 @@ fn settings_round_trip_and_background_ffmpeg_check() {
         std::thread::sleep(Duration::from_millis(2));
     }
     assert!(!app.ffmpeg_checking);
-    assert!(app.machine.cores >= 1);
+    assert!(app.machine.logical >= 1);
+    assert_eq!(app.scheduler().cap(), app.budget.max_processes);
+    // the next start: no message, same settings
+    let again = AppState::new(
+        Arc::new(crate::ffmpeg::fake::healthy()),
+        Box::new(FakeDialogs::default()),
+        Box::new(NullSink),
+        Some(p),
+    );
+    assert!(again.banner.is_none());
+    assert_eq!(again.settings, app.settings);
 }

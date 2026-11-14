@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.2.2-blue)
+![version](https://img.shields.io/badge/version-0.3.0-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-95.9%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-96.2%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -20,13 +20,13 @@
 [![build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg)](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml)
 
 ## What it is
-`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install. Nothing is uploaded and no account is needed; the only network access is the one-time download of the speech model, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
+`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
 
 ## System requirements
 - **Windows** (64-bit, x86_64) and **Linux** (64-bit, x86_64; current Ubuntu LTS and Fedora).
 - **macOS** on Apple Silicon: every Apple Silicon Mac is supported.
-- **Generating subtitles** on Windows and Linux needs a processor with AVX2, FMA and F16C: Intel from 2013 (Haswell) on, AMD from 2015 (Excavator) on, all Ryzen. Everything else in videolore has no special processor requirement.
-- **Internet**: only for the one-time download of the speech model (about 32 MB), which you approve; you can also provide the model file yourself.
+- **Generating subtitles** on Windows and Linux needs a processor with AVX2, FMA and F16C: Intel from 2013 (Haswell) on, AMD from 2015 (Excavator) on, all Ryzen. On an older processor videolore says so in a message; the rest of the program works, and you can still add subtitle lines by hand. Everything else in videolore has no special processor requirement.
+- **Internet**: only for the download of the speech model you choose, which you approve: 32 MB (Fast), 190 MB (Balanced) or 574 MB (Most accurate). You can also provide the model file yourself.
 
 ## Installation
 Each release has one installer per system, with ffmpeg included. Download it from the [Releases](https://github.com/andrealorenzani/videolore/releases) page (tagged versions), or from the artifacts of the latest [Build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml) run.
@@ -67,10 +67,11 @@ Start videolore from the menu, the Applications folder, the AppImage or the extr
 2. **Build the clip** by appending media to the timeline, then split, cut, copy, paste, merge, trim or move the pieces.
 3. **Add fades** between two clips to get a fade through black on video and audio.
 4. **Add music**: place audio files on the music track below the video. Music can be moved, trimmed, split and deleted. Each of the video audio and the music has its own volume and mute. Music does not move when you edit the video, and it ends with a fade-out where the video ends.
-5. **Add subtitles**: choose **Generate subtitles**. The first time, you are asked to approve a download of the speech model (about 32 MB), or you can provide the model file yourself. Recognition runs on your computer in the background, the language is detected automatically, and you can edit, re-word and re-time every line. Choose a style: Classic, Box or Word highlight. Subtitles are visible in the preview and burned into the exported video.
-6. **Preview** the result with play, pause and seek from the playhead. Very large sources get a smaller preview copy, made in the background; the export always uses your original files. The preview copies can be cleared in the settings.
+5. **Add subtitles**: choose **Generate subtitles**. The first time you use a subtitle quality level, you are asked to approve the download of its speech model (32 MB for Fast, 190 MB for Balanced, 574 MB for Most accurate), or you can provide the model file yourself. Choose the level in Settings. Recognition runs on your computer in the background, the language is detected automatically, and you can edit, re-word and re-time every line. Choose a style: Classic, Box or Word highlight. Subtitles are visible in the preview and burned into the exported video.
+6. **Preview** the result with play, pause and seek from the playhead. Very large sources get a smaller preview copy, made in the background; the export always uses your original files. **Preview quality** in Settings chooses whether lighter preview copies are made, and the copies can be cleared there.
 7. **Save** the project (**Save** or **Save As**, Ctrl/Cmd+S) and reopen it later with **Open**. A `•` in the window title means unsaved changes. New, Open, closing the window and Quit ask whether to **Save**, **Discard** or **Cancel**. Projects are `.vlproj` files: double-click one to open it in videolore.
 8. **Export** to one file, with progress; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades, music, subtitles or volume changes and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched. HEVC files play on Apple devices.
+9. **Settings** (Ctrl/Cmd+, or the **Settings** button): choose **Preview quality**, **Subtitle quality** and **How hard videolore works**, each explained in one line. The first start picks recommended choices for your computer; **Use recommended settings** sets them again, and the speech files you downloaded can be removed there to free disk space. The **Advanced** section holds the ffmpeg you may want to use instead of the bundled one.
 
 The About screen lists every bundled third-party component with its version, licence and where to get its source code.
 
@@ -82,22 +83,25 @@ The About screen lists every bundled third-party component with its version, lic
 | Undo | Ctrl/Cmd + Z |
 | Redo | Ctrl/Cmd + Shift + Z, or Ctrl/Cmd + Y |
 | Save | Ctrl/Cmd + S |
+| Settings | Ctrl/Cmd + , |
 | Quit | Ctrl/Cmd + Q |
 
 ### Known limitations
 - Installers are not code-signed: each system asks for a one-time confirmation (see Installation).
-- On Windows and Linux, generating subtitles needs a processor with AVX2, FMA and F16C (see System requirements). On older processors it may crash; the rest of videolore keeps working. This has not been tested on such hardware.
+- On Windows and Linux, generating subtitles needs a processor with AVX2, FMA and F16C (see System requirements). On older processors it is not available and a message says so; this check was tested with simulated processors, not on old hardware.
+- Export uses the processor only; the graphics card's video encoder is not used yet.
 - Subtitles in scripts other than Latin, Greek and Cyrillic (for example Chinese, Japanese, Arabic or Hindi) may look different on each computer or show empty boxes, and cannot be read in the subtitle editor.
 - Speech is recognised in pieces of about two minutes; a word cut at a boundary can be lost.
 - On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the Hide and Minimize menu items are not available.
 - Projects saved by this version cannot be opened by versions 0.1.x.
 - Removing a file from the media list also drops the undo history when an undo step refers to it.
-- Cleared preview copies are made again only after reopening the project or switching proxies off and on. A 1280x720 source never gets a preview copy.
+- Cleared preview copies are made again only after reopening the project or changing Preview quality. Under Automatic, a 1280x720 source never gets a preview copy.
 - The preview copy cache is never cleaned automatically.
 
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md)
 
 ## Latest changes
+- **0.3.0** — Automatic setup for your computer at first start, with a Settings window (Ctrl/Cmd+,) for preview quality, subtitle quality and how hard videolore works; three subtitle quality levels, with larger and more accurate speech models that you approve; older processors get a clear message instead of a crash; safer handling of project, settings and download files; export and fast subtitles as quick as before.
 - **0.2.2** — Subtitle generation no longer fails at random on some computers, caused by a bug in the speech library; when it does fail, the message now explains the reason in plain words.
 - **0.2.1** — Release programs run on more computers: subtitle generation is built for a common processor baseline, so it no longer crashes on processors that lack the build server's newest instructions. On Windows and Linux, subtitles need a processor with AVX2 (Intel from 2013, AMD from 2015).
 - **0.2.0** — Save and open projects with an unsaved-changes prompt; ffmpeg included in the app; installers for Windows, macOS and Linux; a music track with volumes; offline subtitles with three styles; big sources previewed through lighter copies; imports and playback no longer block the window; About screen with third-party notices; double-click to open projects.
@@ -116,13 +120,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani refused the easy blame and dug into the speech engine until the true cause came up to the light,\
-where a cancel check read its flag from memory nobody had filled, a hidden fault in a library's craft;\
-He wrote a small and honest callback of his own, reading exactly one flag and nothing more,\
-and gave every pointer a lifetime the compiler can check, so the old fault cannot slip back through the door;\
-He built a test that fills the heap with garbage and still demands a clean transcription,\
-failing three times out of three on the old code, and passing now without a single hesitation;\
-He turned a cryptic code into words a person can read, so no one has to guess at a number to learn what went wrong;\
-He made the build page speak, placing failing test names and panic messages in plain view, so a red mark arrives with its reason;\
-He set the record straight, owning the wrong guess about the earlier failure, and kept the memory fix as a true gain,\
-thank you, Andrea, for the patience, the honesty and the care that keeps videolore steady and sane.
+Andrea Lorenzani asked the computer, at its very first start, what kind of machine it lives on, so that nobody has to guess a single number,\
+and a quiet look at the cores, the memory and the processor instructions now takes milliseconds, needs no network and no waiting, and writes the settings that fit,\
+he gave the Settings window plain words, Preview quality, Subtitle quality and How hard videolore works, and one button that brings the recommendation back,\
+he gave subtitles three levels, each one asking first and showing its size, so the larger and more accurate models arrive only with a yes,\
+for older processors that cannot run the speech engine he chose a clear sentence over a crash, and kept every other part of the program working,\
+he locked the temporary files to their owner, swept away what a crash leaves behind, and taught the program to refuse hostile files calmly,\
+he kept the window answering while an export and a subtitle run side by side, and cut the test run by a quarter, reporting the target it missed,\
+he moved the build to pinned machines and newer action versions, so the warnings from GitHub fell silent,\
+he measured export and subtitles on the same computer before and after, and kept them as quick as before, trusting numbers rather than feelings,\
+thank you, Andrea, for the care, the patience and the honest measurements that let videolore fit every computer it meets

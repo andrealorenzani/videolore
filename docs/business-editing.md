@@ -8,7 +8,7 @@ Back to the [index](business.md).
 - **Timeline editing**: append, split, cut/copy/paste, merge, trim and reorder segments; the timeline closes gaps automatically. Undo/redo of at least 50 steps.
 - **Transitions**: fade through black between clips.
 - **Preview**: play, pause and seek, with fades, music and subtitles visible. Video keeps playing in real time even if audio output stalls.
-- **Proxies**: very large sources get a smaller preview copy automatically, so preview stays smooth; export always uses the originals.
+- **Proxies**: very large sources get a smaller preview copy automatically, so preview stays smooth; export always uses the originals. Since 0.3.0 this is controlled by "Preview quality" in Settings (see [Settings, performance and safety](business-performance.md)).
 - **Layout**: fixed five-panel window with a command bar and keyboard shortcuts.
 
 ## Requirements
@@ -40,17 +40,17 @@ Back to the [index](business.md).
 
 ### Layout and commands
 - REQ-024 (implemented): The window has a fixed five-panel layout: top 60% (media list 30%, preview 70%), middle 30% (timeline 70%, effects 30%), bottom 10% command bar including the zoom slider. The music track and the subtitle list fit inside the existing panels without changing these proportions.
-- REQ-025 (implemented): Every operation is reachable from the command bar or panels (including Save, Save As, Clear proxy cache, Generate subtitles and About / third-party notices); keyboard shortcuts exist for split, cut, copy, paste, undo, redo and play/pause.
+- REQ-025 (implemented): Every operation is reachable from the command bar or panels (including Save, Save As, Generate subtitles, Settings and About / third-party notices); keyboard shortcuts exist for split, cut, copy, paste, undo, redo and play/pause.
 
 ### Responsiveness and performance
 - REQ-032 (implemented): Importing never freezes the window: each item shows "analysing" and then its name and duration, or its rejection; several imports can run while the user keeps editing. Acceptance: importing 10 files does not block user input.
-- REQ-033 (implemented): No more than 3 ffmpeg/ffprobe processes run at the same time; extra work waits in a queue and requests that became obsolete (for example an older preview frame) are dropped. Acceptance: 20 imports plus an export plus preview never exceed 3 processes, and all jobs complete.
-- REQ-038 (implemented): A source that is "big for this machine" gets a lower-resolution preview copy (proxy), generated in the background with progress shown on its media item; preview and timeline use it once ready (the original until then); export always uses the originals. Proxies are stored in a cache outside the project folder, reused across sessions and recreated if missing; the cache size is shown and a command clears it. Proxies are on by default and can be switched off in settings. A source is big when it exceeds 1920x1080 pixels, or 1280x720 pixels on a machine with fewer than 8 logical cores or less than 8 GB of RAM. Acceptance: the decision is the same for the same resolution, cores and RAM; the exported file is identical with proxies on or off.
+- REQ-033 (implemented): The number of ffmpeg/ffprobe processes running at the same time never exceeds the limit of the current "How hard videolore works" level (REQ-050; 3 for Light and Balanced, as in 0.2.x, and up to 6 for Maximum speed, documented per level); extra work waits in a queue and requests that became obsolete (for example an older preview frame) are dropped. Acceptance: at every level, 20 imports plus an export plus preview never exceed the level's limit, and all jobs complete.
+- REQ-038 (implemented): A source that is "big for this machine" gets a lower-resolution preview copy (proxy), generated in the background with progress shown on its media item; preview and timeline use it once ready (the original until then); export always uses the originals. Proxies are stored in a cache outside the project folder, reused across sessions and recreated if missing; the cache size is shown and a command clears it. Since 0.3.0 the on/off switch is replaced by "Preview quality" (REQ-051); with the default "Automatic" a source is big when it exceeds 1920x1080 pixels, or 1280x720 pixels on a machine with fewer than 8 logical cores or less than 8 GB of RAM. Acceptance: the decision is the same for the same resolution, cores and RAM; the exported file is identical whatever the Preview quality.
 - REQ-039 (implemented): The application's memory use does not grow with the size of the source file. Acceptance: peak memory when importing and previewing a 4 GB source is at most the peak with a 100 MB source of the same resolution plus 200 MB.
 
 ## Key decisions
 - When several jobs wait, the order is: preview first, then export, then import analysis, then background work (proxies, subtitle preparation). Proxy generation gives way to preview and export and restarts later.
-- The 3-process limit applies to ffmpeg/ffprobe; speech recognition for subtitles has its own separate limit.
+- The process limit applies to ffmpeg/ffprobe; speech recognition for subtitles has its own separate limit. Both follow "How hard videolore works" since 0.3.0, and the limit is never below 3 because playback needs two processes.
 - Proxies are never used for export, so output quality never depends on them.
 - The proxy size rule is an assumption that may be tuned in later versions; it always gives the same answer on the same machine.
 - Undoing back to the saved state counts as "no unsaved changes".
@@ -60,9 +60,9 @@ Back to the [index](business.md).
 - Letterboxing color is black.
 
 ## Known limitations
-- The proxy cache is never cleaned automatically; use "Clear proxy cache" (command bar) or "Clear preview copies" (settings).
+- The proxy cache is never cleaned automatically; use "Clear preview copies" in Settings.
 - Removing a file from the media list also drops the undo history when an undo step refers to it.
-- After the proxies of a project are cleared, they are regenerated only after reopening the project or toggling proxies.
+- After the proxies of a project are cleared, they are regenerated only after reopening the project or changing Preview quality (assumption: carried over from the 0.2.x on/off switch).
 - A 1280x720 source never gets a proxy, even on a machine with fewer than 8 cores or 8 GB of RAM (the rule is "larger than").
 - On macOS the standard Hide and Minimize menu items are not available.
 - The memory acceptance test runs on a few minutes of video, not 4 GB; assumption: since nothing in the application grows with file size, the result holds for larger files.

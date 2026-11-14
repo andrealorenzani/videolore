@@ -536,6 +536,11 @@ impl Plan {
     }
 }
 
+/// True when the path contains a control character (line breaks, tabs, …).
+pub fn has_control_chars(path: &Path) -> bool {
+    path.to_string_lossy().chars().any(char::is_control)
+}
+
 /// Quotes a path for a concat list (`'` becomes `'\''`).
 pub fn concat_quote(path: &Path) -> String {
     let s = format!("file:{}", path.to_string_lossy());
@@ -595,7 +600,10 @@ pub fn plan_export(
         && bed.is_none()
         && subtitles.is_none()
         && project.mix.video_neutral();
-    if format::all_identical(&formats) && no_effects {
+    // A file name with a line break or other control character could add lines to the
+    // concat list: such projects are always re-encoded (inputs are then plain arguments).
+    let safe_names = segs.iter().all(|s| !has_control_chars(&s.path));
+    if format::all_identical(&formats) && no_effects && safe_names {
         let keyframes_ok = project
             .timeline
             .clips
@@ -646,11 +654,26 @@ pub struct ExportPaths<'a> {
     pub graph_script: &'a Path,
 }
 
+/// Inserts `-threads <t>` before every `-i` of `inputs`.
+pub fn threaded_inputs(inputs: Vec<OsString>, t: u32) -> Vec<OsString> {
+    let mut out = Vec::with_capacity(inputs.len() * 2);
+    for x in inputs {
+        if x == "-i" {
+            out.extend(argv(["-threads".to_string(), t.to_string()]));
+        }
+        out.push(x);
+    }
+    out
+}
+
 /// Full ffmpeg argv for an export. Writes the concat list / graph script when needed.
+/// `threads` limits ffmpeg's decoding, filtering and encoding threads (re-encode only;
+/// `None` lets ffmpeg decide). It never changes what the export looks like.
 pub fn export_args(
     plan: &Plan,
     paths: &ExportPaths<'_>,
     version: FfVersion,
+    threads: Option<u32>,
 ) -> io::Result<Vec<OsString>> {
     let mut a = head();
     match plan {
@@ -683,7 +706,13 @@ pub fn export_args(
         Plan::Reencode {
             graph, settings: s, ..
         } => {
-            a.extend(input_args(&graph.inputs));
+            match threads {
+                Some(t) => {
+                    a.extend(argv(["-filter_complex_threads".to_string(), t.to_string()]));
+                    a.extend(threaded_inputs(input_args(&graph.inputs), t));
+                }
+                None => a.extend(input_args(&graph.inputs)),
+            }
             a.extend(filter_graph_args(
                 &graph.graph,
                 version,
@@ -713,6 +742,9 @@ pub fn export_args(
             a.extend(argv(["-ar".to_string(), SAMPLE_RATE.to_string()]));
             if s.faststart {
                 a.extend(argv(["-movflags", "+faststart"]));
+            }
+            if let Some(t) = threads {
+                a.extend(argv(["-threads".to_string(), t.to_string()]));
             }
             a.extend(argv(["-f", s.muxer.as_str()]));
         }
@@ -941,6 +973,10 @@ pub(crate) mod tests {
     }
 
     fn args(plan: &Plan) -> Vec<String> {
+        args_with(plan, None)
+    }
+
+    fn args_with(plan: &Plan, threads: Option<u32>) -> Vec<String> {
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("o.mp4");
         let list = dir.path().join("l.txt");
@@ -950,7 +986,7 @@ pub(crate) mod tests {
             concat_list: &list,
             graph_script: &script,
         };
-        strs(&export_args(plan, &paths, FfVersion::Release(6, 1, 0)).unwrap())
+        strs(&export_args(plan, &paths, FfVersion::Release(6, 1, 0), threads).unwrap())
     }
 
     fn s(n: i64) -> Micros {

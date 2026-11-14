@@ -2,7 +2,7 @@
 
 videolore is a Rust desktop application (edition 2024, MSRV 1.100) built on egui/eframe 0.37. It
 never decodes video itself: every read and render is done by the `ffmpeg` and `ffprobe` programs,
-started as child processes (at most three at a time). The installers ship their own copy of
+started as child processes (at most three at a time by default, up to six at "Maximum speed"). The installers ship their own copy of
 ffmpeg; speech recognition for subtitles is compiled in (whisper.cpp).
 
 This page covers building and running; the details are in the sub-documents:
@@ -19,9 +19,9 @@ This page covers building and running; the details are in the sub-documents:
 |---|---|
 | Build | `cargo build` (release: `cargo build --release --locked`) |
 | Run | `cargo run` (or `cargo run -- path/to/project.vlproj`) |
-| Tests | `cargo test` |
+| Tests | `cargo test` (integration fixtures are generated once and reused from `target/tmp/fixtures`) |
 | Format / lint | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (CI also lints with `--no-default-features` and `--all-features`) |
-| Line coverage (>= 85%) | `scripts/coverage.sh --fail-under 85` (needs `cargo-llvm-cov` and `rustup component add llvm-tools-preview`) |
+| Line coverage (>= 85%) | `scripts/coverage.sh --fail-under 85` (needs `cargo-llvm-cov` and `rustup component add llvm-tools-preview`); CI runs the tests once, instrumented, with `cargo llvm-cov --fail-under-lines 85` |
 | Feature coverage (100%) | `scripts/feature-coverage.sh` |
 | CI failure annotations | `scripts/test-annotations.sh <saved cargo test output>` (used by CI; prints `::error` lines) |
 | Licences and advisories | `cargo deny check` (cargo-deny 0.20.2, config in `deny.toml`) |
@@ -39,11 +39,22 @@ This page covers building and running; the details are in the sub-documents:
 - **ffmpeg** (any build >= 4.4 with the usual filters) on `PATH` to run a source build and the
   integration tests; installed copies use the bundled one.
 
+### Settings and machine detection
+
+At every start videolore reads the machine (logical and physical cores, memory, OS, processor
+family and the processor features the speech engine needs) in a few milliseconds, without
+network or benchmark. Without a settings file it saves the recommended choices for that machine
+and shows a short message; a later start on a different machine recomputes them (or, when the
+user had changed them, keeps them and offers "Use recommended settings"). Settings files of
+0.1.x/0.2.x are upgraded (proxies off becomes Preview quality "Original"; the ffmpeg choice is
+kept). Details and the exact tables are in [code-modules.md](code-modules.md).
+
 ### CPU baseline for speech recognition
 
 `.cargo/config.toml` builds whisper.cpp for a fixed baseline instead of the build machine's CPU
 (`GGML_NATIVE=OFF`): on x86-64 it needs **AVX2, FMA, F16C (and BMI2)**, i.e. Intel Haswell (2013)
-/ AMD Excavator or newer; on Apple silicon it uses NEON. The same flags apply to local, CI and
+/ AMD Excavator or newer; on Apple silicon it uses NEON. On older x86-64 processors the app
+checks the CPU first and shows a plain message instead of starting the speech engine. The same flags apply to local, CI and
 release builds. whisper-rs-sys does not notice when these values change: after editing them run
 `cargo clean -p whisper-rs-sys` (and `--release`) and bump `prefix-key` of the rust-cache steps in
 `.github/workflows/build.yml`; a test checks that the file and the workflow agree.
@@ -53,7 +64,7 @@ release builds. whisper-rs-sys does not notice when these values change: after e
 | Feature | Default | What it adds |
 |---|---|---|
 | `audio` | yes | Sound output in the preview (cpal). Without it the preview is silent. |
-| `stt` | yes | Subtitle generation: whisper.cpp through whisper-rs, and the one-time model download (ureq, HTTPS only). |
+| `stt` | yes | Subtitle generation: whisper.cpp through whisper-rs, and the download of the speech recognition files (ureq, HTTPS only, each with consent). |
 
 `cargo build --no-default-features` is the minimal build: no cmake/libclang needed, no sound,
 and "Generate subtitles" reports that it is not available (subtitle editing, styles and burn-in
@@ -61,7 +72,7 @@ still work).
 
 ### Finding ffmpeg
 
-Order: the path chosen in the app (saved in `settings.json` in the user's config folder), the
+Order: the path chosen in Settings → Advanced (saved in `settings.json` in the user's config folder), the
 environment variables `VIDEOLORE_FFMPEG` / `VIDEOLORE_FFPROBE`, the copy next to the executable
 (or in `../Resources` inside a macOS app), then `PATH`. A bundled copy that does not work is
 reported as damaged ("reinstall videolore"), anything else gets install hints. The check runs in
@@ -79,10 +90,10 @@ is raised together with the toolchain, and dependencies are kept on their newest
 | cpal | 0.18 | Preview sound (optional, `audio`) |
 | serde, serde_json | 1 | Project and settings files |
 | thiserror | 2 | Error types |
-| directories | 6 | Config, cache (proxies) and data (speech model) folders |
-| tempfile | 3 | Private working folders for ffmpeg |
-| sha2 | 0.11 | Proxy cache keys, speech model checksum |
-| sysinfo | 0.40 (`system` only) | Installed memory (proxy rule), own memory use (tests) |
+| directories | 6 | Config (settings), cache (proxies, work folders) and data (speech files) folders |
+| tempfile | 3 | Private work folders for background jobs |
+| sha2 | 0.11 | Proxy cache keys, speech file checksums |
+| sysinfo | 0.40 (`system` only) | Installed memory and physical cores (machine detection), own memory use (tests) |
 | whisper-rs | 0.16 | Speech recognition (optional, `stt`) |
 | ureq | 3.5 (`rustls` only) | Speech model download (optional, `stt`) |
 | objc2, objc2-foundation | 0.6, 0.3 | macOS only: opening double-clicked projects |

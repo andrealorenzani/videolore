@@ -626,10 +626,12 @@ pub struct Preview {
 
 impl Preview {
     pub fn new(config: Option<PreviewConfig>, sink: Box<dyn AudioSink>) -> Preview {
+        // Private (0700): it holds the project's subtitle text.
         let scratch = tempfile::Builder::new()
             .prefix("videolore-preview-")
             .tempdir()
-            .ok();
+            .ok()
+            .filter(|d| crate::scratch::private_dir(d.path()).is_ok());
         let mailbox = Arc::new(Mailbox::default());
         let renders = Arc::new(AtomicU64::new(0));
         let stills = match (&config, &scratch) {

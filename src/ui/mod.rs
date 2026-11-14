@@ -9,6 +9,7 @@ pub mod keymap;
 pub mod layout;
 pub mod media;
 pub mod modals;
+pub mod settings;
 pub mod timeline;
 pub mod zoom;
 
@@ -98,6 +99,8 @@ pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Ins
                 command_bar(ui, app, width, &mut cmds)
             });
         });
+    settings::settings_window(ctx, app, &mut cmds);
+    settings::banner(ctx, app, &mut cmds);
     modals::modals(ctx, app, cache, &mut cmds);
 
     for c in cmds {
@@ -253,7 +256,7 @@ fn command_bar(ui: &mut Ui, app: &AppState, timeline_width: f32, cmds: &mut Vec<
                 Command::GenerateSubtitles,
                 cmds,
             );
-            button(ui, app, "Clear proxy cache", Command::ClearProxyCache, cmds);
+            button(ui, app, "Settings", Command::OpenSettings, cmds);
             button(ui, app, "About", Command::ShowAbout, cmds);
             ui.separator();
             ui.label("Zoom");

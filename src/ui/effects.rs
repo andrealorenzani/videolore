@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! The effects and settings panel: selected clip, selected music clip, volumes, subtitles,
-//! export, preview copies (proxies), ffmpeg and the shortcut list.
+//! The effects panel: selected clip, selected music clip, volumes, subtitles, export and
+//! the shortcut list. Program settings are in their own window (`ui::settings`).
 
 use super::{UiCache, button, keymap};
 use crate::app::{AppState, Command};
 use crate::music::Mix;
 use crate::subtitles::{Preset, ShownLine};
 use crate::time::{Micros, timecode};
-use eframe::egui::{self, Button, Color32, ProgressBar, Ui};
+use eframe::egui::{self, Button, ProgressBar, Ui};
 
 /// Languages offered for subtitles (the speech model knows many more; these are the
 /// common ones). `None` = detect.
@@ -71,39 +71,6 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mu
         } else {
             button(ui, app, "Export…", Command::PickExport, cmds);
         }
-        ui.separator();
-        ui.strong("Preview copies");
-        let mut on = app.settings.proxies_enabled;
-        if ui
-            .checkbox(&mut on, "Use small preview copies of big videos")
-            .changed()
-        {
-            cmds.push(Command::SetProxiesEnabled(on));
-        }
-        ui.label(format!(
-            "Stored: {:.1} MB",
-            app.proxy_cache_size as f64 / 1_000_000.0
-        ));
-        button(
-            ui,
-            app,
-            "Clear preview copies",
-            Command::ClearProxyCache,
-            cmds,
-        );
-        ui.separator();
-        ui.strong("ffmpeg");
-        match &app.ffmpeg {
-            Ok(i) => ui.label(format!(
-                "{} ({}, {})",
-                i.ffmpeg.display(),
-                i.version,
-                i.source
-            )),
-            Err(e) if app.ffmpeg_checking => ui.label(e),
-            Err(e) => ui.colored_label(Color32::LIGHT_RED, e),
-        };
-        button(ui, app, "Choose ffmpeg…", Command::PickFfmpeg, cmds);
         ui.separator();
         ui.strong("Shortcuts");
         for (k, v) in keymap::HELP {
@@ -304,7 +271,7 @@ fn subtitle_settings(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mu
         button(ui, app, "Add line at playhead", Command::AddSubtitle, cmds);
     });
     if let Some(p) = app.model_progress {
-        ui.label("Downloading the speech model…");
+        ui.label("Downloading the speech recognition file…");
         ui.add(ProgressBar::new(p).show_percentage());
     }
     if let Some(p) = app.stt_progress {

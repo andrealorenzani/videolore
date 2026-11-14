@@ -45,11 +45,14 @@ whisper.cpp (speech recognition engine, built into videolore)
   Licence:  MIT
   Source:   https://github.com/ggml-org/whisper.cpp
 
-Whisper speech model "ggml-tiny-q5_1.bin" (downloaded only after you agree)
+Whisper speech models (each downloaded only after you agree)
+  "ggml-tiny-q5_1.bin"            Subtitle quality "Fast", 32 MB
+  "ggml-small-q5_1.bin"           Subtitle quality "Balanced", 190 MB
+  "ggml-large-v3-turbo-q5_0.bin"  Subtitle quality "Most accurate", 574 MB
   Licence:  MIT
   Source:   https://huggingface.co/ggerganov/whisper.cpp
-  Size:     32 MB; checked by SHA-256 before use. This download is the only
-            time videolore uses the network.
+  Each file comes from a fixed address and is checked by SHA-256 before use.
+  These downloads are the only times videolore uses the network.
 
 Rust libraries
   The Rust libraries compiled into videolore are listed, with their licence

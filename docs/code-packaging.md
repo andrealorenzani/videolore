@@ -80,9 +80,10 @@ Things CI cannot check. For each of Windows 11, macOS (Apple Silicon), Ubuntu LT
 - On macOS the standard application menu (Hide, Minimize) is switched off so that Cmd+Q can ask
   about unsaved changes.
 - The proxy cache is never cleaned automatically; "Clear preview copies" empties it.
-- Subtitle generation on x86-64 needs a CPU with AVX2, FMA and F16C (2013 or newer); an older
-  processor stops with an illegal-instruction error when generating subtitles. Everything else
-  works.
+- Subtitle generation on x86-64 needs a CPU with AVX2, FMA and F16C (2013 or newer); on an older
+  processor "Generate subtitles" shows a message instead (lines can still be added by hand). There
+  is no slower fallback engine yet.
+- Hardware video encoding is not used for export (planned).
 - Speech is transcribed in 120-second chunks; a word cut at a chunk boundary can be lost.
 - Some Linux file managers do not start a program from the tar.gz folder on double-click (see
   its `README.txt`).

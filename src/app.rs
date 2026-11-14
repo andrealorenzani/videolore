@@ -9,14 +9,17 @@
 use crate::export::{self, ExportEvent, ExportHandle, ExportJob};
 use crate::ffmpeg::{self, FfmpegInfo, Runner};
 use crate::history::History;
-use crate::jobs::{Limited, MAX_PROCESSES, Pool, Priority, Scheduler};
-use crate::machine::MachineInfo;
+use crate::jobs::{Limited, MAX_CAP, MAX_PROCESSES, Pool, Priority, Scheduler};
+use crate::machine::{Fingerprint, GIB, Machine};
 use crate::media::{self, MediaId, MediaItem, MediaStatus, ProxyState};
 use crate::music::{Mix, MusicClipId};
 use crate::preview::{AudioSink, Frame, Preview, PreviewConfig};
 use crate::project::{self, Edit, Project, ProjectDoc};
 use crate::proxy::{self, ProxyCache, ProxyEvent, ProxyTask, ProxyWorker};
 use crate::render;
+use crate::settings::{
+    self, Budget, Effort, PreviewQuality, Settings, StartNotice, SubtitleQuality,
+};
 use crate::stt::{
     self, ModelEvent, ModelFetcher, ModelSource, ModelStore, SttEvent, SttHandle, SttJob,
     TranscriberFactory,
@@ -24,13 +27,12 @@ use crate::stt::{
 use crate::subtitles::{LineId, Preset};
 use crate::time::{Fps, Micros};
 use crate::timeline::{Clip, ClipId, EditError};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Answer to the "unsaved changes" prompt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,14 +42,54 @@ pub enum UnsavedChoice {
     Cancel,
 }
 
-/// Answer to the speech-model consent dialog.
+/// Answer to the speech-file consent dialog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsentChoice {
-    /// Download the model (the only network access of the app).
+    /// Download the file of the chosen level (the only network access of the app).
     Download,
-    /// Use a model file the user already has.
+    /// Use the Fast file, already installed, for this generation only (no download).
+    UseFastInstead,
+    /// Download the small Fast file instead (when nothing is installed yet).
+    DownloadFastInstead,
+    /// Use a copy of the file the user already has.
     LocalFile,
     Cancel,
+}
+
+/// A non-blocking message at the top of the window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Banner {
+    pub text: String,
+    /// A button offered with the message.
+    pub action: Option<BannerAction>,
+    /// Closes by itself this long after it is first shown.
+    pub lifetime: Option<Duration>,
+    /// When it closes (set on the first tick).
+    pub until: Option<Instant>,
+}
+
+/// What the banner's button does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BannerAction {
+    UseRecommended,
+}
+
+/// How long the "set up for this computer" message stays.
+pub const SETUP_BANNER_TIME: Duration = Duration::from_secs(8);
+
+/// Shown instead of generating subtitles on processors the speech engine cannot use.
+pub const TOO_OLD_FOR_SUBTITLES: &str = "This computer's processor is too old for automatic \
+     subtitles; you can still add subtitle lines by hand.";
+
+impl Banner {
+    pub fn from_notice(n: StartNotice) -> Banner {
+        Banner {
+            text: n.text().to_string(),
+            action: (n == StartNotice::MachineChanged).then_some(BannerAction::UseRecommended),
+            lifetime: (n == StartNotice::Setup).then_some(SETUP_BANNER_TIME),
+            until: None,
+        }
+    }
 }
 
 /// What was interrupted by the "unsaved changes" prompt.
@@ -66,8 +108,11 @@ pub enum PendingAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Modal {
     Unsaved(PendingAction),
-    ModelConsent,
+    /// Consent to download the speech recognition file of a subtitle level.
+    ModelConsent(SubtitleQuality),
     ConfirmRegenerate,
+    /// Confirmation before removing the downloaded speech recognition files.
+    ConfirmRemoveSpeechFiles,
     About,
 }
 
@@ -148,7 +193,21 @@ pub enum Command {
     SetPreset(Preset),
     /// A language code, or `None` to detect it.
     SetLanguage(Option<String>),
-    SetProxiesEnabled(bool),
+    OpenSettings,
+    CloseSettings,
+    SetPreviewQuality(PreviewQuality),
+    SetSubtitleQuality(SubtitleQuality),
+    SetEffort(Effort),
+    /// Detects the machine again and applies the recommended choices.
+    UseRecommended,
+    /// Asks before removing the downloaded speech recognition files.
+    RemoveSpeechFiles,
+    ConfirmRemoveSpeechFiles,
+    /// Uses the bundled (or system) ffmpeg again instead of the chosen one.
+    ResetFfmpeg,
+    /// The banner's button.
+    BannerAction(BannerAction),
+    DismissBanner,
     ClearProxyCache,
     Undo,
     Redo,
@@ -176,53 +235,6 @@ pub trait Dialogs {
     fn pick_export(&mut self, extension: &str) -> Option<PathBuf>;
     fn pick_ffmpeg(&mut self) -> Option<PathBuf>;
     fn pick_model_file(&mut self) -> Option<PathBuf>;
-}
-
-fn yes() -> bool {
-    true
-}
-
-/// User settings persisted between runs.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Settings {
-    pub ffmpeg: Option<PathBuf>,
-    pub ffprobe: Option<PathBuf>,
-    /// Low-resolution preview copies of big sources.
-    #[serde(default = "yes")]
-    pub proxies_enabled: bool,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Settings {
-            ffmpeg: None,
-            ffprobe: None,
-            proxies_enabled: true,
-        }
-    }
-}
-
-impl Settings {
-    /// Default location: the platform config folder.
-    pub fn default_path() -> Option<PathBuf> {
-        directories::ProjectDirs::from("", "", "videolore")
-            .map(|d| d.config_dir().join("settings.json"))
-    }
-
-    pub fn load(path: &Path) -> Settings {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
-    }
-
-    pub fn save(&self, path: &Path) -> Result<(), String> {
-        if let Some(d) = path.parent() {
-            std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
-        }
-        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        project::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
-    }
 }
 
 /// State of a running or finished export, for the UI.
@@ -274,11 +286,23 @@ pub struct AppState {
     ffmpeg_check: Option<Receiver<Result<FfmpegInfo, String>>>,
     pub settings: Settings,
     settings_path: Option<PathBuf>,
+    /// The Settings window is open.
+    pub settings_open: bool,
+    /// What "Use recommended settings" changed (shown in the Settings window).
+    pub settings_summary: Vec<String>,
+    /// What background work may use ("How hard videolore works").
+    pub budget: Budget,
+    /// Reads the machine again ("Use recommended settings"); replaced in tests.
+    pub detect: fn() -> Machine,
+    /// Root of the private work folders of background jobs.
+    pub work_root: PathBuf,
+    /// Bytes used by the downloaded speech recognition files.
+    pub speech_files_size: u64,
     sched: Arc<Scheduler>,
     /// The unlimited runner; only ever used wrapped in a [`Limited`].
     runner: Arc<dyn Runner>,
     dialogs: Box<dyn Dialogs>,
-    pub machine: MachineInfo,
+    pub machine: Machine,
     probes: Pool<ProbeJob, ProbeResult>,
     probe_cancel: HashMap<MediaId, Arc<AtomicBool>>,
     proxy_pool: Pool<ProxyJob, ()>,
@@ -317,6 +341,8 @@ pub struct AppState {
     pub status: String,
     /// Message shown in a modal dialog until dismissed.
     pub notice: Option<String>,
+    /// Non-blocking message at the top of the window.
+    pub banner: Option<Banner>,
 }
 
 fn check_ffmpeg(runner: &dyn Runner, settings: &Settings) -> Result<FfmpegInfo, String> {
@@ -327,7 +353,8 @@ fn check_ffmpeg(runner: &dyn Runner, settings: &Settings) -> Result<FfmpegInfo, 
 
 fn probe_pool(sched: &Arc<Scheduler>, runner: &Arc<dyn Runner>) -> Pool<ProbeJob, ProbeResult> {
     let limited = sched.runner(Priority::Probe, Arc::clone(runner));
-    Pool::new(MAX_PROCESSES as usize, move |j: ProbeJob| {
+    // As many workers as the highest cap: the scheduler decides how many actually run.
+    Pool::new(MAX_CAP as usize, move |j: ProbeJob| {
         if j.cancel.load(Ordering::SeqCst) {
             return None;
         }
@@ -350,26 +377,62 @@ fn no_open_requests() -> Vec<PathBuf> {
     Vec::new()
 }
 
+/// The machine of [`AppState::with_ffmpeg`]: 16 logical / 8 physical cores, 64 GiB.
+pub fn test_machine() -> Machine {
+    Machine::simulated(16, 8, 64 * GIB)
+}
+
+/// Start-up settings: reads the file at `path` (if any), decides with
+/// [`settings::startup`], keeps a copy of an unreadable file and writes the result when
+/// needed. Returns the settings and the message to show.
+pub fn start_settings(path: Option<&Path>, machine: &Machine) -> (Settings, Option<StartNotice>) {
+    let fp = machine.fingerprint();
+    let Some(path) = path else {
+        return (
+            Settings::with(settings::recommend(&fp), Some(fp.clone())),
+            None,
+        );
+    };
+    let loaded = settings::load_file(path);
+    let st = settings::startup(&loaded, &fp);
+    if st.backup {
+        settings::backup(path, &loaded);
+    }
+    if st.write {
+        let _ = settings::save(&st.settings, path);
+    }
+    (st.settings, st.notice)
+}
+
 impl AppState {
-    /// Real start-up: loads settings, starts the ffmpeg check in the background.
+    /// Real start-up: detects the machine, removes leftovers of a crash, loads (or creates)
+    /// the settings, starts the ffmpeg check in the background.
     pub fn new(
         runner: Arc<dyn Runner>,
         dialogs: Box<dyn Dialogs>,
         sink: Box<dyn AudioSink>,
         settings_path: Option<PathBuf>,
     ) -> AppState {
-        let settings = settings_path
-            .as_deref()
-            .map(Settings::load)
-            .unwrap_or_default();
+        let machine = Machine::detect();
+        let work_root = crate::scratch::default_root();
+        crate::scratch::cleanup_stale(&work_root);
+        let (settings, notice) = start_settings(settings_path.as_deref(), &machine);
         let mut s = AppState::with_ffmpeg(Err(CHECKING_FFMPEG.to_string()), runner, dialogs, sink);
+        s.detect = Machine::detect;
+        s.machine = machine;
         s.settings = settings;
         s.settings_path = settings_path;
-        s.preview.proxies = s.settings.proxies_enabled;
-        s.machine = MachineInfo::detect();
+        s.banner = notice.map(Banner::from_notice);
+        s.work_root = work_root.clone();
+        s.apply_budget();
+        s.preview.proxies = s.settings.preview_quality != PreviewQuality::Original;
         s.proxy_cache = ProxyCache::default_dir().map(ProxyCache::new);
         s.proxy_cache_size = s.proxy_cache.as_ref().map(ProxyCache::size).unwrap_or(0);
-        s.model_store = ModelStore::default_dir().map(ModelStore::new);
+        s.model_store = ModelStore::default_dir().map(|d| ModelStore {
+            work_root: Some(work_root),
+            ..ModelStore::new(d)
+        });
+        s.refresh_speech_files_size();
         s.transcriber = stt::default_factory();
         s.fetcher = stt::default_fetcher();
         s.open_requests = crate::desktop::take_open_requests;
@@ -389,6 +452,10 @@ impl AppState {
         let sched = Scheduler::new(MAX_PROCESSES);
         let config = preview_config(&ffmpeg, &sched, &runner);
         let project = Project::default();
+        let machine = test_machine();
+        let fp = machine.fingerprint();
+        let settings = Settings::with(settings::recommend(&fp), Some(fp.clone()));
+        let budget = settings::budget(settings.effort, &fp);
         AppState {
             saved: project.doc(),
             project,
@@ -405,8 +472,14 @@ impl AppState {
             ffmpeg,
             ffmpeg_checking: false,
             ffmpeg_check: None,
-            settings: Settings::default(),
+            settings,
             settings_path: None,
+            settings_open: false,
+            settings_summary: Vec::new(),
+            budget,
+            detect: test_machine,
+            work_root: std::env::temp_dir().join("videolore-test-work"),
+            speech_files_size: 0,
             probes: probe_pool(&sched, &runner),
             probe_cancel: HashMap::new(),
             proxy_pool: proxy_pool(),
@@ -417,10 +490,7 @@ impl AppState {
             sched,
             runner,
             dialogs,
-            machine: MachineInfo {
-                cores: 16,
-                ram_bytes: 64 * crate::machine::GIB,
-            },
+            machine,
             preview: Preview::new(config, sink),
             frame: None,
             frame_serial: 0,
@@ -440,6 +510,7 @@ impl AppState {
             quit_requested: false,
             status: String::new(),
             notice: None,
+            banner: None,
         }
     }
 
@@ -472,7 +543,7 @@ impl AppState {
             preview_config(&self.ffmpeg, &self.sched, &self.runner),
             crate::preview::default_sink(),
         );
-        preview.proxies = self.settings.proxies_enabled;
+        preview.proxies = self.settings.preview_quality != PreviewQuality::Original;
         self.preview = preview;
         let now = Instant::now();
         let t = self.playhead;
@@ -481,6 +552,81 @@ impl AppState {
         for id in ids {
             self.maybe_proxy(id);
         }
+    }
+
+    /// The machine characteristics the recommendations are based on.
+    pub fn fingerprint(&self) -> Fingerprint {
+        self.machine.fingerprint()
+    }
+
+    /// The three choices are the recommended ones for this machine.
+    pub fn is_recommended(&self) -> bool {
+        self.settings.is_recommended(&self.fingerprint())
+    }
+
+    /// Recomputes the budget of "How hard videolore works"; new jobs use it, running jobs
+    /// keep theirs.
+    fn apply_budget(&mut self) {
+        self.budget = settings::budget(self.settings.effort, &self.fingerprint());
+        self.sched.set_cap(self.budget.max_processes);
+    }
+
+    fn save_settings(&mut self) -> Result<(), String> {
+        match &self.settings_path {
+            Some(p) => settings::save(&self.settings, p),
+            None => Ok(()),
+        }
+    }
+
+    pub fn refresh_speech_files_size(&mut self) {
+        self.speech_files_size = self
+            .model_store
+            .as_ref()
+            .map(ModelStore::downloaded_bytes)
+            .unwrap_or(0);
+    }
+
+    /// Applies the Preview quality choice: proxies no longer wanted stop being used (their
+    /// files stay in the cache), newly wanted ones are queued. The export never changes.
+    fn apply_preview_quality(&mut self, now: Instant) {
+        let q = self.settings.preview_quality;
+        self.preview.proxies = q != PreviewQuality::Original;
+        let unwanted: Vec<MediaId> = self
+            .project
+            .media
+            .iter()
+            .filter(|m| !proxy::wants_proxy(&m.format, q, &self.machine))
+            .map(|m| m.id)
+            .collect();
+        for id in unwanted {
+            self.cancel_proxy(id);
+            if let Some(m) = self.project.media.iter_mut().find(|m| m.id == id) {
+                m.proxy = ProxyState::None;
+            }
+        }
+        let ids: Vec<MediaId> = self.project.media.iter().map(|m| m.id).collect();
+        for id in ids {
+            self.maybe_proxy(id);
+        }
+        self.refresh_still(now);
+    }
+
+    /// Detects the machine again and applies its recommended choices. The ffmpeg choice,
+    /// projects, preview copies and speech recognition files are left alone; nothing is
+    /// downloaded.
+    fn use_recommended(&mut self, now: Instant) -> Result<(), String> {
+        self.machine = (self.detect)();
+        let fp = self.fingerprint();
+        let old = self.settings.choices();
+        let new = settings::recommend(&fp);
+        self.settings_summary = settings::summary(old, new);
+        self.settings.set_choices(new);
+        self.settings.machine = Some(fp);
+        self.banner = None;
+        self.apply_budget();
+        self.apply_preview_quality(now);
+        self.status = self.settings_summary.join("; ");
+        self.save_settings()
     }
 
     /// Output frame rate (frame grid for the playhead, split and zoom).
@@ -600,6 +746,12 @@ impl AppState {
             Command::CancelSubtitles => self.is_generating(),
             Command::AddSubtitle => tl.locate(self.playhead).is_some(),
             Command::ClearProxyCache => self.proxy_cache.is_some(),
+            Command::RemoveSpeechFiles | Command::ConfirmRemoveSpeechFiles => {
+                self.model_store.is_some() && !self.is_generating()
+            }
+            Command::SetSubtitleQuality(q) => {
+                settings::availability(&self.fingerprint())[q.index()].is_none()
+            }
             Command::RemoveDesktopIntegration => self.desktop_integrated,
             _ => true,
         }
@@ -857,36 +1009,62 @@ impl AppState {
                 if !stt::available() {
                     return Err("subtitle generation is not available in this build".into());
                 }
+                // The speech engine is never reached on a processor it cannot run on.
+                if !self.machine.speech_supported() {
+                    self.notice = Some(TOO_OLD_FOR_SUBTITLES.into());
+                    return Ok(());
+                }
                 if self.project.subtitles.has_edits() {
                     self.modal = Some(Modal::ConfirmRegenerate);
                     return Ok(());
                 }
-                self.generate_subtitles()
+                self.generate_subtitles(None)
             }
             Command::ConfirmRegenerate => {
                 self.modal = None;
-                self.generate_subtitles()
+                self.generate_subtitles(None)
             }
             Command::ModelConsent(choice) => {
-                self.modal = None;
+                let level = match self.modal.take() {
+                    Some(Modal::ModelConsent(l)) => l,
+                    other => {
+                        self.modal = other;
+                        return Ok(());
+                    }
+                };
                 let store = self
                     .model_store
                     .clone()
-                    .ok_or("no folder for the speech model")?;
-                let source = match choice {
+                    .ok_or("no folder for speech recognition files")?;
+                let (level, source) = match choice {
                     ConsentChoice::Cancel => return Ok(()),
-                    ConsentChoice::Download => ModelSource::Download,
+                    ConsentChoice::UseFastInstead => {
+                        if !store.is_installed(SubtitleQuality::Fast) {
+                            return Err("the Fast speech file is not installed".into());
+                        }
+                        // this generation only: the setting does not change
+                        return self.generate_subtitles(Some(SubtitleQuality::Fast));
+                    }
+                    ConsentChoice::Download => (level, ModelSource::Download),
+                    ConsentChoice::DownloadFastInstead => {
+                        (SubtitleQuality::Fast, ModelSource::Download)
+                    }
                     ConsentChoice::LocalFile => match self.dialogs.pick_model_file() {
-                        Some(p) => ModelSource::LocalFile(p),
+                        Some(p) => (level, ModelSource::LocalFile(p)),
                         None => return Ok(()),
                     },
                 };
                 let cancel = Arc::new(AtomicBool::new(false));
-                let rx =
-                    stt::install_model(store, source, self.fetcher.clone(), Arc::clone(&cancel));
+                let rx = stt::install_model(
+                    store,
+                    level,
+                    source,
+                    self.fetcher.clone(),
+                    Arc::clone(&cancel),
+                );
                 self.model_install = Some((rx, cancel));
                 self.model_progress = Some(0.0);
-                self.status = "Installing the speech model…".into();
+                self.status = "Installing the speech recognition file…".into();
                 Ok(())
             }
             Command::CancelSubtitles => {
@@ -973,24 +1151,67 @@ impl AppState {
                     Ok(())
                 })
             }
-            Command::SetProxiesEnabled(on) => {
-                self.settings.proxies_enabled = on;
-                self.preview.proxies = on;
-                if let Some(sp) = &self.settings_path {
-                    self.settings.save(sp)?;
+            Command::OpenSettings => {
+                self.settings_open = true;
+                self.settings_summary.clear();
+                self.refresh_speech_files_size();
+                Ok(())
+            }
+            Command::CloseSettings => {
+                self.settings_open = false;
+                Ok(())
+            }
+            Command::SetPreviewQuality(q) => {
+                self.settings.preview_quality = q;
+                self.settings_summary.clear();
+                self.apply_preview_quality(now);
+                self.save_settings()
+            }
+            Command::SetSubtitleQuality(q) => {
+                let fp = self.fingerprint();
+                if let Some(reason) = settings::availability(&fp)[q.index()] {
+                    return Err(reason.to_string());
                 }
-                if on {
-                    let ids: Vec<MediaId> = self.project.media.iter().map(|m| m.id).collect();
-                    for id in ids {
-                        self.maybe_proxy(id);
-                    }
-                } else {
-                    let ids: Vec<MediaId> = self.proxy_jobs.keys().copied().collect();
-                    for id in ids {
-                        self.cancel_proxy(id);
-                    }
-                }
-                self.refresh_still(now);
+                // only the choice changes: existing subtitles are never regenerated
+                self.settings.subtitle_quality = q;
+                self.settings_summary.clear();
+                self.save_settings()
+            }
+            Command::SetEffort(e) => {
+                self.settings.effort = e;
+                self.settings_summary.clear();
+                self.apply_budget();
+                self.save_settings()
+            }
+            Command::UseRecommended | Command::BannerAction(BannerAction::UseRecommended) => {
+                self.use_recommended(now)
+            }
+            Command::RemoveSpeechFiles => {
+                self.modal = Some(Modal::ConfirmRemoveSpeechFiles);
+                Ok(())
+            }
+            Command::ConfirmRemoveSpeechFiles => {
+                self.modal = None;
+                let store = self
+                    .model_store
+                    .clone()
+                    .ok_or("no folder for speech recognition files")?;
+                let freed = store.remove_downloaded();
+                self.refresh_speech_files_size();
+                self.status = format!(
+                    "Removed the speech recognition files ({} MB freed)",
+                    freed / 1_000_000
+                );
+                Ok(())
+            }
+            Command::ResetFfmpeg => {
+                self.settings.ffmpeg = None;
+                self.settings.ffprobe = None;
+                self.save_settings()?;
+                self.dispatch_inner(Command::RetryFfmpeg, now)
+            }
+            Command::DismissBanner => {
+                self.banner = None;
                 Ok(())
             }
             Command::ClearProxyCache => {
@@ -1068,11 +1289,14 @@ impl AppState {
                 None => Ok(()),
             },
             Command::SetFfmpeg(p) => {
+                if !p.is_absolute() {
+                    return Err("choose ffmpeg with its full path".into());
+                }
                 let probe = p.with_file_name(ffmpeg::exe_name("ffprobe"));
                 self.settings.ffmpeg = Some(p);
                 self.settings.ffprobe = probe.is_file().then_some(probe);
                 if let Some(sp) = &self.settings_path {
-                    self.settings.save(sp)?;
+                    settings::save(&self.settings, sp)?;
                 }
                 self.dispatch_inner(Command::RetryFfmpeg, now)
             }
@@ -1255,7 +1479,7 @@ impl AppState {
 
     /// Queues a proxy for `id` when the source is big for this machine.
     fn maybe_proxy(&mut self, id: MediaId) {
-        if !self.settings.proxies_enabled || self.proxy_jobs.contains_key(&id) {
+        if self.proxy_jobs.contains_key(&id) {
             return;
         }
         let (Some(cache), Ok(info)) = (&self.proxy_cache, &self.ffmpeg) else {
@@ -1268,7 +1492,7 @@ impl AppState {
             && !m.missing
             && m.has_video()
             && matches!(m.proxy, ProxyState::None)
-            && proxy::format_needs_proxy(&m.format, self.machine);
+            && proxy::wants_proxy(&m.format, self.settings.preview_quality, &self.machine);
         if !wanted {
             return;
         }
@@ -1282,6 +1506,8 @@ impl AppState {
                 ffmpeg: info.ffmpeg.clone(),
                 version: info.version,
                 cache: cache.clone(),
+                threads: self.budget.threads,
+                work_root: Some(self.work_root.clone()),
             },
             task: ProxyTask {
                 media: id,
@@ -1311,17 +1537,27 @@ impl AppState {
         }
     }
 
-    fn generate_subtitles(&mut self) -> Result<(), String> {
+    /// Starts a generation at `level` (default: the Subtitle quality setting), asking for
+    /// consent first when its speech recognition file is not installed.
+    fn generate_subtitles(&mut self, level: Option<SubtitleQuality>) -> Result<(), String> {
         if self.stt.is_some() {
             return Err("subtitles are already being generated".into());
+        }
+        if !self.machine.speech_supported() {
+            self.notice = Some(TOO_OLD_FOR_SUBTITLES.into());
+            return Ok(());
         }
         let info = self.ffmpeg.as_ref().map_err(|e| e.clone())?;
         let store = self
             .model_store
             .clone()
-            .ok_or("no folder for the speech model")?;
-        if !store.is_installed() {
-            self.modal = Some(Modal::ModelConsent);
+            .ok_or("no folder for speech recognition files")?;
+        let mut level = level.unwrap_or(self.settings.subtitle_quality);
+        if settings::availability(&self.fingerprint())[level.index()].is_some() {
+            level = SubtitleQuality::Fast;
+        }
+        if !store.is_installed(level) {
+            self.modal = Some(Modal::ModelConsent(level));
             return Ok(());
         }
         let mut sources: Vec<(MediaId, PathBuf)> = Vec::new();
@@ -1344,8 +1580,10 @@ impl AppState {
             sources,
             language: subs.language.clone().filter(|_| subs.language_overridden),
             ffmpeg: info.ffmpeg.clone(),
-            model: store.path(),
-            threads: self.machine.stt_threads(),
+            model: store.path(level),
+            threads: self.budget.stt_threads,
+            work_root: self.work_root.clone(),
+            model_check: Some(store.spec(level).clone()),
         };
         self.stt = Some(stt::start(
             job,
@@ -1371,6 +1609,8 @@ impl AppState {
             version: info.version,
             encoders: info.encoders.clone(),
             can_burn_subtitles: info.has_subtitles(),
+            threads: self.budget.threads,
+            work_root: self.work_root.clone(),
         };
         let runner: Arc<dyn Runner> = Arc::new(self.limited(Priority::Export));
         self.export = Some(export::start(job, runner));
@@ -1451,6 +1691,14 @@ impl AppState {
 
     /// Per-frame housekeeping: background results, preview frames, playhead, export.
     pub fn tick(&mut self, now: Instant) {
+        if let Some(b) = &mut self.banner
+            && let Some(life) = b.lifetime
+        {
+            let until = *b.until.get_or_insert(now + life);
+            if now >= until {
+                self.banner = None;
+            }
+        }
         if let Some(rx) = &self.ffmpeg_check
             && let Ok(r) = rx.try_recv()
         {
@@ -1601,18 +1849,21 @@ impl AppState {
         for ev in events {
             match ev {
                 ModelEvent::Progress(p) => self.model_progress = Some(p),
-                ModelEvent::Installed(_) => {
+                ModelEvent::Installed(level, _) => {
                     self.model_install = None;
                     self.model_progress = None;
-                    self.status = "Speech model installed".into();
-                    if let Err(e) = self.generate_subtitles() {
+                    self.refresh_speech_files_size();
+                    self.status = "Speech recognition file installed".into();
+                    if let Err(e) = self.generate_subtitles(Some(level)) {
                         self.status = e;
                     }
                 }
                 ModelEvent::Failed(m) => {
                     self.model_install = None;
                     self.model_progress = None;
-                    self.notice = Some(format!("The speech model could not be installed: {m}"));
+                    self.notice = Some(format!(
+                        "The speech recognition file could not be installed: {m}"
+                    ));
                 }
             }
         }
@@ -1675,5 +1926,7 @@ fn preview_config(
     })
 }
 
+#[cfg(test)]
+mod settings_tests;
 #[cfg(test)]
 pub(crate) mod tests;

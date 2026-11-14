@@ -14,8 +14,9 @@
 
 use crate::ffmpeg::{FfVersion, ProgressEvent, Runner, argv, file_arg, parse_progress_line};
 use crate::jobs::Limited;
-use crate::machine::{GIB, MachineInfo};
+use crate::machine::{GIB, Machine};
 use crate::media::{MediaFormat, MediaId};
+use crate::settings::PreviewQuality;
 use crate::time::{Fps, Micros};
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
@@ -31,16 +32,28 @@ pub const PARAMS_VERSION: u32 = 1;
 pub const MAX_WIDTH: u32 = 960;
 pub const MAX_HEIGHT: u32 = 540;
 
-/// The proxy rule.
-pub fn needs_proxy(width: u32, height: u32, machine: MachineInfo) -> bool {
+/// The automatic proxy rule ("Preview quality: Automatic").
+pub fn needs_proxy(width: u32, height: u32, machine: &Machine) -> bool {
     let px = u64::from(width) * u64::from(height);
-    let weak = machine.cores < 8 || machine.ram_bytes < 8 * GIB;
+    let weak = machine.logical < 8 || machine.ram_bytes < 8 * GIB;
     px > 1920 * 1080 || (px > 1280 * 720 && weak)
 }
 
-/// Whether a probed format should get a proxy (audio-only files never do).
-pub fn format_needs_proxy(f: &MediaFormat, machine: MachineInfo) -> bool {
+/// Whether a probed format should get a proxy with the automatic rule (audio-only files
+/// never do).
+pub fn format_needs_proxy(f: &MediaFormat, machine: &Machine) -> bool {
     f.has_video() && needs_proxy(f.width, f.height, machine)
+}
+
+/// Whether the preview of `f` uses a proxy with the chosen preview quality: Automatic =
+/// the rule above, Smoother = every video bigger than 1280x720, Original = never.
+pub fn wants_proxy(f: &MediaFormat, quality: PreviewQuality, machine: &Machine) -> bool {
+    let px = u64::from(f.width) * u64::from(f.height);
+    match quality {
+        PreviewQuality::Automatic => format_needs_proxy(f, machine),
+        PreviewQuality::Smoother => f.has_video() && px > 1280 * 720,
+        PreviewQuality::Original => false,
+    }
 }
 
 /// Largest even size with the same aspect ratio that fits in `max_w` x `max_h`.
@@ -165,6 +178,7 @@ pub fn proxy_args(
     out: &Path,
     format: &MediaFormat,
     version: FfVersion,
+    threads: Option<u32>,
 ) -> Vec<OsString> {
     let (w, h) = fit_even(format.width, format.height, MAX_WIDTH, MAX_HEIGHT);
     let fps = format.fps.unwrap_or(Fps { num: 30, den: 1 });
@@ -177,8 +191,16 @@ pub fn proxy_args(
         "-y",
         "-protocol_whitelist",
         "file,pipe",
-        "-i",
     ]);
+    if let Some(t) = threads {
+        a.extend(argv([
+            "-threads".to_string(),
+            t.to_string(),
+            "-filter_threads".to_string(),
+            t.to_string(),
+        ]));
+    }
+    a.push("-i".into());
     a.push(file_arg(source));
     a.extend(argv(["-map", "0:v:0", "-map", "0:a:0?"]));
     a.extend(argv([
@@ -213,6 +235,9 @@ pub fn proxy_args(
         "pipe:1",
         "-nostats",
     ]));
+    if let Some(t) = threads {
+        a.extend(argv(["-threads".to_string(), t.to_string()]));
+    }
     a.push(file_arg(out));
     a
 }
@@ -242,12 +267,22 @@ pub struct ProxyWorker {
     pub ffmpeg: PathBuf,
     pub version: FfVersion,
     pub cache: ProxyCache,
+    /// ffmpeg threads ("How hard videolore works"); `None`: ffmpeg decides.
+    pub threads: Option<u32>,
+    /// Root of the private work folders (crash cleanup of the partial file).
+    pub work_root: Option<PathBuf>,
 }
 
 impl ProxyWorker {
     /// Generates the proxy, restarting when preempted. Returns `None` when cancelled.
     pub fn generate(&self, task: &ProxyTask, events: &Sender<ProxyEvent>) -> Option<ProxyEvent> {
-        if let Err(e) = std::fs::create_dir_all(&self.cache.dir) {
+        let dirs = self
+            .cache
+            .dir
+            .parent()
+            .map_or(Ok(()), crate::scratch::private_dir)
+            .and_then(|()| crate::scratch::private_dir(&self.cache.dir));
+        if let Err(e) = dirs {
             return Some(ProxyEvent::Failed(task.media, e.to_string()));
         }
         let out = self.cache.path_for(&task.key);
@@ -255,6 +290,17 @@ impl ProxyWorker {
             return Some(ProxyEvent::Ready(task.media, out));
         }
         let partial = self.cache.partial_for(&task.key);
+        let work = match &self.work_root {
+            Some(r) => match crate::scratch::Work::new(r).and_then(|w| {
+                w.register(&partial)?;
+                Ok(w)
+            }) {
+                Ok(w) => Some(w),
+                Err(e) => return Some(ProxyEvent::Failed(task.media, e.to_string())),
+            },
+            None => None,
+        };
+        let _work = work;
         loop {
             let preempt = Arc::new(AtomicBool::new(false));
             let r = self
@@ -293,7 +339,13 @@ impl ProxyWorker {
         preempt: &AtomicBool,
         events: &Sender<ProxyEvent>,
     ) -> Attempt {
-        let args = proxy_args(&task.source, partial, &task.format, self.version);
+        let args = proxy_args(
+            &task.source,
+            partial,
+            &task.format,
+            self.version,
+            self.threads,
+        );
         let mut child = match runner.spawn(&self.ffmpeg, &args) {
             Ok(c) => c,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => return Attempt::Cancelled,
@@ -344,11 +396,8 @@ mod tests {
     use crate::jobs::{Priority, Scheduler};
     use std::sync::mpsc::channel;
 
-    fn machine(cores: usize, gib: u64) -> MachineInfo {
-        MachineInfo {
-            cores,
-            ram_bytes: gib * GIB,
-        }
+    fn machine(cores: u32, gib: u64) -> Machine {
+        Machine::simulated(cores, cores, gib * GIB)
     }
 
     // covers: REQ-038
@@ -368,11 +417,11 @@ mod tests {
             ((2160, 3840), little_ram, true),
         ];
         for ((w, h), m, want) in table {
-            assert_eq!(needs_proxy(w, h, m), want, "{w}x{h} {m:?}");
-            assert_eq!(needs_proxy(w, h, m), needs_proxy(w, h, m));
+            assert_eq!(needs_proxy(w, h, &m), want, "{w}x{h} {m:?}");
+            assert_eq!(needs_proxy(w, h, &m), needs_proxy(w, h, &m));
         }
         let audio = MediaFormat::default();
-        assert!(!format_needs_proxy(&audio, few_cores));
+        assert!(!format_needs_proxy(&audio, &few_cores));
         assert_eq!(fit_even(3840, 2160, 960, 540), (960, 540));
         assert_eq!(fit_even(1080, 1920, 960, 540), (302, 540));
         assert_eq!(fit_even(641, 361, 960, 540), (640, 360));
@@ -443,6 +492,8 @@ mod tests {
             ffmpeg: "ffmpeg".into(),
             version,
             cache: ProxyCache::new(dir.join("cache")),
+            threads: None,
+            work_root: Some(dir.join("work")),
         }
     }
 
@@ -618,6 +669,8 @@ mod tests {
             ffmpeg: "ffmpeg".into(),
             version: FfVersion::Dev,
             cache: ProxyCache::new(dir.path().join("cache")),
+            threads: Some(2),
+            work_root: None,
         };
         let (tx, rx) = channel();
         let w2 = w.clone();

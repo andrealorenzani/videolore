@@ -1,12 +1,20 @@
 [package]
 name = "videolore"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.100"
 license = "GPL-3.0-only"
 authors = ["Andrea Lorenzani"]
 readme = "README.md"
 description = "Non-destructive video editor for short social videos, built on ffmpeg"
+
+[lib]
+# There are no documentation examples: skip the empty doc-test pass of `cargo test`.
+doctest = false
+
+# Faster test builds: line tables are enough for test failures and coverage.
+[profile.dev]
+debug = "line-tables-only"
 
 [features]
 default = ["audio", "stt"]

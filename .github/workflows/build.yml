@@ -7,8 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only by default; only the job that attaches files to a release may write.
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,52 +17,64 @@ env:
 jobs:
   check:
     name: fmt, clippy, test, coverage, version
-    runs-on: ubuntu-latest
+    # Pinned runner image (the floating Ubuntu label moves to new releases on its own).
+    runs-on: ubuntu-24.04
     env:
       # Integration tests must not be skipped in CI.
       VIDEOLORE_REQUIRE_FFMPEG: "1"
-      # Real speech recognition test (model cached below).
+      # Real speech recognition tests (the three speech files are cached below).
       VIDEOLORE_STT_MODEL: ${{ github.workspace }}/.stt-model/ggml-tiny-q5_1.bin
+      VIDEOLORE_STT_MODELS_DIR: ${{ github.workspace }}/.stt-model
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
+          toolchain: stable
           components: rustfmt, clippy, llvm-tools-preview
       - name: System packages (ffmpeg for tests, ALSA headers, whisper.cpp build, speech fixture)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
           prefix-key: v1-rust-ggml-portable
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: cargo-llvm-cov,cargo-deny@0.20.2
-      - name: Speech model for the real transcription test (cached, checked by SHA-256)
+      - name: Speech files for the real transcription tests (cached, checked by SHA-256)
         id: stt-cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .stt-model
-          key: stt-model-818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7
-      - name: Download the speech model
+          key: stt-models-818710568da3ca15-ae85e4a935d7a567-394221709cd5ad1f
+      - name: Download the speech files
         if: steps.stt-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p .stt-model
-          curl -fsSL --retry 3 -o .stt-model/ggml-tiny-q5_1.bin \
-            https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny-q5_1.bin
-          echo "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7  .stt-model/ggml-tiny-q5_1.bin" | sha256sum -c -
+          base=https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1
+          for f in ggml-tiny-q5_1.bin ggml-small-q5_1.bin ggml-large-v3-turbo-q5_0.bin; do
+            curl -fsSL --retry 3 -o ".stt-model/$f" "$base/$f"
+          done
+          sha256sum -c - <<'SUMS'
+          818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7  .stt-model/ggml-tiny-q5_1.bin
+          ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb  .stt-model/ggml-small-q5_1.bin
+          394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2  .stt-model/ggml-large-v3-turbo-q5_0.bin
+          SUMS
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - name: cargo test --locked
-        # On failure the failing tests and their panic messages also become error annotations
-        # (readable without logging in, through the public check-run annotations).
+      - name: cargo test --locked, with code coverage >= 85% (one instrumented run)
+        # The tests run once, instrumented: the same pass gives the results and the line
+        # coverage (src/main.rs excluded, as in scripts/coverage.sh). On failure the failing
+        # tests and their panic messages also become error annotations (readable without
+        # logging in, through the public check-run annotations).
         run: |
           set -o pipefail
-          cargo test --locked 2>&1 | tee "$RUNNER_TEMP/cargo-test.txt" || {
+          cargo llvm-cov --locked --ignore-filename-regex 'src/main\.rs$' \
+            --fail-under-lines 85 --summary-only 2>&1 | tee "$RUNNER_TEMP/cargo-test.txt" || {
             scripts/test-annotations.sh "$RUNNER_TEMP/cargo-test.txt"
             exit 1
           }
@@ -73,20 +86,18 @@ jobs:
           scripts/notices.sh --check
       - name: Version is the same everywhere
         run: scripts/version.sh check
-      - name: Code coverage >= 85%
-        run: scripts/coverage.sh --fail-under 85
       - name: Feature coverage = 100%
         run: scripts/feature-coverage.sh
       - name: Released docs are unchanged
         run: scripts/release-guard.sh "${{ github.event.pull_request.base.sha || github.event.before }}"
 
   msrv:
+    # MSRV equals the latest stable Rust by policy: this job only proves it builds with
+    # exactly that version (the tests run once, in the check job).
     name: MSRV (rust-version from Cargo.toml)
-    runs-on: ubuntu-latest
-    env:
-      VIDEOLORE_REQUIRE_FFMPEG: "1"
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Read rust-version
         id: msrv
         run: |
@@ -94,26 +105,17 @@ jobs:
           [[ -n "$v" ]] || { echo "rust-version missing from Cargo.toml"; exit 1; }
           echo "MSRV is $v"
           echo "version=$v" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
-      - name: System packages (ffmpeg for tests, ALSA headers, whisper.cpp build)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config cmake libclang-dev
-      - uses: Swatinem/rust-cache@v2
+      - name: System packages (ALSA headers, whisper.cpp build)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config cmake libclang-dev
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
           prefix-key: v1-rust-ggml-portable
       - run: cargo build --locked --all-targets
-      - name: cargo test --locked
-        # On failure the failing tests and their panic messages also become error annotations
-        # (readable without logging in, through the public check-run annotations).
-        run: |
-          set -o pipefail
-          cargo test --locked 2>&1 | tee "$RUNNER_TEMP/cargo-test.txt" || {
-            scripts/test-annotations.sh "$RUNNER_TEMP/cargo-test.txt"
-            exit 1
-          }
 
   build:
     # Bare executables on every push and pull request (artifacts only; releases get the
@@ -124,17 +126,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, ext: "" }
-          - { os: macos-latest, target: aarch64-apple-darwin, ext: "" }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: ".exe" }
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, ext: "" }
+          - { os: macos-15, target: aarch64-apple-darwin, ext: "" }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, ext: ".exe" }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
       - name: System packages (ALSA headers, whisper.cpp build)
         if: runner.os == 'Linux'
@@ -142,7 +145,7 @@ jobs:
       - name: libclang for bindgen (Windows)
         if: runner.os == 'Windows'
         run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
@@ -156,7 +159,7 @@ jobs:
           out="${name}-${version}-${{ matrix.target }}${{ matrix.ext }}"
           cp "target/${{ matrix.target }}/release/${name}${{ matrix.ext }}" "$out"
           echo "ASSET=$out" >> "$GITHUB_ENV"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.ASSET }}
           path: ${{ env.ASSET }}
@@ -166,27 +169,31 @@ jobs:
     name: installers (${{ matrix.target }})
     needs: [check, msrv]
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, target: linux-x86_64 }
-          - { os: macos-latest, target: macos-aarch64 }
-          - { os: windows-latest, target: windows-x86_64 }
+          - { os: ubuntu-24.04, target: linux-x86_64 }
+          - { os: macos-15, target: macos-aarch64 }
+          - { os: windows-2025, target: windows-x86_64 }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: stable
       - name: System packages (ALSA headers, whisper.cpp build)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config cmake libclang-dev
       - name: libclang for bindgen (Windows)
         if: runner.os == 'Windows'
         run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
@@ -208,13 +215,13 @@ jobs:
           notes="release/$(scripts/version.sh get)/docs/changelog.md"
           [[ -f "$notes" ]] || notes=docs/changelog.md
           echo "NOTES=$notes" >> "$GITHUB_ENV"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers-${{ matrix.target }}
           path: dist/videolore-*
       - name: Attach to the GitHub release (tags v* only)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           body_path: ${{ env.NOTES }}
           files: |

@@ -54,10 +54,49 @@ fn setup() -> Option<Env> {
     }
 }
 
+/// Where generated fixtures are kept between runs (inside the build folder).
+fn fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_TARGET_TMPDIR")).join("fixtures")
+}
+
 impl Env {
-    /// Generates a test clip. `audio` adds a 440 Hz sine.
+    /// A test clip (`audio` adds a 440 Hz sine). Clips are generated once per set of
+    /// parameters and ffmpeg version and reused by every test and later runs (tests only
+    /// read them). `name` keeps the test readable; it is not part of the key.
     fn clip(&self, name: &str, w: u32, h: u32, fps: u32, secs: u32, audio: bool) -> PathBuf {
-        let out = self.dir.path().join(name);
+        let key = format!(
+            "{w}x{h}@{fps}x{secs}s audio={audio} {:?} {:?} {}",
+            self.info.version,
+            self.info.ffmpeg,
+            self.info.encoders.contains("libx264")
+        );
+        let digest: String = Sha256::digest(key.as_bytes())[..12]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let dir = fixture_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let ext = Path::new(name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("mp4");
+        let cached = dir.join(format!("{digest}.{ext}"));
+        if cached.is_file() {
+            return cached;
+        }
+        // written under a unique name, then renamed: safe with tests running in parallel
+        let tmp = dir.join(format!(
+            "{digest}.{}.{:?}.partial.{ext}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        self.generate(&tmp, w, h, fps, secs, audio);
+        std::fs::rename(&tmp, &cached).unwrap();
+        cached
+    }
+
+    fn generate(&self, out: &Path, w: u32, h: u32, fps: u32, secs: u32, audio: bool) {
+        let name = out.display();
         let venc = if self.info.encoders.contains("libx264") {
             "libx264"
         } else {
@@ -85,9 +124,41 @@ impl Env {
         if venc == "libx264" {
             c.args(["-preset", "ultrafast"]);
         }
-        c.arg(&out);
+        c.arg(out);
         assert!(c.status().unwrap().success(), "fixture {name}");
-        out
+    }
+
+    /// A fixture made by ffmpeg with `args` (the output file is appended), cached like
+    /// [`Env::clip`] under a key made of `name`, the arguments and the ffmpeg build.
+    fn fixture(&self, name: &str, args: &[&str]) -> PathBuf {
+        let key = format!(
+            "{name} {args:?} {:?} {:?}",
+            self.info.version, self.info.ffmpeg
+        );
+        let digest: String = Sha256::digest(key.as_bytes())[..12]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let dir = fixture_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let ext = Path::new(name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("mp4");
+        let cached = dir.join(format!("{digest}.{ext}"));
+        if !cached.is_file() {
+            let tmp = dir.join(format!(
+                "{digest}.{}.{:?}.partial.{ext}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let mut all = args.to_vec();
+            let out = tmp.to_string_lossy().into_owned();
+            all.push(&out);
+            self.ffmpeg(&all);
+            std::fs::rename(&tmp, &cached).unwrap();
+        }
+        cached
     }
 
     /// Runs ffmpeg with `args` (fixtures), asserting success.
@@ -174,6 +245,10 @@ impl Env {
             version: self.info.version,
             encoders: self.info.encoders.clone(),
             can_burn_subtitles: self.info.has_subtitles(),
+            // a "Light" limit: proves real ffmpeg accepts the thread options, and keeps
+            // the tests running in parallel from fighting over the cores
+            threads: Some(2),
+            work_root: self.dir.path().join("work"),
         }
     }
 
@@ -475,24 +550,25 @@ fn hevc_in_mp4_is_tagged_hvc1() {
     }
     let mut p = Project::default();
     for name in ["h1.mp4", "h2.mp4"] {
-        let out = env.dir.path().join(name);
-        env.ffmpeg(&[
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc2=size=320x240:rate=25:duration=1",
-            "-c:v",
-            "libx265",
-            "-preset",
-            "ultrafast",
-            "-x265-params",
-            "log-level=error",
-            "-pix_fmt",
-            "yuv420p",
-            "-tag:v",
-            "hev1",
-            out.to_str().unwrap(),
-        ]);
+        let out = env.fixture(
+            name,
+            &[
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=320x240:rate=25:duration=1",
+                "-c:v",
+                "libx265",
+                "-preset",
+                "ultrafast",
+                "-x265-params",
+                "log-level=error",
+                "-pix_fmt",
+                "yuv420p",
+                "-tag:v",
+                "hev1",
+            ],
+        );
         let m = env.probe(&mut p, &out);
         p.timeline.append(&m).unwrap();
     }
@@ -516,24 +592,25 @@ fn two_hundred_segments_of_one_source_are_frame_accurate() {
         return;
     }
     // each source frame has its own flat grey level: Y = (37 * frame) mod 200 + 20
-    let src = env.dir.path().join("grey.mp4");
-    env.ffmpeg(&[
-        "-f",
-        "lavfi",
-        "-i",
-        "color=c=black:s=64x64:r=25:d=25,format=yuv420p,geq=lum='mod(N*37,200)+20':cb=128:cr=128",
-        "-c:v",
-        "libx264",
-        "-qp",
-        "0",
-        "-preset",
-        "ultrafast",
-        "-g",
-        "250",
-        "-pix_fmt",
-        "yuv420p",
-        src.to_str().unwrap(),
-    ]);
+    let src = env.fixture(
+        "grey.mp4",
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=64x64:r=25:d=25,format=yuv420p,geq=lum='mod(N*37,200)+20':cb=128:cr=128",
+            "-c:v",
+            "libx264",
+            "-qp",
+            "0",
+            "-preset",
+            "ultrafast",
+            "-g",
+            "250",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+    );
     let mut p = Project::default();
     let m = env.probe(&mut p, &src);
     let frame = Micros(40_000);
@@ -571,16 +648,17 @@ fn music_is_mixed_cut_and_faded_at_the_video_end() {
     let Some(env) = setup() else { return };
     let mut p = Project::default();
     let v = env.clip("mute.mp4", 320, 240, 25, 3, false);
-    let song = env.dir.path().join("song.m4a");
-    env.ffmpeg(&[
-        "-f",
-        "lavfi",
-        "-i",
-        "sine=frequency=1000:sample_rate=48000:duration=5",
-        "-c:a",
-        "aac",
-        song.to_str().unwrap(),
-    ]);
+    let song = env.fixture(
+        "song.m4a",
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=1000:sample_rate=48000:duration=5",
+            "-c:a",
+            "aac",
+        ],
+    );
     let mv = env.probe(&mut p, &v);
     let ms = env.probe(&mut p, &song);
     p.timeline.append(&mv).unwrap();
@@ -669,6 +747,8 @@ fn proxy_is_generated_from_a_big_source() {
         ffmpeg: env.info.ffmpeg.clone(),
         version: env.info.version,
         cache: cache.clone(),
+        threads: Some(2),
+        work_root: Some(env.dir.path().join("work")),
     };
     let task = videolore::proxy::ProxyTask {
         media: m.id,
@@ -705,10 +785,15 @@ const PEAK_LINE: &str = "VIDEOLORE_PEAK=";
 #[test]
 fn memory_does_not_grow_with_source_length() {
     let Some(env) = setup() else { return };
-    let short = env.clip("short.mp4", 640, 360, 25, 2, true);
-    let long = env.clip("long.mp4", 640, 360, 25, 120, true);
-    let small = peak_in_own_process(&short);
-    let big = peak_in_own_process(&long);
+    // small pictures: the test is about length, not size (25 fps: 20 frames in 0.8 s)
+    let short = env.clip("short.mp4", 160, 90, 25, 2, true);
+    let long = env.clip("long.mp4", 160, 90, 25, 120, true);
+    // both measured at the same time, each in its own process
+    let (small, big) = std::thread::scope(|s| {
+        let a = s.spawn(|| peak_in_own_process(&short));
+        let b = s.spawn(|| peak_in_own_process(&long));
+        (a.join().unwrap(), b.join().unwrap())
+    });
     assert!(
         big <= small + 200 * 1024 * 1024,
         "peak memory {big} with the long source vs {small}"
@@ -812,6 +897,8 @@ fn real_speech_is_transcribed() {
         ffmpeg: env.info.ffmpeg.clone(),
         model: model.into(),
         threads: 2,
+        work_root: env.dir.path().join("work"),
+        model_check: None,
     };
     let mut t = videolore::stt::whisper::WhisperTranscriber::load(&job.model, 2).unwrap();
     let (tx, _rx) = channel();
@@ -837,24 +924,134 @@ fn real_speech_is_transcribed() {
 /// right before the call it fails every time. The cancel flag must still stop the work.
 #[cfg(feature = "stt")]
 #[test]
-fn whisper_is_not_aborted_by_heap_garbage() {
+fn abort_check_of_whisper_ignores_heap_garbage() {
     use videolore::stt::{SttError, Transcriber};
     let Ok(model) = std::env::var("VIDEOLORE_STT_MODEL") else {
         eprintln!("skipping: VIDEOLORE_STT_MODEL not set");
         return;
     };
-    let mut t = videolore::stt::whisper::WhisperTranscriber::load(Path::new(&model), 2).unwrap();
     // 3 s of a quiet tone: no speech is needed, only a full encode + decode pass
     let pcm: Vec<f32> = (0..16_000 * 3)
         .map(|i| (i as f32 * 0.05).sin() * 0.1)
         .collect();
-    let cancel = Arc::new(AtomicBool::new(false));
-    for _ in 0..3 {
-        dirty_heap();
-        let r = t.transcribe(&pcm, Micros::ZERO, Some("en"), &cancel);
-        assert!(r.is_ok(), "{r:?}");
-    }
+    // Three transcriptions, each right after dirtying the heap of its own thread: two in a
+    // row on one transcriber (its decoding state is reused) and one, at the same time, on a
+    // second transcriber in another thread (each thread has its own heap arena).
+    let run = |calls: usize| {
+        let mut t =
+            videolore::stt::whisper::WhisperTranscriber::load(Path::new(&model), 2).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        for _ in 0..calls {
+            dirty_heap();
+            let r = t.transcribe(&pcm, Micros::ZERO, Some("en"), &cancel);
+            assert!(r.is_ok(), "{r:?}");
+        }
+        (t, cancel)
+    };
+    let (mut t, cancel) = std::thread::scope(|s| {
+        let other = s.spawn(|| run(1));
+        let main = run(2);
+        other.join().unwrap();
+        main
+    });
     cancel.store(true, std::sync::atomic::Ordering::SeqCst);
     let r = t.transcribe(&pcm, Micros::ZERO, Some("en"), &cancel);
     assert_eq!(r.unwrap_err(), SttError::Cancelled);
+}
+
+/// Words of `text`, lower-case, without punctuation.
+#[cfg(feature = "stt")]
+fn words(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase()
+        })
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// Word error rate: word-level edit distance divided by the reference length.
+#[cfg(feature = "stt")]
+fn wer(reference: &[String], heard: &[String]) -> f64 {
+    let mut prev: Vec<usize> = (0..=heard.len()).collect();
+    for (i, r) in reference.iter().enumerate() {
+        let mut cur = vec![i + 1; heard.len() + 1];
+        for (j, h) in heard.iter().enumerate() {
+            let sub = prev[j] + usize::from(r != h);
+            cur[j + 1] = sub.min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        prev = cur;
+    }
+    prev[heard.len()] as f64 / reference.len().max(1) as f64
+}
+
+/// Higher Subtitle quality levels are at least as accurate as Fast on a reference clip.
+/// Needs the three speech files in `VIDEOLORE_STT_MODELS_DIR` (CI caches them) and
+/// espeak-ng.
+// covers: REQ-052
+#[cfg(feature = "stt")]
+#[test]
+fn higher_levels_are_at_least_as_accurate() {
+    let Some(env) = setup() else { return };
+    let Ok(models) = std::env::var("VIDEOLORE_STT_MODELS_DIR") else {
+        eprintln!("skipping: VIDEOLORE_STT_MODELS_DIR not set");
+        return;
+    };
+    let sentence = "the quick brown fox jumps over the lazy dog near the river bank";
+    let wav = env.dir.path().join("reference.wav");
+    let spoke = Command::new("espeak-ng")
+        .args(["-s", "140", "-w"])
+        .arg(&wav)
+        .arg(sentence)
+        .status();
+    if !spoke.is_ok_and(|s| s.success()) {
+        assert!(!required(), "espeak-ng is needed for the accuracy test");
+        return;
+    }
+    let reference = words(sentence);
+    let threads = std::thread::available_parallelism().map_or(2, |n| n.get().min(8));
+    let mut rates = Vec::new();
+    for spec in videolore::stt::builtin_models() {
+        let model = Path::new(&models).join(&spec.file);
+        assert!(model.is_file(), "missing {}", model.display());
+        let job = videolore::stt::SttJob {
+            sources: vec![(videolore::media::MediaId(1), wav.clone())],
+            language: Some("en".into()),
+            ffmpeg: env.info.ffmpeg.clone(),
+            model: model.clone(),
+            threads,
+            work_root: env.dir.path().join("work"),
+            model_check: None,
+        };
+        let mut t = videolore::stt::whisper::WhisperTranscriber::load(&model, threads).unwrap();
+        let (tx, _rx) = channel();
+        let runner = limited(Priority::Background);
+        let (_, lines) = videolore::stt::run(
+            &job,
+            &runner as &dyn videolore::ffmpeg::Runner,
+            &mut t,
+            &Arc::new(AtomicBool::new(false)),
+            &tx,
+        )
+        .unwrap();
+        let heard: String = lines.iter().map(|l| l.text.clone() + " ").collect();
+        let rate = wer(&reference, &words(&heard));
+        eprintln!("{:?}: WER {rate:.2} \"{heard}\"", spec.level);
+        rates.push(rate);
+    }
+    assert!(rates[1] <= rates[0], "Balanced {rates:?}");
+    assert!(rates[2] <= rates[0], "Most accurate {rates:?}");
+}
+
+#[cfg(feature = "stt")]
+#[test]
+fn word_error_rate_is_computed_on_words() {
+    let r = words("The quick, brown fox!");
+    assert_eq!(r, vec!["the", "quick", "brown", "fox"]);
+    assert_eq!(wer(&r, &r), 0.0);
+    assert_eq!(wer(&r, &words("the quick fox")), 0.25);
+    assert_eq!(wer(&r, &words("a quick brown fox jumps")), 0.5);
 }

@@ -5,6 +5,11 @@
 //!
 //! All the logic lives in this library so that it can be tested; `main.rs` only starts the
 //! window through [`real_app`] and [`native_options`].
+//!
+//! `unsafe` code is denied everywhere except in the two modules that must call C or
+//! Objective-C: the speech engine's cancel callback (`stt::whisper`) and the macOS
+//! "open document" handler (`desktop::macos`). Each block there carries a SAFETY comment.
+#![deny(unsafe_code)]
 
 pub mod app;
 pub mod ass;
@@ -24,6 +29,8 @@ pub mod preview;
 pub mod project;
 pub mod proxy;
 pub mod render;
+pub mod scratch;
+pub mod settings;
 pub mod stt;
 pub mod subtitles;
 pub mod time;
@@ -44,7 +51,7 @@ pub fn real_app(project: Option<PathBuf>) -> ui::VideoloreApp {
         Arc::new(ffmpeg::SystemRunner),
         Box::new(dialogs::NativeDialogs),
         preview::default_sink(),
-        app::Settings::default_path(),
+        settings::Settings::default_path(),
     );
     if let Some(p) = project {
         desktop::push_open_request(p);

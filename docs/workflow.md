@@ -53,7 +53,7 @@ MINOR ambiguities and TECHNICAL questions are decided by the agents and recorded
 None yet. Project skills go in `.claude/skills/<name>/SKILL.md`.
 
 ## CI
-`.github/workflows/build.yml`: on push to `main`, PRs and `v*` tags. Job `check` (latest stable Rust) runs fmt, clippy (default, no and all features), tests, version consistency, coverage ≥ 85%, feature coverage, release guard; job `msrv` builds and tests with the `rust-version` read from `Cargo.toml`; job `build` runs only if both pass and makes release executables for Linux x86_64, macOS arm64, Windows x86_64 and uploads them as artifacts; on a `v*` tag the GitHub release is created with them and with `release/<version>/docs/changelog.md` as notes. Owned by the Principal Engineer.
+`.github/workflows/build.yml`: on push to `main`, PRs and `v*` tags. Job `check` (latest stable Rust) runs fmt, clippy (default, no and all features), tests, version consistency, coverage ≥ 85%, feature coverage, release guard; job `msrv` builds all targets with the `rust-version` read from `Cargo.toml` (the tests run in `check`); job `build` runs only if both pass and makes release executables for Linux x86_64, macOS arm64, Windows x86_64 and uploads them as artifacts; on a `v*` tag the GitHub release is created with them and with `release/<version>/docs/changelog.md` as notes. Owned by the Principal Engineer.
 
 ## Scripts
 | Script | Purpose |

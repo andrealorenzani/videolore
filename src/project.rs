@@ -282,10 +282,11 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
             rel.filter(|p| p.is_file())
                 .and_then(|p| std::path::absolute(p).ok())
         };
+        // The stored name is only shown: hostile characters are neutralised, length capped.
         let name = if e.name.is_empty() {
             crate::media::display_name(&e.path_abs)
         } else {
-            e.name
+            crate::media::sanitize_for_display(&e.name.chars().take(255).collect::<String>())
         };
         if found.is_none() {
             missing.push(name.clone());
@@ -412,13 +413,43 @@ fn validate_subtitles(subs: &mut Subtitles, media: &[MediaItem]) -> Result<(), P
     Ok(())
 }
 
-/// Loads a project file (at most 16 MiB).
-pub fn load(path: &Path) -> Result<(Project, Vec<String>), ProjectError> {
-    let meta = std::fs::metadata(path).map_err(io_err)?;
-    if meta.len() > MAX_PROJECT_BYTES {
-        return Err(ProjectError::TooLarge);
+/// Reads a regular file of at most `limit` bytes. Anything else (a folder, a pipe, a
+/// device) is refused without blocking; a file that grows while being read is refused too.
+/// Errors of kind `InvalidData` mean "too large", `InvalidInput` "not a regular file".
+pub fn read_limited(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
+    use std::io::{Error, ErrorKind};
+    let not_regular = || Error::new(ErrorKind::InvalidInput, "not a regular file");
+    if !std::fs::metadata(path)?.is_file() {
+        return Err(not_regular());
     }
-    let text = std::fs::read_to_string(path).map_err(io_err)?;
+    let mut o = std::fs::OpenOptions::new();
+    o.read(true);
+    // Non-blocking open: a pipe swapped in after the check above cannot hang the caller.
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.custom_flags(0o4000); // O_NONBLOCK
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.custom_flags(0x0004); // O_NONBLOCK
+    }
+    let f = o.open(path)?;
+    if !f.metadata()?.is_file() {
+        return Err(not_regular());
+    }
+    crate::settings::read_capped(f, limit)
+}
+
+/// Loads a project file (a regular file of at most 16 MiB).
+pub fn load(path: &Path) -> Result<(Project, Vec<String>), ProjectError> {
+    let bytes = read_limited(path, MAX_PROJECT_BYTES).map_err(|e| match e.kind() {
+        std::io::ErrorKind::InvalidData => ProjectError::TooLarge,
+        std::io::ErrorKind::InvalidInput => ProjectError::Invalid("not a regular file".into()),
+        _ => io_err(e),
+    })?;
+    let text = String::from_utf8(bytes).map_err(|_| invalid("the file is not UTF-8 text"))?;
     from_json(&text, &project_dir(path))
 }
 
@@ -443,6 +474,121 @@ pub(crate) mod tests {
         p.timeline.split(Micros(4_000_000), Micros(1)).unwrap();
         p.timeline.toggle_fade(0).unwrap();
         p
+    }
+
+    fn sha(p: &Path) -> Vec<u8> {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(std::fs::read(p).unwrap()).to_vec()
+    }
+
+    fn files_in(dir: &Path) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        v.sort();
+        v
+    }
+
+    // covers: REQ-057
+    #[test]
+    fn hostile_project_files_are_refused_or_contained() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = sample(dir.path());
+        let good: serde_json::Value =
+            serde_json::from_str(&to_json(&p, &dir.path().join("x.vlproj")).unwrap()).unwrap();
+        let sources: Vec<(PathBuf, Vec<u8>)> = p
+            .media
+            .iter()
+            .map(|m| (m.path.clone(), sha(&m.path)))
+            .collect();
+        let mutate = |f: &dyn Fn(&mut serde_json::Value)| {
+            let mut v = good.clone();
+            f(&mut v);
+            v.to_string()
+        };
+        let deep = format!(
+            "{{\"schema_version\":2,\"x\":{}{}}}",
+            "[".repeat(300),
+            "]".repeat(300)
+        );
+        let refused = [
+            "".to_string(),
+            "{".to_string(),
+            "null".to_string(),
+            "\u{0}\u{1}".to_string(),
+            good.to_string()[..good.to_string().len() / 2].to_string(),
+            deep,
+            good.to_string()
+                .replacen("\"schema_version\":", "\"schema_version\":1e309,\"x\":", 1),
+            mutate(&|v| v["next_media_id"] = serde_json::json!(-1)),
+            mutate(&|v| v["media"][0]["duration"] = serde_json::json!(-5)),
+            good.to_string()
+                .replacen("\"duration\":", "\"duration\":1e309,\"x\":", 1),
+            mutate(&|v| v["timeline"]["clips"][0]["src_in"] = serde_json::json!(-1)),
+            mutate(&|v| v["timeline"]["clips"][0]["src_out"] = serde_json::json!(u64::MAX)),
+            mutate(&|v| v["timeline"]["clips"][0]["src_out"] = serde_json::json!(i64::MAX)),
+            mutate(&|v| v["mix"]["video_volume"] = serde_json::json!(u64::MAX)),
+            mutate(&|v| v["media"][1]["id"] = v["media"][0]["id"].clone()),
+        ];
+        for (i, text) in refused.iter().enumerate() {
+            let f = dir.path().join(format!("bad{i}.vlproj"));
+            std::fs::write(&f, text).unwrap();
+            let before = files_in(dir.path());
+            let e = load(&f).unwrap_err();
+            assert!(!e.to_string().is_empty(), "{i}");
+            assert_eq!(files_in(dir.path()), before, "nothing written ({i})");
+        }
+        // paths outside the project and to files that are not media: only ever read
+        let outside = tempfile::tempdir().unwrap();
+        let notes = outside.path().join("notes.txt");
+        std::fs::write(&notes, b"private").unwrap();
+        let text = mutate(&|v| {
+            v["media"][0]["path_abs"] = serde_json::json!(notes);
+            v["media"][0]["path_rel"] = serde_json::json!("../../etc/passwd");
+            v["media"][1]["path_abs"] = serde_json::json!("relative/evil.mp4");
+            v["media"][1]["path_rel"] = serde_json::json!("/etc/passwd");
+            v["media"][0]["name"] =
+                serde_json::json!(format!("a\u{202E}vom.exe\n{}", "x".repeat(5000)));
+        });
+        let f = dir.path().join("paths.vlproj");
+        std::fs::write(&f, &text).unwrap();
+        let (q, missing) = load(&f).unwrap();
+        assert_eq!(q.media[0].path, notes);
+        assert!(q.media[1].missing, "a relative absolute path is never used");
+        assert_eq!(missing.len(), 1);
+        assert!(!q.media[0].name.contains(['\n', '\u{202E}']));
+        assert!(q.media[0].name.chars().count() <= 255);
+        assert_eq!(std::fs::read(&notes).unwrap(), b"private");
+        // too big
+        let big = dir.path().join("big.vlproj");
+        std::fs::File::create(&big)
+            .unwrap()
+            .set_len(MAX_PROJECT_BYTES + 1)
+            .unwrap();
+        assert_eq!(load(&big).unwrap_err(), ProjectError::TooLarge);
+        // not a regular file
+        assert!(matches!(load(dir.path()), Err(ProjectError::Invalid(_))));
+        #[cfg(unix)]
+        {
+            let fifo = dir.path().join("pipe.vlproj");
+            let made = std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .is_ok_and(|s| s.success());
+            if made {
+                let t = std::time::Instant::now();
+                assert!(matches!(load(&fifo), Err(ProjectError::Invalid(_))));
+                assert!(t.elapsed() < std::time::Duration::from_secs(1));
+            }
+        }
+        let bin = dir.path().join("bin.vlproj");
+        std::fs::write(&bin, [0xff, 0xfe, 0x00]).unwrap();
+        assert!(load(&bin).is_err());
+        // the sources were never touched
+        for (path, digest) in sources {
+            assert_eq!(sha(&path), digest);
+        }
     }
 
     // covers: REQ-003

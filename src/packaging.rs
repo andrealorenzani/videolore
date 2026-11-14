@@ -198,6 +198,24 @@ mod tests {
         );
     }
 
+    /// No floating runner labels and no actions referenced by a movable tag: every
+    /// action is pinned to a full commit, every runner to an explicit image.
+    #[test]
+    fn ci_pins_runners_and_actions() {
+        let ci = include_str!("../.github/workflows/build.yml");
+        assert!(!ci.contains("-latest"), "floating runner label");
+        assert!(ci.contains("permissions:\n  contents: read"));
+        for line in ci.lines().filter(|l| l.contains("uses:")) {
+            let r = line.split("uses:").nth(1).unwrap().trim();
+            let (_, rev) = r.split_once('@').expect("action without a version");
+            let sha: String = rev.chars().take_while(|c| !c.is_whitespace()).collect();
+            assert!(
+                sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()),
+                "not pinned to a commit: {line}"
+            );
+        }
+    }
+
     #[test]
     fn lock_parser_rejects_malformed_files() {
         assert!(parse_lock("x = 1").is_err());

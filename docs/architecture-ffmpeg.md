@@ -22,7 +22,7 @@ Alternatives rejected:
 ## Pinning and download
 - `packaging/ffmpeg.lock` lists, per platform: download URL, SHA-256, `ffmpeg` version, provider, licence, the provider's build-script source and commit, and the matching ffmpeg.org source tarball with its SHA-256.
 - `scripts/fetch-ffmpeg.sh <target> <dest>` downloads the archive, verifies the SHA-256 and extracts only `ffmpeg`, `ffprobe` and the needed DLLs.
-- BtbN keeps the last build of each month for 2 years, so a month-end build is pinned. How long Riedl's per-build URLs stay online is unknown; if a pinned URL disappears, the release build fails loudly and the pin is refreshed.
+- BtbN keeps the last build of each month for 2 years, so a month-end build is normally pinned. For 0.3.0 the newest daily build of the 9.0 branch was pinned instead, to ship the latest fixes; daily builds are kept for a shorter time, so if it disappears before a later re-package, the build fails loudly and the pin moves to the next month-end build (see [packaging](architecture-packaging.md#bundled-ffmpeg-refresh-030)). How long Riedl's per-build URLs stay online is unknown; if a pinned URL disappears, the release build fails loudly and the pin is refreshed.
 - The pin is refreshed for every release, because `ffmpeg` parses untrusted media and must receive security fixes.
 - Before packaging, a smoke test runs the bundled copy: it must report its version, list the `libx264`, `libx265`, `libvpx-vp9` and `libopus` encoders, and the `subtitles`, `amix` and `alimiter` filters.
 

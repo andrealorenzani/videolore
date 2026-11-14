@@ -26,3 +26,12 @@
 - open: AGENTS.md scripts list lacks test-annotations.sh and notices/package/fetch-ffmpeg/icons (not mine; reported)
 - open: 0.2.0/0.2.1 changelog entries left as written (history); 0.2.1 CI-cause guess corrected only in 0.2.2 entry
 - open: no commit made by documenter in 0.2.2 (caller commits)
+- 0.3.0 dev (2026-11-14 15:18 +0000): version set via scripts/version.sh set 0.3.0 (consistent); coverage badge 96.2 (PE); features 58/58; changelog 0.3.0 entry added (Known limitations + decisions-to-confirm listed)
+- 0.3.0 README: what-it-is +setup sentence (182 words); system reqs (old CPU message, model sizes 32/190/574 MB); usage items 5,6 + new item 9 Settings; shortcut Ctrl/Cmd+,; limitations (old CPU no longer crash, hw encoder, preview copies wording); latest-changes 0.3.0 line; poem replaced (10 verses, 1-9 end with backslash)
+- 0.3.0 docs fixes (not mine, stale facts): business-editing.md REQ-025 + proxy-cache line ("Clear proxy cache" gone from command bar -> Settings); architecture-subtitles.md + architecture-performance.md flash attention "on" -> off (code FLASH_ATTENTION=false, PE measured slower); workflow.md CI msrv job = build only
+- 0.3.0 link check: 0 dead links, all sub-docs linked from indexes; anchor architecture-subtitles.md#cpu-requirements-since-021 exists
+- open: docs/business-performance.md QG-03 still states the 30% target; measured 25% (not met) -> reported, PM to record result
+- open: AGENTS.md / .claude untouched in 0.3.0 (docs/workflow.md only CI-description fix)
+- open: docs/code-modules.md / code.md / code-testing.md (PE) checked for stale AVX2-crash text: none found after fixes
+- open: docs/business-performance.md + architecture-performance.md: QG-01 numbers in changelog only (fine)
+- open: no commit made by documenter in 0.3.0 (caller commits)

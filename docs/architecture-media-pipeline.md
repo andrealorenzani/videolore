@@ -2,8 +2,8 @@
 
 Part of [Architecture](architecture.md). How `ffmpeg` work is scheduled, and how preview, export, music and proxies are built.
 
-## Job queue: at most 3 processes
-Never more than 3 `ffmpeg`/`ffprobe` processes run at once (REQ-033). The `jobs` module enforces this: every part of the program receives a process runner from the queue, so the limit cannot be bypassed. Speech-to-text inference is not an `ffmpeg` process and has its own limit (see [subtitles](architecture-subtitles.md)).
+## Job queue: a fixed process limit
+Never more than the limit of the chosen "How hard videolore works" level of `ffmpeg`/`ffprobe` processes run at once (REQ-033): 3 for Light and Balanced, between 3 and 6 for Maximum (see [performance](architecture-performance.md#how-hard-videolore-works)). It is never below 3, because playback needs 2 and an export 1. Lowering the limit never stops a running process; new ones wait. The `jobs` module enforces this: every part of the program receives a process runner from the queue, so the limit cannot be bypassed. Speech-to-text inference is not an `ffmpeg` process and has its own limit (see [subtitles](architecture-subtitles.md)).
 
 Priorities, highest first: **preview**, **export**, **import analysis**, **background work** (proxies, audio extraction for subtitles). Within the same priority, first come first served.
 
@@ -12,11 +12,11 @@ Priorities, highest first: **preview**, **export**, **import analysis**, **backg
 | Preview playback | 2, taken together | one for video, one for audio |
 | Still preview frame | 1 | |
 | Export | 1 | keyframe checks before it run one at a time |
-| Import analysis (`ffprobe`) | 1 each | up to 3 in parallel |
+| Import analysis (`ffprobe`) | 1 each | up to the limit in parallel; stopped after 30 s |
 | Proxy generation | 1 | can be interrupted |
 | Audio extraction for subtitles | 1 | short |
 
-Worst case, export + playback use all 3; everything else waits.
+At the limit of 3, export + playback use all slots; everything else waits.
 
 - **Interruption:** if preview or export cannot start, a running proxy job is stopped and restarted later from the beginning. Export is never interrupted.
 - **Dropping stale work:** a newer still-frame request replaces an older one (an older render still running is stopped); restarting playback stops the previous pair; removing a media item cancels its analysis and proxy; New/Open/close cancels all jobs of the project.
@@ -29,10 +29,11 @@ Worst case, export + playback use all 3; everything else waits.
 - **Proxies** are used when ready; until then, the original.
 
 ## Export
+- **Threads:** in Light, each export uses at most half the cores; in Balanced and Maximum `ffmpeg` chooses, as in 0.2.2.
 - **Fewer inputs (REQ-037):** consecutive clips cut from the same source, in forward order, share one `ffmpeg` input, which is split inside `ffmpeg`. A new input is opened only when the order goes back in time (reordered or repeated clips). 200 segments cut in order from one source use one input and one decoder, and `ffmpeg` memory stays bounded. Music clips are grouped the same way. Large filter graphs go through a script file, as before.
 - **HEVC tag (REQ-036):** HEVC in MP4 or MOV gets the `hvc1` tag (needed by Apple players), with stream copy and with re-encode.
 - **Re-encode is needed** when there is any fade, music clip, subtitle line, video volume other than 100% or muted, mixed source formats, or a cut not on a keyframe (REQ-023).
-- **Originals only:** export never uses proxies; the export plan is identical with proxies on or off.
+- **Originals only:** export never uses proxies; the export plan is identical whatever the Preview quality.
 - Cancel and failures still leave no partial file.
 
 ## Music mix
@@ -43,11 +44,12 @@ Worst case, export + playback use all 3; everything else waits.
 
 ## Proxies
 Lower-resolution copies used only for preview when a source is "big for this machine" (REQ-038).
-- **Rule:** a proxy is made when the picture is larger than 1920x1080, or larger than 1280x720 on a machine with fewer than 8 logical cores or less than 8 GB of RAM. It depends only on resolution (rotation included), cores and RAM, so it is deterministic. Audio-only files never get one. The rule is a tunable assumption.
+- **Rule (Preview quality "Automatic", the default):** a proxy is made when the picture is larger than 1920x1080, or larger than 1280x720 on a machine with fewer than 8 logical cores or less than 8 GB of RAM. It depends only on resolution (rotation included), cores and RAM, so it is deterministic. Audio-only files never get one. The rule is a tunable assumption.
 - **Format:** H.264 at most 960x540, same frame rate, a keyframe every half second (fast seeking), AAC stereo, in Matroska.
-- **Generation:** in the background, with progress on the media item; written under a temporary name and renamed when complete.
-- **Cache:** in the system cache folder (`…/videolore/proxies/`), outside the project. The file name is a hash of the source path, size, modification time and proxy settings, so a changed source gets a new proxy. Proxies are reused across sessions and recreated if missing. Settings show the cache size and offer "Clear proxy cache", which deletes only proxy files not being generated. There is no automatic clean-up.
-- On by default; can be turned off in settings (a program setting, not a project setting).
+- **Generation:** in the background, one at a time, with progress on the media item; written under a temporary name and renamed when complete. In Light it uses at most half the cores.
+- **Cache:** in the system cache folder (`…/videolore/proxies/`), outside the project. The file name is a hash of the source path, size, modification time and proxy settings, so a changed source gets a new proxy. Proxies are reused across sessions and recreated if missing. Clearing deletes only proxy files not being generated. There is no automatic clean-up.
+- **Preview quality (since 0.3.0, replaces the on/off switch):** Automatic (rule above), Smoother (every source above 1280x720), Original (no proxies). A program setting, not a project setting. 0.2.x users who had turned proxies off get Original.
+- Settings shows the space used as "Preview copies" with a button to clear them.
 
 ## Memory
 App memory does not depend on source file size (REQ-039). Every buffer has a fixed limit:

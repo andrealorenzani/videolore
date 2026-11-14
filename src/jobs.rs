@@ -19,8 +19,11 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
-/// The process cap of the whole application.
+/// The default process cap of the whole application ("How hard videolore works" =
+/// Light or Balanced).
 pub const MAX_PROCESSES: u8 = 3;
+/// The highest cap any level allows (Maximum on big machines).
+pub const MAX_CAP: u8 = 6;
 
 /// How often a waiter re-checks its cancel flag.
 const POLL: Duration = Duration::from_millis(20);
@@ -49,6 +52,7 @@ struct Running {
 
 #[derive(Debug, Default)]
 struct State {
+    cap: u8,
     in_use: u8,
     peak: u8,
     next: u64,
@@ -60,7 +64,6 @@ struct State {
 /// Shared slot counter with a priority queue.
 #[derive(Debug)]
 pub struct Scheduler {
-    cap: u8,
     state: Mutex<State>,
     cv: Condvar,
 }
@@ -68,8 +71,10 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new(cap: u8) -> Arc<Scheduler> {
         Arc::new(Scheduler {
-            cap: cap.max(1),
-            state: Mutex::new(State::default()),
+            state: Mutex::new(State {
+                cap: cap.clamp(1, MAX_CAP),
+                ..State::default()
+            }),
             cv: Condvar::new(),
         })
     }
@@ -79,7 +84,14 @@ impl Scheduler {
     }
 
     pub fn cap(&self) -> u8 {
-        self.cap
+        self.lock().cap
+    }
+
+    /// Changes the cap (1..=[`MAX_CAP`]). Running processes are never stopped: when the cap
+    /// goes down, new requests simply wait until enough slots are free.
+    pub fn set_cap(&self, cap: u8) {
+        self.lock().cap = cap.clamp(1, MAX_CAP);
+        self.cv.notify_all();
     }
 
     /// Slots currently held.
@@ -111,7 +123,6 @@ impl Scheduler {
         cancel: Option<&AtomicBool>,
         preempt: Option<Arc<AtomicBool>>,
     ) -> Option<Permit> {
-        let slots = slots.clamp(1, self.cap);
         let mut st = self.lock();
         let ticket = st.next;
         st.next += 1;
@@ -127,7 +138,8 @@ impl Scheduler {
                 .waiting
                 .iter()
                 .any(|w| (w.priority, w.ticket) < (priority, ticket));
-            if first && st.in_use + slots <= self.cap {
+            let slots = slots.clamp(1, st.cap);
+            if first && st.in_use + slots <= st.cap {
                 st.waiting.retain(|w| w.ticket != ticket);
                 st.in_use += slots;
                 st.peak = st.peak.max(st.in_use);
@@ -267,6 +279,16 @@ impl Runner for Limited {
     fn run(&self, program: &Path, args: &[OsString]) -> io::Result<CmdOutput> {
         let _permit = self.permit(1)?;
         self.inner.run(program, args)
+    }
+
+    fn run_within(
+        &self,
+        program: &Path,
+        args: &[OsString],
+        timeout: Duration,
+    ) -> io::Result<CmdOutput> {
+        let _permit = self.permit(1)?;
+        self.inner.run_within(program, args, timeout)
     }
 
     fn spawn_in(
@@ -481,6 +503,101 @@ pub(crate) mod tests {
                 delay: self.delay,
             }))
         }
+    }
+
+    /// 20 probes + an export + preview playback and stills through `sched`; returns the
+    /// highest number of processes alive at once.
+    fn busy_workload(sched: &Arc<Scheduler>) -> usize {
+        let counting = Arc::new(CountingRunner::new(Duration::from_millis(10)));
+        let mut threads = Vec::new();
+        for _ in 0..20 {
+            let r = sched.runner(Priority::Probe, counting.clone());
+            threads.push(std::thread::spawn(move || {
+                r.run(Path::new("ffprobe"), &[]).unwrap();
+            }));
+        }
+        let r = sched.runner(Priority::Export, counting.clone());
+        threads.push(std::thread::spawn(move || {
+            let mut p = r.spawn(Path::new("ffmpeg"), &[]).unwrap();
+            p.wait().unwrap();
+        }));
+        let r = sched.runner(Priority::Preview, counting.clone());
+        threads.push(std::thread::spawn(move || {
+            for _ in 0..3 {
+                let (mut a, mut b) = r
+                    .spawn_pair((Path::new("f"), &[]), (Path::new("f"), &[]), None)
+                    .unwrap();
+                a.wait().unwrap();
+                b.kill();
+            }
+        }));
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(counting.live.load(Ordering::SeqCst), 0, "all jobs complete");
+        counting.peak.load(Ordering::SeqCst)
+    }
+
+    // covers: REQ-033, REQ-050
+    #[test]
+    fn every_level_keeps_its_process_limit_and_all_jobs_complete() {
+        let fp = |l| crate::machine::Machine::simulated(l, l / 2, 16 << 30).fingerprint();
+        let mut caps = Vec::new();
+        for l in [1, 8, 16] {
+            for e in crate::settings::Effort::ALL {
+                caps.push(crate::settings::budget(e, &fp(l)).max_processes);
+            }
+        }
+        caps.sort();
+        caps.dedup();
+        assert_eq!(caps, vec![3, 4, 6]);
+        let runs: Vec<_> = caps
+            .into_iter()
+            .map(|cap| {
+                std::thread::spawn(move || {
+                    let sched = Scheduler::new(cap);
+                    let peak = busy_workload(&sched);
+                    (cap, peak, sched.peak(), sched.in_use(), sched.waiting())
+                })
+            })
+            .collect();
+        for r in runs {
+            let (cap, peak, sched_peak, in_use, waiting) = r.join().unwrap();
+            assert!(peak <= cap as usize, "cap {cap}: {peak} processes");
+            assert!(sched_peak <= cap);
+            assert_eq!((in_use, waiting), (0, 0));
+        }
+        assert_eq!(Scheduler::new(99).cap(), MAX_CAP);
+    }
+
+    // covers: REQ-050
+    #[test]
+    fn a_lower_cap_waits_for_running_processes_instead_of_stopping_them() {
+        let sched = Scheduler::new(6);
+        let held: Vec<Permit> = (0..5)
+            .map(|_| sched.acquire(Priority::Export, 1, None, None).unwrap())
+            .collect();
+        sched.set_cap(3);
+        assert_eq!(sched.cap(), 3);
+        assert_eq!(sched.in_use(), 5, "running processes are not stopped");
+        let s = Arc::clone(&sched);
+        let t = std::thread::spawn(move || s.acquire(Priority::Preview, 1, None, None).is_some());
+        let mut held = held;
+        // still 4 of 3 after one ends: the new request keeps waiting
+        held.pop();
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(!t.is_finished());
+        held.truncate(2);
+        assert!(t.join().unwrap());
+        // raising the cap lets more run at once
+        sched.set_cap(6);
+        let more: Vec<Permit> = (0..4)
+            .map(|_| sched.acquire(Priority::Probe, 1, None, None).unwrap())
+            .collect();
+        assert_eq!(sched.in_use(), 6);
+        drop(more);
+        drop(held);
+        assert_eq!(sched.in_use(), 0);
     }
 
     // covers: REQ-033

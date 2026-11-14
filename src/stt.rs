@@ -17,23 +17,68 @@
 
 use crate::ffmpeg::{Runner, argv, file_arg};
 use crate::media::MediaId;
+use crate::settings::SubtitleQuality;
 use crate::subtitles::{NewLine, Word};
 use crate::time::Micros;
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::SystemTime;
 
-pub const MODEL_FILE: &str = "ggml-tiny-q5_1.bin";
-pub const MODEL_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny-q5_1.bin";
-pub const MODEL_SIZE: u64 = 32_152_673;
-pub const MODEL_SHA256: &str = "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7";
+/// Where every built-in speech recognition file comes from (pinned whisper.cpp commit).
+pub const MODEL_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/";
 pub const MODEL_LICENCE: &str = "MIT";
 pub const MODEL_SOURCE: &str = "https://huggingface.co/ggerganov/whisper.cpp";
+
+/// One downloadable speech recognition file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelSpec {
+    pub level: SubtitleQuality,
+    pub file: String,
+    pub url: String,
+    pub size: u64,
+    pub sha256: String,
+}
+
+/// The built-in table: Fast = whisper tiny (q5_1), Balanced = small (q5_1), Most accurate =
+/// large-v3-turbo (q5_0). Sizes and SHA-256 checked against the pinned commit.
+pub fn builtin_models() -> [ModelSpec; 3] {
+    let spec = |level, file: &str, size, sha256: &str| ModelSpec {
+        level,
+        file: file.to_string(),
+        url: format!("{MODEL_BASE_URL}{file}"),
+        size,
+        sha256: sha256.to_string(),
+    };
+    [
+        spec(
+            SubtitleQuality::Fast,
+            "ggml-tiny-q5_1.bin",
+            32_152_673,
+            "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
+        ),
+        spec(
+            SubtitleQuality::Balanced,
+            "ggml-small-q5_1.bin",
+            190_085_487,
+            "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+        ),
+        spec(
+            SubtitleQuality::MostAccurate,
+            "ggml-large-v3-turbo-q5_0.bin",
+            574_041_195,
+            "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+        ),
+    ]
+}
+
+/// The Fast file (the one of videolore 0.2.x).
+pub const MODEL_FILE: &str = "ggml-tiny-q5_1.bin";
 
 /// Sample rate the speech model expects.
 pub const SAMPLE_RATE: u32 = 16_000;
@@ -103,11 +148,12 @@ pub trait Transcriber: Send {
     ) -> Result<Transcript, SttError>;
 }
 
-/// Downloads a URL into `out`, reporting bytes received.
+/// Downloads a URL into `out`, reporting bytes received. More than `max_bytes` is an error.
 pub trait ModelFetcher: Send + Sync {
     fn fetch(
         &self,
         url: &str,
+        max_bytes: u64,
         out: &mut dyn Write,
         progress: &mut dyn FnMut(u64),
         cancel: &AtomicBool,
@@ -165,21 +211,80 @@ pub fn sha256_file(path: &Path) -> io::Result<String> {
     Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// Where the speech model lives (`<user data>/models`).
+/// Message shown when the disk is full during a download.
+pub const DISK_FULL: &str = "Not enough free disk space";
+
+fn download_io(e: io::Error) -> SttError {
+    if e.kind() == io::ErrorKind::StorageFull {
+        SttError::Download(DISK_FULL.into())
+    } else {
+        io_err(e)
+    }
+}
+
+/// Files whose SHA-256 was already checked in this session (path, size, modification time):
+/// the check before each use is then only a size comparison.
+static VERIFIED: Mutex<Vec<FileIdentity>> = Mutex::new(Vec::new());
+
+/// A file as checked: path, size, modification time and the digest it matched.
+type FileIdentity = (PathBuf, u64, Option<SystemTime>, String);
+
+fn identity(file: &Path, sha256: &str) -> io::Result<FileIdentity> {
+    let m = std::fs::metadata(file)?;
+    Ok((
+        file.to_path_buf(),
+        m.len(),
+        m.modified().ok(),
+        sha256.to_string(),
+    ))
+}
+
+/// Checks size and SHA-256 of `file` against `spec`.
+pub fn verify_file(spec: &ModelSpec, file: &Path) -> Result<(), SttError> {
+    let len = std::fs::metadata(file).map_err(io_err)?.len();
+    if len != spec.size {
+        return Err(SttError::Model(format!(
+            "expected {} bytes, found {len}",
+            spec.size
+        )));
+    }
+    if sha256_file(file).map_err(io_err)? != spec.sha256 {
+        return Err(SttError::Model("the file's checksum does not match".into()));
+    }
+    Ok(())
+}
+
+/// Like [`verify_file`], but the checksum is computed only once per session for an
+/// unchanged file.
+pub fn verify_cached(spec: &ModelSpec, file: &Path) -> Result<(), SttError> {
+    let id = identity(file, &spec.sha256).map_err(io_err)?;
+    let known = VERIFIED.lock().map(|v| v.contains(&id)).unwrap_or(false);
+    if known && id.1 == spec.size {
+        return Ok(());
+    }
+    verify_file(spec, file)?;
+    if let Ok(mut v) = VERIFIED.lock() {
+        v.push(id);
+    }
+    Ok(())
+}
+
+/// Where the speech recognition files live (`<user data>/models`), one per level.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelStore {
     pub dir: PathBuf,
-    /// Expected size and digest (the pinned model; changeable for tests).
-    pub size: u64,
-    pub sha256: String,
+    /// The files, in [`SubtitleQuality::ALL`] order (changeable for tests).
+    pub specs: Vec<ModelSpec>,
+    /// Root of the private work folders (crash cleanup of partial downloads).
+    pub work_root: Option<PathBuf>,
 }
 
 impl ModelStore {
     pub fn new(dir: PathBuf) -> ModelStore {
         ModelStore {
             dir,
-            size: MODEL_SIZE,
-            sha256: MODEL_SHA256.into(),
+            specs: builtin_models().to_vec(),
+            work_root: None,
         }
     }
 
@@ -187,78 +292,136 @@ impl ModelStore {
         directories::ProjectDirs::from("", "", "videolore").map(|d| d.data_dir().join("models"))
     }
 
-    pub fn path(&self) -> PathBuf {
-        self.dir.join(MODEL_FILE)
+    pub fn spec(&self, level: SubtitleQuality) -> &ModelSpec {
+        &self.specs[level.index()]
     }
 
-    /// The model file exists with the right size (the digest is checked before use).
-    pub fn is_installed(&self) -> bool {
-        std::fs::metadata(self.path()).is_ok_and(|m| m.is_file() && m.len() == self.size)
+    pub fn path(&self, level: SubtitleQuality) -> PathBuf {
+        self.dir.join(&self.spec(level).file)
     }
 
-    /// Checks size and SHA-256 of `file`.
-    pub fn verify(&self, file: &Path) -> Result<(), SttError> {
-        let len = std::fs::metadata(file).map_err(io_err)?.len();
-        if len != self.size {
-            return Err(SttError::Model(format!(
-                "expected {} bytes, found {len}",
-                self.size
-            )));
-        }
-        if sha256_file(file).map_err(io_err)? != self.sha256 {
-            return Err(SttError::Model("the file's checksum does not match".into()));
-        }
-        Ok(())
+    /// The file of `level` exists with the right size (the digest is checked before use).
+    pub fn is_installed(&self, level: SubtitleQuality) -> bool {
+        std::fs::metadata(self.path(level))
+            .is_ok_and(|m| m.is_file() && m.len() == self.spec(level).size)
     }
 
-    fn part(&self) -> PathBuf {
-        self.dir.join(format!("{MODEL_FILE}.part"))
+    /// Checks size and SHA-256 of `file` against the file of `level`.
+    pub fn verify(&self, level: SubtitleQuality, file: &Path) -> Result<(), SttError> {
+        verify_file(self.spec(level), file)
     }
 
-    fn finish(&self, part: &Path) -> Result<PathBuf, SttError> {
-        if let Err(e) = self.verify(part) {
+    fn part(&self, level: SubtitleQuality) -> PathBuf {
+        self.dir.join(format!("{}.part", self.spec(level).file))
+    }
+
+    fn finish(&self, level: SubtitleQuality, part: &Path) -> Result<PathBuf, SttError> {
+        if let Err(e) = self.verify(level, part) {
             let _ = std::fs::remove_file(part);
             return Err(e);
         }
-        std::fs::rename(part, self.path()).map_err(io_err)?;
-        Ok(self.path())
+        std::fs::rename(part, self.path(level)).map_err(io_err)?;
+        Ok(self.path(level))
     }
 
-    /// Downloads the pinned model (to `.part`, checked, then renamed).
+    fn prepare(&self) -> Result<Option<crate::scratch::Work>, SttError> {
+        if let Some(parent) = self.dir.parent() {
+            crate::scratch::private_dir(parent).map_err(io_err)?;
+        }
+        crate::scratch::private_dir(&self.dir).map_err(io_err)?;
+        match &self.work_root {
+            Some(r) => crate::scratch::Work::new(r).map(Some).map_err(io_err),
+            None => Ok(None),
+        }
+    }
+
+    /// Downloads the file of `level` from its built-in HTTPS address (to `.part`, checked,
+    /// then renamed). A failed, cancelled or wrong download leaves nothing behind.
     pub fn install_download(
         &self,
+        level: SubtitleQuality,
         fetcher: &dyn ModelFetcher,
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(f32),
     ) -> Result<PathBuf, SttError> {
-        std::fs::create_dir_all(&self.dir).map_err(io_err)?;
-        let part = self.part();
-        let mut f = std::fs::File::create(&part).map_err(io_err)?;
-        let size = self.size as f32;
+        let spec = self.spec(level).clone();
+        if !spec.url.starts_with("https://") {
+            return Err(SttError::Download(
+                "only HTTPS downloads are allowed".into(),
+            ));
+        }
+        let work = self.prepare()?;
+        let part = self.part(level);
+        let mut f = crate::scratch::create_private_file(&part).map_err(io_err)?;
+        if let Some(w) = &work {
+            w.register(&part).map_err(io_err)?;
+        }
+        let size = spec.size as f32;
         let r = fetcher.fetch(
-            MODEL_URL,
+            &spec.url,
+            spec.size + 1,
             &mut f,
             &mut |n| progress((n as f32 / size).min(1.0)),
             cancel,
         );
+        let r = r.and_then(|()| f.sync_all().map_err(download_io));
         drop(f);
         if let Err(e) = r {
             let _ = std::fs::remove_file(&part);
             return Err(e);
         }
-        self.finish(&part).map_err(|e| match e {
+        self.finish(level, &part).map_err(|e| match e {
             SttError::Model(m) => SttError::Download(m),
             e => e,
         })
     }
 
-    /// Copies a model file chosen by the user (it must be the pinned model).
-    pub fn install_local(&self, file: &Path) -> Result<PathBuf, SttError> {
-        self.verify(file)?;
-        std::fs::create_dir_all(&self.dir).map_err(io_err)?;
-        let part = self.part();
-        std::fs::copy(file, &part).map_err(io_err)?;
-        self.finish(&part)
+    /// Copies a file chosen by the user (it must be the built-in file of `level`).
+    pub fn install_local(&self, level: SubtitleQuality, file: &Path) -> Result<PathBuf, SttError> {
+        self.verify(level, file)?;
+        let work = self.prepare()?;
+        let part = self.part(level);
+        if let Some(w) = &work {
+            w.register(&part).map_err(io_err)?;
+        }
+        let copied = (|| {
+            let mut out = crate::scratch::create_private_file(&part)?;
+            let mut src = std::fs::File::open(file)?;
+            io::copy(&mut src, &mut out)?;
+            out.sync_all()
+        })();
+        if let Err(e) = copied {
+            let _ = std::fs::remove_file(&part);
+            return Err(download_io(e));
+        }
+        self.finish(level, &part)
+    }
+
+    /// Bytes on disk used by the downloaded speech recognition files.
+    pub fn downloaded_bytes(&self) -> u64 {
+        SubtitleQuality::ALL
+            .iter()
+            .filter_map(|l| std::fs::symlink_metadata(self.path(*l)).ok())
+            .filter(|m| m.is_file())
+            .map(|m| m.len())
+            .sum()
+    }
+
+    /// Deletes the downloaded files (and partial downloads) of every level; nothing else in
+    /// the folder is touched. Returns the bytes freed.
+    pub fn remove_downloaded(&self) -> u64 {
+        let mut freed = 0;
+        for l in SubtitleQuality::ALL {
+            for p in [self.path(l), self.part(l)] {
+                let Ok(m) = std::fs::symlink_metadata(&p) else {
+                    continue;
+                };
+                if !m.is_dir() && std::fs::remove_file(&p).is_ok() && m.is_file() {
+                    freed += m.len();
+                }
+            }
+        }
+        freed
     }
 }
 
@@ -329,6 +492,11 @@ pub struct SttJob {
     pub ffmpeg: PathBuf,
     pub model: PathBuf,
     pub threads: usize,
+    /// Root of the private work folder (extracted audio).
+    pub work_root: PathBuf,
+    /// When set, the model file is checked against it (size, SHA-256 once per session)
+    /// before it is loaded.
+    pub model_check: Option<ModelSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -353,11 +521,8 @@ pub fn run(
     cancel: &Arc<AtomicBool>,
     tx: &Sender<SttEvent>,
 ) -> Result<SttOutcome, SttError> {
-    let tmp = tempfile::Builder::new()
-        .prefix("videolore-stt-")
-        .tempdir()
-        .map_err(io_err)?;
-    let audio = tmp.path().join("audio.f32");
+    let work = crate::scratch::Work::new(&job.work_root).map_err(io_err)?;
+    let audio = work.path().join("audio.f32");
     let mut language = job.language.clone();
     let mut lines = Vec::new();
     let n = job.sources.len().max(1) as f32;
@@ -445,7 +610,12 @@ pub fn start(job: SttJob, runner: crate::jobs::Limited, factory: TranscriberFact
     let flag = Arc::clone(&cancel);
     let thread = std::thread::spawn(move || {
         let runner = runner.cancellable(Arc::clone(&flag));
-        let result = factory(&job.model, job.threads)
+        let checked = match &job.model_check {
+            Some(spec) => verify_cached(spec, &job.model),
+            None => Ok(()),
+        };
+        let result = checked
+            .and_then(|()| factory(&job.model, job.threads))
             .and_then(|mut t| run(&job, &runner, t.as_mut(), &flag, &tx));
         let ev = match result {
             Ok((language, lines)) => SttEvent::Done { language, lines },
@@ -465,7 +635,7 @@ pub fn start(job: SttJob, runner: crate::jobs::Limited, factory: TranscriberFact
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModelEvent {
     Progress(f32),
-    Installed(PathBuf),
+    Installed(SubtitleQuality, PathBuf),
     Failed(String),
 }
 
@@ -476,9 +646,10 @@ pub enum ModelSource {
     LocalFile(PathBuf),
 }
 
-/// Installs the model in a thread; events arrive on the returned channel.
+/// Installs the file of `level` in a thread; events arrive on the returned channel.
 pub fn install_model(
     store: ModelStore,
+    level: SubtitleQuality,
     source: ModelSource,
     fetcher: Option<Arc<dyn ModelFetcher>>,
     cancel: Arc<AtomicBool>,
@@ -489,16 +660,16 @@ pub fn install_model(
             ModelSource::Download => match fetcher {
                 Some(f) => {
                     let ptx = tx.clone();
-                    store.install_download(f.as_ref(), &cancel, &mut |p| {
+                    store.install_download(level, f.as_ref(), &cancel, &mut |p| {
                         let _ = ptx.send(ModelEvent::Progress(p));
                     })
                 }
                 None => Err(SttError::NotAvailable),
             },
-            ModelSource::LocalFile(p) => store.install_local(&p),
+            ModelSource::LocalFile(p) => store.install_local(level, &p),
         };
         let _ = tx.send(match r {
-            Ok(p) => ModelEvent::Installed(p),
+            Ok(p) => ModelEvent::Installed(level, p),
             Err(e) => ModelEvent::Failed(e.to_string()),
         });
     });
@@ -506,6 +677,8 @@ pub fn install_model(
 }
 
 #[cfg(feature = "stt")]
+// The whisper.cpp abort callback is a C function pointer: see the SAFETY comments.
+#[allow(unsafe_code)]
 pub mod whisper {
     //! whisper.cpp through whisper-rs (CPU only). Covered by the gated integration test
     //! `real_speech_is_transcribed` (needs `VIDEOLORE_STT_MODEL`).
@@ -513,20 +686,32 @@ pub mod whisper {
     use std::ffi::c_void;
     use whisper_rs::{
         FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperError,
+        WhisperState,
     };
 
+    /// Flash attention in the CPU encoder/decoder. Measured in 0.3.0 on an 8-thread AVX2
+    /// machine: about 40% slower for the Fast file and slower for Balanced too, so it stays
+    /// off (whisper.cpp's CPU path does not benefit from it).
+    pub const FLASH_ATTENTION: bool = false;
+
+    /// A loaded model plus one decoding state reused for every chunk of a job.
     pub struct WhisperTranscriber {
-        ctx: WhisperContext,
+        state: WhisperState,
         threads: usize,
     }
 
     impl WhisperTranscriber {
         pub fn load(model: &Path, threads: usize) -> Result<WhisperTranscriber, SttError> {
             whisper_rs::install_logging_hooks();
-            let ctx = WhisperContext::new_with_params(model, WhisperContextParameters::default())
+            let mut params = WhisperContextParameters::default();
+            params.flash_attn(FLASH_ATTENTION);
+            let ctx = WhisperContext::new_with_params(model, params)
+                .map_err(|e| SttError::Model(describe(&e)))?;
+            let state = ctx
+                .create_state()
                 .map_err(|e| SttError::Model(describe(&e)))?;
             Ok(WhisperTranscriber {
-                ctx,
+                state,
                 threads: threads.max(1),
             })
         }
@@ -577,7 +762,7 @@ pub mod whisper {
             cancel: &Arc<AtomicBool>,
         ) -> Result<Transcript, SttError> {
             let err = |e: WhisperError| SttError::Transcription(describe(&e));
-            let mut state = self.ctx.create_state().map_err(err)?;
+            let state = &mut self.state;
             let lang = language.unwrap_or("auto").to_string();
             let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
             params.set_n_threads(self.threads as i32);
@@ -662,6 +847,7 @@ pub mod download {
         fn fetch(
             &self,
             url: &str,
+            max_bytes: u64,
             out: &mut dyn Write,
             progress: &mut dyn FnMut(u64),
             cancel: &AtomicBool,
@@ -681,7 +867,7 @@ pub mod download {
             let mut body = resp
                 .into_body()
                 .into_with_config()
-                .limit(MODEL_SIZE + 1)
+                .limit(max_bytes)
                 .reader();
             let mut buf = vec![0u8; 1 << 16];
             let mut total = 0u64;
@@ -693,7 +879,7 @@ pub mod download {
                 if n == 0 {
                     return Ok(());
                 }
-                out.write_all(&buf[..n]).map_err(io_err)?;
+                out.write_all(&buf[..n]).map_err(download_io)?;
                 total += n as u64;
                 progress(total);
             }
@@ -710,6 +896,7 @@ pub mod download {
             let e = UreqFetcher
                 .fetch(
                     "http://example.invalid/model.bin",
+                    100,
                     &mut sink,
                     &mut |_| {},
                     &AtomicBool::new(false),
@@ -799,6 +986,8 @@ pub(crate) mod tests {
             ffmpeg: "ffmpeg".into(),
             model: "/models/m.bin".into(),
             threads: 2,
+            work_root: std::env::temp_dir().join("videolore-test-work"),
+            model_check: None,
         }
     }
 
@@ -944,59 +1133,106 @@ pub(crate) mod tests {
         assert_eq!(words_to_lines(MediaId(1), &long).len(), 3);
     }
 
-    /// Serves a fixed body.
-    pub struct FakeFetcher(pub Vec<u8>);
+    /// Serves a fixed body (stopping at `max_bytes`, like the real one); records the URLs.
+    #[derive(Default)]
+    pub struct FakeFetcher {
+        pub body: Vec<u8>,
+        pub urls: Arc<Mutex<Vec<String>>>,
+        /// Fail with an interrupted connection after this many bytes.
+        pub break_after: Option<usize>,
+    }
+
+    impl FakeFetcher {
+        pub fn new(body: Vec<u8>) -> FakeFetcher {
+            FakeFetcher {
+                body,
+                ..Default::default()
+            }
+        }
+    }
 
     impl ModelFetcher for FakeFetcher {
         fn fetch(
             &self,
             url: &str,
+            max_bytes: u64,
             out: &mut dyn Write,
             progress: &mut dyn FnMut(u64),
             cancel: &AtomicBool,
         ) -> Result<(), SttError> {
-            assert_eq!(url, MODEL_URL);
+            self.urls.lock().unwrap().push(url.to_string());
             if cancel.load(Ordering::SeqCst) {
                 return Err(SttError::Cancelled);
             }
-            for c in self.0.chunks(4) {
+            let mut total = 0;
+            for c in self.body.chunks(4) {
+                if self.break_after.is_some_and(|n| total >= n) {
+                    return Err(SttError::Download("connection reset".into()));
+                }
+                total += c.len();
+                if total as u64 > max_bytes {
+                    return Err(SttError::Download("body too large".into()));
+                }
                 out.write_all(c).map_err(io_err)?;
-                progress(c.len() as u64);
+                progress(total as u64);
             }
             Ok(())
         }
     }
 
-    /// A store expecting `body` as the model.
-    pub fn store_for(dir: &Path, body: &[u8]) -> ModelStore {
-        let mut s = ModelStore::new(dir.join("models"));
-        s.size = body.len() as u64;
-        s.sha256 = Sha256::digest(body)
+    pub fn sha_hex(body: &[u8]) -> String {
+        Sha256::digest(body)
             .iter()
             .map(|b| format!("{b:02x}"))
-            .collect();
+            .collect()
+    }
+
+    /// A store whose every level expects `body` + the level index as its file.
+    pub fn store_for(dir: &Path, body: &[u8]) -> ModelStore {
+        let mut s = ModelStore::new(dir.join("models"));
+        s.work_root = Some(dir.join("work"));
+        for (i, spec) in s.specs.iter_mut().enumerate() {
+            let b = level_body(body, i);
+            spec.size = b.len() as u64;
+            spec.sha256 = sha_hex(&b);
+        }
         s
     }
 
-    // covers: REQ-014
+    /// The content `store_for` expects for level `i`.
+    pub fn level_body(body: &[u8], i: usize) -> Vec<u8> {
+        let mut b = body.to_vec();
+        b.push(i as u8);
+        b
+    }
+
+    // covers: REQ-014, REQ-058
     #[test]
     fn model_is_checked_by_size_and_checksum() {
+        use SubtitleQuality::*;
         let dir = tempfile::tempdir().unwrap();
         let body = b"fake model bytes".to_vec();
         let store = store_for(dir.path(), &body);
-        assert!(!store.is_installed());
+        let fast = level_body(&body, 0);
+        assert!(!store.is_installed(Fast));
         // a download with the wrong content is rejected and removed
-        let mut wrong = body.clone();
+        let mut wrong = fast.clone();
         wrong[0] ^= 1;
         let e = store
-            .install_download(&FakeFetcher(wrong), &AtomicBool::new(false), &mut |_| {})
+            .install_download(
+                Fast,
+                &FakeFetcher::new(wrong),
+                &AtomicBool::new(false),
+                &mut |_| {},
+            )
             .unwrap_err();
         assert!(matches!(e, SttError::Download(m) if m.contains("checksum")));
-        assert!(!store.path().exists());
+        assert!(!store.path(Fast).exists());
         assert!(!store.dir.join(format!("{MODEL_FILE}.part")).exists());
         let e = store
             .install_download(
-                &FakeFetcher(vec![1, 2]),
+                Fast,
+                &FakeFetcher::new(vec![1, 2]),
                 &AtomicBool::new(false),
                 &mut |_| {},
             )
@@ -1004,53 +1240,97 @@ pub(crate) mod tests {
         assert!(matches!(e, SttError::Download(m) if m.contains("bytes")));
         assert_eq!(
             store.install_download(
-                &FakeFetcher(body.clone()),
+                Fast,
+                &FakeFetcher::new(fast.clone()),
                 &AtomicBool::new(true),
                 &mut |_| {}
             ),
             Err(SttError::Cancelled)
         );
-        // the right one is installed
+        // an interrupted download leaves nothing behind
+        let broken = FakeFetcher {
+            body: fast.clone(),
+            break_after: Some(8),
+            ..Default::default()
+        };
+        assert!(matches!(
+            store.install_download(Fast, &broken, &AtomicBool::new(false), &mut |_| {}),
+            Err(SttError::Download(m)) if m.contains("reset")
+        ));
+        assert!(!store.dir.join(format!("{MODEL_FILE}.part")).exists());
+        // more than the expected size is cut off
+        let mut big = fast.clone();
+        big.extend([0u8; 16]);
+        assert!(
+            store
+                .install_download(
+                    Fast,
+                    &FakeFetcher::new(big),
+                    &AtomicBool::new(false),
+                    &mut |_| {}
+                )
+                .is_err()
+        );
+        // the right one is installed, from the level's built-in address
         let mut seen = Vec::new();
+        let fetcher = FakeFetcher::new(fast.clone());
         let p = store
-            .install_download(
-                &FakeFetcher(body.clone()),
-                &AtomicBool::new(false),
-                &mut |f| seen.push(f),
-            )
+            .install_download(Fast, &fetcher, &AtomicBool::new(false), &mut |f| {
+                seen.push(f)
+            })
             .unwrap();
-        assert_eq!(std::fs::read(&p).unwrap(), body);
-        assert!(store.is_installed());
+        assert_eq!(std::fs::read(&p).unwrap(), fast);
+        assert!(store.is_installed(Fast));
+        assert!(!store.is_installed(Balanced));
         assert!(!seen.is_empty());
-        // a local file must be the same model
+        assert_eq!(
+            *fetcher.urls.lock().unwrap(),
+            vec![store.spec(Fast).url.clone()]
+        );
+        assert!(verify_cached(store.spec(Fast), &p).is_ok());
+        assert!(verify_cached(store.spec(Fast), &p).is_ok(), "cached");
+        assert!(verify_cached(store.spec(Balanced), &p).is_err());
+        // only partial files under the work folder: nothing left after the job
+        let work = dir.path().join("work");
+        assert_eq!(std::fs::read_dir(&work).unwrap().count(), 0);
+        // a local file must be the same file as the level's
         let other = tempfile::tempdir().unwrap();
         let store2 = store_for(other.path(), &body);
         let bad = other.path().join("bad.bin");
         std::fs::write(&bad, b"something else entirely").unwrap();
         assert!(matches!(
-            store2.install_local(&bad),
+            store2.install_local(Fast, &bad),
             Err(SttError::Model(_))
         ));
         let good = other.path().join("good.bin");
-        std::fs::write(&good, &body).unwrap();
-        assert_eq!(store2.install_local(&good).unwrap(), store2.path());
-        assert!(store2.is_installed());
+        std::fs::write(&good, level_body(&body, 1)).unwrap();
+        assert!(store2.install_local(Fast, &good).is_err());
+        assert_eq!(
+            store2.install_local(Balanced, &good).unwrap(),
+            store2.path(Balanced)
+        );
+        assert!(store2.is_installed(Balanced));
         assert!(matches!(
-            store2.verify(&other.path().join("nope")),
+            store2.verify(Fast, &other.path().join("nope")),
             Err(SttError::Io(_))
         ));
         // through the installer thread
         let third = tempfile::tempdir().unwrap();
         let rx = install_model(
             store_for(third.path(), &body),
+            MostAccurate,
             ModelSource::Download,
-            Some(Arc::new(FakeFetcher(body.clone()))),
+            Some(Arc::new(FakeFetcher::new(level_body(&body, 2)))),
             Arc::new(AtomicBool::new(false)),
         );
         let events: Vec<ModelEvent> = rx.iter().collect();
-        assert!(matches!(events.last(), Some(ModelEvent::Installed(_))));
+        assert!(matches!(
+            events.last(),
+            Some(ModelEvent::Installed(MostAccurate, _))
+        ));
         let rx = install_model(
             store_for(third.path(), &body),
+            Fast,
             ModelSource::LocalFile(bad),
             None,
             Arc::new(AtomicBool::new(false)),
@@ -1058,6 +1338,7 @@ pub(crate) mod tests {
         assert!(matches!(rx.iter().last(), Some(ModelEvent::Failed(_))));
         let rx = install_model(
             store_for(third.path(), &body),
+            Fast,
             ModelSource::Download,
             None,
             Arc::new(AtomicBool::new(false)),
@@ -1065,14 +1346,83 @@ pub(crate) mod tests {
         assert!(
             matches!(rx.iter().last(), Some(ModelEvent::Failed(m)) if m.contains("not available"))
         );
-        // the pinned model
-        let real = ModelStore::new(PathBuf::from("/x"));
-        assert_eq!(real.size, MODEL_SIZE);
-        assert_eq!(real.sha256.len(), 64);
-        assert!(MODEL_URL.starts_with("https://"));
         assert!(ModelStore::default_dir().is_some() || cfg!(not(unix)));
         assert_eq!(available(), cfg!(feature = "stt"));
         assert_eq!(default_fetcher().is_some(), cfg!(feature = "stt"));
+    }
+
+    // covers: REQ-058, REQ-052
+    #[test]
+    fn built_in_files_are_pinned_https_downloads() {
+        let models = builtin_models();
+        for (spec, level) in models.iter().zip(SubtitleQuality::ALL) {
+            assert_eq!(spec.level, level);
+            assert!(
+                spec.url.starts_with("https://huggingface.co/"),
+                "{}",
+                spec.url
+            );
+            assert!(spec.url.ends_with(&spec.file));
+            assert_eq!(spec.sha256.len(), 64);
+            assert!(spec.sha256.chars().all(|c| c.is_ascii_hexdigit()));
+        }
+        // bigger levels are bigger files; Fast is the file of 0.2.x
+        assert!(models[0].size < models[1].size && models[1].size < models[2].size);
+        assert_eq!(models[0].file, MODEL_FILE);
+        assert_eq!(models[0].size, 32_152_673);
+        // a table entry that is not HTTPS is refused before any connection
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = store_for(dir.path(), b"x");
+        store.specs[0].url = "http://example.invalid/ggml-tiny-q5_1.bin".into();
+        let fetcher = FakeFetcher::new(b"x".to_vec());
+        let e = store
+            .install_download(
+                SubtitleQuality::Fast,
+                &fetcher,
+                &AtomicBool::new(false),
+                &mut |_| {},
+            )
+            .unwrap_err();
+        assert!(matches!(e, SttError::Download(m) if m.contains("HTTPS")));
+        assert!(fetcher.urls.lock().unwrap().is_empty());
+    }
+
+    // covers: REQ-053
+    #[test]
+    fn downloaded_files_are_measured_and_removed() {
+        use SubtitleQuality::*;
+        let dir = tempfile::tempdir().unwrap();
+        let body = b"0123456789".to_vec();
+        let store = store_for(dir.path(), &body);
+        assert_eq!(store.downloaded_bytes(), 0);
+        assert_eq!(store.remove_downloaded(), 0);
+        for (i, l) in [(0, Fast), (2, MostAccurate)] {
+            let f = FakeFetcher::new(level_body(&body, i));
+            store
+                .install_download(l, &f, &AtomicBool::new(false), &mut |_| {})
+                .unwrap();
+        }
+        std::fs::write(store.dir.join("ggml-small-q5_1.bin.part"), b"half").unwrap();
+        std::fs::write(store.dir.join("notes.txt"), b"mine").unwrap();
+        let on_disk: u64 = [Fast, MostAccurate]
+            .iter()
+            .map(|l| std::fs::metadata(store.path(*l)).unwrap().len())
+            .sum();
+        assert_eq!(store.downloaded_bytes(), on_disk);
+        assert_eq!(store.remove_downloaded(), on_disk + 4);
+        assert_eq!(store.downloaded_bytes(), 0);
+        assert!(!store.is_installed(Fast));
+        assert!(store.dir.join("notes.txt").exists(), "other files are kept");
+    }
+
+    #[test]
+    fn a_full_disk_is_explained() {
+        let e = download_io(io::Error::from(io::ErrorKind::StorageFull));
+        assert_eq!(e, SttError::Download(DISK_FULL.into()));
+        assert!(matches!(
+            download_io(io::Error::other("x")),
+            SttError::Io(_)
+        ));
     }
 
     #[test]

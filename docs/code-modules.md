@@ -18,17 +18,19 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `format` | Same-format check, lowest-quality output choice, codec to encoder mapping with H.264/AAC/MP4 fallback |
 | `render` | Export plan (stream copy or one re-encode), filter graphs (clips grouped by source, music bed and mix, subtitle burn-in), `hvc1` tag, preview argv, `FrameKey` |
 | `ffmpeg` | Locating binaries (setting, environment, bundled, `PATH`), version/filter/encoder checks, `Runner` trait (real processes or test fake), progress and keyframe parsers |
-| `jobs` | The process scheduler: at most 3 ffmpeg/ffprobe processes, priorities, preemption, cancellation; `Limited` runner; small worker `Pool` |
+| `jobs` | The process scheduler: a cap of 3–6 ffmpeg/ffprobe processes (changeable while running), priorities, preemption, cancellation; `Limited` runner; small worker `Pool` |
 | `export` | Export worker thread: progress, cancel, subtitle files in a private working folder, partial file and rename |
 | `preview` | Preview player: still frames on demand (debounced, latest only) and playback (RGBA video + PCM audio from two ffmpeg processes), wall-clock master with audio correction |
 | `proxy` | Small preview copies of big sources: the machine rule, the cache (keys, size, clear) and the generation job |
-| `machine` | Cores and memory of the running machine; thread count for speech recognition |
-| `stt` | Subtitle generation: audio extraction, 120 s chunks, language detection/override, cancel, word timings to lines; model store (size + SHA-256), download and local-file install; whisper.cpp and the HTTPS downloader behind the `stt` feature |
+| `machine` | Detection of the running machine (`Machine`: logical/physical cores, memory, OS, architecture, CPU features) and its `Fingerprint` stored with the settings |
+| `settings` | Program settings file (format 2): the three plain choices, ffmpeg override, machine fingerprint; start-up decision (`startup`), recommendation, "How hard" budget table, availability of subtitle levels, change summary, plain texts of the Settings window |
+| `scratch` | Private work folders of background jobs (0700, locked while in use), private partial files (0600), crash cleanup at the next start |
+| `stt` | Subtitle generation: audio extraction, 120 s chunks, language detection/override, cancel, word timings to lines; the table of the three speech files (`builtin_models`), the store (size + SHA-256, per level), download and local-file install, disk use and removal; whisper.cpp and the HTTPS downloader behind the `stt` feature |
 | `notices` | Bundled components with version, licence and source; the About text |
 | `packaging` | Pinned ffmpeg builds and tools (`packaging/*.lock`) and release asset names |
 | `desktop` | Linux menu entry / icon / `.vlproj` type for the AppImage and tar.gz; macOS Apple Event handler for double-clicked projects; queue of projects to open |
 | `app` | `AppState`, the single command dispatcher (`Command`, `AppState::dispatch`), background results in `tick()` |
-| `ui` | Panels (`layout`), media list (`media`), timeline with music lane (`timeline`), effects/settings panel (`effects`), dialogs (`modals`), zoom, shortcuts (`keymap`) |
+| `ui` | Panels (`layout`), media list (`media`), timeline with music lane (`timeline`), effects panel (`effects`), the Settings window and message banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`) |
 | `dialogs` | Native file dialogs (rfd) |
 
 ## Main patterns
@@ -49,8 +51,9 @@ project given on the command line, runs the desktop start-up hooks and opens the
   report through channels that `AppState::tick` drains once per frame. Imported files appear at
   once as "analysing". New/Open cancel the jobs of the old project and replace their channels, so
   late results are dropped.
-- **At most three ffmpeg processes.** Every process goes through a `jobs::Limited` runner of
-  one `Scheduler` (cap 3). Priority: preview > export > probe > background (proxies, audio
+- **A bounded number of ffmpeg processes.** Every process goes through a `jobs::Limited` runner of
+  one `Scheduler` (cap 3 at Light/Balanced, up to 6 at Maximum speed; lowering it never stops a
+  running process, new ones wait). Priority: preview > export > probe > background (proxies, audio
   extraction for subtitles); first come first served inside a level. Playback takes 2 slots at
   once (video + audio). A waiting preview or export asks a running proxy job to stop
   (preemption); the proxy restarts later. Speech recognition itself does not count (it is not
@@ -68,15 +71,31 @@ project given on the command line, runs the desktop start-up hooks and opens the
   converted to the output frame rate and faded; the music bed (silence where there is no music,
   cut at the video end with a 0.5 s fade) is mixed with `amix` + `alimiter`; subtitles are burned
   in with the `subtitles` filter. HEVC in MP4/MOV is tagged `hvc1`. Proxies are never used.
-- **Subtitles burn-in without path quoting.** The ASS file and the bundled font are written to a
-  private temporary folder that is ffmpeg's working folder, so the filter only uses relative names.
+- **Subtitles burn-in without path quoting.** The ASS file and the bundled font are written to the
+  job's private work folder, which is ffmpeg's working folder, so the filter only uses relative
+  names. A file name with a control character (line break) is never written to a concat list:
+  such projects are re-encoded.
+- **Private, crash-safe temporary files.** Each job (export, subtitle generation, preview copy,
+  download) gets `<cache>/videolore/work/job-*/` (0700) holding a locked `lock` file and a
+  `targets` list of partial files outside it. Partial exports are created 0600 and become 0644
+  when renamed. At start-up, folders whose lock is free (the job died) are removed with their
+  listed partial files (only known partial-file names, never symlinks); folders locked by
+  another running videolore are left alone.
 - **Sources are read-only.** Inputs are passed as `file:<absolute path>` with the protocol
   allow-list `file,pipe`; the export is written to `<folder>/.<name>.videolore-partial` and
   renamed on success; an output equal to a source is refused.
 - **No shell.** Every process is started with an argument list; children are killed when their
   handle is dropped; on Windows no console window is opened.
-- **Network only for the speech model,** after the user agrees: HTTPS only, pinned URL, exact
-  size and SHA-256 checked before the file is used. A model file chosen by the user must match too.
+- **Network only for the speech files,** each after the user agrees: HTTPS only (checked before
+  any connection, redirects included), fixed URL per level, size limit, SHA-256 checked before
+  the file is renamed into place and again (once per session) before it is loaded. A file chosen
+  by the user must match the level's file too. A full disk is reported as "Not enough free disk
+  space".
+- **Untrusted files.** Project and settings files are read only when they are regular files,
+  through a size cap (16 MiB / 64 KiB; a pipe or device is refused without blocking); names are
+  shown with control and text-direction characters replaced; ffprobe gets 30 s per file.
+  An unreadable settings file is copied to `settings.json.bad` and replaced by the recommended
+  settings.
 - **Errors** are typed with `thiserror` in each module and shown as plain messages; user input
   and project files never cause a panic.
 
@@ -84,7 +103,7 @@ project given on the command line, runs the desktop start-up hooks and opens the
 
 - Every `.rs` file starts with `// SPDX-License-Identifier: GPL-3.0-only` and
   `// Copyright (C) <year> Andrea Lorenzani`.
-- `unsafe` appears only in `desktop::macos` (Objective-C calls to register the Apple Event
+- `#![deny(unsafe_code)]` for the crate; `unsafe` is allowed (`#[allow(unsafe_code)]`) only in `desktop::macos` (Objective-C calls to register the Apple Event
   handler) and in `stt::whisper` (the cancel callback handed to whisper.cpp: a C function that
   reads the cancel flag through a pointer tied to the flag's lifetime), each block with a
   `SAFETY:` comment. Nowhere else. whisper-rs' `set_abort_callback_safe` must not be used: in
@@ -92,6 +111,33 @@ project given on the command line, runs the desktop start-up hooks and opens the
 - whisper.cpp error codes are turned into readable text (`stt::whisper_full_error`), e.g.
   "the audio encoder failed or was interrupted (whisper.cpp code -6)".
 - Times are integer microseconds (`Micros`) inside the model, never floating point.
-- Settings (`settings.json`): ffmpeg/ffprobe override and the proxy switch. Proxies live in the
-  user cache folder (`…/videolore/proxies`), the speech model in the user data folder
-  (`…/videolore/models`); projects never store them.
+- Settings (`settings.json`, format 2): Preview quality, Subtitle quality, How hard videolore
+  works, ffmpeg/ffprobe override (absolute paths only) and the machine fingerprint. Proxies and
+  work folders live in the user cache folder (`…/videolore/proxies`, `…/videolore/work`, 0700),
+  the speech files in the user data folder (`…/videolore/models`); projects never store them.
+
+## Machine, recommendation and "How hard videolore works"
+
+Recommendation (`settings::recommend`, from the stored fingerprint; memory rounded to the
+nearest GiB): Preview quality **Automatic**, How hard **Balanced**, Subtitle quality **Most
+accurate** with ≥ 12 logical cores and ≥ 15 GiB, **Balanced** with ≥ 4 cores and ≥ 7 GiB, else
+**Fast**. Balanced is greyed out below 4 GiB, Most accurate below 7 GiB; all three are greyed
+out when the processor cannot run the speech engine. The recommendation never picks a greyed-out
+level.
+
+`settings::budget` (L = logical cores, P = physical cores):
+
+| | Light | Balanced (= 0.2.x) | Maximum speed |
+|---|---|---|---|
+| ffmpeg/ffprobe processes | 3 | 3 | clamp(L/2, 3, 6); 3 below 7 GiB |
+| threads of each export / preview copy | max(1, L/2) | ffmpeg decides | ffmpeg decides |
+| speech threads | clamp(min(P, L/2), 1, 8) | clamp(min(P, L−1), 1, 8), never below clamp(L/2, 1, 4) | clamp(P, 1, 16) |
+
+New jobs read the budget when they start; running jobs keep theirs. Preview quality decides
+which sources get a preview copy (`proxy::wants_proxy`: Automatic = the 0.2 rule, Smoother =
+everything above 1280×720, Original = none) and never changes the export.
+
+Speech files (`stt::builtin_models`, pinned whisper.cpp commit, MIT): Fast = `ggml-tiny-q5_1.bin`
+(32 MB), Balanced = `ggml-small-q5_1.bin` (190 MB), Most accurate =
+`ggml-large-v3-turbo-q5_0.bin` (574 MB). Greedy decoding, one decoding state per job, flash
+attention off (measured slower on the CPU).

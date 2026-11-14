@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 /// Filters the editor relies on; missing any of them is a blocking startup error.
 pub const REQUIRED_FILTERS: &[&str] = &[
@@ -88,6 +89,15 @@ pub trait Process: Send {
 pub trait Runner: Send + Sync {
     /// Runs to completion capturing stdout (at most [`RUN_STDOUT_LIMIT`]) and stderr.
     fn run(&self, program: &Path, args: &[OsString]) -> io::Result<CmdOutput>;
+    /// [`Runner::run`] with a time limit (see [`run_with_timeout`]).
+    fn run_within(
+        &self,
+        program: &Path,
+        args: &[OsString],
+        timeout: Duration,
+    ) -> io::Result<CmdOutput> {
+        run_with_timeout(self, program, args, timeout)
+    }
     /// Spawns with stdout piped (stdin null, stderr captured in the background), in `cwd`
     /// when given (always one of our private temporary folders).
     fn spawn_in(
@@ -112,6 +122,55 @@ pub trait Runner: Send + Sync {
         let second = self.spawn_in(b.0, b.1, cwd)?;
         Ok((first, second))
     }
+}
+
+/// Like [`Runner::run`], but the process is killed when it has not finished after
+/// `timeout` (a hostile or broken file must not keep ffprobe busy forever). The error then
+/// has kind `TimedOut`.
+pub fn run_with_timeout<R: Runner + ?Sized>(
+    runner: &R,
+    program: &Path,
+    args: &[OsString],
+    timeout: Duration,
+) -> io::Result<CmdOutput> {
+    let mut p = runner.spawn(program, args)?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    match p.take_stdout() {
+        Some(s) => {
+            std::thread::spawn(move || {
+                let mut out = Vec::new();
+                let r = s.take(RUN_STDOUT_LIMIT as u64 + 1).read_to_end(&mut out);
+                let _ = tx.send(r.map(|_| out));
+            });
+        }
+        None => {
+            let _ = tx.send(Ok(Vec::new()));
+        }
+    }
+    let out = match rx.recv_timeout(timeout) {
+        Ok(Ok(out)) => out,
+        Ok(Err(e)) => {
+            p.kill();
+            return Err(e);
+        }
+        Err(_) => {
+            p.kill();
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("{} took too long", program.display()),
+            ));
+        }
+    };
+    if out.len() > RUN_STDOUT_LIMIT {
+        p.kill();
+        return Err(io::Error::other(format!(
+            "{} printed more than 16 MiB",
+            program.display()
+        )));
+    }
+    let mut r = p.wait()?;
+    r.stdout = out;
+    Ok(r)
 }
 
 /// Runs real processes via `std::process::Command`.
@@ -745,6 +804,14 @@ pub mod fake {
 
     impl Runner for FakeRunner {
         fn run(&self, program: &Path, args: &[OsString]) -> io::Result<CmdOutput> {
+            self.answer(program, args)
+        }
+        fn run_within(
+            &self,
+            program: &Path,
+            args: &[OsString],
+            _timeout: Duration,
+        ) -> io::Result<CmdOutput> {
             self.answer(program, args)
         }
         fn spawn_in(

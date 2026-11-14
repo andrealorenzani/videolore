@@ -3,6 +3,7 @@
 
 //! Headless UI tests: whole frames are run without a window or painter.
 
+use super::settings as settings_ui;
 use super::*;
 use crate::app::tests::{FakeDialogs, files, import, settle, state};
 use crate::app::{Modal, PendingAction};
@@ -12,6 +13,7 @@ use eframe::egui::{
     Event, Key, Modifiers, PointerButton, Pos2, RawInput, ViewportCommand, ViewportEvent,
     ViewportId, ViewportInfo,
 };
+use std::sync::Arc;
 
 fn input(w: f32, h: f32, events: Vec<Event>) -> RawInput {
     RawInput {
@@ -143,8 +145,9 @@ fn renders_all_panels_at_any_size() {
         Modal::Unsaved(PendingAction::New),
         Modal::Unsaved(PendingAction::Open(None)),
         Modal::Unsaved(PendingAction::Quit),
-        Modal::ModelConsent,
+        Modal::ModelConsent(crate::settings::SubtitleQuality::Balanced),
         Modal::ConfirmRegenerate,
+        Modal::ConfirmRemoveSpeechFiles,
         Modal::About,
     ] {
         app.modal = Some(modal);
@@ -496,10 +499,417 @@ fn helpers() {
     assert_eq!(z.area(), 0.0);
     let (v, m) = timeline::track_rects(Rect::from_min_size(Pos2::ZERO, vec2(100.0, 100.0)));
     assert!(v.max.y < m.min.y);
-    assert!(modals::consent_text().contains("32 MB"));
-    assert!(modals::consent_text().contains("MIT"));
-    assert!(modals::consent_text().contains("only time videolore uses the network"));
+    let fast = &crate::stt::builtin_models()[0];
+    let text = modals::consent_text(crate::settings::SubtitleQuality::Fast, fast);
+    assert!(text.contains("32 MB"));
+    assert!(text.contains("MIT"));
+    assert!(text.contains("\"Fast\""));
+    assert!(text.contains("only times videolore uses the network"));
     let q = modals::unsaved_question(&app, &PendingAction::Quit);
     assert!(q.contains("Untitled") && q.contains("quitting"));
     assert!(effects::LANGUAGES.iter().all(|(c, _)| c.len() == 2));
+}
+
+/// Every text painted in one frame.
+fn painted_text(ctx: &Context, app: &mut AppState, cache: &mut UiCache, ev: Vec<Event>) -> String {
+    fn walk(s: &eframe::epaint::Shape, out: &mut String) {
+        match s {
+            eframe::epaint::Shape::Text(t) => {
+                out.push_str(t.galley.text());
+                out.push('\n');
+            }
+            eframe::epaint::Shape::Vec(v) => v.iter().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    let now = Instant::now();
+    let mut out = ctx.run_ui(input(1280.0, 2400.0, ev), |ui| {
+        frame_ui(ui, app, cache, now)
+    });
+    let mut text = String::new();
+    for c in &out.shapes {
+        walk(&c.shape, &mut text);
+    }
+    out.textures_delta.clear();
+    out.drop_without_applying_deltas();
+    text
+}
+
+// covers: REQ-046
+#[test]
+fn settings_window_shows_the_three_choices_in_plain_words() {
+    use crate::settings::{self, Effort, PreviewQuality, SubtitleQuality};
+    let (_d, mut app) = loaded();
+    let ctx = Context::default();
+    let mut cache = UiCache::default();
+    // opened from the keyboard (and from the command bar button)
+    painted_text(
+        &ctx,
+        &mut app,
+        &mut cache,
+        vec![key(Key::Comma, Modifiers::COMMAND)],
+    );
+    assert!(app.settings_open);
+    let mut text = String::new();
+    for _ in 0..10 {
+        text = painted_text(&ctx, &mut app, &mut cache, vec![]);
+    }
+    for t in [
+        settings::PREVIEW_TITLE,
+        settings::SUBTITLE_TITLE,
+        settings::EFFORT_TITLE,
+        settings::RECOMMENDED_STATUS,
+        settings::USE_RECOMMENDED,
+    ] {
+        assert!(text.contains(t), "{t} missing");
+    }
+    for l in PreviewQuality::ALL.map(|q| q.label()) {
+        assert!(text.contains(l), "{l}");
+    }
+    for l in SubtitleQuality::ALL.map(|q| q.label()) {
+        assert!(text.contains(l), "{l}");
+    }
+    // the last choices may be below the fold of the scrollable window
+    assert!(text.contains(Effort::Light.label()));
+    // the technical details stay in the closed Advanced section
+    assert!(!text.to_lowercase().contains("ffmpeg:"));
+    let adv = settings_ui::advanced_lines(&app).join("\n");
+    assert!(adv.contains("ffmpeg") && adv.contains("cores") && adv.contains("Processor"));
+    // custom settings, an old processor, a chosen ffmpeg, a summary: all drawn
+    app.settings.effort = Effort::Maximum;
+    app.settings.ffmpeg = Some("/opt/ff/ffmpeg".into());
+    app.settings_summary = vec!["Subtitle quality: Fast → Balanced".into()];
+    app.machine.arch = "x86_64";
+    app.machine.cpu.avx2 = false;
+    app.ffmpeg = Err("ffmpeg was not found".into());
+    app.ffmpeg_checking = true;
+    let text = painted_text(&ctx, &mut app, &mut cache, vec![]);
+    assert!(text.contains(settings::CUSTOM_STATUS));
+    assert!(text.contains(settings::TOO_OLD_REASON));
+    assert!(
+        settings_ui::advanced_lines(&app)
+            .iter()
+            .any(|l| l.contains("not supported") && l.contains("AVX2"))
+    );
+    assert!(
+        settings_ui::advanced_lines(&app)
+            .iter()
+            .any(|l| l.contains("/opt/ff/ffmpeg"))
+    );
+    // closing
+    app.dispatch(Command::CloseSettings, Instant::now())
+        .unwrap();
+    let text = painted_text(&ctx, &mut app, &mut cache, vec![]);
+    assert!(!text.contains(settings::EFFORT_TITLE));
+}
+
+// covers: REQ-045, REQ-048
+#[test]
+fn banner_is_drawn_without_blocking_the_window() {
+    use crate::app::{Banner, BannerAction};
+    use crate::settings::StartNotice;
+    let (_d, mut app) = loaded();
+    let ctx = Context::default();
+    let mut cache = UiCache::default();
+    app.banner = Some(Banner::from_notice(StartNotice::MachineChanged));
+    painted_text(&ctx, &mut app, &mut cache, vec![]);
+    let text = painted_text(&ctx, &mut app, &mut cache, vec![]);
+    assert!(text.contains(crate::settings::MACHINE_CHANGED_NOTICE));
+    assert!(text.contains(crate::settings::USE_RECOMMENDED));
+    assert!(!modal_open(&app), "shortcuts keep working");
+    app.banner = Some(Banner::from_notice(StartNotice::Setup));
+    painted_text(&ctx, &mut app, &mut cache, vec![]);
+    let text = painted_text(&ctx, &mut app, &mut cache, vec![]);
+    assert!(text.contains(crate::settings::SETUP_NOTICE));
+    assert_eq!(
+        Banner::from_notice(StartNotice::MachineChanged).action,
+        Some(BannerAction::UseRecommended)
+    );
+}
+
+// covers: REQ-052
+#[test]
+fn consent_offers_the_fast_file_when_it_makes_sense() {
+    use crate::app::ConsentChoice;
+    use crate::settings::SubtitleQuality::*;
+    let (d, mut app) = loaded();
+    let store = crate::stt::tests::store_for(d.path(), b"m");
+    app.model_store = Some(store.clone());
+    let choices = |app: &AppState, l| -> Vec<ConsentChoice> {
+        modals::consent_choices(app, l)
+            .into_iter()
+            .map(|c| c.1)
+            .collect()
+    };
+    // nothing installed: the small download is offered
+    assert_eq!(
+        choices(&app, Balanced),
+        vec![
+            ConsentChoice::Download,
+            ConsentChoice::DownloadFastInstead,
+            ConsentChoice::LocalFile,
+            ConsentChoice::Cancel
+        ]
+    );
+    assert!(
+        modals::consent_choices(&app, Balanced)[1]
+            .0
+            .contains("Fast one instead")
+    );
+    assert_eq!(
+        choices(&app, Fast),
+        vec![
+            ConsentChoice::Download,
+            ConsentChoice::LocalFile,
+            ConsentChoice::Cancel
+        ]
+    );
+    // Fast installed: it can be used instead, without download
+    std::fs::create_dir_all(&store.dir).unwrap();
+    std::fs::write(store.path(Fast), crate::stt::tests::level_body(b"m", 0)).unwrap();
+    assert_eq!(
+        choices(&app, MostAccurate)[1],
+        ConsentChoice::UseFastInstead
+    );
+    // only another big file installed: no Fast alternative
+    std::fs::remove_file(store.path(Fast)).unwrap();
+    std::fs::write(store.path(Balanced), crate::stt::tests::level_body(b"m", 1)).unwrap();
+    assert_eq!(choices(&app, MostAccurate).len(), 3);
+    let text = modals::consent_text(MostAccurate, store.spec(MostAccurate));
+    assert!(text.contains("Most accurate") && text.contains("MIT"));
+    // the dialog draws
+    let ctx = Context::default();
+    let mut cache = UiCache::default();
+    app.modal = Some(crate::app::Modal::ModelConsent(MostAccurate));
+    painted_text(&ctx, &mut app, &mut cache, vec![]);
+    let painted = painted_text(&ctx, &mut app, &mut cache, vec![]);
+    assert!(painted.contains("Download a speech recognition file?"));
+}
+
+/// Export that streams progress for `secs` (until killed); everything else is the usual
+/// fake.
+struct SlowExport {
+    inner: crate::ffmpeg::fake::FakeRunner,
+    secs: f32,
+}
+
+struct Ticking {
+    left: usize,
+    killed: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl std::io::Read for Ticking {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.left == 0 || self.killed.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok(0);
+        }
+        self.left -= 1;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let line = b"out_time_us=100000\n";
+        buf[..line.len()].copy_from_slice(line);
+        Ok(line.len())
+    }
+}
+
+struct SlowProcess {
+    left: usize,
+    out: Option<std::path::PathBuf>,
+    killed: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl crate::ffmpeg::Process for SlowProcess {
+    fn take_stdout(&mut self) -> Option<Box<dyn std::io::Read + Send>> {
+        Some(Box::new(Ticking {
+            left: self.left,
+            killed: Arc::clone(&self.killed),
+        }))
+    }
+    fn kill(&mut self) {
+        self.killed.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    fn wait(&mut self) -> std::io::Result<crate::ffmpeg::CmdOutput> {
+        if let Some(o) = self.out.take() {
+            std::fs::write(o, b"video")?;
+        }
+        Ok(crate::ffmpeg::CmdOutput {
+            success: !self.killed.load(std::sync::atomic::Ordering::SeqCst),
+            ..Default::default()
+        })
+    }
+}
+
+impl crate::ffmpeg::Runner for SlowExport {
+    fn run(
+        &self,
+        p: &std::path::Path,
+        a: &[std::ffi::OsString],
+    ) -> std::io::Result<crate::ffmpeg::CmdOutput> {
+        self.inner.run(p, a)
+    }
+    fn run_within(
+        &self,
+        p: &std::path::Path,
+        a: &[std::ffi::OsString],
+        t: std::time::Duration,
+    ) -> std::io::Result<crate::ffmpeg::CmdOutput> {
+        self.inner.run_within(p, a, t)
+    }
+    fn spawn_in(
+        &self,
+        p: &std::path::Path,
+        a: &[std::ffi::OsString],
+        c: Option<&std::path::Path>,
+    ) -> std::io::Result<Box<dyn crate::ffmpeg::Process>> {
+        let last = a
+            .last()
+            .map(|x| x.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if last.ends_with(".videolore-partial") {
+            return Ok(Box::new(SlowProcess {
+                left: (self.secs * 50.0) as usize,
+                out: last.strip_prefix("file:").map(Into::into),
+                killed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            }));
+        }
+        self.inner.spawn_in(p, a, c)
+    }
+}
+
+/// Keeps every core busy until cancelled (speech recognition at "Maximum speed").
+struct BusyTranscriber;
+
+impl crate::stt::Transcriber for BusyTranscriber {
+    fn transcribe(
+        &mut self,
+        _pcm: &[f32],
+        _offset: Micros,
+        _language: Option<&str>,
+        cancel: &Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<crate::stt::Transcript, crate::stt::SttError> {
+        let n = std::thread::available_parallelism().map_or(2, |n| n.get());
+        let deadline = Instant::now() + std::time::Duration::from_secs(3);
+        std::thread::scope(|s| {
+            for _ in 0..n {
+                s.spawn(|| {
+                    let mut x = 0u64;
+                    while Instant::now() < deadline
+                        && !cancel.load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        x = std::hint::black_box(x.wrapping_mul(31).wrapping_add(7));
+                    }
+                });
+            }
+        });
+        Ok(crate::stt::Transcript::default())
+    }
+}
+
+// covers: REQ-056
+#[test]
+fn stays_responsive_while_exporting_and_transcribing() {
+    use crate::settings::{Effort, SubtitleQuality};
+    let dir = tempfile::tempdir().unwrap();
+    let f = files(dir.path());
+    let fake = SlowExport {
+        inner: crate::app::tests::runner().holding_streams(),
+        secs: 3.0,
+    };
+    let mut app = AppState::with_ffmpeg(
+        Ok(crate::app::tests::info()),
+        Arc::new(fake),
+        Box::new(FakeDialogs::default()),
+        Box::new(crate::preview::NullSink),
+    );
+    let now = Instant::now();
+    import(&mut app, f);
+    app.dispatch(Command::Append(Some(app.project.media[0].id)), now)
+        .unwrap();
+    app.dispatch(Command::Append(Some(app.project.media[1].id)), now)
+        .unwrap();
+    app.dispatch(Command::ToggleFade(0), now).unwrap();
+    app.dispatch(Command::SetEffort(Effort::Maximum), now)
+        .unwrap();
+    // the very first frames build the font atlas (not what is measured here)
+    let ctx = Context::default();
+    let mut cache = UiCache::default();
+    for _ in 0..3 {
+        app.settings_open = true;
+        run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
+    }
+    // speech recognition keeping every core busy
+    let store = crate::stt::tests::store_for(dir.path(), b"m");
+    std::fs::create_dir_all(&store.dir).unwrap();
+    std::fs::write(
+        store.path(SubtitleQuality::Fast),
+        crate::stt::tests::level_body(b"m", 0),
+    )
+    .unwrap();
+    app.model_store = Some(store);
+    app.settings.subtitle_quality = SubtitleQuality::Fast;
+    app.transcriber =
+        Arc::new(|_, _| Ok(Box::new(BusyTranscriber) as Box<dyn crate::stt::Transcriber>));
+    if crate::stt::available() {
+        app.dispatch(Command::GenerateSubtitles, now).unwrap();
+        assert!(app.is_generating());
+    }
+    app.dispatch(Command::Export(dir.path().join("busy.mp4")), now)
+        .unwrap();
+    assert!(app.is_exporting());
+    let mut times = Vec::new();
+    let timeline = layout::panels(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 800.0))).timeline;
+    let mut worst = std::time::Duration::ZERO;
+    for i in 0..30 {
+        let before_playing = app.preview.is_playing();
+        let before_head = app.playhead;
+        let (events, check): (Vec<Event>, u8) = match i % 3 {
+            0 => (vec![key(Key::Space, Modifiers::NONE)], 0),
+            1 => {
+                let x = if (i / 3) % 2 == 0 { 120.0 } else { 520.0 };
+                let p = pos2(timeline.min.x + x, timeline.min.y + 60.0);
+                (
+                    vec![
+                        Event::PointerMoved(p),
+                        Event::PointerButton {
+                            pos: p,
+                            button: PointerButton::Primary,
+                            pressed: true,
+                            modifiers: Modifiers::NONE,
+                        },
+                        Event::PointerButton {
+                            pos: p,
+                            button: PointerButton::Primary,
+                            pressed: false,
+                            modifiers: Modifiers::NONE,
+                        },
+                    ],
+                    1,
+                )
+            }
+            _ => (vec![key(Key::Comma, Modifiers::COMMAND)], 2),
+        };
+        // the Settings window opened by the previous round would cover the timeline
+        app.settings_open = false;
+        let t = Instant::now();
+        frame(&ctx, &mut app, &mut cache, input(1280.0, 800.0, events));
+        let took = t.elapsed();
+        times.push(took.as_millis());
+        worst = worst.max(took);
+        match check {
+            0 => assert_ne!(app.preview.is_playing(), before_playing, "frame {i}"),
+            1 => assert!(
+                app.playhead != before_head || app.preview.is_playing(),
+                "frame {i}"
+            ),
+            _ => assert!(app.settings_open, "frame {i}"),
+        }
+    }
+    assert!(
+        worst <= std::time::Duration::from_millis(200),
+        "slowest frame {worst:?} ({times:?} ms)"
+    );
+    assert!(app.is_exporting(), "the export was still running meanwhile");
+    app.dispatch(Command::CancelExport, Instant::now()).unwrap();
+    app.dispatch(Command::CancelSubtitles, Instant::now())
+        .unwrap();
+    app.wait_export(Instant::now());
 }

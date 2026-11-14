@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! Dialogs shown over the window: ffmpeg missing, notices, unsaved changes, speech-model
-//! consent, regenerate confirmation and About.
+//! Dialogs shown over the window: ffmpeg missing, notices, unsaved changes, speech-file
+//! consent, regenerate and remove confirmations, and About.
 
 use super::UiCache;
 use crate::app::{AppState, Command, ConsentChoice, Modal, PendingAction, UnsavedChoice};
-use crate::stt;
+use crate::settings::SubtitleQuality;
+use crate::stt::{self, ModelSpec};
 use eframe::egui::{self, Context};
 
 /// The question asked before `action` when there are unsaved changes.
@@ -24,19 +25,47 @@ pub fn unsaved_question(app: &AppState, action: &PendingAction) -> String {
     format!("Save the changes to \"{name}\" before {what}?")
 }
 
-/// Text of the speech-model consent dialog.
-pub fn consent_text() -> String {
+/// Text of the consent dialog for the speech recognition file of `level`.
+pub fn consent_text(level: SubtitleQuality, spec: &ModelSpec) -> String {
     format!(
-        "Generating subtitles needs a speech model that is downloaded once.\n\n\
+        "Subtitle quality \"{}\" needs a speech recognition file that is downloaded once.\n\n\
          File: {}\nSize: {} MB\nLicence: {}\nSource: {}\n\n\
-         This download is the only time videolore uses the network. After it, subtitles \
-         are generated on this computer, offline. You can also use a copy of the same file \
-         that you already have.",
-        stt::MODEL_FILE,
-        stt::MODEL_SIZE / 1_000_000,
+         Downloads like this one are the only times videolore uses the network. After it, \
+         subtitles are generated on this computer, offline. You can also use a copy of the \
+         same file that you already have.",
+        level.label(),
+        spec.file,
+        spec.size / 1_000_000,
         stt::MODEL_LICENCE,
         stt::MODEL_SOURCE
     )
+}
+
+/// The buttons of the consent dialog: Fast alternatives only when they make sense.
+pub fn consent_choices(app: &AppState, level: SubtitleQuality) -> Vec<(String, ConsentChoice)> {
+    let mut v = vec![("Download".to_string(), ConsentChoice::Download)];
+    if level != SubtitleQuality::Fast
+        && let Some(store) = &app.model_store
+    {
+        if store.is_installed(SubtitleQuality::Fast) {
+            v.push((
+                "Use Fast instead (no download)".into(),
+                ConsentChoice::UseFastInstead,
+            ));
+        } else if SubtitleQuality::ALL.iter().all(|l| !store.is_installed(*l)) {
+            let mb = store.spec(SubtitleQuality::Fast).size / 1_000_000;
+            v.push((
+                format!("Download the Fast one instead ({mb} MB)"),
+                ConsentChoice::DownloadFastInstead,
+            ));
+        }
+    }
+    v.push((
+        "Choose a file on this computer…".into(),
+        ConsentChoice::LocalFile,
+    ));
+    v.push(("Cancel".into(), ConsentChoice::Cancel));
+    v
 }
 
 pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
@@ -93,19 +122,37 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                 });
             });
         }
-        Some(Modal::ModelConsent) => {
+        Some(Modal::ModelConsent(level)) => {
+            let Some(store) = &app.model_store else {
+                return;
+            };
+            let text = consent_text(*level, store.spec(*level));
+            let choices = consent_choices(app, *level);
             egui::Modal::new(egui::Id::unique("consent")).show(ctx, |ui| {
-                ui.heading("Download the speech model?");
-                ui.label(consent_text());
-                ui.horizontal(|ui| {
-                    for (label, choice) in [
-                        ("Download", ConsentChoice::Download),
-                        ("Use a file I have…", ConsentChoice::LocalFile),
-                        ("Cancel", ConsentChoice::Cancel),
-                    ] {
+                ui.heading("Download a speech recognition file?");
+                ui.label(text);
+                ui.horizontal_wrapped(|ui| {
+                    for (label, choice) in choices {
                         if ui.button(label).clicked() {
                             cmds.push(Command::ModelConsent(choice));
                         }
+                    }
+                });
+            });
+        }
+        Some(Modal::ConfirmRemoveSpeechFiles) => {
+            egui::Modal::new(egui::Id::unique("remove-speech")).show(ctx, |ui| {
+                ui.heading("Remove the downloaded speech files?");
+                ui.label(
+                    "Your projects and their subtitles are kept. Generating subtitles again \
+                     will ask to download the files again.",
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Remove").clicked() {
+                        cmds.push(Command::ConfirmRemoveSpeechFiles);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cmds.push(Command::CloseModal);
                     }
                 });
             });
