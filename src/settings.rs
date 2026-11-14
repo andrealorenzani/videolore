@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! Program settings (never stored in projects): the three plain-language choices, the
+//! Program settings (never stored in projects): the four plain-language choices, the
 //! ffmpeg override and the machine they were recommended for.
 //!
 //! Everything here is pure except [`load_file`] and [`save`]:
@@ -14,6 +14,7 @@
 //! * [`main_texts`] lists every text of the main Settings section (checked by a test for
 //!   technical words).
 
+use crate::hwenc::{Codec, Vendor};
 use crate::machine::Fingerprint;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -59,6 +60,73 @@ pub enum Effort {
     #[default]
     Balanced,
     Maximum,
+}
+
+/// Export: whether the computer's video hardware may be used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ExportChoice {
+    /// The normal method (the recommendation on every computer).
+    #[default]
+    BestQuality,
+    /// The video hardware when it works, else the normal method.
+    Faster,
+}
+
+impl ExportChoice {
+    pub const ALL: [ExportChoice; 2] = [ExportChoice::Faster, ExportChoice::BestQuality];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ExportChoice::Faster => "Faster",
+            ExportChoice::BestQuality => "Best quality",
+        }
+    }
+
+    pub fn explanation(self) -> &'static str {
+        match self {
+            ExportChoice::Faster => {
+                "Uses your computer's video hardware when it can. Often quicker, but not on every computer; files may be a little larger."
+            }
+            ExportChoice::BestQuality => {
+                "Uses the normal method. Slower, best picture for the file size."
+            }
+        }
+    }
+}
+
+/// A hardware method turned off after a problem (REQ-064), until the computer or the
+/// program version changes or the user asks to try again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HardwareOff {
+    pub format: Codec,
+    pub method: Vendor,
+    /// The videolore version that had the problem.
+    pub version: String,
+}
+
+/// Most remembered problems.
+pub const MAX_HARDWARE_OFF: usize = 8;
+
+/// Reads `hardware_off` leniently: entries that are not understood are dropped one by
+/// one (the rest of the file stays valid).
+fn lenient_hardware_off<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Vec<HardwareOff>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    let list = v.as_array().cloned().unwrap_or_default();
+    let mut out: Vec<HardwareOff> = Vec::new();
+    for item in list {
+        if let Ok(h) = serde_json::from_value::<HardwareOff>(item)
+            && !h.version.is_empty()
+            && h.version.len() <= 32
+            && !out.contains(&h)
+            && out.len() < MAX_HARDWARE_OFF
+        {
+            out.push(h);
+        }
+    }
+    Ok(out)
 }
 
 impl PreviewQuality {
@@ -146,12 +214,13 @@ impl Effort {
     }
 }
 
-/// The three plain-language choices.
+/// The four plain-language choices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Choices {
     pub preview: PreviewQuality,
     pub subtitles: SubtitleQuality,
     pub effort: Effort,
+    pub export: ExportChoice,
 }
 
 /// The settings file (format 2).
@@ -169,6 +238,12 @@ pub struct Settings {
     /// The machine the choices were made on.
     #[serde(default)]
     pub machine: Option<Fingerprint>,
+    /// Export: Faster / Best quality (missing in files of 0.3.x: Best quality).
+    #[serde(default)]
+    pub export: ExportChoice,
+    /// Hardware methods turned off after a problem on this computer.
+    #[serde(default, deserialize_with = "lenient_hardware_off")]
+    pub hardware_off: Vec<HardwareOff>,
 }
 
 impl Default for Settings {
@@ -188,6 +263,8 @@ impl Settings {
             ffmpeg: None,
             ffprobe: None,
             machine: fp,
+            export: choices.export,
+            hardware_off: Vec::new(),
         }
     }
 
@@ -196,6 +273,7 @@ impl Settings {
             preview: self.preview_quality,
             subtitles: self.subtitle_quality,
             effort: self.effort,
+            export: self.export,
         }
     }
 
@@ -203,6 +281,29 @@ impl Settings {
         self.preview_quality = c.preview;
         self.subtitle_quality = c.subtitles;
         self.effort = c.effort;
+        self.export = c.export;
+    }
+
+    /// The method is turned off for `codec` after a problem.
+    pub fn hardware_is_off(&self, codec: Codec, method: Vendor) -> bool {
+        self.hardware_off
+            .iter()
+            .any(|h| h.format == codec && h.method == method)
+    }
+
+    /// Remembers a problem of `method` with `codec` (program version `version`).
+    pub fn turn_hardware_off(&mut self, codec: Codec, method: Vendor, version: &str) {
+        if self.hardware_is_off(codec, method) {
+            return;
+        }
+        if self.hardware_off.len() >= MAX_HARDWARE_OFF {
+            self.hardware_off.remove(0);
+        }
+        self.hardware_off.push(HardwareOff {
+            format: codec,
+            method,
+            version: version.to_string(),
+        });
     }
 
     /// Default location: the platform config folder.
@@ -211,7 +312,7 @@ impl Settings {
             .map(|d| d.config_dir().join("settings.json"))
     }
 
-    /// The three choices are what [`recommend`] gives for `fp`.
+    /// The four choices are what [`recommend`] gives for `fp`.
     pub fn is_recommended(&self, fp: &Fingerprint) -> bool {
         self.choices() == recommend(fp)
     }
@@ -281,6 +382,8 @@ pub fn recommend(fp: &Fingerprint) -> Choices {
         preview: PreviewQuality::Automatic,
         subtitles,
         effort: Effort::Balanced,
+        // Best quality everywhere: Faster is the user's opt-in (REQ-060).
+        export: ExportChoice::BestQuality,
     }
 }
 
@@ -361,6 +464,13 @@ pub fn summary(old: Choices, new: Choices) -> Vec<String> {
             new.effort.label()
         ));
     }
+    if old.export != new.export {
+        out.push(format!(
+            "{EXPORT_TITLE}: {} → {}",
+            old.export.label(),
+            new.export.label()
+        ));
+    }
     if out.is_empty() {
         out.push(ALREADY_RECOMMENDED.to_string());
     }
@@ -371,6 +481,10 @@ pub const SETTINGS_TITLE: &str = "Settings";
 pub const PREVIEW_TITLE: &str = "Preview quality";
 pub const SUBTITLE_TITLE: &str = "Subtitle quality";
 pub const EFFORT_TITLE: &str = "How hard videolore works";
+pub const EXPORT_TITLE: &str = "Export";
+/// Added to Faster's explanation when the check found no usable hardware.
+pub const NO_HARDWARE_NOTE: &str = "This computer has no video hardware videolore can use, so \
+                                    both choices give the same result.";
 pub const RECOMMENDED_STATUS: &str = "Using recommended settings for this computer";
 pub const CUSTOM_STATUS: &str = "Custom settings";
 pub const USE_RECOMMENDED: &str = "Use recommended settings";
@@ -399,6 +513,8 @@ pub fn main_texts() -> Vec<&'static str> {
         PREVIEW_TITLE,
         SUBTITLE_TITLE,
         EFFORT_TITLE,
+        EXPORT_TITLE,
+        NO_HARDWARE_NOTE,
         RECOMMENDED_STATUS,
         CUSTOM_STATUS,
         USE_RECOMMENDED,
@@ -420,6 +536,9 @@ pub fn main_texts() -> Vec<&'static str> {
         t.extend([s.label(), s.explanation()]);
     }
     for e in Effort::ALL {
+        t.extend([e.label(), e.explanation()]);
+    }
+    for e in ExportChoice::ALL {
         t.extend([e.label(), e.explanation()]);
     }
     t
@@ -492,6 +611,12 @@ fn valid_override(p: &Option<PathBuf>) -> bool {
 
 /// Decides the settings to use at start-up (pure). `fp` is the detected machine.
 pub fn startup(loaded: &Loaded, fp: &Fingerprint) -> Startup {
+    startup_at(loaded, fp, env!("CARGO_PKG_VERSION"))
+}
+
+/// [`startup`] for program version `version`: hardware problems remembered by another
+/// version are forgotten.
+pub fn startup_at(loaded: &Loaded, fp: &Fingerprint, version: &str) -> Startup {
     let fresh = |notice| Startup {
         settings: Settings::with(recommend(fp), Some(fp.clone())),
         notice: Some(notice),
@@ -523,7 +648,9 @@ pub fn startup(loaded: &Loaded, fp: &Fingerprint) -> Startup {
                 write: false,
                 backup: false,
             },
-            Some(n) if n == u64::from(VERSION) => current(value, fp).unwrap_or_else(malformed),
+            Some(n) if n == u64::from(VERSION) => {
+                current(value, fp, version).unwrap_or_else(malformed)
+            }
             _ => malformed(),
         },
     }
@@ -553,13 +680,18 @@ fn legacy(value: serde_json::Value, fp: &Fingerprint) -> Option<Startup> {
     })
 }
 
-fn current(value: serde_json::Value, fp: &Fingerprint) -> Option<Startup> {
+fn current(value: serde_json::Value, fp: &Fingerprint, version: &str) -> Option<Startup> {
     let mut s: Settings = serde_json::from_value(value).ok()?;
     if s.machine.as_ref().is_some_and(|m| !valid_fingerprint(m)) {
         return None;
     }
     let mut notice = None;
     let mut write = false;
+    let remembered = s.hardware_off.len();
+    s.hardware_off.retain(|h| h.version == version);
+    if s.hardware_off.len() != remembered {
+        write = true;
+    }
     if !valid_override(&s.ffmpeg) || !valid_override(&s.ffprobe) {
         s.ffmpeg = None;
         s.ffprobe = None;
@@ -577,6 +709,8 @@ fn current(value: serde_json::Value, fp: &Fingerprint) -> Option<Startup> {
         } else {
             notice = notice.or(Some(StartNotice::MachineChanged));
         }
+        // a different computer: its video hardware is tried again
+        s.hardware_off.clear();
         s.machine = Some(fp.clone());
         write = true;
     }

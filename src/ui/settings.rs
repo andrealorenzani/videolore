@@ -7,11 +7,14 @@
 //! details (ffmpeg, speech engine files, processor, cores) are in the collapsed
 //! "Advanced" section.
 
-use crate::app::{AppState, BannerAction, Command};
+use crate::app::{AppState, BannerAction, Command, HwProbe};
+use crate::export::ExportMethod;
+use crate::hwenc::Codec;
 use crate::settings::{
-    self, ADVANCED_TITLE, CLEAR_PREVIEW_COPIES, CLOSE, CUSTOM_STATUS, EFFORT_TITLE, Effort,
-    PREVIEW_COPIES, PREVIEW_TITLE, PreviewQuality, RECOMMENDED_STATUS, REMOVE_SPEECH_FILES,
-    SETTINGS_TITLE, SLOWER_NOTE, SPEECH_FILES, SUBTITLE_TITLE, SubtitleQuality, USE_RECOMMENDED,
+    self, ADVANCED_TITLE, CLEAR_PREVIEW_COPIES, CLOSE, CUSTOM_STATUS, EFFORT_TITLE, EXPORT_TITLE,
+    Effort, ExportChoice, NO_HARDWARE_NOTE, PREVIEW_COPIES, PREVIEW_TITLE, PreviewQuality,
+    RECOMMENDED_STATUS, REMOVE_SPEECH_FILES, SETTINGS_TITLE, SLOWER_NOTE, SPEECH_FILES,
+    SUBTITLE_TITLE, SubtitleQuality, USE_RECOMMENDED,
 };
 use eframe::egui::{self, Align2, Color32, Context, RichText, Ui};
 
@@ -86,6 +89,20 @@ fn main_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         }
     }
     ui.separator();
+    ui.strong(EXPORT_TITLE);
+    for e in ExportChoice::ALL {
+        let on = app.settings.export == e;
+        let note = (e == ExportChoice::Faster && no_hardware(app)).then_some(NO_HARDWARE_NOTE);
+        if choice(ui, "export", on, e.label(), e.explanation(), None) && !on {
+            cmds.push(Command::SetExport(e));
+        }
+        if let Some(n) = note {
+            ui.indent(("export-note", e.label()), |ui| {
+                ui.label(RichText::new(n).small());
+            });
+        }
+    }
+    ui.separator();
     ui.horizontal(|ui| {
         ui.label(format!("{PREVIEW_COPIES}: {}", mb(app.proxy_cache_size)));
         super::button(
@@ -106,6 +123,71 @@ fn main_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             cmds,
         );
     });
+}
+
+/// The hardware check finished and found nothing usable for either format.
+pub fn no_hardware(app: &AppState) -> bool {
+    matches!(&app.hw.probe, HwProbe::Done(s) if s.none_found())
+}
+
+/// "Turned off after a problem" line of the Advanced section.
+pub const HARDWARE_OFF_LINE: &str = "Video hardware turned off after a problem";
+/// Button of the Advanced section.
+pub const TRY_HARDWARE_AGAIN: &str = "Try video hardware again";
+
+/// The video hardware lines of the Advanced section.
+pub fn hardware_lines(app: &AppState) -> Vec<String> {
+    let mut out = Vec::new();
+    for codec in Codec::ALL {
+        let state = match &app.hw.probe {
+            HwProbe::NotChecked => "not checked (only checked when Export is Faster)".to_string(),
+            HwProbe::Checking(_) => "checking…".to_string(),
+            HwProbe::Done(s) => match s.get(codec) {
+                Some(c) if app.settings.hardware_is_off(codec, c.vendor) => {
+                    format!("{} — turned off after a problem", c.label())
+                }
+                Some(c) => format!("{} — works", c.label()),
+                None => "none found".to_string(),
+            },
+        };
+        out.push(format!("Video hardware for {}: {state}", codec.label()));
+    }
+    if let HwProbe::Done(s) = &app.hw.probe {
+        for (codec, vendor, reason) in &s.notes {
+            out.push(format!(
+                "{} ({}): {}",
+                vendor.maker(),
+                codec.label(),
+                reason.text()
+            ));
+        }
+    }
+    if let Some(m) = &app.hw.last_method {
+        out.push(format!("Last export: {}", method_text(m)));
+    }
+    if !app.settings.hardware_off.is_empty() {
+        out.push(HARDWARE_OFF_LINE.to_string());
+    }
+    out
+}
+
+/// How an export was made, in words.
+pub fn method_text(m: &ExportMethod) -> String {
+    match m {
+        ExportMethod::StreamCopy => "copied without re-encoding".into(),
+        ExportMethod::Software => "normal method".into(),
+        ExportMethod::Hardware(v) => format!("video hardware ({})", v.label()),
+        ExportMethod::SoftwareAfterProblem {
+            codec,
+            vendor,
+            problem,
+        } => format!(
+            "normal method, after a video hardware problem ({} {}: {})",
+            vendor.label(),
+            codec.label(),
+            problem.text()
+        ),
+    }
 }
 
 /// Lines of the Advanced section (technical details), also used by tests.
@@ -176,6 +258,7 @@ pub fn advanced_lines(app: &AppState) -> Vec<String> {
             .unwrap_or_else(|| "automatic".into()),
         b.stt_threads
     ));
+    out.extend(hardware_lines(app));
     out
 }
 
@@ -185,6 +268,9 @@ fn advanced_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         .show(ui, |ui| {
             for l in advanced_lines(app) {
                 ui.label(l);
+            }
+            if ui.button(TRY_HARDWARE_AGAIN).clicked() {
+                cmds.push(Command::TryHardwareAgain);
             }
             ui.horizontal(|ui| {
                 super::button(ui, app, "Choose ffmpeg…", Command::PickFfmpeg, cmds);

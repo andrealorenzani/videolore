@@ -12,6 +12,7 @@ This page covers building and running; the details are in the sub-documents:
 | [code-modules.md](code-modules.md) | Module map, main patterns, background jobs, conventions |
 | [code-testing.md](code-testing.md) | Unit, UI and integration tests, coverage, CI jobs |
 | [code-packaging.md](code-packaging.md) | Installers, bundled ffmpeg, notices, release assets, manual checklist per OS, known limitations |
+| [code-hardware.md](code-hardware.md) | "Export: Faster": video hardware methods and arguments, the hardware check, the output check and redo, failure memory, QG-05 checklist and results |
 
 ## Build, test, run
 
@@ -47,7 +48,8 @@ network or benchmark. Without a settings file it saves the recommended choices f
 and shows a short message; a later start on a different machine recomputes them (or, when the
 user had changed them, keeps them and offers "Use recommended settings"). Settings files of
 0.1.x/0.2.x are upgraded (proxies off becomes Preview quality "Original"; the ffmpeg choice is
-kept). Details and the exact tables are in [code-modules.md](code-modules.md).
+kept); 0.3.x files load with Export = Best quality. Details and the exact tables are in
+[code-modules.md](code-modules.md); the hardware export is in [code-hardware.md](code-hardware.md).
 
 ### CPU baseline for speech recognition
 

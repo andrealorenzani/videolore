@@ -1,6 +1,6 @@
 # Architecture: performance and automatic setup
 
-Part of [Architecture](architecture.md). How `videolore` (since 0.3.0) recognises the computer it runs on, which settings it recommends, what each setting controls, and the decisions of the 0.3.0 performance review.
+Part of [Architecture](architecture.md). How `videolore` (since 0.3.0) recognises the computer it runs on, which settings it recommends, what each setting controls, and the decisions of the 0.3.0 performance review. Faster export with video hardware (0.4.0) has its own document: [hardware export](architecture-hardware-export.md).
 
 ## Detecting the computer
 Done by the app itself at start-up, on every system (the AppImage included). Installers do no tuning: one code path, tested automatically.
@@ -29,13 +29,14 @@ The settings file (`settings.json` in the program's configuration folder) is rea
 | Damaged or invalid file | Recommended settings; the bad file is kept as `settings.json.bad` | "Your settings could not be read, so videolore now uses the recommended settings for this computer." |
 | File written by a newer version | Recommended settings in memory; the file is not overwritten unless the user changes a setting | None |
 
-"Using recommended settings" is not stored: it means the three choices equal what the current computer would get. Settings belong to the program, never to a project.
+"Using recommended settings" is not stored: it means the choices (three in 0.3.0, four since 0.4.0 with Export) equal what the current computer would get. Settings belong to the program, never to a project.
 
 ## Recommended settings
 | Setting | Recommendation |
 |---|---|
 | Preview quality | Automatic |
 | How hard videolore works | Balanced |
+| Export (since 0.4.0) | Best quality, on every computer |
 | Subtitle quality | **Most accurate** with at least 12 logical cores and 15 GiB of memory; otherwise **Balanced** with at least 4 cores and 7 GiB; otherwise **Fast**. Always Fast when the processor cannot run speech recognition. |
 
 Memory limits are in GiB as reported by the system: a computer sold as "8 GB" reports about 7.6 GiB, so 7 GiB is used as its threshold.
@@ -44,9 +45,9 @@ Memory limits are in GiB as reported by the system: a computer sold as "8 GB" re
 - All subtitle levels, when the processor is too old (see [subtitles](architecture-subtitles.md#cpu-requirements-since-021)).
 - "Most accurate" below 7 GiB of memory and "Balanced" below 3.5 GiB: "Needs more memory than this computer has."
 
-The recommendation never picks an unavailable choice. "Use recommended settings" in Settings re-detects the computer, resets only these three choices and shows what changed (or "Already using the recommended settings"); it never touches the custom `ffmpeg` path, projects, preview copies or speech files, and never downloads anything.
+The recommendation never picks an unavailable choice. "Use recommended settings" in Settings re-detects the computer, resets only these choices and shows what changed (or "Already using the recommended settings"); it never touches the custom `ffmpeg` path, projects, preview copies or speech files, and never downloads anything.
 
-These thresholds are assumptions to be adjusted once speeds are measured on real machines.
+The two larger speech models and these thresholds were confirmed by Andrea on 2026-11-14; the numbers remain assumptions to be adjusted once speeds are measured on real machines. Also confirmed: in Light the limit applies to each job, not to all jobs together.
 
 ## "How hard videolore works"
 One choice controls all background work. L = logical cores, P = physical cores.
@@ -106,11 +107,8 @@ An automated test runs an export and subtitle generation together, with speech r
 
 **Targets (quality goals).** At recommended settings, export and Fast subtitles at most 5% slower than 0.2.2 on the same machine; start-up at most 0.5 s slower. Measured by comparing 0.2.2 and 0.3.0 on the same computer; the figures are in the developer documentation, not here.
 
-## Hardware video encoding (not in 0.3.0)
-Using the graphics card to encode exports (REQ-055) is planned, not built.
-- The bundled `ffmpeg` builds do contain NVIDIA, AMD, Intel and (on Linux) VA-API encoders, and macOS has VideoToolbox.
-- Not built because: CI machines have no graphics card, so only the fallback could be tested; each vendor needs its own quality tuning to match the software encoder; driver bugs can produce damaged frames while reporting success, which an automatic fallback cannot catch.
-- Planned design: a short background check of each encoder (3 frames, at most 1 s each, 3 s in total), hardware first with an automatic software re-run on failure, and a plain "Export: Faster / Best quality" choice.
+## Hardware video encoding (since 0.4.0)
+Faster export with the computer's video hardware, the "Export: Faster / Best quality" choice, the background hardware check, the output check and the automatic software redo are described in [hardware export](architecture-hardware-export.md). "Best quality" is the recommendation on every computer, so "Use recommended settings" now resets four choices (Export back to "Best quality") and also reruns the hardware check and clears remembered hardware failures.
 
 ## Risks
 - Speeds and memory of the larger speech models are estimates; thresholds may change after measurement.

@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.3.0-blue)
+![version](https://img.shields.io/badge/version-0.4.0-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-96.2%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-96.3%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -20,7 +20,7 @@
 [![build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg)](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml)
 
 ## What it is
-`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
+`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel, optionally using your computer's video hardware for a faster export. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
 
 ## System requirements
 - **Windows** (64-bit, x86_64) and **Linux** (64-bit, x86_64; current Ubuntu LTS and Fedora).
@@ -70,8 +70,8 @@ Start videolore from the menu, the Applications folder, the AppImage or the extr
 5. **Add subtitles**: choose **Generate subtitles**. The first time you use a subtitle quality level, you are asked to approve the download of its speech model (32 MB for Fast, 190 MB for Balanced, 574 MB for Most accurate), or you can provide the model file yourself. Choose the level in Settings. Recognition runs on your computer in the background, the language is detected automatically, and you can edit, re-word and re-time every line. Choose a style: Classic, Box or Word highlight. Subtitles are visible in the preview and burned into the exported video.
 6. **Preview** the result with play, pause and seek from the playhead. Very large sources get a smaller preview copy, made in the background; the export always uses your original files. **Preview quality** in Settings chooses whether lighter preview copies are made, and the copies can be cleared there.
 7. **Save** the project (**Save** or **Save As**, Ctrl/Cmd+S) and reopen it later with **Open**. A `•` in the window title means unsaved changes. New, Open, closing the window and Quit ask whether to **Save**, **Discard** or **Cancel**. Projects are `.vlproj` files: double-click one to open it in videolore.
-8. **Export** to one file, with progress; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades, music, subtitles or volume changes and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched. HEVC files play on Apple devices.
-9. **Settings** (Ctrl/Cmd+, or the **Settings** button): choose **Preview quality**, **Subtitle quality** and **How hard videolore works**, each explained in one line. The first start picks recommended choices for your computer; **Use recommended settings** sets them again, and the speech files you downloaded can be removed there to free disk space. The **Advanced** section holds the ffmpeg you may want to use instead of the bundled one.
+8. **Export** to one file, with progress; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades, music, subtitles or volume changes and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched. HEVC files play on Apple devices. With **Export: Faster** in Settings, a re-encoded H.264 or HEVC video is made by your computer's video hardware when it can; every such file is checked, and if the hardware is missing or does not produce a correct file, the normal method is used automatically. The default, **Best quality**, always uses the normal method.
+9. **Settings** (Ctrl/Cmd+, or the **Settings** button): choose **Preview quality**, **Subtitle quality**, **How hard videolore works** and **Export** (Faster or Best quality), each explained in one line. The first start picks recommended choices for your computer; **Use recommended settings** sets them again, and the speech files you downloaded can be removed there to free disk space. The **Advanced** section holds the ffmpeg you may want to use instead of the bundled one.
 
 The About screen lists every bundled third-party component with its version, licence and where to get its source code.
 
@@ -89,7 +89,13 @@ The About screen lists every bundled third-party component with its version, lic
 ### Known limitations
 - Installers are not code-signed: each system asks for a one-time confirmation (see Installation).
 - On Windows and Linux, generating subtitles needs a processor with AVX2, FMA and F16C (see System requirements). On older processors it is not available and a message says so; this check was tested with simulated processors, not on old hardware.
-- Export uses the processor only; the graphics card's video encoder is not used yet.
+- **Faster export** needs NVIDIA graphics driver 610 or newer; with an older driver the normal method is used, and Settings → Advanced says why.
+- **Faster export on Linux** (Intel and AMD) needs the system's video acceleration library (libva) and the graphics driver. With the bundled ffmpeg it needs libva 2.21 or newer: Ubuntu 24.04 has 2.20, so the hardware is skipped there and the normal method is used. A system ffmpeg chosen in Advanced can still use the hardware.
+- **Faster export on Fedora** needs the RPM Fusion "freeworld" video drivers for AMD and Intel hardware (for example `mesa-va-drivers-freeworld`); without them the normal method is used.
+- **Faster is not always quicker.** On integrated Intel graphics it was measured from 14% quicker to 41% slower than Best quality, and files may be a little larger.
+- On the Intel driver tested on Ubuntu 24.04, hardware HEVC export is not usable; the normal method makes those files.
+- Faster export has been verified on real hardware only on Linux with Intel integrated graphics. Other combinations of system and graphics card are protected by the automatic fallback, but not yet measured.
+- On computers with more than one graphics card, NVIDIA is always preferred; the card cannot be chosen.
 - Subtitles in scripts other than Latin, Greek and Cyrillic (for example Chinese, Japanese, Arabic or Hindi) may look different on each computer or show empty boxes, and cannot be read in the subtitle editor.
 - Speech is recognised in pieces of about two minutes; a word cut at a boundary can be lost.
 - On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the Hide and Minimize menu items are not available.
@@ -101,6 +107,7 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md)
 
 ## Latest changes
+- **0.4.0** — Export: Faster or Best quality in Settings. Faster uses your computer's video hardware (NVIDIA, Intel, AMD, Apple) when it can, and every file made that way is checked, with an automatic redo by the normal method on any problem; Best quality stays the default and is unchanged. Linux drivers that only offer constant-quality encoding are supported, and older system libva versions are skipped without a crash.
 - **0.3.0** — Automatic setup for your computer at first start, with a Settings window (Ctrl/Cmd+,) for preview quality, subtitle quality and how hard videolore works; three subtitle quality levels, with larger and more accurate speech models that you approve; older processors get a clear message instead of a crash; safer handling of project, settings and download files; export and fast subtitles as quick as before.
 - **0.2.2** — Subtitle generation no longer fails at random on some computers, caused by a bug in the speech library; when it does fail, the message now explains the reason in plain words.
 - **0.2.1** — Release programs run on more computers: subtitle generation is built for a common processor baseline, so it no longer crashes on processors that lack the build server's newest instructions. On Windows and Linux, subtitles need a processor with AVX2 (Intel from 2013, AMD from 2015).
@@ -120,13 +127,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani asked the computer, at its very first start, what kind of machine it lives on, so that nobody has to guess a single number,\
-and a quiet look at the cores, the memory and the processor instructions now takes milliseconds, needs no network and no waiting, and writes the settings that fit,\
-he gave the Settings window plain words, Preview quality, Subtitle quality and How hard videolore works, and one button that brings the recommendation back,\
-he gave subtitles three levels, each one asking first and showing its size, so the larger and more accurate models arrive only with a yes,\
-for older processors that cannot run the speech engine he chose a clear sentence over a crash, and kept every other part of the program working,\
-he locked the temporary files to their owner, swept away what a crash leaves behind, and taught the program to refuse hostile files calmly,\
-he kept the window answering while an export and a subtitle run side by side, and cut the test run by a quarter, reporting the target it missed,\
-he moved the build to pinned machines and newer action versions, so the warnings from GitHub fell silent,\
-he measured export and subtitles on the same computer before and after, and kept them as quick as before, trusting numbers rather than feelings,\
-thank you, Andrea, for the care, the patience and the honest measurements that let videolore fit every computer it meets
+Andrea Lorenzani opened a second road for the export, a choice named Faster, and kept the old road as the honest default,\
+so Best quality stays exactly as it was, the same arguments and the same files, and nothing moves without a yes,\
+he asked the graphics cards and the processors what they can really do, one second each and three seconds in all, never in the way of the window,\
+he taught every hardware file to prove itself, with its frame count, its size and three sample pictures weighed against the normal render,\
+when a card stalls, fails or writes a bad file, the normal method quietly takes over, and a correct video arrives all the same,\
+he remembers a failing card per format and lets the user wake it again with one press in Advanced, where the truth is shown,\
+he gave Linux drivers that refuse bitrate control a constant-quality road with a size guard, and skipped the old libva without a crash,\
+he measured Faster on real integrated graphics, wrote down that it was sometimes slower, and kept the word often in the explanation,\
+he kept every settings file readable, so the 0.3 and 0.2 users wake up on Best quality with nothing changed under their hands,\
+thank you, Andrea, for the patience to measure honestly and the care that keeps every export correct on every computer

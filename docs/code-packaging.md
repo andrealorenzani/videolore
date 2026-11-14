@@ -22,8 +22,11 @@ The installers are not code-signed (Gatekeeper / SmartScreen show a warning the 
   release build. Refresh the pins on every release; a vanished URL makes CI fail loudly.
 - `scripts/fetch-ffmpeg.sh <target> <dir>` downloads, checks the SHA-256 and extracts only
   `ffmpeg`, `ffprobe` (and the DLLs on Windows).
-- `scripts/package.sh` refuses a copy without the encoders libx264, libx265, libvpx-vp9, libopus
-  and the filters subtitles, amix, alimiter.
+- `scripts/package.sh` refuses a copy without the encoders libx264, libx265, libvpx-vp9, libopus,
+  the video hardware encoders of its system (Linux: `h264/hevc_nvenc`, `_qsv`, `_vaapi`; Windows:
+  `_nvenc`, `_qsv`, `_amf`; macOS: `_videotoolbox`) and the filters subtitles, amix, alimiter,
+  psnr; the Linux copy must be dynamically linked (the hardware libraries libva, libcuda and
+  libvpl are loaded from the system at run time).
 - Location: next to the executable (Windows install folder, `Contents/MacOS` on macOS,
   `usr/bin` in the AppImage, the tar.gz folder).
 
@@ -60,7 +63,8 @@ Things CI cannot check. For each of Windows 11, macOS (Apple Silicon), Ubuntu LT
    Anyway" in Privacy & Security) step works as the README describes; the window opens in about
    a second and "checking ffmpeg…" disappears without an ffmpeg installed on the machine.
 3. Import a video, play it, export it (H.264 and, with an HEVC source, HEVC that plays in
-   QuickTime/Photos).
+   QuickTime/Photos). With Export = Faster, run the QG-05 checklist of
+   [code-hardware.md](code-hardware.md) on the machines that have the hardware.
 4. Generate subtitles: the consent dialog appears, the download works, subtitles are shown in
    the preview and burned into the export.
 5. Save a project, close and double-click the `.vlproj`: videolore opens it. With videolore
@@ -82,8 +86,9 @@ Things CI cannot check. For each of Windows 11, macOS (Apple Silicon), Ubuntu LT
 - The proxy cache is never cleaned automatically; "Clear preview copies" empties it.
 - Subtitle generation on x86-64 needs a CPU with AVX2, FMA and F16C (2013 or newer); on an older
   processor "Generate subtitles" shows a message instead (lines can still be added by hand). There
-  is no slower fallback engine yet.
-- Hardware video encoding is not used for export (planned).
+  is no slower fallback engine (not planned).
+- Hardware video encoding ("Export: Faster") depends on the graphics driver; see the known
+  limitations in [code-hardware.md](code-hardware.md).
 - Speech is transcribed in 120-second chunks; a word cut at a chunk boundary can be lost.
 - Some Linux file managers do not start a program from the tar.gz folder on double-click (see
   its `README.txt`).

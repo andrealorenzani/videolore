@@ -2,6 +2,37 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
 
+## 0.4.0 — 2026-11-14 20:05 +0000
+Summary: export can use the computer's video hardware. Settings has a new **Export** choice: Best quality (the default, unchanged) or Faster. Faster encodes H.264 and HEVC with the video hardware of NVIDIA, Intel, AMD or Apple when it works. Every hardware file is checked, and on any problem the export is silently redone with the normal method, so the result is always a correct file. Measured on Linux with Intel integrated graphics, Faster was not always quicker, so it stays opt-in. Two real-hardware fixes are included: Linux drivers that refuse bitrate control and older system libva versions.
+
+- **Added**: **Export: Faster / Best quality** in Settings, with a one-line explanation each. Faster uses the video hardware for H.264 and HEVC re-encodes: NVIDIA (NVENC) on Windows and Linux, Intel Quick Sync on Windows and Linux, AMD (AMF) on Windows, VA-API on Linux (Intel and AMD) and VideoToolbox on macOS Apple Silicon (REQ-055, REQ-060).
+- **Added**: background hardware check, at most 1 second per candidate and 3 seconds in total. It runs when Faster is saved or chosen, on "Use recommended settings" and on "Try video hardware again"; with Best quality nothing runs. It never delays the window, start-up or preview (REQ-061).
+- **Added**: every hardware export is checked before its file appears: the whole file must decode without errors, the frame count, duration, size and frame rate must be as expected, and three sample frames (start, middle, end) must match the normal method's picture (PSNR at least 25 dB). Progress shows the check (REQ-063).
+- **Added**: silent redo. If the hardware is missing, exits with an error, stalls for 30 seconds or fails the check, the export is redone with the normal method, with no error message. Cancelling during the hardware run, the check or the redo leaves no partial file (REQ-055, REQ-021).
+- **Added**: a hardware failure is remembered per format, so later exports skip the hardware. The memory is cleared by a change of computer, an update of videolore, "Use recommended settings", or "Try video hardware again" in Advanced (REQ-064).
+- **Added**: Advanced shows which video hardware works for each format, whether it was turned off after a problem, and which method the last export used (REQ-061, REQ-064).
+- **Added**: the Export choice is saved with the program settings, never in a project. Settings files from 0.3.x and 0.2.x, and damaged settings, load as Best quality with no notice; a 0.3.x file keeps its "recommended" or "custom" status. The settings file stays format 2 with new optional fields, so 0.3.x can still read it (REQ-065).
+- **Changed**: Best quality exports are unchanged: the same ffmpeg arguments as 0.3.0 (checked by tests against the 0.3.0 commands), so the same files and the same speed. Stream-copy exports are identical byte for byte with either choice (REQ-062, REQ-023).
+- **Changed**: hardware exports match Best quality in container, video format, resolution, frame rate, 8-bit 4:2:0 picture, audio, frame count, timing, letterboxing, fades, music and burned-in subtitles. HEVC in MP4 or MOV carries the Apple tag hvc1 (REQ-062, REQ-036). Hardware exports aim at the same average bitrate, so file sizes stay close to Best quality.
+- **Fixed**: Linux VA-API drivers that refuse bitrate control, such as Ubuntu's free Intel driver, are used at constant quality. A hardware file more than 1.5 times the expected size is redone with the normal method, and this does not count as a hardware failure.
+- **Fixed**: with the bundled ffmpeg on Linux, VA-API and Quick Sync are skipped without a crash when the system libva is older than 2.21 (Ubuntu 24.04 ships 2.20). The normal method is used and Advanced says why. A system ffmpeg chosen by the user can still use the hardware there.
+- **Security**: hardware runs count within the process limit (REQ-033); a stalled run is stopped; no output reaches its destination before it passes the check; temporary files are cleaned up as before (REQ-059).
+- **Removed**: the known limitations "export uses the processor only" and "export does not use the video hardware yet" (replaced by Faster export).
+- **Dependencies**: none added or removed.
+- **Quality**: 219 unit tests and 23 integration tests pass (2 ignored); the 6 hardware integration tests pass with the bundled ffmpeg; fmt; clippy with default, no-default and all features, plus macOS and Windows cross-checks; cargo-deny; notices check; version check. Line coverage 96.3%; feature coverage 65/65 implemented requirements.
+- **Quality (not reached)**: QG-05, real hardware, measured on Linux (Ubuntu 24.04) with Intel Iris Plus G7 and the system ffmpeg. Size (at most 1.5 times Best quality) and picture quality (at most 3 VMAF points below) were met on three projects. Speed was not met: Faster ranged from 14% quicker to 41% slower than Best quality, so the explanation says "often quicker, but not on every computer". On this driver hardware HEVC is broken; the output check catches it and the normal method makes the file. Not yet measured: Windows with NVIDIA, Intel or AMD; Linux with NVIDIA or AMD; macOS.
+- **Workflow**: none.
+
+Known limitations (0.4.0):
+- NVIDIA needs graphics driver 610 or newer; with an older driver the normal method is used and Advanced says "graphics driver too old".
+- Linux Intel and AMD hardware export needs system libva and the vendor driver (Intel media driver or Mesa). With the bundled ffmpeg it needs libva 2.21 or newer (Ubuntu 24.04 ships 2.20: skipped there, see Fixed). Fedora's default Mesa has no H.264/HEVC encoding; users there need the RPM Fusion freeworld VA drivers (for example `mesa-va-drivers-freeworld`).
+- Faster is not always quicker, especially on integrated graphics (see Quality). Files may be a little larger.
+- Combinations of system and graphics vendor not verified on real hardware are still protected by the redo and the output check.
+- The output check samples three frames; damage between them can pass unnoticed (the decode check and frame count still apply).
+- On computers with several graphics cards NVIDIA is always preferred; the card cannot be chosen. Quick Sync on Linux uses the default render device.
+- Hardware is not used for preview copies, previews, effects, subtitles, decoding, AV1, VP9 or stream copy.
+- Decisions taken for 0.4.0 are listed in [business-export](business-export.md#key-decisions).
+
 ## 0.3.0 — 2026-11-14 15:18 +0000
 Summary: videolore now sets itself up for the computer it runs on at first start, and a plain-language Settings window controls preview quality, subtitle quality and how hard it works. Subtitles get three quality levels, and older processors get a clear message instead of a crash. Export and Fast subtitles keep their 0.2.2 speed. Security is hardened, the test run is shorter, and the CI warnings are gone.
 

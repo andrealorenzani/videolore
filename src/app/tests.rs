@@ -92,7 +92,10 @@ pub fn info() -> FfmpegInfo {
         ffmpeg: "/usr/bin/ffmpeg".into(),
         ffprobe: "/usr/bin/ffprobe".into(),
         version: FfVersion::Release(6, 1, 1),
-        filters: ["subtitles".to_string()].into_iter().collect(),
+        filters: ["subtitles", "psnr"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         encoders: ["libx264", "aac"].iter().map(|s| s.to_string()).collect(),
         source: Default::default(),
     }

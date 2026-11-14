@@ -4,7 +4,7 @@
 - all sub-docs linked from their index; no dead links (checked 0.2.0); anchor architecture-ffmpeg.md#subtitle-rendering-and-fonts exists
 - version 0.2.0 set via scripts/version.sh (Cargo.toml, Cargo.lock, README badge); check consistent
 - 0.2.0 dev: changelog entry 2026-11-14 10:17 +0000; coverage 95.4 (README badge), features 44/44
-- last README poem: 2026-11-14 (0.2.0, 10 lines, lines 1-9 end with backslash)
+- last README poem: 2026-11-14 (0.4.0, 10 verses, lines 1-9 end with backslash)
 - README rules: "workflows" only in GitHub Actions badge/link URLs (allowed); no AI/agent/command/workflow words
 - README badges: one per normal dependency (eframe, cpal, rfd, whisper-rs, ureq, serde, serde_json, thiserror, directories, tempfile, sha2, sysinfo) + ffmpeg 9.0.2 bundled (from packaging/ffmpeg.lock); macOS-only objc2/winit have no badge
 - docs fixes 0.2.0: business-editing shortcut "S for split" -> Ctrl/Cmd+B (+Save/Quit); business-editing known limitations +3 (undo history on media removal, proxy regen, 720p); architecture-packaging link to code-packaging.md
@@ -35,3 +35,10 @@
 - open: docs/code-modules.md / code.md / code-testing.md (PE) checked for stale AVX2-crash text: none found after fixes
 - open: docs/business-performance.md + architecture-performance.md: QG-01 numbers in changelog only (fine)
 - open: no commit made by documenter in 0.3.0 (caller commits)
+- 0.4.0 dev (2026-11-14 20:05 +0000): version set via scripts/version.sh set 0.4.0 (consistent); changelog 0.4.0 entry added (Summary, Added/Changed/Fixed/Security/Removed, Quality, Quality not reached, Known limitations); coverage badge 96.3 (PE), features 65/65
+- 0.4.0 README: what-it-is +1 clause (192 words); usage items 8,9 (Export choice); known limitations: NVIDIA 610, libva 2.21 (Ubuntu 24.04 skipped), Fedora freeworld, not always quicker, HEVC Intel driver, unverified combos, several GPUs; latest-changes 0.4.0 line; poem replaced (10 verses, lines 1-9 end with backslash)
+- 0.4.0 links: 0 dead links, anchors ok, all sub-docs linked (architecture-hardware-export, code-hardware); docs/workflow.md unchanged (.claude/ and AGENTS.md untouched)
+- 0.4.0 docs fixes: none needed in other owners' docs (checked export/performance/architecture/code-hardware for 2.21, 610, 14%/41% figures: consistent)
+- open: docs/architecture-hardware-export.md index blurb says "measured results"; its section is "Performance" (cosmetic, PE/Architect)
+- open: README poem/changelog header time 20:05 (written before the final date call at 20:06)
+- open: no commit made by documenter in 0.4.0 (caller commits)

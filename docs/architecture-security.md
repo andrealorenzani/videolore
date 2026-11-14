@@ -17,6 +17,7 @@ There are no secrets, accounts or telemetry.
 - Analysing a file (`ffprobe`) is stopped after 30 s with "could not be analysed in time" (since 0.3.0), so a hostile file cannot keep it busy indefinitely.
 - File names containing control characters (such as a line break) are never written into `ffmpeg`'s list of files to join; such exports use the re-encode path, where each file is a separate argument (since 0.3.0).
 - It runs with the user's rights, never elevated.
+- **Video hardware (0.4.0):** the hardware check encodes synthetic frames and reads no files. The VA-API device is chosen only among system device files named `renderD<number>` that are character devices. A hardware export is treated as untrusted media and decoded only by the software decoder when checked. Remembered hardware failures in the settings file are validated field by field. A driver crash or hang stays in the `ffmpeg` process, which is stopped; a hang of the whole system inside a driver cannot be prevented. See [hardware export](architecture-hardware-export.md#security).
 
 ## Project and settings files
 - Only regular files are read (a pipe or device named like a project can no longer block the program), with a hard size limit: 16 MiB for projects, 64 KiB for settings. The limit is enforced while reading, so a file growing during the read cannot exceed it.
@@ -39,7 +40,7 @@ There are no secrets, accounts or telemetry.
 
 ## Temporary files (since 0.3.0)
 - Temporary files (extracted audio, subtitle files, filter scripts) live in a private work folder under `videolore`'s cache folder (`…/videolore/work/`), readable only by the user (mode 0700 on Linux and macOS), instead of the shared system temporary folder. This also stops long extracted audio from filling a memory-backed `/tmp`.
-- Partial exports in the destination folder are created as user-only files (0600) and get normal permissions (0644) only when complete and renamed. Partial preview copies and partial model downloads are tracked the same way.
+- Partial exports in the destination folder are created as user-only files (0600) and get normal permissions (0644) only when complete and renamed. Partial preview copies and partial model downloads are tracked the same way, and so is the partial file of a hardware export attempt (0.4.0, `.<name>.hw.videolore-partial`).
 - Everything is removed when the job finishes, fails or is cancelled.
 - **After a crash:** each work folder holds a lock while its job runs. At the next start, folders whose lock is free belong to a dead session; their tracked partial files are deleted, but only if they match `videolore`'s own naming patterns, are regular files and are not symbolic links, and then the folder itself is deleted. Folders still locked (another `videolore` window) are left alone. On Windows a file still in use is skipped and retried next time.
 - The cache and data folders are created user-only on Linux and macOS.

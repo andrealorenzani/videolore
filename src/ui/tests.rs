@@ -603,6 +603,67 @@ fn settings_window_shows_the_three_choices_in_plain_words() {
     assert!(!text.contains(settings::EFFORT_TITLE));
 }
 
+// covers: REQ-060, REQ-064
+#[test]
+fn settings_window_offers_the_export_choice() {
+    use crate::app::HwProbe;
+    use crate::settings::{self, ExportChoice};
+    let (_d, mut app) = loaded();
+    let ctx = Context::default();
+    let mut cache = UiCache::default();
+    app.settings_open = true;
+    for _ in 0..3 {
+        painted_text(&ctx, &mut app, &mut cache, vec![]);
+    }
+    // the Export choice is at the bottom of the main section: scroll down to it
+    let down = || {
+        vec![
+            Event::PointerMoved(pos2(640.0, 1200.0)),
+            Event::MouseWheel {
+                unit: eframe::egui::MouseWheelUnit::Point,
+                delta: vec2(0.0, -400.0),
+                phase: eframe::egui::TouchPhase::Move,
+                source: eframe::egui::MouseWheelSource::Unknown,
+                modifiers: Modifiers::NONE,
+            },
+        ]
+    };
+    let mut text = String::new();
+    for _ in 0..10 {
+        text = painted_text(&ctx, &mut app, &mut cache, down());
+    }
+    assert!(text.contains(settings::EXPORT_TITLE), "{text}");
+    assert!(text.contains(ExportChoice::Faster.label()));
+    assert!(text.contains(ExportChoice::BestQuality.label()));
+    assert!(!text.contains(settings::NO_HARDWARE_NOTE));
+    // Faster: custom settings; with no usable hardware found, the plain note
+    app.dispatch(Command::SetExport(ExportChoice::Faster), Instant::now())
+        .unwrap();
+    app.hw.probe = HwProbe::Done(Default::default());
+    for _ in 0..3 {
+        text = painted_text(&ctx, &mut app, &mut cache, down());
+    }
+    assert!(app.settings.export == ExportChoice::Faster && !app.is_recommended());
+    assert!(
+        text.contains("This computer has no video hardware"),
+        "{text}"
+    );
+    // the Advanced section lists the hardware state and the turned-off line
+    app.settings
+        .turn_hardware_off(crate::hwenc::Codec::Hevc, crate::hwenc::Vendor::Nvenc, "x");
+    let adv = settings_ui::advanced_lines(&app);
+    assert!(
+        adv.iter()
+            .any(|l| l == "Video hardware for H.264: none found")
+    );
+    assert!(adv.iter().any(|l| l == settings_ui::HARDWARE_OFF_LINE));
+    // "Use recommended settings" brings Best quality back
+    app.dispatch(Command::UseRecommended, Instant::now())
+        .unwrap();
+    assert_eq!(app.settings.export, ExportChoice::BestQuality);
+    assert!(app.is_recommended());
+}
+
 // covers: REQ-045, REQ-048
 #[test]
 fn banner_is_drawn_without_blocking_the_window() {
@@ -691,6 +752,8 @@ fn consent_offers_the_fast_file_when_it_makes_sense() {
 struct SlowExport {
     inner: crate::ffmpeg::fake::FakeRunner,
     secs: f32,
+    /// Spawned commands that used the video hardware.
+    hardware: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 struct Ticking {
@@ -764,6 +827,10 @@ impl crate::ffmpeg::Runner for SlowExport {
             .last()
             .map(|x| x.to_string_lossy().into_owned())
             .unwrap_or_default();
+        if a.iter().any(|x| x.to_string_lossy().ends_with("_nvenc")) {
+            self.hardware
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
         if last.ends_with(".videolore-partial") {
             return Ok(Box::new(SlowProcess {
                 left: (self.secs * 50.0) as usize,
@@ -810,9 +877,11 @@ fn stays_responsive_while_exporting_and_transcribing() {
     use crate::settings::{Effort, SubtitleQuality};
     let dir = tempfile::tempdir().unwrap();
     let f = files(dir.path());
+    let hardware = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let fake = SlowExport {
         inner: crate::app::tests::runner().holding_streams(),
         secs: 3.0,
+        hardware: Arc::clone(&hardware),
     };
     let mut app = AppState::with_ffmpeg(
         Ok(crate::app::tests::info()),
@@ -852,6 +921,12 @@ fn stays_responsive_while_exporting_and_transcribing() {
         app.dispatch(Command::GenerateSubtitles, now).unwrap();
         assert!(app.is_generating());
     }
+    // Export: Faster, with working (simulated) video hardware
+    app.settings.export = crate::settings::ExportChoice::Faster;
+    app.hw.probe = crate::app::HwProbe::Done(crate::hwenc::HwStatus {
+        h264: Some(crate::hwenc::Candidate::new(crate::hwenc::Vendor::Nvenc)),
+        ..Default::default()
+    });
     app.dispatch(Command::Export(dir.path().join("busy.mp4")), now)
         .unwrap();
     assert!(app.is_exporting());
@@ -908,6 +983,11 @@ fn stays_responsive_while_exporting_and_transcribing() {
         "slowest frame {worst:?} ({times:?} ms)"
     );
     assert!(app.is_exporting(), "the export was still running meanwhile");
+    assert_eq!(
+        hardware.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "a hardware export"
+    );
     app.dispatch(Command::CancelExport, Instant::now()).unwrap();
     app.dispatch(Command::CancelSubtitles, Instant::now())
         .unwrap();

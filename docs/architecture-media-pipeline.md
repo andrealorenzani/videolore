@@ -35,6 +35,7 @@ At the limit of 3, export + playback use all slots; everything else waits.
 - **Re-encode is needed** when there is any fade, music clip, subtitle line, video volume other than 100% or muted, mixed source formats, or a cut not on a keyframe (REQ-023).
 - **Originals only:** export never uses proxies; the export plan is identical whatever the Preview quality.
 - Cancel and failures still leave no partial file.
+- **Video hardware (0.4.0):** with Export "Faster", an H.264/HEVC re-encode may run on the video hardware first, followed by an output check and, on any problem, a redo with the normal method. These processes run one after another in the export slot. See [hardware export](architecture-hardware-export.md).
 
 ## Music mix
 - One music track below the video track; music clips never overlap and do not move when video is edited (REQ-019, REQ-043).

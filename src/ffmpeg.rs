@@ -831,6 +831,13 @@ pub mod fake {
         }
     }
 
+    /// A finished fake process answering `out`; with `hold`, its stdout blocks after the
+    /// scripted output until the process is killed (a hung program).
+    pub fn process(out: CmdOutput, hold: bool) -> Box<dyn Process> {
+        let held = hold.then(|| Arc::new((Mutex::new(false), Condvar::new())));
+        Box::new(FakeProcess(Some(out), held))
+    }
+
     /// A fake installation that passes [`check`].
     pub fn healthy() -> FakeRunner {
         FakeRunner::default().on(|_, a| {

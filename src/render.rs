@@ -18,6 +18,7 @@
 use crate::ass;
 use crate::ffmpeg::{FfVersion, argv, file_arg, filter_graph_args};
 use crate::format::{self, EncodeSettings};
+use crate::hwenc::{Codec, HwEncode};
 use crate::media::{MediaId, MediaItem};
 use crate::music::{END_FADE, Mix};
 use crate::project::Project;
@@ -669,11 +670,17 @@ pub fn threaded_inputs(inputs: Vec<OsString>, t: u32) -> Vec<OsString> {
 /// Full ffmpeg argv for an export. Writes the concat list / graph script when needed.
 /// `threads` limits ffmpeg's decoding, filtering and encoding threads (re-encode only;
 /// `None` lets ffmpeg decide). It never changes what the export looks like.
+///
+/// With `hw` (a hardware method, re-encode only) the device setup goes before the inputs,
+/// the graph gets the method's tail and the method's video arguments replace the software
+/// ones; everything else (inputs, graph, audio, container) is the same. With `None` the
+/// argv is exactly the one of the normal method.
 pub fn export_args(
     plan: &Plan,
     paths: &ExportPaths<'_>,
     version: FfVersion,
     threads: Option<u32>,
+    hw: Option<&HwEncode>,
 ) -> io::Result<Vec<OsString>> {
     let mut a = head();
     match plan {
@@ -706,6 +713,9 @@ pub fn export_args(
         Plan::Reencode {
             graph, settings: s, ..
         } => {
+            if let Some(h) = hw {
+                a.extend(h.global.iter().cloned());
+            }
             match threads {
                 Some(t) => {
                     a.extend(argv(["-filter_complex_threads".to_string(), t.to_string()]));
@@ -713,29 +723,53 @@ pub fn export_args(
                 }
                 None => a.extend(input_args(&graph.inputs)),
             }
-            a.extend(filter_graph_args(
-                &graph.graph,
-                version,
-                paths.graph_script,
-            )?);
-            a.extend(argv([
-                "-map",
-                "[outv]",
-                "-map",
-                "[outa]",
-                "-c:v",
-                &s.vencoder,
-            ]));
-            a.extend(argv(&s.vextra));
-            if let Some(br) = s.video_bitrate {
-                let buf = (br * 2).to_string();
-                let br = br.to_string();
-                a.extend(argv(["-b:v", &br, "-maxrate", &br, "-bufsize", &buf]));
+            match hw {
+                None => a.extend(filter_graph_args(
+                    &graph.graph,
+                    version,
+                    paths.graph_script,
+                )?),
+                Some(h) => a.extend(filter_graph_args(
+                    &format!("{}{}", graph.graph, h.graph_tail),
+                    version,
+                    paths.graph_script,
+                )?),
             }
-            if s.vencoder == "libx265" && matches!(s.muxer.as_str(), "mp4" | "mov") {
-                a.extend(argv(["-tag:v", "hvc1"]));
+            let codec = match hw {
+                Some(h) => Some(h.codec),
+                None => Codec::of_software_encoder(&s.vencoder),
+            };
+            let hvc1 = codec == Some(Codec::Hevc) && matches!(s.muxer.as_str(), "mp4" | "mov");
+            match hw {
+                None => {
+                    a.extend(argv([
+                        "-map",
+                        "[outv]",
+                        "-map",
+                        "[outa]",
+                        "-c:v",
+                        &s.vencoder,
+                    ]));
+                    a.extend(argv(&s.vextra));
+                    if let Some(br) = s.video_bitrate {
+                        let buf = (br * 2).to_string();
+                        let br = br.to_string();
+                        a.extend(argv(["-b:v", &br, "-maxrate", &br, "-bufsize", &buf]));
+                    }
+                    if hvc1 {
+                        a.extend(argv(["-tag:v", "hvc1"]));
+                    }
+                    a.extend(argv(["-pix_fmt", "yuv420p"]));
+                }
+                Some(h) => {
+                    a.extend(argv(["-map", h.out_label.as_str(), "-map", "[outa]"]));
+                    a.extend(h.vcodec.iter().cloned());
+                    if hvc1 {
+                        a.extend(argv(["-tag:v", "hvc1"]));
+                    }
+                }
             }
-            a.extend(argv(["-pix_fmt", "yuv420p", "-c:a", &s.aencoder]));
+            a.extend(argv(["-c:a", &s.aencoder]));
             if let Some(br) = s.audio_bitrate {
                 a.extend(argv(["-b:a".to_string(), br.to_string()]));
             }
@@ -839,6 +873,48 @@ pub fn still_args(
     Ok(PreviewRender { args, subtitles })
 }
 
+/// The normal method's video graph of the export of `project` at `geometry`, without
+/// audio or music (the output check renders it next to a hardware file). Output `[outv]`;
+/// burned-in subtitles read `subs.ass` from the working folder, as in the export.
+pub fn check_graph(project: &Project, geometry: &Geometry) -> Result<Graph, RenderError> {
+    let segs = segments(project, Micros::ZERO, Source::Export)?;
+    let subtitles = subtitles_doc(project, geometry, Micros::ZERO).is_some();
+    Ok(build_graph(
+        &segs,
+        None,
+        &GraphSpec {
+            video: true,
+            audio: false,
+            pix_fmt: "yuv420p",
+            geometry: *geometry,
+            subtitles,
+            mix: project.mix,
+        },
+    ))
+}
+
+/// Largest picture compared by the output check; bigger ones are scaled down (same
+/// filter on both sides) to bound memory.
+pub const CHECK_MAX_PIXELS: u64 = 1920 * 1080;
+
+/// The size the output check compares pictures at, when it must scale them down.
+pub fn check_size(width: u32, height: u32) -> Option<(u32, u32)> {
+    let px = width as u64 * height as u64;
+    if px <= CHECK_MAX_PIXELS {
+        return None;
+    }
+    let f = (CHECK_MAX_PIXELS as f64 / px as f64).sqrt();
+    let even = |n: f64| ((n as u32) & !1).max(2);
+    Some((even(width as f64 * f), even(height as f64 * f)))
+}
+
+/// The scale filter of [`check_size`] (with a leading comma), or nothing.
+pub fn check_scale(width: u32, height: u32) -> String {
+    check_size(width, height)
+        .map(|(w, h)| format!(",scale={w}:{h}:flags=area"))
+        .unwrap_or_default()
+}
+
 /// argv producing interleaved s16le PCM (`rate` Hz, `channels`) on stdout from `from`:
 /// the video sound and the music, mixed with the project's volumes.
 pub fn preview_audio_args(
@@ -939,6 +1015,8 @@ pub fn frame_key(
 }
 
 #[cfg(test)]
+mod golden_tests;
+#[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use crate::media::ProxyState;
@@ -986,7 +1064,7 @@ pub(crate) mod tests {
             concat_list: &list,
             graph_script: &script,
         };
-        strs(&export_args(plan, &paths, FfVersion::Release(6, 1, 0), threads).unwrap())
+        strs(&export_args(plan, &paths, FfVersion::Release(6, 1, 0), threads, None).unwrap())
     }
 
     fn s(n: i64) -> Micros {

@@ -42,8 +42,14 @@
   `0xFF` blocks before each transcription: it guards against the whisper-rs 0.16 cancel callback
   bug, which read the cancel flag from uninitialised heap memory and so made every transcription
   fail with "code -6" on CI only.
+- **Hardware export** ("Export: Faster"): CI has no graphics hardware, so a fake ffmpeg (unit
+  tests) and a test runner that stands in for each vendor with libx264/libx265 and damages files
+  on request (integration tests) drive every failure path; the tests are listed in
+  [code-hardware.md](code-hardware.md). `VIDEOLORE_REAL_HW=1` exports for real on the machine's
+  own video hardware, and the ignored `qg05_reference_render` measures QG-05 (time, size, VMAF).
 - **Fixtures:** `tests/fixtures/project-v1.vlproj` is a project saved by 0.1.x; it must keep
-  opening (and exporting) identically.
+  opening (and exporting) identically. `tests/fixtures/export-argv-0.3.0.txt` holds the export
+  commands of 0.3.0 for 6 plans; Best quality must keep producing exactly these.
 - Each implemented requirement (`REQ-NNN (implemented)` in `docs/business*.md`) has at least one
   test marked `// covers: REQ-NNN`, checked by `scripts/feature-coverage.sh`.
 

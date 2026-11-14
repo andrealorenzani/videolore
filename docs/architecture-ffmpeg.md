@@ -24,7 +24,7 @@ Alternatives rejected:
 - `scripts/fetch-ffmpeg.sh <target> <dest>` downloads the archive, verifies the SHA-256 and extracts only `ffmpeg`, `ffprobe` and the needed DLLs.
 - BtbN keeps the last build of each month for 2 years, so a month-end build is normally pinned. For 0.3.0 the newest daily build of the 9.0 branch was pinned instead, to ship the latest fixes; daily builds are kept for a shorter time, so if it disappears before a later re-package, the build fails loudly and the pin moves to the next month-end build (see [packaging](architecture-packaging.md#bundled-ffmpeg-refresh-030)). How long Riedl's per-build URLs stay online is unknown; if a pinned URL disappears, the release build fails loudly and the pin is refreshed.
 - The pin is refreshed for every release, because `ffmpeg` parses untrusted media and must receive security fixes.
-- Before packaging, a smoke test runs the bundled copy: it must report its version, list the `libx264`, `libx265`, `libvpx-vp9` and `libopus` encoders, and the `subtitles`, `amix` and `alimiter` filters.
+- Before packaging, a smoke test runs the bundled copy: it must report its version, list the `libx264`, `libx265`, `libvpx-vp9` and `libopus` encoders, and the `subtitles`, `amix` and `alimiter` filters. Since 0.4.0 it also requires the video hardware encoders: `h264_nvenc`, `hevc_nvenc`, `h264_qsv`, `hevc_qsv` and `h264_vaapi`, `hevc_vaapi` (Linux) or `h264_amf`, `hevc_amf` (Windows); `h264_videotoolbox`, `hevc_videotoolbox` (macOS). See [hardware export](architecture-hardware-export.md).
 
 ## Where it is installed
 Always next to the main executable.

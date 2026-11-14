@@ -4,6 +4,7 @@
 //! Tests of the settings decisions (pure) and the settings file.
 
 use super::*;
+use crate::hwenc::{Codec, Vendor};
 use crate::machine::{CpuFeatures, GIB, Machine};
 
 fn fp(logical: u32, physical: u32, ram_gib: u64) -> Fingerprint {
@@ -402,6 +403,7 @@ fn summary_describes_what_changed() {
         preview: PreviewQuality::Original,
         subtitles: SubtitleQuality::Fast,
         effort: Effort::Maximum,
+        export: ExportChoice::Faster,
     };
     let b = Choices::default();
     assert_eq!(
@@ -410,6 +412,7 @@ fn summary_describes_what_changed() {
             "Preview quality: Original → Automatic".to_string(),
             "Subtitle quality: Fast → Balanced".to_string(),
             "How hard videolore works: Maximum speed → Balanced".to_string(),
+            "Export: Faster → Best quality".to_string(),
         ]
     );
     assert_eq!(summary(b, b), vec![ALREADY_RECOMMENDED.to_string()]);
@@ -428,6 +431,7 @@ fn settings_file_format_is_stable() {
             preview: PreviewQuality::Smoother,
             subtitles: SubtitleQuality::MostAccurate,
             effort: Effort::Light,
+            export: ExportChoice::Faster,
         },
         Some(fp(8, 4, 16)),
     );
@@ -436,6 +440,8 @@ fn settings_file_format_is_stable() {
     assert_eq!(v["preview_quality"], "smoother");
     assert_eq!(v["subtitle_quality"], "most_accurate");
     assert_eq!(v["effort"], "light");
+    assert_eq!(v["export"], "faster");
+    assert_eq!(v["hardware_off"], serde_json::json!([]));
     assert_eq!(v["machine"]["logical"], 8);
     assert_eq!(v["machine"]["ram_gib"], 16);
     assert!(v["ffmpeg"].is_null());
@@ -443,4 +449,201 @@ fn settings_file_format_is_stable() {
         assert_eq!(SubtitleQuality::ALL[q.index()], q);
     }
     assert_eq!(Settings::default().version, VERSION);
+}
+
+/// The settings file of videolore 0.3.0 (no Export choice, no hardware memory).
+fn file_0_3_0(m: &Fingerprint, effort: &str) -> String {
+    let machine = serde_json::to_string(m).unwrap();
+    let rec = recommend(m);
+    let subs = serde_json::to_value(rec.subtitles).unwrap();
+    format!(
+        r#"{{"version":2,"preview_quality":"automatic","subtitle_quality":{subs},"effort":"{effort}","ffmpeg":null,"ffprobe":null,"machine":{machine}}}"#
+    )
+}
+
+// covers: REQ-065
+#[test]
+fn upgrade_from_0_3_keeps_the_status_and_loads_best_quality() {
+    let m = fp(8, 4, 16);
+    // recommended settings stay recommended, silently, and the file is not rewritten
+    let st = startup(&bytes(&file_0_3_0(&m, "balanced")), &m);
+    assert_eq!(st.notice, None);
+    assert!(!st.write && !st.backup);
+    assert_eq!(st.settings.export, ExportChoice::BestQuality);
+    assert!(st.settings.hardware_off.is_empty());
+    assert!(st.settings.is_recommended(&m));
+    // custom settings stay custom
+    let st = startup(&bytes(&file_0_3_0(&m, "maximum")), &m);
+    assert_eq!(st.notice, None);
+    assert_eq!(st.settings.export, ExportChoice::BestQuality);
+    assert!(!st.settings.is_recommended(&m));
+    // 0.2.x upgrades and damaged files get Best quality too
+    let st = startup(&bytes(r#"{"ffmpeg":null,"proxies_enabled":false}"#), &m);
+    assert_eq!(st.settings.export, ExportChoice::BestQuality);
+    let st = startup(&bytes("{"), &m);
+    assert_eq!(st.notice, Some(StartNotice::Malformed));
+    assert_eq!(st.settings.export, ExportChoice::BestQuality);
+    // an unknown Export value is a damaged file
+    let st = startup(
+        &bytes(
+            &file_0_3_0(&m, "balanced")
+                .replace("\"version\":2", "\"export\":\"turbo\",\"version\":2"),
+        ),
+        &m,
+    );
+    assert_eq!(st.notice, Some(StartNotice::Malformed));
+    assert_eq!(st.settings.export, ExportChoice::BestQuality);
+}
+
+// covers: REQ-060
+#[test]
+fn best_quality_is_the_recommendation_everywhere_and_faster_is_custom() {
+    for m in [fp(2, 1, 2), fp(4, 2, 8), fp(16, 8, 64), fp(64, 32, 256)] {
+        assert_eq!(recommend(&m).export, ExportChoice::BestQuality);
+        // first start saves Best quality
+        let first = startup(&Loaded::Missing, &m);
+        assert_eq!(first.settings.export, ExportChoice::BestQuality);
+        let saved_json = serde_json::to_value(&first.settings).unwrap();
+        assert_eq!(saved_json["export"], "best_quality");
+        // choosing Faster makes the settings custom
+        let mut s = first.settings.clone();
+        s.export = ExportChoice::Faster;
+        assert!(!s.is_recommended(&m));
+        assert_eq!(s.choices().export, ExportChoice::Faster);
+        // "Use recommended settings" goes back to Best quality and says so
+        let new = recommend(&m);
+        assert_eq!(
+            summary(s.choices(), new),
+            vec!["Export: Faster → Best quality".to_string()]
+        );
+        s.set_choices(new);
+        assert_eq!(s.export, ExportChoice::BestQuality);
+        assert!(s.is_recommended(&m));
+    }
+    // the choice is saved and read back
+    let m = fp(8, 4, 16);
+    let mut s = Settings::with(recommend(&m), Some(m.clone()));
+    s.export = ExportChoice::Faster;
+    let st = startup(&saved(&s), &m);
+    assert_eq!(st.settings.export, ExportChoice::Faster);
+    assert_eq!(st.notice, None);
+    // the main section shows both choices with their one-line explanations
+    let texts = main_texts();
+    for e in ExportChoice::ALL {
+        assert!(texts.contains(&e.label()) && texts.contains(&e.explanation()));
+        assert!(!e.explanation().contains('\n'));
+    }
+    assert!(texts.contains(&EXPORT_TITLE) && texts.contains(&NO_HARDWARE_NOTE));
+    assert!(
+        ExportChoice::Faster
+            .explanation()
+            .contains("video hardware")
+    );
+}
+
+fn off(format: &str, method: &str, version: &str) -> serde_json::Value {
+    serde_json::json!({"format": format, "method": method, "version": version})
+}
+
+// covers: REQ-064
+#[test]
+fn hardware_memory_is_validated_entry_by_entry() {
+    let m = fp(8, 4, 16);
+    let v = "1.2.3";
+    let mut file = serde_json::to_value(Settings::with(recommend(&m), Some(m.clone()))).unwrap();
+    file["hardware_off"] = serde_json::json!([
+        off("h264", "nvenc", v),
+        off("hevc", "vaapi", v),
+        off("av1", "nvenc", v),             // unknown format
+        off("h264", "quantum", v),          // unknown method
+        off("h264", "qsv", &"9".repeat(40)), // version too long
+        off("h264", "qsv", ""),             // no version
+        off("h264", "nvenc", v),            // repeated
+        42,
+        {"format": "hevc"},
+    ]);
+    let st = startup_at(&bytes(&file.to_string()), &m, v);
+    assert_eq!(st.notice, None, "bad entries do not make the file damaged");
+    assert_eq!(
+        st.settings.hardware_off,
+        vec![
+            HardwareOff {
+                format: Codec::H264,
+                method: Vendor::Nvenc,
+                version: v.into()
+            },
+            HardwareOff {
+                format: Codec::Hevc,
+                method: Vendor::Vaapi,
+                version: v.into()
+            },
+        ]
+    );
+    assert!(st.settings.hardware_is_off(Codec::H264, Vendor::Nvenc));
+    assert!(!st.settings.hardware_is_off(Codec::Hevc, Vendor::Nvenc));
+    // not a list at all: nothing remembered, file still fine
+    file["hardware_off"] = serde_json::json!("nvenc");
+    let st = startup_at(&bytes(&file.to_string()), &m, v);
+    assert_eq!(st.notice, None);
+    assert!(st.settings.hardware_off.is_empty());
+    // at most 8 entries are kept
+    file["hardware_off"] = serde_json::Value::Array(
+        (0..20)
+            .map(|i| {
+                off(
+                    if i % 2 == 0 { "h264" } else { "hevc" },
+                    "nvenc",
+                    &format!("{v}-{i}"),
+                )
+            })
+            .collect(),
+    );
+    let st = startup_at(&bytes(&file.to_string()), &m, v);
+    assert!(
+        st.settings.hardware_off.is_empty(),
+        "other versions are forgotten"
+    );
+    let mut s = Settings::default();
+    for i in 0..20 {
+        s.turn_hardware_off(
+            if i % 2 == 0 { Codec::H264 } else { Codec::Hevc },
+            Vendor::ALL[i % 5],
+            v,
+        );
+    }
+    assert_eq!(s.hardware_off.len(), MAX_HARDWARE_OFF);
+    let n = s.hardware_off.len();
+    s.turn_hardware_off(s.hardware_off[0].format, s.hardware_off[0].method, v);
+    assert_eq!(s.hardware_off.len(), n, "no duplicates");
+}
+
+/// A remembered problem is forgotten when the program version or the computer changes.
+// covers: REQ-064
+#[test]
+fn hardware_memory_resets_with_a_new_version_or_computer() {
+    let m = fp(8, 4, 16);
+    let mut s = Settings::with(recommend(&m), Some(m.clone()));
+    s.export = ExportChoice::Faster;
+    s.turn_hardware_off(Codec::H264, Vendor::Qsv, "0.4.0");
+    // same version, same computer: kept, nothing written
+    let st = startup_at(&saved(&s), &m, "0.4.0");
+    assert!(st.settings.hardware_is_off(Codec::H264, Vendor::Qsv));
+    assert!(!st.write);
+    // a new version: forgotten (and the file updated); the choice stays
+    let st = startup_at(&saved(&s), &m, "0.4.1");
+    assert!(st.settings.hardware_off.is_empty());
+    assert!(st.write);
+    assert_eq!(st.settings.export, ExportChoice::Faster);
+    // another computer: forgotten
+    let st = startup_at(&saved(&s), &fp(16, 8, 32), "0.4.0");
+    assert!(st.settings.hardware_off.is_empty());
+    assert_eq!(st.notice, Some(StartNotice::MachineChanged));
+    // the running version is the default
+    s.hardware_off.clear();
+    s.turn_hardware_off(Codec::Hevc, Vendor::Amf, env!("CARGO_PKG_VERSION"));
+    assert!(
+        startup(&saved(&s), &m)
+            .settings
+            .hardware_is_off(Codec::Hevc, Vendor::Amf)
+    );
 }

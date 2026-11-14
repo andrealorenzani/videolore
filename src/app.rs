@@ -6,9 +6,10 @@
 //! recognition, the ffmpeg check, export) runs on other threads; [`AppState::tick`]
 //! collects the results once per frame.
 
-use crate::export::{self, ExportEvent, ExportHandle, ExportJob};
+use crate::export::{self, ExportEvent, ExportHandle, ExportJob, ExportMethod};
 use crate::ffmpeg::{self, FfmpegInfo, Runner};
 use crate::history::History;
+use crate::hwenc::{self, Codec, HwOffer, HwStatus, Platform, ProbeLimits};
 use crate::jobs::{Limited, MAX_CAP, MAX_PROCESSES, Pool, Priority, Scheduler};
 use crate::machine::{Fingerprint, GIB, Machine};
 use crate::media::{self, MediaId, MediaItem, MediaStatus, ProxyState};
@@ -18,7 +19,7 @@ use crate::project::{self, Edit, Project, ProjectDoc};
 use crate::proxy::{self, ProxyCache, ProxyEvent, ProxyTask, ProxyWorker};
 use crate::render;
 use crate::settings::{
-    self, Budget, Effort, PreviewQuality, Settings, StartNotice, SubtitleQuality,
+    self, Budget, Effort, ExportChoice, PreviewQuality, Settings, StartNotice, SubtitleQuality,
 };
 use crate::stt::{
     self, ModelEvent, ModelFetcher, ModelSource, ModelStore, SttEvent, SttHandle, SttJob,
@@ -198,6 +199,9 @@ pub enum Command {
     SetPreviewQuality(PreviewQuality),
     SetSubtitleQuality(SubtitleQuality),
     SetEffort(Effort),
+    SetExport(ExportChoice),
+    /// Forgets the hardware problems and checks the video hardware again.
+    TryHardwareAgain,
     /// Detects the machine again and applies the recommended choices.
     UseRecommended,
     /// Asks before removing the downloaded speech recognition files.
@@ -262,6 +266,29 @@ struct ProxyJob {
     events: Sender<ProxyEvent>,
 }
 
+/// The background check of the video hardware.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum HwProbe {
+    /// Not run (it runs only when Export is Faster or the user asks).
+    #[default]
+    NotChecked,
+    /// Running; the number tells this run from older ones.
+    Checking(u64),
+    Done(HwStatus),
+}
+
+/// What the app knows about the video hardware (this session only).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct HwState {
+    pub probe: HwProbe,
+    /// How the last export of this session was made.
+    pub last_method: Option<ExportMethod>,
+}
+
+/// A hardware check in the background: its number, where its result arrives, its cancel
+/// flag.
+type RunningProbe = (u64, Receiver<(u64, HwStatus)>, Arc<AtomicBool>);
+
 /// Message shown while the startup check of ffmpeg runs.
 pub const CHECKING_FFMPEG: &str = "checking ffmpeg…";
 
@@ -318,6 +345,16 @@ pub struct AppState {
     pub frame_serial: u64,
     export: Option<ExportHandle>,
     pub export_status: ExportStatus,
+    /// Video hardware for "Export: Faster".
+    pub hw: HwState,
+    hw_probe: Option<RunningProbe>,
+    hw_generation: u64,
+    /// Describes this computer for the hardware check; replaced in tests.
+    pub platform: fn() -> Platform,
+    /// Time limits of the hardware check.
+    pub probe_limits: ProbeLimits,
+    /// No progress for this long stops a hardware export (tests shorten it).
+    pub stall_timeout: Duration,
     stt: Option<SttHandle>,
     /// Subtitle generation progress (0..=1) while it runs.
     pub stt_progress: Option<f32>,
@@ -437,6 +474,7 @@ impl AppState {
         s.fetcher = stt::default_fetcher();
         s.open_requests = crate::desktop::take_open_requests;
         s.desktop_integrated = crate::desktop::self_integrating();
+        s.platform = Platform::detect;
         s.start_ffmpeg_check();
         s
     }
@@ -496,6 +534,12 @@ impl AppState {
             frame_serial: 0,
             export: None,
             export_status: ExportStatus::default(),
+            hw: HwState::default(),
+            hw_probe: None,
+            hw_generation: 0,
+            platform: Platform::none,
+            probe_limits: ProbeLimits::default(),
+            stall_timeout: export::STALL_TIMEOUT,
             stt: None,
             stt_progress: None,
             model_store: None,
@@ -539,6 +583,12 @@ impl AppState {
         self.ffmpeg = info;
         self.ffmpeg_checking = false;
         self.ffmpeg_check = None;
+        // another ffmpeg may have other hardware methods: check again when they matter
+        self.stop_hw_probe();
+        self.hw.probe = HwProbe::NotChecked;
+        if self.settings.export == ExportChoice::Faster {
+            self.start_hw_probe();
+        }
         let mut preview = Preview::new(
             preview_config(&self.ffmpeg, &self.sched, &self.runner),
             crate::preview::default_sink(),
@@ -552,6 +602,73 @@ impl AppState {
         for id in ids {
             self.maybe_proxy(id);
         }
+    }
+
+    /// Starts the background check of the video hardware (needs a working ffmpeg; an
+    /// older run still going is cancelled and its result ignored).
+    fn start_hw_probe(&mut self) {
+        self.stop_hw_probe();
+        let Ok(info) = &self.ffmpeg else {
+            self.hw.probe = HwProbe::NotChecked;
+            return;
+        };
+        self.hw_generation += 1;
+        let generation = self.hw_generation;
+        let (tx, rx) = channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let runner = self
+            .limited(Priority::Probe)
+            .cancellable(Arc::clone(&cancel));
+        let ffmpeg = info.ffmpeg.clone();
+        let encoders = info.encoders.clone();
+        let platform = self.platform;
+        let limits = self.probe_limits;
+        let flag = Arc::clone(&cancel);
+        std::thread::spawn(move || {
+            let status = hwenc::probe_all(&runner, &ffmpeg, &encoders, &platform(), limits, &flag);
+            if !flag.load(Ordering::SeqCst) {
+                let _ = tx.send((generation, status));
+            }
+        });
+        self.hw.probe = HwProbe::Checking(generation);
+        self.hw_probe = Some((generation, rx, cancel));
+    }
+
+    fn stop_hw_probe(&mut self) {
+        if let Some((_, _, cancel)) = self.hw_probe.take() {
+            cancel.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// The hardware the next export may use: only with Export = Faster, once the check
+    /// has finished, and not for a format whose method had a problem (that method is
+    /// tried again when the check picks a different one).
+    pub fn hw_offer(&self) -> Option<HwOffer> {
+        if self.settings.export != ExportChoice::Faster {
+            return None;
+        }
+        // the output check needs the `psnr` filter
+        if !self
+            .ffmpeg
+            .as_ref()
+            .is_ok_and(|i| i.filters.contains(crate::outcheck::CHECK_FILTER))
+        {
+            return None;
+        }
+        let HwProbe::Done(status) = &self.hw.probe else {
+            return None;
+        };
+        let allowed = |codec: Codec| {
+            status
+                .get(codec)
+                .filter(|c| !self.settings.hardware_is_off(codec, c.vendor))
+                .cloned()
+        };
+        let offer = HwOffer {
+            h264: allowed(Codec::H264),
+            hevc: allowed(Codec::Hevc),
+        };
+        (offer.h264.is_some() || offer.hevc.is_some()).then_some(offer)
     }
 
     /// The machine characteristics the recommendations are based on.
@@ -622,6 +739,9 @@ impl AppState {
         self.settings_summary = settings::summary(old, new);
         self.settings.set_choices(new);
         self.settings.machine = Some(fp);
+        // the video hardware gets a fresh chance
+        self.settings.hardware_off.clear();
+        self.start_hw_probe();
         self.banner = None;
         self.apply_budget();
         self.apply_preview_quality(now);
@@ -1183,6 +1303,20 @@ impl AppState {
                 self.apply_budget();
                 self.save_settings()
             }
+            Command::SetExport(e) => {
+                self.settings.export = e;
+                self.settings_summary.clear();
+                if e == ExportChoice::Faster && self.hw.probe == HwProbe::NotChecked {
+                    self.start_hw_probe();
+                }
+                // a running export keeps its method; the next one uses the new choice
+                self.save_settings()
+            }
+            Command::TryHardwareAgain => {
+                self.settings.hardware_off.clear();
+                self.start_hw_probe();
+                self.save_settings()
+            }
             Command::UseRecommended | Command::BannerAction(BannerAction::UseRecommended) => {
                 self.use_recommended(now)
             }
@@ -1611,6 +1745,9 @@ impl AppState {
             can_burn_subtitles: info.has_subtitles(),
             threads: self.budget.threads,
             work_root: self.work_root.clone(),
+            hw: self.hw_offer(),
+            stall_timeout: self.stall_timeout,
+            check_timeout: export::CHECK_TIMEOUT,
         };
         let runner: Arc<dyn Runner> = Arc::new(self.limited(Priority::Export));
         self.export = Some(export::start(job, runner));
@@ -1704,6 +1841,14 @@ impl AppState {
         {
             self.set_ffmpeg(r);
         }
+        if let Some((generation, rx, _)) = &self.hw_probe
+            && let Ok((g, status)) = rx.try_recv()
+        {
+            if g == *generation && self.hw.probe == HwProbe::Checking(g) {
+                self.hw.probe = HwProbe::Done(status);
+            }
+            self.hw_probe = None;
+        }
         for p in (self.open_requests)() {
             let _ = self.dispatch(Command::OpenProject(p), now);
         }
@@ -1734,8 +1879,27 @@ impl AppState {
                     self.export_status.stream_copy = Some(stream_copy)
                 }
                 ExportEvent::Progress(p) => self.export_status.progress = p,
-                ExportEvent::Done(p) => {
-                    self.finish_export(format!("Exported to {}", p.display()));
+                ExportEvent::Done { path, method } => {
+                    // a constant-quality file that came out too big is about the video, not a
+                    // fault of the hardware: nothing is remembered
+                    if let ExportMethod::SoftwareAfterProblem {
+                        codec,
+                        vendor,
+                        problem,
+                    } = &method
+                        && !matches!(
+                            problem,
+                            export::Problem::CheckFailed(crate::outcheck::CheckFailure::TooLarge(
+                                _
+                            ))
+                        )
+                    {
+                        self.settings
+                            .turn_hardware_off(*codec, *vendor, env!("CARGO_PKG_VERSION"));
+                        let _ = self.save_settings();
+                    }
+                    self.hw.last_method = Some(method);
+                    self.finish_export(format!("Exported to {}", path.display()));
                 }
                 ExportEvent::Failed(m) => {
                     self.notice = Some(format!("Export failed: {m}"));
@@ -1891,6 +2055,7 @@ impl AppState {
             || self.is_exporting()
             || self.is_generating()
             || self.ffmpeg_checking
+            || self.hw_probe.is_some()
             || !self.probe_cancel.is_empty()
             || !self.proxy_jobs.is_empty()
     }
@@ -1926,6 +2091,8 @@ fn preview_config(
     })
 }
 
+#[cfg(test)]
+mod hw_tests;
 #[cfg(test)]
 mod settings_tests;
 #[cfg(test)]

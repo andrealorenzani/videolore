@@ -44,6 +44,15 @@ fetch_tool() {
     [[ "$(sha256 "$2")" == "$sha" ]] || { echo "checksum mismatch for $1" >&2; exit 1; }
 }
 
+# Video hardware encoders ("Export: Faster") each bundled ffmpeg must have.
+hw_encoders() {
+    case "$1" in
+    linux-x86_64) echo h264_nvenc hevc_nvenc h264_qsv hevc_qsv h264_vaapi hevc_vaapi ;;
+    windows-x86_64) echo h264_nvenc hevc_nvenc h264_qsv hevc_qsv h264_amf hevc_amf ;;
+    macos-aarch64) echo h264_videotoolbox hevc_videotoolbox ;;
+    esac
+}
+
 # The bundled ffmpeg must have everything videolore needs.
 smoke_test() {
     local ff="$1"
@@ -51,10 +60,10 @@ smoke_test() {
     local enc filters
     enc=$("$ff" -hide_banner -encoders)
     filters=$("$ff" -hide_banner -filters)
-    for e in libx264 libx265 libvpx-vp9 libopus; do
+    for e in libx264 libx265 libvpx-vp9 libopus $(hw_encoders "$target"); do
         grep -qw "$e" <<<"$enc" || { echo "bundled ffmpeg lacks encoder $e" >&2; exit 1; }
     done
-    for f in subtitles amix alimiter; do
+    for f in subtitles amix alimiter psnr; do
         grep -qw "$f" <<<"$filters" || { echo "bundled ffmpeg lacks filter $f" >&2; exit 1; }
     done
     echo "smoke test passed: $ff"
@@ -74,6 +83,10 @@ case "$target" in
 linux-x86_64)
     exe=target/release/videolore
     smoke_test "$ffdir/ffmpeg"
+    # The video hardware libraries (libva, libcuda, libvpl) come from the system at run
+    # time: the bundled ffmpeg must be dynamically linked against glibc to load them.
+    file -L "$ffdir/ffmpeg" | grep -q "dynamically linked" ||
+        { echo "the bundled ffmpeg is not dynamically linked: video hardware cannot load" >&2; exit 1; }
     # The packages must run on current Ubuntu LTS and Fedora: refuse an executable that
     # needs a newer glibc than Ubuntu 24.04's 2.39.
     max_glibc="2.39"

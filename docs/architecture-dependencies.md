@@ -30,6 +30,8 @@ Exact versions are in `Cargo.toml` and `Cargo.lock`, which are the source of tru
 
 **0.3.0 review.** Every crate was checked for speed, maintenance and latest version: none is dropped and none is added. Machine detection uses the Rust standard library (cores, processor features) plus `sysinfo`; crash-safe locking of work folders uses the standard library's file locks. `eframe` keeps its OpenGL (`glow`) renderer; the `wgpu` renderer was not chosen because it is heavier.
 
+**0.4.0.** Hardware export adds no crate. The hardware encoders and the VMAF quality measurement used for manual checks are already in the bundled `ffmpeg` builds; graphics drivers and their libraries (libva, the NVIDIA and Intel runtimes) come from the user's system and are not bundled. See [hardware export](architecture-hardware-export.md).
+
 Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDLA-Permissive-2.0). Both are listed in the notices and allowed by the CI licence check.
 
 ## Bundled with the installers (not Rust)

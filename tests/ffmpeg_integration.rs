@@ -21,6 +21,9 @@ use videolore::project::{self, Project};
 use videolore::render::{self, Plan};
 use videolore::time::Micros;
 
+#[path = "ffmpeg_integration/hw.rs"]
+mod hw;
+
 struct Env {
     info: FfmpegInfo,
     dir: tempfile::TempDir,
@@ -249,6 +252,9 @@ impl Env {
             // the tests running in parallel from fighting over the cores
             threads: Some(2),
             work_root: self.dir.path().join("work"),
+            hw: None,
+            stall_timeout: export::STALL_TIMEOUT,
+            check_timeout: export::CHECK_TIMEOUT,
         }
     }
 
@@ -264,7 +270,7 @@ impl Env {
             &AtomicBool::new(false),
             &tx,
         );
-        (r, rx.try_iter().collect())
+        (r.map(|(path, _)| path), rx.try_iter().collect())
     }
 
     /// One video frame at `t` as RGB24.
@@ -480,7 +486,9 @@ fn cancel_mid_export_leaves_nothing_behind() {
             Ok(ExportEvent::Progress(_)) => {
                 h.cancel();
             }
-            Ok(e @ (ExportEvent::Cancelled | ExportEvent::Done(_) | ExportEvent::Failed(_))) => {
+            Ok(
+                e @ (ExportEvent::Cancelled | ExportEvent::Done { .. } | ExportEvent::Failed(_)),
+            ) => {
                 last = Some(e);
                 break;
             }

@@ -3,7 +3,9 @@
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
 ## State
-- Target version 0.3.0. Next free ID: REQ-060. Never reuse IDs. Quality goals use QG-NN (next QG-05), no covers: tests.
+- Target version 0.4.0. Next free ID: REQ-066. Never reuse IDs. Quality goals use QG-NN (next QG-06), no covers: tests.
+- impl in 0.4.0: ALL 001-065. Nothing planned.
+- 0.4.0 = hardware export (055 reworded planned->impl, 060-065 new, QG-05) + Andrea's confirmation of 0.3.0 defaults (2026-11-14). Docs: 055, 060-065 in business-export.md "### Faster export (0.4.0)" + "## Known limitations (0.4.0)"; QG-05 in business-performance.md Quality goals; perf doc REQ-055 line replaced by cross-ref (no "(planned)" pattern left).
 - impl in 0.3.0: 001-054, 056-059. planned: 055 (hw export encoding).
 - impl in 0.2.0: ALL 001-044 (014-020 moved planned -> implemented).
 - 0.3.0 = compatibility (first-start auto setup + plain Settings), performance review, security, faster tests, CI warnings. Andrea away during PLAN/UPDATE -> SEVERE ambiguities DEFAULTED, must be asked at the end (A1-A4 + Architect's defaulted items, see 0.3.0 section).
@@ -78,15 +80,35 @@
 - 051 Preview quality: Automatic = 038 rule; Smoother = proxy if > 1280x720; Original = never. Export identical whatever choice (D10).
 - 052 subtitle levels: Fast = tiny-q5_1 32 MB (unchanged); Balanced = small-q5_1 ~190 MB; Most accurate = large-v3-turbo-q5_0 ~574 MB; all MIT. Rec: Fast if !speech_supported; MA if L>=12 && RAM>=15 GiB; Balanced if L>=4 && RAM>=7 GiB; else Fast. Greyed: MA RAM<7 GiB, Balanced RAM<3.5 GiB. Download only when generating w/ missing level, consent dialog (size, licence) options: Download / "Use Fast instead (no download)" if tiny present (THIS RUN ONLY, setting unchanged) / "Download the Fast one instead (32 MB)" if nothing installed / local file (must match level size+SHA) / Cancel. AC WER(higher) <= WER(Fast) on reference clip (gated integration test); decline changes nothing; level change never auto-regenerates.
 - 053 (wording aligned w/ Architect: "Speech recognition files" / "Remove downloaded speech files") disk used by downloaded models + remove w/ confirmation; projects/subtitles untouched; re-download w/ consent. AC size == disk; freed; subtitles still show/export.
-- 054 (REWORDED per Architect verdict) older CPUs never crash: !speech_supported (x86-64 lacking AVX2/FMA/F16C/BMI2/SSE4.2/AVX) -> Generate shows "This computer's processor is too old for automatic subtitles; you can still add subtitle lines by hand"; no download offered; 3 levels greyed w/ same reason; ggml never reached. NO fallback engine in 0.3.0 (single static ggml; no GGML_BACKEND_DL in whisper-rs-sys). Fallback engine (SSE-only helper exe) = planned later, no REQ id yet (candidate for 0.4). AC simulated CPU -> no crash, message, rec never unrunnable.
-- 055 (planned) hw video encoding for export w/ silent sw fallback, keep 022/023/036, "Export: Faster / Best quality" only when built. NOT BUILT 0.3.0 (Architect): no GPU in CI, per-vendor tuning, driver faults exit 0 -> fallback can't catch. Planned design in architecture notes.
+- 054 (REWORDED per Architect verdict) older CPUs never crash: !speech_supported (x86-64 lacking AVX2/FMA/F16C/BMI2/SSE4.2/AVX) -> Generate shows "This computer's processor is too old for automatic subtitles; you can still add subtitle lines by hand"; no download offered; 3 levels greyed w/ same reason; ggml never reached. NO fallback engine in 0.3.0 (single static ggml; no GGML_BACKEND_DL in whisper-rs-sys). Fallback engine (SSE-only helper exe) DROPPED 0.4.0 (Andrea), out of scope. AC simulated CPU -> no crash, message, rec never unrunnable.
+- 055 (0.3.0 planned, NOT BUILT: no GPU in CI, per-vendor tuning, exit-0 driver faults) -> 0.4.0 reworded + implemented, see 0.4.0 section.
 - 056 responsive while export + STT run together at any level: play/pause, timeline scroll, open Settings react; harness: each frame <= 200 ms + effect visible next frame. 032 unchanged.
 - 057 hostile/malformed project/settings/media: no crash, no program run, no writes outside user-chosen/own folders, sources untouched; bad project refused clearly; bad settings -> recommended + notice (bad file copied to settings.json.bad). Corpus: bad/truncated JSON, deep nesting, >16 MiB, huge numbers, ../ & absolute paths, control/bidi chars, FIFO project.
 - 058 models only from fixed built-in https URLs, SHA-256 checked before use; partial/wrong deleted; no other network/telemetry/update check. AC wrong checksum, interrupted, http:// refused.
 - 059 temp files user-only (0600/0700 Unix), removed on finish/cancel, crash leftovers cleaned next start. Moved from system temp to <cache>/videolore/work/. Finished export 0644.
 - QG-01 perf review (each decision w/ reason, by Architect); no regression: export & Fast STT <= 0.2.2 +5%, start <= +0.5 s. PE reports.
 - QG-02 vuln check in CI (cargo-deny advisories + yanked deny; documented ignores only); bundled ffmpeg refreshed (9.0.2 latest; BtbN re-pin).
-- QG-03 cargo test wall time >= 30% lower than 0.2.2, nothing removed/weakened, cov >= 85, feature 100%.
+- QG-03 cargo test wall time >= 30% lower than 0.2.2, nothing removed/weakened, cov >= 85, feature 100%. RESULT 0.3.0: 25% (target missed; recorded in perf doc, per caller 0.4.0 UPDATE).
+
+### 0.4.0 (doc: business-export.md "Faster export (0.4.0)"; QG-05 in business-performance.md)
+Andrea answers 2026-11-14: S1 Best quality default everywhere, Faster opt-in, upgrades load Best quality. S2 all vendors on, safety net, unverified combos = known limitations. S3 check = full decode + metadata/frame count + 3 sample frames vs normal render. S4 Faster <= 3 VMAF below BQ, size <= 1.5x BQ.
+- 055 (reworded) Export=Faster + re-encode to H.264/HEVC -> working hw from 061: NVENC (Win/Linux), QSV (Win/Linux), AMF (Win only), VA-API (Linux; AMD+Intel), VideoToolbox (macOS). Missing/error exit/crash/30 s no-progress stall/063 fail -> silent sw redo, no error. AC simulated per vendor: each failure -> file same format as BQ, correct frame count, no error, no temp left (059); cancel in hw/check/redo -> no partial (021), no redo; BQ never uses hw. Redo fails too -> Failed as 0.3.0, nothing remembered.
+- 060 Settings main section "Export: Faster / Best quality", texts: Faster "Uses your computer's video hardware when it can. Often quicker, but not on every computer; files may be a little larger." (changed post-QG-05 2026-11-14 from "Much quicker; ..." because iGPU measured slower; code must match) BQ "Uses the normal method. Slower, best picture for the file size." Rec = BQ always. Faster never greyed; no-hw note "This computer has no video hardware videolore can use, so both choices give the same result." (only when check done + neither format has hw). Next export only. AC 046(a) banned words; Faster -> Custom; 047 -> BQ; program settings not project (C3); 045 saves BQ.
+- 061 background check per codec, <=1 s/candidate (from spawn), <=3 s total, no window/startup/preview delay, no network, counts in 033 cap (1 Probe-priority slot). Export before check done -> sw. Order Win NVENC>QSV>AMF; Linux NVENC>QSV>VA-API (render nodes by number, max 4); macOS VT. Stops at first working per codec. Runs ONLY when needed (Architect, allowed by plan): startup if saved=Faster, switch to Faster, Use recommended, Try again, ffmpeg override change while Faster. BQ -> nothing runs; Advanced "not checked (only checked when Export is Faster)". Session-only results, no cache. Advanced: hw per format + last export method (session only). AC QG-01 startup, limits, deterministic, user ffmpeg (030) probed same.
+- 062 hw output == BQ: container, codec, res, fps, 8-bit 4:2:0, audio, frames+timing, letterbox, fades, music, burned subs (022, 037). HEVC mp4/mov hvc1 (036). Choice never changes stream copy (023): byte-identical. Non-H.264/HEVC always sw. Hw targets same avg bitrate as sw (VBR, per-vendor factor 100-120%); unknown source bitrate -> sw.
+- 063 output check before publish: full decode no errors; frame count/duration/res/fps/pix_fmt/profile/hvc1/audio match; 3 samples (10/50/90%, best of +-1 neighbours) PSNR >= 25 dB on Y,U,V vs unencoded sw render (Architect threshold, ASSUMPTION, may move after QG-05). Colour tags not compared. Progress includes check (hw 0-0.85, check 0.85-1). AC simulated empty/truncated/missing frames/wrong size/green/garbage detected -> correct sw file; good file passes.
+- 064 failure memory per format+method on this computer; resets: fingerprint change, new version, Use recommended (+recheck), "Try video hardware again" (+recheck); also a different method winning the check = hw change -> retry (Architect). Recorded only if sw redo succeeded; cancel never. Advanced "Video hardware turned off after a problem". Settings file stays v2 with optional fields export + hardware_off (max 8, validated per entry).
+- 065 0.3.x file w/o export -> BQ, no notice, rec/custom status unchanged, file not rewritten; 0.2.x (049) + damaged (057) -> BQ.
+- QG-05 manual real-hw verification (no covers): Win NVIDIA/Intel/AMD; Linux NVIDIA prop/Intel/AMD; macOS AS. Ref project (mixed formats letterbox, 50+ cuts, fades, music, subs), H.264+HEVC, Faster vs BQ: a Advanced shows hw; b format+frames == BQ; c hvc1 plays QuickTime+iPhone; d no blocking/banding/colour shift/green; e <= 3 VMAF below; f size <= 1.5x; g time incl check >= 40% lower at 1080p (ASSUMPTION, measured target not gate; Architect estimate 20-45% -> AT RISK); h forced failure -> correct sw file. Results per release in developer docs (docs/code.md); unverified combos = known limitations.
+- Known limitations 0.4.0 (+ post-impl: libva>=2.21 for bundled ffmpeg, Intel HEVC hw broken on measured driver, Faster can be slower on iGPU) (from Architect): NVIDIA driver >= 610 (SDK 13.1 headers; older -> check fails, sw, Advanced "graphics driver too old"); Linux VA-API/QSV need system libva + vendor driver; Fedora default Mesa no H.264/HEVC encode -> RPM Fusion freeworld VA drivers (mesa-va-drivers-freeworld) for AMD/Intel; QSV on Linux = default render node only (other Intel node via VA-API); multi-GPU always prefers NVIDIA; unverified vendor combos per QG-05; 3-sample check misses damage between samples (QG-05 d guard); whole-system driver hang not preventable.
+- POST-IMPL real-hw findings (Andrea laptop Ubuntu 24.04, Intel Iris Plus G7; Andrea chose fix before release, PE fixed):
+  - Ubuntu free Intel VA driver refuses bitrate control -> VA-API = constant-quality + size guard: hw file > 1.5x expected BQ size -> sw redo, NOT recorded as hw failure (064). Exception to D25.
+  - Bundled ffmpeg needs system libva >= 2.21; older (24.04 = 2.20) -> VA-API + QSV on Linux skipped, no crash, Advanced "needs a newer system video library (libva 2.21 or newer)". System/user ffmpeg (030) can still use hw.
+  - QG-05 Linux+Intel (system ffmpeg, VA-API H.264): e,f PASS on 3 projects; g FAIL: Faster 14% quicker .. 41% slower than BQ (hw encode + check not faster than sw on iGPU). HEVC hw broken in that driver -> sw (check catches).
+  - Recommendation recorded: re-baseline g after dGPU measurement (maybe per-GPU-kind target), consider cheaper 063 check later (must still catch 063 fault list). OPEN.
+  - Docs: business-export.md key decisions (VA-API CQ exception, Faster wording reason) + known limitations (libva 2.21, Intel HEVC, Faster not always faster; replaced old "speed still to be measured"); business-performance.md QG-05 results table; business.md limitations summary.
+- MINOR defaults 0.4.0: H.264+HEVC only; fixed order; Faster not greyed; export before check -> sw; stall 30 s; progress may go back once on redo, no msg; "hardware"/"video hardware" allowed in main section, GPU/encoder still banned; Light still applies to sw filter work during hw export (050 unchanged).
+- Impact applied in docs: 046 text note (4th choice, Advanced hw status), 047 text note (resets Export, clears memory, rechecks). 045/048/049/057 covered by 060/065 wording, texts not changed.
 - QG-04 no Node 20 / ubuntu-latest warnings; runners pinned (ubuntu-24.04, macos-15, windows-2025); Linux packages run on Ubuntu LTS + Fedora.
 
 ## Constraints / decisions
@@ -108,24 +130,23 @@
 - D13 text edit of a subtitle line drops word timings -> highlight spread evenly over words. Editing a line shown in two copies of the same source range changes both.
 - D14 macOS: default app menu off so Cmd+Q passes through prompt; Hide/Minimize menu items lost (accepted).
 
-- D15 (0.3.0) detection in app at first start, all OSes; installers dumb (A1 defaulted).
-- D16 (0.3.0) single "How hard" level instead of thread/process numbers (A5). Light = per-job half cores (2 jobs together may use all cores); preview playback never limited; cap >= 3. Balanced == 0.2.2 (no regression). Maximum ffmpeg auto threading may exceed L internally (x264 ~1.5xL), documented. Exports at different levels may differ by bytes, same look/length.
-- D17 (0.3.0) Settings = in-app floating window (A7 + Architect); 5-panel layout unchanged.
+- D15 (0.3.0) detection in app at first start, all OSes; installers dumb (A1 defaulted, STILL PENDING).
+- D16 (0.3.0) single "How hard" level instead of thread/process numbers (A5). Light = per-job half cores (2 jobs together may use all cores); preview playback never limited; cap >= 3. Balanced == 0.2.2 (no regression). Maximum ffmpeg auto threading may exceed L internally (x264 ~1.5xL), documented. Exports at different levels may differ by bytes, same look/length. Light per-job CONFIRMED by Andrea 2026-11-14.
+- D17 (0.3.0) Settings = in-app floating window (A7 + Architect); 5-panel layout unchanged. CONFIRMED 2026-11-14.
 - D18 (0.3.0) custom settings win on machine change (A9); notice self-closing (8 s), no wizard (A8).
-- D19 (0.3.0) speech levels tiny/small/turbo; greedy decoding; recommend bigger only on strong machines (A2 defaulted).
-- D20 (0.3.0) older CPUs: message only, fallback engine planned (A4 defaulted -> Architect infeasible).
-- D21 (0.3.0) hw export deferred, 055 planned (A3 defaulted -> Architect not built).
+- D19 (0.3.0) speech levels tiny/small/turbo; greedy decoding; recommend bigger only on strong machines. CONFIRMED 2026-11-14 (levels + current thresholds).
+- D20 (0.3.0) older CPUs: message only. CONFIRMED 2026-11-14; slow fallback engine (SSE-only helper) DROPPED, not postponed -> out of scope (reconsider only on request).
+- D21 (0.3.0) hw export deferred -> SUPERSEDED 0.4.0 by D23.
 - D22 (0.3.0) temp files in <cache>/videolore/work/ (private), not system temp.
+- D23 (0.4.0) hw export built for all vendors w/ silent fallback + output check (S2); BQ default, Faster opt-in (S1); check = decode+metadata+3 samples (S3); quality bar 3 VMAF / 1.5x size (S4).
+- D24 (0.4.0) probe only when needed (Faster selected or explicit action), not every start (Architect; saves work, doesn't wake dGPU).
+- D25 (0.4.0) hw targets sw bitrate (VBR) not constant quality; unknown bitrate -> sw. EXCEPTION VA-API: constant quality + 1.5x size guard (driver refuses bitrate control), oversize -> sw redo, not remembered.
+- D27 (0.4.0 post-QG-05) Faster wording honest: "often quicker, but not on every computer" (iGPU measured up to 41% slower).
+- D26 (0.4.0) silent fallback; method visible only in Advanced (session only).
 
-## 0.3.0 defaulted items to ask Andrea at the end
-- A1 detection location (chosen app first start; alt Windows installer too / installer flag only).
-- A2 model levels (chosen 3 levels tiny/small/turbo, consent on first use; alt single model / base for Balanced / medium for MA / always recommend Fast).
-- A3 hw export (Architect: not built, planned; alt all vendors w/ fallback / VideoToolbox only).
-- A4 older CPUs (Architect: message only; alt for 0.4 SSE-only helper exe, ~7x slower).
-- Light meaning per-job vs strict total budget (Architect defaulted per-job).
-- Settings in-app window vs OS window.
-- QG numbers (A10) adjustable after baseline.
-- Architect non-blocking: allow single cargo llvm-cov run locally (rule 7 change via /change-workflow).
+## 0.3.0 defaulted items — status after Andrea 2026-11-14
+- RESOLVED: A2 levels (confirmed), A3 hw export (build now, all vendors -> 0.4.0), A4 older CPUs (message only, fallback dropped), Light per-job (confirmed), Settings in-app window (confirmed).
+- STILL PENDING (not mentioned by Andrea): A1 detection location (app first start vs installer); A10 QG numbers adjustable after baseline; Architect note: allow single local cargo llvm-cov run (rule 7 change, needs /change-workflow).
 
 ## MINOR defaults (0.3.0 PLAN)
 - A5 single effort level. A6 Automatic preview = 038 rule exactly. A7 Settings own window, layout unchanged. A8 notice self-closing. A9 custom wins. A10 QG numbers are assumptions. A11 QGs no REQ ids; human docs section "Quality goals".
@@ -166,4 +187,5 @@
 - 0.2.0 additions: code signing/notarisation (deferred); recent-projects list, autosave, crash recovery, auto-updates; Intel Mac, ARM Windows/Linux, app stores, Linux packages beyond AppImage + tar.gz; music ducking, per-clip fades, volume curves/automation, > 1 music track; SRT/VTT export, soft subtitles, > 1 language per project, translation, custom style editor, free subtitle positioning, choosing the speech model.
 - Removed from OOS in 0.2.0: bundled ffmpeg.
 - Removed from OOS in 0.3.0: "choosing the speech model" (replaced by 3 quality levels; arbitrary/third-party models still OOS).
-- 0.3.0 additions: detection/benchmark in installers; long benchmarks; online machine DBs; telemetry; arbitrary/third-party speech models; translation; GPU for preview/effects (export encoding only under 055, planned); per-project performance settings; raw technical values in main Settings section. Still OOS: code signing, Intel Mac, ARM Win/Linux, auto-updates.
+- 0.3.0 additions: detection/benchmark in installers; long benchmarks; online machine DBs; telemetry; arbitrary/third-party speech models; translation; GPU for preview/effects (export encoding in scope since 0.4.0); per-project performance settings; raw technical values in main Settings section. Still OOS: code signing, Intel Mac, ARM Win/Linux, auto-updates.
+- 0.4.0 additions (in business-export.md): hw for proxies/preview/effects/subtitles/decoding; hw AV1/VP9; choosing card/vendor, per-vendor quality sliders, any technical export setting (D2); AMF on Linux; bundling/installing GPU drivers; visible fallback message; Faster as default; battery-aware behaviour. In business-performance.md: slow fallback speech engine for pre-AVX2 CPUs.

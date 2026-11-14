@@ -16,14 +16,16 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `history` | Undo/redo by snapshots of `Edit` (timeline + music + subtitles + volumes), up to 100 steps |
 | `project` | `.vlproj` file (JSON, `schema_version` 2; version 1 files are migrated on load, newer ones refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
 | `format` | Same-format check, lowest-quality output choice, codec to encoder mapping with H.264/AAC/MP4 fallback |
-| `render` | Export plan (stream copy or one re-encode), filter graphs (clips grouped by source, music bed and mix, subtitle burn-in), `hvc1` tag, preview argv, `FrameKey` |
+| `render` | Export plan (stream copy or one re-encode), filter graphs (clips grouped by source, music bed and mix, subtitle burn-in), `hvc1` tag, export argv (normal method or a hardware method), preview argv, `FrameKey` |
 | `ffmpeg` | Locating binaries (setting, environment, bundled, `PATH`), version/filter/encoder checks, `Runner` trait (real processes or test fake), progress and keyframe parsers |
 | `jobs` | The process scheduler: a cap of 3–6 ffmpeg/ffprobe processes (changeable while running), priorities, preemption, cancellation; `Limited` runner; small worker `Pool` |
-| `export` | Export worker thread: progress, cancel, subtitle files in a private working folder, partial file and rename |
+| `export` | Export worker thread: progress, cancel, subtitle files in a private working folder, partial file and rename; with Export = Faster the hardware attempt, its output check and the silent redo with the normal method (`ExportMethod`) |
+| `hwenc` | Video hardware: candidates per system (NVIDIA, Intel Quick Sync, AMD, VA-API, VideoToolbox) in a fixed order, their encoder arguments, the background hardware check |
+| `outcheck` | Output check of a hardware file: ffprobe metadata rules, strict decode, frame-by-frame comparison of 3 samples with the normal method's graph (`psnr`) |
 | `preview` | Preview player: still frames on demand (debounced, latest only) and playback (RGBA video + PCM audio from two ffmpeg processes), wall-clock master with audio correction |
 | `proxy` | Small preview copies of big sources: the machine rule, the cache (keys, size, clear) and the generation job |
 | `machine` | Detection of the running machine (`Machine`: logical/physical cores, memory, OS, architecture, CPU features) and its `Fingerprint` stored with the settings |
-| `settings` | Program settings file (format 2): the three plain choices, ffmpeg override, machine fingerprint; start-up decision (`startup`), recommendation, "How hard" budget table, availability of subtitle levels, change summary, plain texts of the Settings window |
+| `settings` | Program settings file (format 2): the four plain choices (Export added in 0.4), ffmpeg override, machine fingerprint, hardware methods turned off after a problem; start-up decision (`startup`), recommendation, "How hard" budget table, availability of subtitle levels, change summary, plain texts of the Settings window |
 | `scratch` | Private work folders of background jobs (0700, locked while in use), private partial files (0600), crash cleanup at the next start |
 | `stt` | Subtitle generation: audio extraction, 120 s chunks, language detection/override, cancel, word timings to lines; the table of the three speech files (`builtin_models`), the store (size + SHA-256, per level), download and local-file install, disk use and removal; whisper.cpp and the HTTPS downloader behind the `stt` feature |
 | `notices` | Bundled components with version, licence and source; the About text |

@@ -5,12 +5,20 @@
 //! `<dir>/.<name>.videolore-partial` and renames it on success; deletes it on cancel/error.
 //! Sources are only ever read. Burned-in subtitles are written, with the bundled font, to a
 //! private temporary folder that is ffmpeg's working folder.
+//!
+//! With "Export: Faster" ([`ExportJob::hw`]) a re-encode to H.264/HEVC first runs on the
+//! video hardware into `.<name>.hw.videolore-partial`, watched for stalls, and the result is
+//! checked ([`crate::outcheck`]) before it is published; any problem silently redoes the
+//! export with the normal method, whose commands are exactly those of 0.3.0.
 
 use crate::ass;
 use crate::ffmpeg::{
-    FfVersion, ProgressEvent, Runner, is_keyframe, parse_progress_line, probe_keyframes,
+    CmdOutput, FfVersion, Process, ProgressEvent, Runner, is_keyframe, parse_progress_line,
+    probe_keyframes,
 };
+use crate::hwenc::{self, Candidate, Codec, HwOffer, RateControl, Vendor};
 use crate::media::MediaId;
+use crate::outcheck::{self, CheckFailure, Expected, ExpectedAudio};
 use crate::project::Project;
 use crate::render::{self, ExportPaths, Plan};
 use crate::time::Micros;
@@ -19,8 +27,53 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
+
+/// A hardware run (or a check step) with no progress for this long is stopped.
+pub const STALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Longest metadata read of the output check.
+pub const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+/// After a kill, how long to wait for a process to end before leaving it behind.
+pub const REAP_TIMEOUT: Duration = Duration::from_secs(5);
+/// Share of the progress bar for the hardware run; the check takes the rest.
+const HW_SHARE: f64 = 0.85;
+
+/// What went wrong with the video hardware.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Problem {
+    /// Ended with an error or crashed.
+    ExitedWithError,
+    /// No progress for [`STALL_TIMEOUT`].
+    Stalled,
+    /// The file failed the output check.
+    CheckFailed(CheckFailure),
+}
+
+impl Problem {
+    pub fn text(&self) -> String {
+        match self {
+            Problem::ExitedWithError => "it stopped with an error".into(),
+            Problem::Stalled => "it stopped responding".into(),
+            Problem::CheckFailed(f) => format!("the result failed the check: {f}"),
+        }
+    }
+}
+
+/// How an export was made.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExportMethod {
+    StreamCopy,
+    Software,
+    Hardware(Vendor),
+    /// The hardware had a problem; the normal method made the file.
+    SoftwareAfterProblem {
+        codec: Codec,
+        vendor: Vendor,
+        problem: Problem,
+    },
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExportEvent {
@@ -30,7 +83,10 @@ pub enum ExportEvent {
     Started {
         stream_copy: bool,
     },
-    Done(PathBuf),
+    Done {
+        path: PathBuf,
+        method: ExportMethod,
+    },
     Failed(String),
     Cancelled,
 }
@@ -68,6 +124,12 @@ pub struct ExportJob {
     pub threads: Option<u32>,
     /// Root of the private work folder (subtitle file, font, crash cleanup).
     pub work_root: PathBuf,
+    /// Hardware methods the export may use ("Export: Faster"); `None`: normal method.
+    pub hw: Option<HwOffer>,
+    /// No progress for this long stops a hardware run or check step ([`STALL_TIMEOUT`]).
+    pub stall_timeout: Duration,
+    /// Time limit of the check's metadata read ([`CHECK_TIMEOUT`]).
+    pub check_timeout: Duration,
 }
 
 /// `<dir>/.<name>.videolore-partial`.
@@ -147,7 +209,7 @@ pub fn start(job: ExportJob, runner: Arc<dyn Runner>) -> ExportHandle {
     let flag = Arc::clone(&cancel);
     let thread = std::thread::spawn(move || {
         let ev = match run(&job, runner.as_ref(), &flag, &tx) {
-            Ok(p) => ExportEvent::Done(p),
+            Ok((path, method)) => ExportEvent::Done { path, method },
             Err(ExportError::Cancelled) => ExportEvent::Cancelled,
             Err(e) => ExportEvent::Failed(e.to_string()),
         };
@@ -177,13 +239,30 @@ pub fn plan(job: &ExportJob, runner: &dyn Runner) -> Result<Plan, ExportError> {
     Ok(plan)
 }
 
-/// The export itself (synchronous). Always removes the partial file unless it succeeded.
+/// What makes an export use the video hardware: a re-encode to H.264 or HEVC with a
+/// known bitrate target, and a working method for that format in `job.hw`.
+pub fn hw_choice(job: &ExportJob, plan: &Plan) -> Option<(Candidate, Codec, u64)> {
+    let Plan::Reencode { settings, .. } = plan else {
+        return None;
+    };
+    let codec = Codec::of_software_encoder(&settings.vencoder)?;
+    let cand = job.hw.as_ref()?.get(codec)?.clone();
+    let bps = settings.video_bitrate?;
+    Some((cand, codec, bps))
+}
+
+/// The export itself (synchronous). Always removes the partial files unless it succeeded.
+///
+/// With a hardware method ([`hw_choice`]) the export first runs on the hardware into its
+/// own partial file, watched for stalls, then checks the result ([`crate::outcheck`]); on
+/// any problem it silently redoes the export with the normal method (progress goes back to
+/// 0 once). Cancelling stops every phase and never starts the redo.
 pub fn run(
     job: &ExportJob,
     runner: &dyn Runner,
     cancel: &AtomicBool,
     tx: &Sender<ExportEvent>,
-) -> Result<PathBuf, ExportError> {
+) -> Result<(PathBuf, ExportMethod), ExportError> {
     let output = validate_output(&job.project, &job.output)?;
     let partial = partial_path(&output);
     let plan = plan(job, runner)?;
@@ -195,6 +274,32 @@ pub fn run(
         return Err(ExportError::NoSubtitleFilter);
     }
     let work = crate::scratch::Work::new(&job.work_root).map_err(io)?;
+    if let Some(doc) = plan.subtitles() {
+        write_subtitles(work.path(), doc).map_err(io)?;
+    }
+    let mut after = None;
+    if let Some((cand, codec, bps)) = hw_choice(job, &plan) {
+        let attempt = Attempt {
+            job,
+            runner,
+            plan: &plan,
+            work: &work,
+            cancel,
+            tx,
+            stop: AtomicBool::new(false),
+        };
+        match attempt.hardware(&output, &cand, codec, bps) {
+            Ok(()) => return Ok((output, ExportMethod::Hardware(cand.vendor))),
+            Err(HwError::Fatal(e)) => return Err(e),
+            Err(HwError::Problem(problem)) => {
+                if cancel.load(Ordering::SeqCst) {
+                    return Err(ExportError::Cancelled);
+                }
+                after = Some((codec, cand.vendor, problem));
+                let _ = tx.send(ExportEvent::Progress(0.0));
+            }
+        }
+    }
     let list = work.path().join("list.ffconcat");
     let script = work.path().join("graph.txt");
     let paths = ExportPaths {
@@ -202,20 +307,26 @@ pub fn run(
         concat_list: &list,
         graph_script: &script,
     };
-    if let Some(doc) = plan.subtitles() {
-        write_subtitles(work.path(), doc).map_err(io)?;
-    }
-    let args = render::export_args(&plan, &paths, job.version, job.threads).map_err(io)?;
+    let args = render::export_args(&plan, &paths, job.version, job.threads, None).map_err(io)?;
     // The partial file is private until it is complete; a crash leaves it listed in the
     // work folder, so the next start removes it.
     work.register(&partial).map_err(io)?;
     drop(crate::scratch::create_private_file(&partial).map_err(io)?);
     let result = execute(job, runner, &args, work.path(), cancel, tx);
+    let method = match (after, &plan) {
+        (Some((codec, vendor, problem)), _) => ExportMethod::SoftwareAfterProblem {
+            codec,
+            vendor,
+            problem,
+        },
+        (None, Plan::StreamCopy { .. }) => ExportMethod::StreamCopy,
+        (None, Plan::Reencode { .. }) => ExportMethod::Software,
+    };
     match result {
         Ok(()) => match crate::scratch::publish(&partial)
             .and_then(|()| std::fs::rename(&partial, &output))
         {
-            Ok(()) => Ok(output),
+            Ok(()) => Ok((output, method)),
             Err(e) => {
                 let _ = std::fs::remove_file(&partial);
                 Err(ExportError::Io(e.to_string()))
@@ -225,6 +336,415 @@ pub fn run(
             let _ = std::fs::remove_file(&partial);
             Err(e)
         }
+    }
+}
+
+/// `<dir>/.<name>.hw.videolore-partial`: the hardware attempt's own partial file.
+pub fn hw_partial_path(output: &Path) -> PathBuf {
+    let name = output
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    output.with_file_name(format!(".{name}.hw.videolore-partial"))
+}
+
+/// Why a hardware run ended without a file.
+enum Encoded {
+    /// Constant quality was growing this many times too fast: try a coarser quantiser.
+    TooBig(f64),
+    Problem(Problem),
+}
+
+/// Why the hardware attempt ended without a file.
+enum HwError {
+    /// Redo with the normal method (or stop, when cancelled).
+    Problem(Problem),
+    /// Stop the export with this error.
+    Fatal(ExportError),
+}
+
+/// Everything the hardware attempt needs.
+struct Attempt<'a> {
+    job: &'a ExportJob,
+    runner: &'a dyn Runner,
+    plan: &'a Plan,
+    work: &'a crate::scratch::Work,
+    cancel: &'a AtomicBool,
+    tx: &'a Sender<ExportEvent>,
+    /// Stops the running process without cancelling the export (a constant-quality run
+    /// that grows too big is restarted).
+    stop: AtomicBool,
+}
+
+/// Outcome of a watched process.
+enum Watched {
+    Done(CmdOutput),
+    Cancelled,
+    Stalled,
+}
+
+/// How often a watched process is looked at (cancel and stall).
+const WATCH_POLL: Duration = Duration::from_millis(100);
+
+/// Kills `child` and waits at most [`REAP_TIMEOUT`] for it; a process that does not end
+/// (a driver hang) is left to a background thread, which keeps its slot until it ends.
+fn reap(mut child: Box<dyn Process>) {
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        child.kill();
+        let _ = child.wait();
+        let _ = tx.send(());
+    });
+    let _ = rx.recv_timeout(REAP_TIMEOUT);
+}
+
+/// Progress marks seen so far: output time and frame.
+#[derive(Default)]
+struct Marks {
+    time: i64,
+    frame: u64,
+}
+
+impl Marks {
+    /// True when `line` shows the process moved on.
+    fn advanced(&mut self, line: &str) -> bool {
+        match parse_progress_line(line) {
+            Some(ProgressEvent::Time(t)) if t.0 > self.time => {
+                self.time = t.0;
+                true
+            }
+            Some(ProgressEvent::End) => true,
+            _ => match line.trim().strip_prefix("frame=").map(str::trim) {
+                Some(f) => match f.parse::<u64>() {
+                    Ok(n) if n > self.frame => {
+                        self.frame = n;
+                        true
+                    }
+                    _ => false,
+                },
+                None => false,
+            },
+        }
+    }
+}
+
+/// Follows `child`'s `-progress` lines until it ends; kills it when `cancel` is set or when
+/// it makes no progress for `stall` (counted from the start, then from the last progress).
+fn supervise(
+    mut child: Box<dyn Process>,
+    cancel: &AtomicBool,
+    stop: &AtomicBool,
+    stall: Duration,
+    mut on_line: impl FnMut(&str),
+) -> Result<Watched, String> {
+    let cancel = || cancel.load(Ordering::SeqCst) || stop.load(Ordering::SeqCst);
+    let (tx, rx) = channel::<String>();
+    if let Some(out) = child.take_stdout() {
+        std::thread::spawn(move || {
+            for line in BufReader::new(out).lines() {
+                let Ok(line) = line else { break };
+                if tx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+    } else {
+        drop(tx);
+    }
+    let mut marks = Marks::default();
+    let mut last = Instant::now();
+    loop {
+        if cancel() {
+            reap(child);
+            return Ok(Watched::Cancelled);
+        }
+        match rx.recv_timeout(WATCH_POLL.min(stall)) {
+            Ok(line) => {
+                if marks.advanced(&line) {
+                    last = Instant::now();
+                }
+                on_line(&line);
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+        if last.elapsed() >= stall {
+            reap(child);
+            return Ok(Watched::Stalled);
+        }
+    }
+    if cancel() {
+        reap(child);
+        return Ok(Watched::Cancelled);
+    }
+    child.wait().map(Watched::Done).map_err(|e| e.to_string())
+}
+
+impl Attempt<'_> {
+    fn progress(&self, f: f64) {
+        let _ = self
+            .tx
+            .send(ExportEvent::Progress(f.clamp(0.0, 1.0) as f32));
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::SeqCst)
+    }
+
+    /// Spawns a watched process; a cancelled wait for a slot is a cancel.
+    fn watch(
+        &self,
+        args: &[std::ffi::OsString],
+        cwd: Option<&Path>,
+        on_line: impl FnMut(&str),
+    ) -> Result<Watched, String> {
+        match self.runner.spawn_in(&self.job.ffmpeg, args, cwd) {
+            Ok(child) => supervise(
+                child,
+                self.cancel,
+                &self.stop,
+                self.job.stall_timeout,
+                on_line,
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => Ok(Watched::Cancelled),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// The hardware run, its check and the publication of the file.
+    fn hardware(
+        &self,
+        output: &Path,
+        cand: &Candidate,
+        codec: Codec,
+        bps: u64,
+    ) -> Result<(), HwError> {
+        let partial = hw_partial_path(output);
+        let fatal = |e: std::io::Error| HwError::Fatal(ExportError::Io(e.to_string()));
+        let dir = self.work.path().join("hw");
+        std::fs::create_dir_all(&dir).map_err(fatal)?;
+        let list = dir.join("list.ffconcat");
+        let script = dir.join("graph.txt");
+        let paths = ExportPaths {
+            output: &partial,
+            concat_list: &list,
+            graph_script: &script,
+        };
+        self.work.register(&partial).map_err(fatal)?;
+        let mut target = hwenc::Target::new(bps);
+        let cq = cand.rc == RateControl::ConstantQuality;
+        let mut retried = false;
+        let r = loop {
+            let enc = hwenc::encode_args(cand, codec, target);
+            let args = render::export_args(
+                self.plan,
+                &paths,
+                self.job.version,
+                self.job.threads,
+                Some(&enc),
+            )
+            .map_err(fatal)?;
+            drop(crate::scratch::create_private_file(&partial).map_err(fatal)?);
+            match self.encode(&args, bps, cq && !retried) {
+                Err(Encoded::TooBig(ratio)) => {
+                    // constant quality making a much bigger file: once, a coarser quantiser
+                    retried = true;
+                    target.qp = hwenc::cq_retry_qp(target.qp, ratio);
+                    self.stop.store(false, Ordering::SeqCst);
+                    self.progress(0.0);
+                }
+                Err(Encoded::Problem(p)) => break Err(HwError::Problem(p)),
+                Ok(()) => {
+                    self.progress(HW_SHARE);
+                    break self
+                        .check(&partial, codec, cq.then_some(bps))
+                        .map_err(|f| HwError::Problem(Problem::CheckFailed(f)));
+                }
+            }
+        };
+        let r = r.and_then(|()| {
+            crate::scratch::publish(&partial)
+                .and_then(|()| std::fs::rename(&partial, output))
+                .map_err(fatal)
+        });
+        if r.is_err() {
+            let _ = std::fs::remove_file(&partial);
+        }
+        r
+    }
+
+    /// The hardware run. With `size_watch`, a run whose output grows faster than
+    /// [`hwenc::CQ_RETRY_RATIO`] times the normal method's bitrate (`bps` plus the audio) is
+    /// stopped early and reported as [`Encoded::TooBig`].
+    fn encode(
+        &self,
+        args: &[std::ffi::OsString],
+        bps: u64,
+        size_watch: bool,
+    ) -> Result<(), Encoded> {
+        let total = self.job.project.timeline.duration().0.max(1) as f64;
+        let budget = (bps + self.audio_bps()) as f64;
+        let mut size = 0u64;
+        let mut too_big = None;
+        let watched = self.watch(args, Some(self.work.path()), |line| {
+            if let Some(v) = line.trim().strip_prefix("total_size=") {
+                size = v.trim().parse().unwrap_or(size);
+            }
+            if let Some(ProgressEvent::Time(t)) = parse_progress_line(line) {
+                self.progress(t.0 as f64 / total * HW_SHARE);
+                let secs = t.0 as f64 / 1e6;
+                // judged once enough is written: 2 s, or a tenth of the video
+                if size_watch && too_big.is_none() && secs >= (total / 1e7).max(2.0) {
+                    let ratio = size as f64 * 8.0 / (budget * secs);
+                    too_big = Some(ratio);
+                    if ratio > hwenc::CQ_RETRY_RATIO {
+                        self.stop.store(true, Ordering::SeqCst);
+                    }
+                }
+            }
+        });
+        if self.cancelled() {
+            return Err(Encoded::Problem(Problem::ExitedWithError));
+        }
+        match watched {
+            Ok(Watched::Done(out)) if out.success => Ok(()),
+            Ok(Watched::Cancelled) => match too_big {
+                Some(r) if self.stop.load(Ordering::SeqCst) => Err(Encoded::TooBig(r)),
+                _ => Err(Encoded::Problem(Problem::ExitedWithError)),
+            },
+            Ok(Watched::Stalled) => Err(Encoded::Problem(Problem::Stalled)),
+            Ok(Watched::Done(_)) | Err(_) => Err(Encoded::Problem(Problem::ExitedWithError)),
+        }
+    }
+
+    /// The audio bitrate of the export (AAC's usual 128 kb/s when not given).
+    fn audio_bps(&self) -> u64 {
+        match self.plan {
+            Plan::Reencode { settings, .. } => settings.audio_bitrate.unwrap_or(128_000),
+            Plan::StreamCopy { .. } => 0,
+        }
+    }
+
+    /// The output check (REQ-063) of the hardware file. `size_of` (constant quality): the
+    /// normal method's video bitrate the file size is held to.
+    fn check(
+        &self,
+        partial: &Path,
+        codec: Codec,
+        size_of: Option<u64>,
+    ) -> Result<(), CheckFailure> {
+        let Plan::Reencode { settings: s, .. } = self.plan else {
+            return Err(CheckFailure::Decode);
+        };
+        let exp = Expected {
+            codec,
+            width: s.width,
+            height: s.height,
+            fps: s.fps,
+            hvc1: codec == Codec::Hevc && matches!(s.muxer.as_str(), "mp4" | "mov"),
+            audio: Some(ExpectedAudio {
+                codec: outcheck::audio_codec_of(&s.aencoder),
+                sample_rate: render::SAMPLE_RATE,
+                channels: 2,
+            }),
+        };
+        // (a) metadata and packet count
+        let meta = self
+            .runner
+            .run_within(
+                &self.job.ffprobe,
+                &outcheck::metadata_args(partial),
+                self.job.check_timeout,
+            )
+            .map_err(|_| CheckFailure::Decode)?;
+        if !meta.success {
+            return Err(CheckFailure::Decode);
+        }
+        let measured = outcheck::check_metadata(&meta.stdout, &exp)?;
+        let packets = measured.packets;
+        // (b) strict full decode: every packet gives a frame, no error
+        let mut decoded = None;
+        let args = outcheck::decode_args(partial, self.job.threads);
+        let watched = self.watch(&args, None, |line| {
+            if let Some(n) = outcheck::last_frame(&[line.to_string()]) {
+                decoded = Some(n);
+                self.progress(HW_SHARE + 0.05 * (n as f64 / packets as f64).min(1.0));
+            }
+        });
+        match watched {
+            Ok(Watched::Done(out)) if out.success && out.stderr.trim().is_empty() => {}
+            _ => return Err(CheckFailure::Decode),
+        }
+        if self.cancelled() {
+            return Err(CheckFailure::Decode);
+        }
+        if decoded != Some(packets) {
+            return Err(CheckFailure::FrameCount {
+                expected: packets,
+                got: decoded.unwrap_or(0),
+            });
+        }
+        // (c) the normal method's graph next to the file: frame count and samples
+        let geometry = render::Geometry::of(s);
+        let graph =
+            render::check_graph(&self.job.project, &geometry).map_err(|_| CheckFailure::Decode)?;
+        let samples = outcheck::sample_indices(packets);
+        let groups = outcheck::neighbours(packets, &samples);
+        let indices = outcheck::extracted(&groups);
+        let inputs = match self.job.threads {
+            Some(t) => render::threaded_inputs(render::input_args(&graph.inputs), t),
+            None => render::input_args(&graph.inputs),
+        };
+        let dir = self.work.path();
+        let args = outcheck::compare_args(
+            inputs,
+            graph.inputs.len(),
+            &graph.graph,
+            partial,
+            &indices,
+            s.width,
+            s.height,
+            self.job.version,
+            self.job.threads,
+            &dir.join("check-graph.txt"),
+        )
+        .map_err(|_| CheckFailure::Decode)?;
+        let _ = std::fs::remove_file(dir.join(outcheck::PSNR_LOG));
+        let mut rendered = None;
+        let mut rendered_time = 0i64;
+        let watched = self.watch(&args, Some(dir), |line| {
+            if let Some(ProgressEvent::Time(t)) = parse_progress_line(line) {
+                rendered_time = rendered_time.max(t.0);
+            }
+            if let Some(n) = outcheck::last_frame(&[line.to_string()]) {
+                rendered = Some(n);
+                self.progress(HW_SHARE + 0.05 + 0.1 * (n as f64 / packets as f64).min(1.0));
+            }
+        });
+        match watched {
+            Ok(Watched::Done(out)) if out.success => {}
+            _ => return Err(CheckFailure::Decode),
+        }
+        if self.cancelled() {
+            return Err(CheckFailure::Decode);
+        }
+        let rendered = rendered.unwrap_or(0);
+        if rendered.abs_diff(packets) > 1 {
+            return Err(CheckFailure::FrameCount {
+                expected: rendered,
+                got: packets,
+            });
+        }
+        outcheck::check_duration(&measured, rendered_time, s.fps)?;
+        if let Some(bps) = size_of {
+            let bytes = std::fs::metadata(partial)
+                .map(|m| m.len())
+                .unwrap_or(u64::MAX);
+            outcheck::check_size(bytes, bps + self.audio_bps(), rendered_time)?;
+        }
+        let log = std::fs::read_to_string(dir.join(outcheck::PSNR_LOG))
+            .map_err(|_| CheckFailure::Decode)?;
+        outcheck::judge(&indices, &outcheck::parse_psnr_log(&log), &groups)
     }
 }
 
@@ -290,12 +810,14 @@ fn execute(
 }
 
 #[cfg(test)]
-mod tests {
+mod hw_tests;
+#[cfg(test)]
+pub(crate) mod tests {
     use super::*;
     use crate::ffmpeg::fake::{FakeRunner, fail, ok};
     use crate::timeline::tests::media;
 
-    fn job(dir: &Path) -> ExportJob {
+    pub(crate) fn job(dir: &Path) -> ExportJob {
         let mut p = Project::default();
         let id = p.new_media_id();
         let mut m = media(id.0, 2, true);
@@ -313,6 +835,9 @@ mod tests {
             can_burn_subtitles: true,
             threads: None,
             work_root: dir.join("work"),
+            hw: None,
+            stall_timeout: STALL_TIMEOUT,
+            check_timeout: CHECK_TIMEOUT,
         }
     }
 
@@ -360,7 +885,13 @@ mod tests {
         assert!(ev.contains(&ExportEvent::Progress(0.5)));
         assert!(ev.contains(&ExportEvent::Progress(1.0)));
         let out = dir.path().join("out.mp4").canonicalize().unwrap();
-        assert_eq!(ev.last(), Some(&ExportEvent::Done(out.clone())));
+        assert_eq!(
+            ev.last(),
+            Some(&ExportEvent::Done {
+                path: out.clone(),
+                method: ExportMethod::StreamCopy
+            })
+        );
         assert_eq!(std::fs::read(&out).unwrap(), b"video");
         assert!(!partial_path(&out).exists());
     }
@@ -424,7 +955,13 @@ mod tests {
         let runner: Arc<dyn Runner> = fake.clone();
         let ev = start(j.clone(), runner).join();
         assert_eq!(ev[0], ExportEvent::Started { stream_copy: false });
-        assert!(matches!(ev.last(), Some(ExportEvent::Done(_))));
+        assert!(matches!(
+            ev.last(),
+            Some(ExportEvent::Done {
+                method: ExportMethod::Software,
+                ..
+            })
+        ));
         assert!(seen.lock().unwrap().is_some());
         // ffmpeg ran inside a private work folder holding the ASS file and the font
         let cwd = fake.cwds.lock().unwrap().last().cloned().flatten().unwrap();
