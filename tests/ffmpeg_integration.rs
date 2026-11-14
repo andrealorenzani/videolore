@@ -165,9 +165,10 @@ impl Env {
             .args(["-ac", "1", "-f", "s16le", "pipe:1"])
             .output()
             .unwrap();
-        o.stdout
-            .chunks_exact(2)
-            .map(|c| (i16::from_le_bytes([c[0], c[1]]) as i32).abs())
+        let (samples, _) = o.stdout.as_chunks::<2>();
+        samples
+            .iter()
+            .map(|&s| i32::from(i16::from_le_bytes(s)).abs())
             .max()
             .unwrap_or(0)
     }

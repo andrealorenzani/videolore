@@ -490,6 +490,7 @@ pub mod fake {
     //! A scripted [`Runner`] for unit tests.
     use super::*;
     use std::io::Cursor;
+    use std::sync::{Arc, Condvar};
 
     type Responder = Box<dyn Fn(&Path, &[String]) -> Option<CmdOutput> + Send + Sync>;
 
@@ -498,6 +499,9 @@ pub mod fake {
     pub struct FakeRunner {
         pub responders: Vec<Responder>,
         pub calls: Mutex<Vec<Vec<String>>>,
+        /// When true, spawned processes keep their stdout open until killed,
+        /// like a real long-running ffmpeg (no premature end of stream).
+        pub hold_streams: bool,
     }
 
     impl FakeRunner {
@@ -506,6 +510,12 @@ pub mod fake {
             f: impl Fn(&Path, &[String]) -> Option<CmdOutput> + Send + Sync + 'static,
         ) -> Self {
             self.responders.push(Box::new(f));
+            self
+        }
+
+        /// Spawned processes block on stdout after their scripted output until killed.
+        pub fn holding_streams(mut self) -> Self {
+            self.hold_streams = true;
             self
         }
 
@@ -538,14 +548,50 @@ pub mod fake {
         })
     }
 
-    struct FakeProcess(Option<CmdOutput>);
+    /// Set to true (and notified) when the fake process is killed.
+    type KillSignal = Arc<(Mutex<bool>, Condvar)>;
+
+    struct FakeProcess(Option<CmdOutput>, Option<KillSignal>);
+
+    /// Scripted stdout that, once drained, blocks until the process is killed.
+    struct HeldStdout {
+        data: Cursor<Vec<u8>>,
+        killed: KillSignal,
+    }
+
+    impl Read for HeldStdout {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let n = self.data.read(buf)?;
+            if n > 0 || buf.is_empty() {
+                return Ok(n);
+            }
+            let (lock, cv) = &*self.killed;
+            let mut killed = lock.lock().unwrap_or_else(|e| e.into_inner());
+            while !*killed {
+                killed = cv.wait(killed).unwrap_or_else(|e| e.into_inner());
+            }
+            Ok(0)
+        }
+    }
 
     impl Process for FakeProcess {
         fn take_stdout(&mut self) -> Option<Box<dyn Read + Send>> {
-            let out = self.0.as_mut()?.stdout.clone();
-            Some(Box::new(Cursor::new(out)))
+            let data = Cursor::new(self.0.as_mut()?.stdout.clone());
+            Some(match &self.1 {
+                Some(killed) => Box::new(HeldStdout {
+                    data,
+                    killed: Arc::clone(killed),
+                }),
+                None => Box::new(data),
+            })
         }
-        fn kill(&mut self) {}
+        fn kill(&mut self) {
+            if let Some(k) = &self.1 {
+                let (lock, cv) = &**k;
+                *lock.lock().unwrap_or_else(|e| e.into_inner()) = true;
+                cv.notify_all();
+            }
+        }
         fn wait(&mut self) -> io::Result<CmdOutput> {
             Ok(self.0.take().unwrap_or_default())
         }
@@ -556,7 +602,13 @@ pub mod fake {
             self.answer(program, args)
         }
         fn spawn(&self, program: &Path, args: &[OsString]) -> io::Result<Box<dyn Process>> {
-            Ok(Box::new(FakeProcess(Some(self.answer(program, args)?))))
+            let held = self
+                .hold_streams
+                .then(|| Arc::new((Mutex::new(false), Condvar::new())));
+            Ok(Box::new(FakeProcess(
+                Some(self.answer(program, args)?),
+                held,
+            )))
         }
     }
 

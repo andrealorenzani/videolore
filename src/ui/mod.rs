@@ -37,13 +37,15 @@ pub struct VideoloreApp {
 }
 
 impl eframe::App for VideoloreApp {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        frame_ui(ctx, &mut self.state, &mut self.cache, Instant::now());
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        frame_ui(ui, &mut self.state, &mut self.cache, Instant::now());
     }
 }
 
-/// Draws one frame and runs the commands it produced.
-pub fn frame_ui(ctx: &Context, app: &mut AppState, cache: &mut UiCache, now: Instant) {
+/// Draws one frame into the root `ui` and runs the commands it produced.
+pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Instant) {
+    let ctx = root.ctx().clone();
+    let ctx = &ctx;
     app.tick(now);
     update_texture(ctx, app, cache);
     let title = app.title();
@@ -60,7 +62,7 @@ pub fn frame_ui(ctx: &Context, app: &mut AppState, cache: &mut UiCache, now: Ins
     };
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
-        .show(ctx, |ui| {
+        .show(root, |ui| {
             let r = layout::panels(ui.max_rect());
             panel(ui, r.media, |ui| media_panel(ui, app, &mut cmds));
             panel(ui, r.preview, |ui| preview_panel(ui, app, cache, &mut cmds));
@@ -247,7 +249,7 @@ fn timeline_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             let x = x0 + s as f32 * z;
             painter.line_segment(
                 [pos2(x, rect.min.y), pos2(x, rect.min.y + 5.0)],
-                Stroke::new(1.0, Color32::GRAY),
+                Stroke::new(1.0_f32, Color32::GRAY),
             );
             painter.text(
                 pos2(x + 2.0, rect.min.y),
@@ -269,7 +271,11 @@ fn timeline_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         let mut start = Micros::ZERO;
         for (i, c) in tl.clips.iter().enumerate() {
             let r = Rect::from_min_size(pos2(x0 + px(start), clip_top), vec2(px(c.len()), clip_h));
-            let resp = ui.interact(r, ui.id().with(("clip", c.id.0)), Sense::click_and_drag());
+            let resp = ui.interact(
+                r,
+                ui.scope_id().with(("clip", c.id.0)),
+                Sense::click_and_drag(),
+            );
             let selected = app.selected_clip == Some(c.id);
             let color = CLIP_COLORS[(c.media.0 as usize) % CLIP_COLORS.len()];
             painter.rect_filled(r.shrink(1.0), 3.0, color);
@@ -277,7 +283,7 @@ fn timeline_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
                 painter.rect_stroke(
                     r,
                     3.0,
-                    Stroke::new(2.0, Color32::YELLOW),
+                    Stroke::new(2.0_f32, Color32::YELLOW),
                     StrokeKind::Inside,
                 );
             }
@@ -339,7 +345,7 @@ fn timeline_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             let center = pos2(x0 + px(at), clip_top + clip_h - 8.0);
             let hr = Rect::from_center_size(center, vec2(12.0, 12.0));
             let resp = ui
-                .interact(hr, ui.id().with(("fade", b)), Sense::click())
+                .interact(hr, ui.scope_id().with(("fade", b)), Sense::click())
                 .on_hover_text("Toggle fade");
             let on = tl.has_fade(b);
             painter.circle(
@@ -350,7 +356,7 @@ fn timeline_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
                 } else {
                     Color32::from_gray(200)
                 },
-                Stroke::new(1.0, Color32::WHITE),
+                Stroke::new(1.0_f32, Color32::WHITE),
             );
             if resp.clicked() {
                 cmds.push(Command::ToggleFade(b));
@@ -359,7 +365,7 @@ fn timeline_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         let xp = x0 + px(app.playhead);
         painter.line_segment(
             [pos2(xp, rect.min.y), pos2(xp, rect.max.y)],
-            Stroke::new(2.0, Color32::RED),
+            Stroke::new(2.0_f32, Color32::RED),
         );
     });
 }
@@ -542,7 +548,7 @@ fn command_bar(ui: &mut Ui, app: &AppState, timeline_width: f32, cmds: &mut Vec<
 
 fn modals(ctx: &Context, app: &AppState, cmds: &mut Vec<Command>) {
     if let Err(e) = &app.ffmpeg {
-        egui::Modal::new(egui::Id::new("ffmpeg-missing")).show(ctx, |ui| {
+        egui::Modal::new(egui::Id::unique("ffmpeg-missing")).show(ctx, |ui| {
             ui.heading("ffmpeg is required");
             ui.label(e);
             ui.label(crate::ffmpeg::install_hint());
@@ -560,7 +566,7 @@ fn modals(ctx: &Context, app: &AppState, cmds: &mut Vec<Command>) {
             });
         });
     } else if let Some(n) = &app.notice {
-        egui::Modal::new(egui::Id::new("notice")).show(ctx, |ui| {
+        egui::Modal::new(egui::Id::unique("notice")).show(ctx, |ui| {
             ui.label(n);
             if ui.button("OK").clicked() {
                 cmds.push(Command::DismissNotice);
@@ -586,7 +592,9 @@ mod tests {
 
     fn run(ctx: &Context, app: &mut AppState, cache: &mut UiCache, w: f32, h: f32, ev: Vec<Event>) {
         let now = Instant::now();
-        let _ = ctx.run(input(w, h, ev), |ctx| frame_ui(ctx, app, cache, now));
+        // Headless: there is no painter, so texture deltas are discarded on purpose.
+        ctx.run_ui(input(w, h, ev), |ui| frame_ui(ui, app, cache, now))
+            .drop_without_applying_deltas();
     }
 
     fn loaded() -> (tempfile::TempDir, AppState) {

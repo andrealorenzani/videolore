@@ -316,8 +316,10 @@ impl Timeline {
     pub fn nearest_boundary(&self, t: Micros) -> Option<(usize, Micros)> {
         let mut start = Micros::ZERO;
         let mut best: Option<(usize, Micros)> = None;
-        for i in 0..self.clips.len().saturating_sub(1) {
-            start = start + self.clips[i].len();
+        // Every clip but the last ends on a boundary.
+        let inner = self.clips.len().saturating_sub(1);
+        for (i, clip) in self.clips[..inner].iter().enumerate() {
+            start = start + clip.len();
             let better = best.is_none_or(|(_, bt)| (start - t).0.abs() < (bt - t).0.abs());
             if better {
                 best = Some((i, start));

@@ -52,7 +52,7 @@ fn key_command(key: Key, m: Modifiers) -> Option<Command> {
 
 /// Commands from this frame's input (none while a text field has focus).
 pub fn collect(ctx: &eframe::egui::Context) -> Vec<Command> {
-    if ctx.wants_keyboard_input() {
+    if ctx.egui_wants_keyboard_input() {
         return Vec::new();
     }
     ctx.input(|i| i.events.iter().filter_map(command_for).collect())

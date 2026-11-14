@@ -2,14 +2,17 @@
 
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
-## State (0.1.3 target)
+## State (0.1.5 target: toolchain/deps upgrade)
+0.1.5 upgrade: MSRV 1.100 (policy: follow latest stable, raise rust-version with toolchain, deps always newest). Coverage 96.0% lines on rustc 1.100. 71 unit + 7 integration.
+
+## State (0.1.3)
 Implemented REQ-001..013, 021..025. Planned: REQ-014..018 (subs/STT, 0.1.5, feature `stt` reserved empty), REQ-019..020 (music, 0.1.4).
 Coverage at 0.1.3: 96.4% lines (unit-only 96.4%; integration adds little). 71 unit + 7 integration tests.
 
-## Deps (all verified on rustc 1.88; resolver picks MSRV-compatible)
-eframe 0.33.3 (no default feats: glow, default_fonts, wayland, x11) — DO NOT bump to 0.34 (needs newer rustc).
-rfd 0.17.2 (no default, xdg-portal) — 0.18 needs 1.92. cpal 0.18.2 optional behind feature `audio` (default). serde/serde_json, thiserror 2, directories 6, tempfile 3 (normal dep: private temp dirs for concat list/graph script/preview script). Dev: sha2 0.11.
-egui_kittest NOT used: headless `egui::Context::run(RawInput{screen_rect,..})` is enough.
+## Deps (rustc 1.100; requirements pinned to latest minor in Cargo.toml)
+eframe 0.37.0 (rust-version 1.95; no default feats: glow, default_fonts, wayland, x11; no clipboard feat, same as before).
+rfd 0.18.0 (no default, xdg-portal). cpal 0.18.2 optional behind feature `audio` (default). serde/serde_json, thiserror 2, directories 6, tempfile 3 (normal dep: private temp dirs for concat list/graph script/preview script). Dev: sha2 0.11.
+egui_kittest NOT used (0.37 available): headless `ctx.run_ui(RawInput{screen_rect,..}, |ui| frame_ui(ui,..)).drop_without_applying_deltas()` is enough.
 Linux build needs libasound2-dev (alsa-sys via pkg-config). Only libasound is linked; winit/glutin/wayland/xkb dlopen'd -> no other -dev pkgs. Local machine lacked it: used extracted .deb + PKG_CONFIG_PATH in scratchpad (not repo).
 
 ## Module map
@@ -31,7 +34,12 @@ Linux build needs libasound2-dev (alsa-sys via pkg-config). Only libasound is li
 
 ## Gotchas
 - egui 0.33: screen_rect deprecated -> content_rect; ui.close() not close_menu; Modal::new(id).show(ctx,..).
-- let-chains used (stable in 1.88, edition 2024).
+- egui/eframe 0.37: App::update removed -> `fn ui(&mut self, ui: &mut Ui, frame)`; frame_ui takes the root `&mut Ui` (ctx = ui.ctx().clone()); CentralPanel::show(ui,..) (show_inside deprecated); Ui::id -> scope_id; Id::new deprecated -> Id::unique; ctx.wants_keyboard_input -> egui_wants_keyboard_input; Context::run removed -> run_ui/run_pass; FullOutput with texture deltas PANICS on drop (debug_assert) -> tests call drop_without_applying_deltas(). Stroke::new width is plain f32 (explicit `_f32` literals kept anyway: rustc float_literal_f32_fallback future-incompat lint hit `impl Into<f32>` in 0.33).
+- clippy 1.100: chunks_exact_to_as_chunks -> `as_chunks::<2>()` (preview audio + integration test); needless_range_loop in nearest_boundary -> iterate `clips[..len-1]`.
+- Coverage gotcha: cargo 1.100 moved test binaries (target/llvm-cov-target/debug/build/<pkg>/<hash>/out/); stale binaries in debug/deps/ from older cargo are still picked by cargo-llvm-cov 0.9.1 and `llvm-cov clean` does not remove them -> mismatched mappings, coverage fell to 73%. Fix: rm -rf target/llvm-cov-target.
+- FakeRunner::holding_streams(): FakeProcess stdout blocks after scripted bytes until kill() (Condvar). Used by app play_pause_and_tick, which was flaky: empty fake video stream -> Disconnected -> end-of-playback race with the tick.
+- let-chains used (stable since 1.88, edition 2024).
+- CI: check job (stable, clippy x3 feature sets, --locked), msrv job (sed rust-version from Cargo.toml -> dtolnay/rust-toolchain@master toolchain=<v>, build+test --locked, ffmpeg tests required), build needs [check, msrv]. Actions: checkout@v7, upload-artifact@v7, action-gh-release@v3, rust-cache@v2, install-action@v2 (latest majors on 2026-11-14).
 - cpal 0.18: SampleRate = u32, StreamConfig is Copy, build_output_stream(config by value, data, err, None).
 - Integration tests: fixtures generated with lavfi; letterbox check uses 480x360 (4:3) vs 1280x720 so bars are visible. Cancel test uses 15x4 s 720p + fade to make export slow enough.
 - `system_runner_runs_and_kills` unit test uses `rustc` from PATH as a harmless program.

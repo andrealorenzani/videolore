@@ -1,6 +1,6 @@
 # Code
 
-videolore is a Rust desktop application (edition 2024, MSRV 1.88) built on egui/eframe. It never
+videolore is a Rust desktop application (edition 2024, MSRV 1.100) built on egui/eframe 0.37. It never
 decodes video itself: every read and render is done by the `ffmpeg` and `ffprobe` programs,
 started as child processes.
 
@@ -11,8 +11,8 @@ started as child processes.
 | Build | `cargo build` (release: `cargo build --release --locked`) |
 | Run | `cargo run` |
 | Tests | `cargo test` |
-| Format / lint | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` |
-| Line coverage (>= 85%) | `scripts/coverage.sh --fail-under 85` (needs `cargo-llvm-cov`) |
+| Format / lint | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (CI also lints with `--no-default-features` and `--all-features`) |
+| Line coverage (>= 85%) | `scripts/coverage.sh --fail-under 85` (needs `cargo-llvm-cov` and `rustup component add llvm-tools-preview`) |
 | Feature coverage (100%) | `scripts/feature-coverage.sh` |
 
 System requirements:
@@ -28,6 +28,18 @@ System requirements:
 
 Cargo features: `audio` (default, sound output via cpal), `stt` (reserved, empty: future
 speech-to-text subtitles).
+
+If line coverage suddenly drops far below the usual ~96% after a toolchain change, delete
+`target/llvm-cov-target` and run again: old test binaries left there (cargo changed where it puts
+them) are mixed into the report and count up-to-date lines as never run.
+
+## Rust version and dependencies
+
+The project follows the latest stable Rust. The minimum supported version (`rust-version` in
+`Cargo.toml`, currently **1.100**) is raised together with the toolchain, and dependencies are
+kept on their newest releases. Main dependencies: eframe/egui 0.37 (glow renderer, no default
+features), rfd 0.18 (XDG portal on Linux), cpal 0.18 (optional, `audio`), serde 1, serde_json 1,
+thiserror 2, directories 6, tempfile 3; tests use sha2 0.11.
 
 ## Layout of the code
 
@@ -75,7 +87,9 @@ All logic is in the library (`src/lib.rs` and its modules); `src/main.rs` only o
 ## Tests
 
 - Unit tests sit next to the code (`#[cfg(test)]`), using a fake `Runner` so no ffmpeg is needed.
-- The UI is tested headless with `egui::Context::run` (layout at several sizes, shortcuts, clicks).
+- The UI is tested headless with `egui::Context::run_ui` (layout at several sizes, shortcuts, clicks).
+- The fake `Runner` can keep the output of its fake processes open until they are killed
+  (`holding_streams`), so tests about playback timing do not race the end of the stream.
 - `tests/ffmpeg_integration.rs` runs the real ffmpeg. Test clips are generated at test time
   (`testsrc2` + `sine`) in a temporary folder; no media files are stored in git. The tests are
   skipped when ffmpeg is missing, unless `VIDEOLORE_REQUIRE_FFMPEG=1` (set in CI).
@@ -90,12 +104,14 @@ All logic is in the library (`src/lib.rs` and its modules); `src/main.rs` only o
 
 ## Continuous integration
 
-`.github/workflows/build.yml` installs `ffmpeg` and `libasound2-dev` on Linux, runs format, lint,
-tests (with `VIDEOLORE_REQUIRE_FFMPEG=1`), version check, line and feature coverage, then builds
+`.github/workflows/build.yml` installs `ffmpeg` and `libasound2-dev` on Linux, runs format, lint
+(default, no and all features), tests (with `VIDEOLORE_REQUIRE_FFMPEG=1`), version check, line and
+feature coverage on the latest stable Rust. A second job (`msrv`) reads `rust-version` from
+`Cargo.toml` and builds and tests with exactly that toolchain. When both pass, it builds
 release executables for Linux x86_64, macOS arm64 and Windows x86_64 on every push to `main`;
 a `v*` tag attaches them to a GitHub release.
 
-## Known limitations (0.1.3)
+## Known limitations
 
 Accepted by the author for this release; they are not bugs to fix silently.
 
@@ -105,4 +121,3 @@ Accepted by the author for this release; they are not bugs to fix silently.
 - The preview video waits when the audio stalls.
 - HEVC in MP4 is not tagged `hvc1`, so some players (e.g. Apple's) may not show it.
 - Each clip is a separate ffmpeg input: many clips taken from one long file can hit decoder limits.
-- CI tests with the latest stable Rust; MSRV 1.88 is verified only locally.

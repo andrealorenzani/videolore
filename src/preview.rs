@@ -260,10 +260,9 @@ fn spawn_audio(mut process: Box<dyn Process>, buffer: Arc<AudioBuffer>) -> Optio
             if data.len() % 2 == 1 {
                 carry = data.pop();
             }
-            let samples: Vec<i16> = data
-                .chunks_exact(2)
-                .map(|c| i16::from_le_bytes([c[0], c[1]]))
-                .collect();
+            // `data` has an even length here, so the remainder is always empty.
+            let (pairs, _) = data.as_chunks::<2>();
+            let samples: Vec<i16> = pairs.iter().map(|&p| i16::from_le_bytes(p)).collect();
             while buffer.len() > AudioBuffer::CAP {
                 if flag.load(Ordering::SeqCst) {
                     break 'outer;

@@ -1156,7 +1156,13 @@ pub(crate) mod tests {
     fn play_pause_and_tick() {
         let dir = tempfile::tempdir().unwrap();
         let f = files(dir.path());
-        let mut app = state(FakeDialogs::default());
+        // Preview streams stay open until killed, so the end of stream cannot race the clock.
+        let mut app = AppState::with_ffmpeg(
+            Ok(info()),
+            Arc::new(runner().holding_streams()),
+            Box::new(FakeDialogs::default()),
+            Box::new(NullSink),
+        );
         let t0 = Instant::now();
         app.dispatch(Command::Import(vec![f[0].clone()]), t0)
             .unwrap();

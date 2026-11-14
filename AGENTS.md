@@ -4,7 +4,7 @@
 The full description of the workflow lives in `docs/workflow.md`; read it before changing anything in `.claude/`.
 
 ## Project
-- `videolore` — a Rust project (edition 2024, MSRV 1.88). Version source of truth: `Cargo.toml` (`version`).
+- `videolore` — a Rust project (edition 2024, MSRV 1.100, always the latest stable Rust). Version source of truth: `Cargo.toml` (`version`).
 - License: GPL-3.0 (`LICENSE`). Author and owner: Andrea Lorenzani.
 
 ## Agents and the documents they own

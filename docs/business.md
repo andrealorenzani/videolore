@@ -18,8 +18,8 @@ Professional editors needing multitrack video, color grading or advanced effects
 - **Preview**: play, pause and seek, with effects visible.
 - **Export**: automatic output format, as fast as possible, with progress and cancel.
 - **Layout**: fixed five-panel window with a command bar and keyboard shortcuts.
-- **Music** (planned, 0.1.4): one background music track mixed with the video audio.
-- **Subtitles** (planned, 0.1.5): automatic offline subtitles with social-media styles.
+- **Music** (planned, release not yet assigned): one background music track mixed with the video audio.
+- **Subtitles** (planned, release not yet assigned): automatic offline subtitles with social-media styles.
 
 ## Requirements
 - REQ-001 (implemented): Editing is non-destructive; source media files are never modified.

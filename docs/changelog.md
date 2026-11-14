@@ -2,6 +2,20 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
 
+## 0.1.5 — 2026-11-14 01:03 +0000
+Summary: the project follows the latest Rust (1.100) and the latest libraries (egui/eframe 0.37, rfd 0.18); the editing features are unchanged.
+
+- **Changed**: minimum supported Rust (`rust-version`) raised from 1.88 to 1.100, the current stable release; the code is built and tested with it in CI.
+- **Changed**: eframe/egui 0.33 → 0.37 and rfd 0.17 → 0.18, with the UI code adapted to the new API. Other dependencies were already on their latest releases (cpal 0.18.2, serde 1.0.229, serde_json 1.0.154, thiserror 2.0.21, directories 6.0.0, tempfile 3.27.0, sha2 0.11.1).
+- **Changed**: CI uses actions/checkout v7, actions/upload-artifact v7 and softprops/action-gh-release v3 (Node 24), which removes the Node 20 deprecation warning. Clippy also runs with `--no-default-features` and `--all-features`.
+- **Added**: CI job `msrv` builds and tests with the Rust version in `rust-version`; executables are built only when both the `check` and `msrv` jobs pass.
+- **Fixed**: code that would stop compiling in a future Rust (untyped float literals in UI strokes now have an explicit `f32` type).
+- **Fixed**: two clippy lints for the latest Rust (chunked audio conversion in preview and integration tests; an index loop in the timeline).
+- **Fixed**: a preview test that failed about once in 16 runs is now deterministic.
+- **Removed**: the known limitation "CI tests with the latest stable Rust; MSRV only verified locally": both are now checked in CI.
+- **Workflow**: the Architect's Rust toolchain policy (follow the latest stable Rust, fix new lints in the code instead of pinning old versions) is recorded in `docs/architecture.md`; planned features no longer carry a release number (music and subtitles: release not yet assigned).
+- **Quality**: 71 unit tests and 7 integration tests pass; line coverage 96.0%; feature coverage 18/18 implemented requirements; no future-incompatibility warnings.
+
 ## 0.1.4 — 2026-11-14 00:39 +0000
 - **Fixed**: `scripts/version.sh set` is now all-or-nothing: if any step fails, `Cargo.toml`, `Cargo.lock` and the README badge are restored, so the version can no longer be left half-updated. It refreshes `Cargo.lock` with `cargo update --workspace` instead of a build, so it no longer needs system libraries such as ALSA.
 - **Workflow**: owners may split their human-readable doc into `docs/<area>-<topic>.md` sub-documents (and should past ~150 lines or with distinct topics), keeping `docs/<area>.md` as the index; rule in `AGENTS.md`, guidance and an example in each agent; `scripts/feature-coverage.sh` also reads `docs/business-*.md`; sub-documents are not copied by `/clone-workflow`.

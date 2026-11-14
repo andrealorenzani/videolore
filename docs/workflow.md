@@ -53,7 +53,7 @@ MINOR ambiguities and TECHNICAL questions are decided by the agents and recorded
 None yet. Project skills go in `.claude/skills/<name>/SKILL.md`.
 
 ## CI
-`.github/workflows/build.yml`: on push to `main`, PRs and `v*` tags. Job `check` runs fmt/clippy/test, version consistency, coverage ≥ 85%, feature coverage, release guard; job `build` makes release executables for Linux x86_64, macOS arm64, Windows x86_64 and uploads them as artifacts; on a `v*` tag the GitHub release is created with them and with `release/<version>/docs/changelog.md` as notes. Owned by the Principal Engineer.
+`.github/workflows/build.yml`: on push to `main`, PRs and `v*` tags. Job `check` (latest stable Rust) runs fmt, clippy (default, no and all features), tests, version consistency, coverage ≥ 85%, feature coverage, release guard; job `msrv` builds and tests with the `rust-version` read from `Cargo.toml`; job `build` runs only if both pass and makes release executables for Linux x86_64, macOS arm64, Windows x86_64 and uploads them as artifacts; on a `v*` tag the GitHub release is created with them and with `release/<version>/docs/changelog.md` as notes. Owned by the Principal Engineer.
 
 ## Scripts
 | Script | Purpose |
@@ -109,3 +109,4 @@ Used by `/clone-workflow`.
 - 2026-11-13 — v0.1.1: version bump on every change; changelog with version + date-time; README without AI/workflow references, versions instead of dates, poem line breaks; one-line commits; copyright headers; GitHub Actions build of executables.
 - 2026-11-13 — v0.1.2: version changed everywhere via `scripts/version.sh`; `/release` command with frozen `release/<version>/` snapshots, tag and push; coverage ≥ 85% and feature coverage 100% for the Principal Engineer; README coverage badge.
 - 2026-11-14 — v0.1.4: `scripts/version.sh set` all-or-nothing with rollback and no build; owners may split `docs/<area>.md` into `docs/<area>-<topic>.md` sub-documents with the main doc as index.
+- 2026-11-14 — v0.1.5: CI on the latest stable Rust (1.100) and a separate MSRV job; GitHub Actions on current major versions; policy "follow the latest Rust and libraries" recorded in `docs/architecture.md`.
