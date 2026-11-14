@@ -17,6 +17,9 @@ jobs:
   check:
     name: fmt, clippy, test, coverage, version
     runs-on: ubuntu-latest
+    env:
+      # Integration tests must not be skipped in CI.
+      VIDEOLORE_REQUIRE_FFMPEG: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,6 +27,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy, llvm-tools-preview
+      - name: System packages (ffmpeg for tests, ALSA headers for cpal)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
@@ -59,6 +64,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: System packages (ALSA headers for cpal)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config
       - uses: Swatinem/rust-cache@v2
       - name: Build release executable
         run: cargo build --release --locked --target ${{ matrix.target }}

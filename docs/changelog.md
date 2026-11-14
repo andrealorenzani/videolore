@@ -2,6 +2,37 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
 
+## 0.1.3 — 2026-11-14 00:26 +0000
+Summary: videolore becomes a desktop, non-destructive video editor built on ffmpeg, for short social videos: import, cut, join and trim clips on one timeline, fade between clips, preview with sound, save projects and export to one file.
+
+- **Added**: desktop window with a fixed five-panel layout (media list 30% | preview 70% in the top 60%; timeline 70% | effects/settings 30% in the middle 30%; bottom 10% bar with the zoom slider) (REQ-024).
+- **Added**: keyboard shortcuts for split, cut, copy, paste, undo, redo and play/pause (REQ-025). Undo/redo keeps up to 100 steps (REQ-004).
+- **Added**: import of video and audio files into a media list showing name and duration; unreadable files are rejected with a message (REQ-002).
+- **Added**: single video track that never overlaps: append (REQ-005), split at playhead (REQ-006), cut/copy/paste with ripple (REQ-007), merge contiguous pieces of the same source (REQ-008), trim at either edge within the source (REQ-009), move clips (REQ-010).
+- **Added**: fade through black between two clips: 0.5 s fade-out and 0.5 s fade-in on video and audio, half the clip length for clips under 1 s; can be removed (REQ-011).
+- **Added**: timeline zoom slider from showing the whole project to single-frame level (REQ-012).
+- **Added**: preview with play, pause (Space) and seek from the playhead, at most 360 px high, with sound (cpal) or silent when no audio device is available (REQ-013).
+- **Added**: save and open projects as `.vlproj` (JSON, schema version 1); missing source files are reported by name (REQ-003). Source files are never modified (REQ-001).
+- **Added**: export to one file with progress and cancel; a cancelled or failed export leaves no partial file (REQ-021).
+- **Added**: export does stream copy (no re-encode) when all clips share the same format, there are no fades and every cut starts on a keyframe (REQ-023); otherwise one re-encode pass to the lowest-quality format among the clips, letterboxed, never stretched (REQ-022).
+- **Added**: requirement for ffmpeg and ffprobe 4.4 or newer, installed by the user (not bundled). They are found via the app setting, `VIDEOLORE_FFMPEG` / `VIDEOLORE_FFPROBE`, the folder of the executable, or `PATH`. Missing ffmpeg shows a blocking message with install hints.
+- **Added**: Cargo features `audio` (default, preview sound through cpal) and `stt` (reserved, empty, for planned subtitles).
+- **Added**: CI installs ffmpeg, `libasound2-dev` and `pkg-config`, and runs the ffmpeg integration tests with `VIDEOLORE_REQUIRE_FFMPEG=1` (they fail instead of being skipped).
+- **Changed**: `src/main.rs` opens the editor window; the placeholder text output is removed. Logic lives in library modules: `time`, `media`, `timeline`, `history`, `project`, `format`, `render`, `ffmpeg`, `export`, `preview`, `app`, `dialogs`, `ui` (`layout`, `zoom`, `keymap`).
+- **Changed**: README describes the product, installation, requirements and usage; badges for the main libraries and for the ffmpeg requirement replace the "no dependencies" badge.
+- **Security**: ffmpeg is started without a shell, with separate argument lists; inputs use the `file:` prefix and ffmpeg accepts only the `file` and `pipe` protocols (no network access, no option injection from file names); project files are validated after loading; exports never overwrite a source file.
+- **Dependencies**: added eframe 0.33.3 (glow backend), rfd 0.17.2 (xdg-portal), cpal 0.18.2 (optional, feature `audio`), serde 1, serde_json 1, thiserror 2, directories 6, tempfile 3; dev-dependency sha2 0.11.1.
+- **Quality**: 71 unit tests and 7 integration tests that run the real ffmpeg on clips generated at test time; line coverage 96.4%; feature coverage 18/18 implemented requirements.
+
+Known limitations (accepted for this release):
+- No "unsaved changes?" prompt on New, Open or quit.
+- Import runs ffprobe on the UI thread, which can freeze the window briefly.
+- Every edit starts ffmpeg to refresh the still preview frame.
+- The preview video waits when audio stalls.
+- HEVC in MP4 is not tagged `hvc1`.
+- Each clip is a separate ffmpeg input, so many clips taken from one long file can hit decoder limits.
+- CI tests with the latest stable Rust; MSRV 1.88 is verified only locally.
+
 ## 0.1.2 — 2026-11-13 23:31 +0000
 - **Added**: README coverage badge (one decimal, currently 100.0%); code moved into `src/lib.rs` with a unit test, `src/main.rs` only prints.
 - **Added**: CI checks version consistency, line coverage ≥ 85%, feature coverage 100% and that frozen release docs are untouched; tag releases use the release log as notes.
