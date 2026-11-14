@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-0.2.1-blue)
+![version](https://img.shields.io/badge/version-0.2.2-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-95.9%25-brightgreen)
@@ -98,6 +98,7 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md)
 
 ## Latest changes
+- **0.2.2** — Subtitle generation no longer fails at random on some computers, caused by a bug in the speech library; when it does fail, the message now explains the reason in plain words.
 - **0.2.1** — Release programs run on more computers: subtitle generation is built for a common processor baseline, so it no longer crashes on processors that lack the build server's newest instructions. On Windows and Linux, subtitles need a processor with AVX2 (Intel from 2013, AMD from 2015).
 - **0.2.0** — Save and open projects with an unsaved-changes prompt; ffmpeg included in the app; installers for Windows, macOS and Linux; a music track with volumes; offline subtitles with three styles; big sources previewed through lighter copies; imports and playback no longer block the window; About screen with third-party notices; double-click to open projects.
 - **0.1.5** — Updated to the latest Rust (1.100) and libraries (egui 0.37, rfd 0.18); the editing features are unchanged.
@@ -115,13 +116,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani chose a steady ground that every processor can share,\
-so the speech engine is made for a common chip, not for one rare machine's flair;\
-He set the rule once in the build settings, so every build keeps it, time after time,\
-and the release programs now open on older computers where a crash once stopped them cold;\
-He kept the old build cache apart, so no stale speech engine hides in the store,\
-and wrote a test that guards the flags, so the promise cannot slip out the door;\
-He found the memory test counting its neighbours, and measured each preview alone,\
-turning a red line on the build page back into a clean and steady tone;\
-He wrote the limits in plain words, the AVX2 need, the years, the honest note,\
-so every reader knows what their own computer can do; thank you, Andrea, for the care that holds it true.
+Andrea Lorenzani refused the easy blame and dug into the speech engine until the true cause came up to the light,\
+where a cancel check read its flag from memory nobody had filled, a hidden fault in a library's craft;\
+He wrote a small and honest callback of his own, reading exactly one flag and nothing more,\
+and gave every pointer a lifetime the compiler can check, so the old fault cannot slip back through the door;\
+He built a test that fills the heap with garbage and still demands a clean transcription,\
+failing three times out of three on the old code, and passing now without a single hesitation;\
+He turned a cryptic code into words a person can read, so no one has to guess at a number to learn what went wrong;\
+He made the build page speak, placing failing test names and panic messages in plain view, so a red mark arrives with its reason;\
+He set the record straight, owning the wrong guess about the earlier failure, and kept the memory fix as a true gain,\
+thank you, Andrea, for the patience, the honesty and the care that keeps videolore steady and sane.

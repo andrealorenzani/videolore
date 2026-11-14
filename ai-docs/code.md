@@ -4,7 +4,7 @@
 
 ## State (0.2.0 target)
 Implemented ALL REQ-001..044 (REQ-014..020 subs/music now implemented; 026..044 new). Version bump to 0.2.0 is the documenter's job (Cargo.toml still 0.1.6 when code landed).
-Coverage 95.9% lines (rustc 1.100, default features, ffmpeg 6.1.1 local incl. integration + real whisper test w/ espeak-ng). Feature coverage 44/44. 135 lib tests + 14 integration.
+Coverage 95.9% lines (rustc 1.100, default features, ffmpeg 6.1.1 local incl. integration + real whisper test w/ espeak-ng). Feature coverage 44/44. 139 lib tests + 15 integration (+1 ignored helper).
 User decisions: unsigned installers; Linux AppImage AND tar.gz; 2nd window on Win/Linux for double-clicked .vlproj (macOS odoc + REQ-028 prompt); only Noto Sans Bold bundled.
 Docs: docs/code.md index -> code-modules.md, code-testing.md, code-packaging.md (manual per-OS checklist + known limitations live there).
 
@@ -48,6 +48,8 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 - UNVERIFIED (CI/manual only): cargo-packager 0.11.8 config keys (file-associations, resources {src,target}, nsis install-mode, binaries main=false for ffmpeg), Windows DLL placement, macOS odoc at launch, Gatekeeper on nested ffmpeg, AppImage on Fedora/Ubuntu, real whisper test, Riedl URLs.
 
 ## Gotchas
+- **whisper-rs 0.16.0 `set_abort_callback_safe` is UB** (root cause of CI 0.2.0/0.2.1 failure `GenericError(-6)`): it boxes `Box<dyn FnMut>` again, passes `*mut Box<dyn FnMut>` but trampoline::<F> casts to `*mut F`; with F = closure{Arc<AtomicBool>} it reads ArcInner.data at (inner box ptr + 16) = uninitialised tail of the 8-byte alloc's 32-byte chunk -> nonzero on a used heap -> whisper_encode_internal returns false at its final abort check -> whisper_full_with_state -6 (lang detect passed: its encode gets nullptr callback). Also leaked the closure each call. Fix: own `unsafe extern "C" fn abort_requested(*mut c_void)` reading `*const AtomicBool`, set via `set_cancel_flag(&mut FullParams<'f,'f>, &'f AtomicBool)` (unsafe set_abort_callback + _user_data). Deterministic repro: allocate/free thousands of 0xFF Vec<u8> (8..64B) right before `transcribe` -> old code fails 3/3, new passes (`whisper_is_not_aborted_by_heap_garbage`). MALLOC_PERTURB_/tcache_count=0 did NOT reproduce; grooming before stt::run did not either (too many allocs in between). Don't use whisper-rs *_safe callbacks without reading their trampoline. whisper-rs maps codes wrongly too (7/8 positive) -> `whisper_full_error(code)` (-1/-2 mel, -3 lang, -4 decoders, -5 audio_ctx, -6 encode/abort, -7 kv cache, -8/-9 decode).
+- CI: test steps (check + msrv) `set -o pipefail; cargo test | tee $RUNNER_TEMP/cargo-test.txt || { scripts/test-annotations.sh ...; exit 1; }` -> `::error file=,line=,title=test X failed::` (max 9 + summary; esc % CR LF, props also : ,). Annotations public via check-runs API. Coverage step not wrapped.
 - egui 0.37: App::ui(&mut self, ui, frame); CentralPanel::show(ui,..); Id::new deprecated -> Id::unique; run_ui; FullOutput w/ texture deltas panics on drop -> drop_without_applying_deltas(); viewport commands for tests: out.viewport_output[&ViewportId::ROOT].commands; close button = RawInput.viewports[ROOT].events=[ViewportEvent::Close].
 - clippy 1.100: as_chunks; type_complexity in test structs -> type alias; field_reassign_with_default in tests.
 - Coverage: if it drops after toolchain change, rm -rf target/llvm-cov-target.
@@ -55,7 +57,7 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 - lavfi sine amplitude = 1/8 full scale (~4096 peak s16): thresholds in audio tests.
 - Paste inside a clip splits it.
 - `system_runner_runs_and_kills` uses `rustc` from PATH.
-- Integration tests share ONE process: own_rss() counts every parallel test (whisper ~170MB peak, measured up to +159MB in the memory test). REQ-039 test therefore re-execs current_exe on the #[ignore] helper `memory_peak_of_one_preview` (env VIDEOLORE_MEMORY_PROBE=file, prints VIDEOLORE_PEAK=n on the libtest line -> parse with split_once). Fixed after CI failure of 0.2.0 check job (log unreadable; only diff vs passing msrv job = espeak + model -> whisper runs in-process).
+- Integration tests share ONE process: own_rss() counts every parallel test (whisper ~170MB peak, measured up to +159MB in the memory test). REQ-039 test therefore re-execs current_exe on the #[ignore] helper `memory_peak_of_one_preview` (env VIDEOLORE_MEMORY_PROBE=file, prints VIDEOLORE_PEAK=n on the libtest line -> parse with split_once). Was a wrong guess for the 0.2.0 CI failure (real cause: abort-callback UB above) but a genuine flakiness fix; kept.
 
 ## Debt / open
 - dialogs.rs untested glue (0%); macOS module not covered (compiled only on mac).

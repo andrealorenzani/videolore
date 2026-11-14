@@ -775,6 +775,16 @@ fn memory_peak_of_one_preview() {
     println!("{PEAK_LINE}{peak}");
 }
 
+/// Leaves many freed small heap blocks full of 0xFF, as in a long-running busy process, so
+/// code that reads memory it never wrote sees non-zero garbage instead of fresh zeroes.
+#[cfg(feature = "stt")]
+fn dirty_heap() {
+    for size in [8usize, 16, 24, 32, 48, 64] {
+        let blocks: Vec<Vec<u8>> = (0..4096).map(|_| vec![0xFF; size]).collect();
+        drop(std::hint::black_box(blocks));
+    }
+}
+
 /// Real speech recognition with the pinned model (CI provides it with
 /// VIDEOLORE_STT_MODEL; espeak-ng makes the speech).
 // covers: REQ-014, REQ-015
@@ -819,4 +829,32 @@ fn real_speech_is_transcribed() {
     assert!(text.contains("hello"), "{text}");
     let words: Vec<_> = lines.iter().flat_map(|l| &l.words).collect();
     assert!(words.windows(2).all(|w| w[0].start <= w[1].start));
+}
+
+/// Regression: whisper-rs 0.16's `set_abort_callback_safe` read its "cancel flag" from heap
+/// memory next to a box, so with garbage there every encode came back aborted (whisper.cpp
+/// code -6). It passed on a quiet machine and failed on the CI runner; with `dirty_heap()`
+/// right before the call it fails every time. The cancel flag must still stop the work.
+#[cfg(feature = "stt")]
+#[test]
+fn whisper_is_not_aborted_by_heap_garbage() {
+    use videolore::stt::{SttError, Transcriber};
+    let Ok(model) = std::env::var("VIDEOLORE_STT_MODEL") else {
+        eprintln!("skipping: VIDEOLORE_STT_MODEL not set");
+        return;
+    };
+    let mut t = videolore::stt::whisper::WhisperTranscriber::load(Path::new(&model), 2).unwrap();
+    // 3 s of a quiet tone: no speech is needed, only a full encode + decode pass
+    let pcm: Vec<f32> = (0..16_000 * 3)
+        .map(|i| (i as f32 * 0.05).sin() * 0.1)
+        .collect();
+    let cancel = Arc::new(AtomicBool::new(false));
+    for _ in 0..3 {
+        dirty_heap();
+        let r = t.transcribe(&pcm, Micros::ZERO, Some("en"), &cancel);
+        assert!(r.is_ok(), "{r:?}");
+    }
+    cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+    let r = t.transcribe(&pcm, Micros::ZERO, Some("en"), &cancel);
+    assert_eq!(r.unwrap_err(), SttError::Cancelled);
 }

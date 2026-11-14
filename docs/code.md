@@ -23,6 +23,7 @@ This page covers building and running; the details are in the sub-documents:
 | Format / lint | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (CI also lints with `--no-default-features` and `--all-features`) |
 | Line coverage (>= 85%) | `scripts/coverage.sh --fail-under 85` (needs `cargo-llvm-cov` and `rustup component add llvm-tools-preview`) |
 | Feature coverage (100%) | `scripts/feature-coverage.sh` |
+| CI failure annotations | `scripts/test-annotations.sh <saved cargo test output>` (used by CI; prints `::error` lines) |
 | Licences and advisories | `cargo deny check` (cargo-deny 0.20.2, config in `deny.toml`) |
 | Rust crate notices | `scripts/notices.sh` (rewrite) / `scripts/notices.sh --check` (CI); needs `cargo install --locked cargo-about --version 0.9.3 --features cli` |
 | Icons | `scripts/icons.sh` (only after changing `assets/icon/videolore.svg`) |

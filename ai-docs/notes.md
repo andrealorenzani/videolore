@@ -20,3 +20,9 @@
 - open: business.md / business-subtitles.md / business-install.md (PM) do not mention the AVX2 CPU requirement or the crash on old CPUs; reported to caller
 - open: docs/workflow.md unchanged in 0.2.1 (.claude/ and AGENTS.md untouched; CI cache prefix only in build.yml, documented in code-testing.md)
 - open: CI cache prefix v1-rust-ggml-portable documented in docs/code-testing.md (PE owned, consistent)
+- 0.2.2 dev (2026-11-14 11:21 +0000): version set via scripts/version.sh (consistent); changelog 0.2.2 added with correction of the 0.2.1 CI-cause guess (callback UB in whisper-rs set_abort_callback_safe, not memory test); coverage badge 95.9 (PE), features 44/44
+- 0.2.2 README: latest-changes 0.2.2 line; poem replaced (10 verses, lines 1-9 end with backslash)
+- 0.2.2 links: no dead links; scripts/test-annotations.sh listed in docs/code.md; docs/workflow.md scripts table is workflow-only (not listed there, by design)
+- open: AGENTS.md scripts list lacks test-annotations.sh and notices/package/fetch-ffmpeg/icons (not mine; reported)
+- open: 0.2.0/0.2.1 changelog entries left as written (history); 0.2.1 CI-cause guess corrected only in 0.2.2 entry
+- open: no commit made by documenter in 0.2.2 (caller commits)

@@ -63,6 +63,22 @@ pub enum SttError {
     Io(String),
 }
 
+/// What a negative return code of whisper.cpp's `whisper_full_with_state` means (whisper.cpp
+/// as vendored by whisper-rs-sys 0.15; whisper-rs only reports "generic error <code>").
+pub fn whisper_full_error(code: i32) -> String {
+    let what = match code {
+        -1 | -2 => "the audio could not be turned into a spectrogram",
+        -3 => "the language could not be detected",
+        -4 => "too many decoders were requested",
+        -5 => "the audio context is larger than the model allows",
+        -6 => "the audio encoder failed or was interrupted",
+        -7 => "there was not enough memory for the decoder cache",
+        -8 | -9 => "the text decoder failed or was interrupted",
+        _ => "unexpected error",
+    };
+    format!("{what} (whisper.cpp code {code})")
+}
+
 fn io_err(e: io::Error) -> SttError {
     SttError::Io(e.to_string())
 }
@@ -494,7 +510,10 @@ pub mod whisper {
     //! whisper.cpp through whisper-rs (CPU only). Covered by the gated integration test
     //! `real_speech_is_transcribed` (needs `VIDEOLORE_STT_MODEL`).
     use super::*;
-    use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+    use std::ffi::c_void;
+    use whisper_rs::{
+        FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperError,
+    };
 
     pub struct WhisperTranscriber {
         ctx: WhisperContext,
@@ -505,11 +524,47 @@ pub mod whisper {
         pub fn load(model: &Path, threads: usize) -> Result<WhisperTranscriber, SttError> {
             whisper_rs::install_logging_hooks();
             let ctx = WhisperContext::new_with_params(model, WhisperContextParameters::default())
-                .map_err(|e| SttError::Model(e.to_string()))?;
+                .map_err(|e| SttError::Model(describe(&e)))?;
             Ok(WhisperTranscriber {
                 ctx,
                 threads: threads.max(1),
             })
+        }
+    }
+
+    /// Readable text for a whisper-rs error.
+    pub fn describe(e: &WhisperError) -> String {
+        match e {
+            WhisperError::GenericError(code) => whisper_full_error(*code),
+            other => other.to_string(),
+        }
+    }
+
+    /// Abort callback given to whisper.cpp: `data` points to the cancel flag.
+    ///
+    /// whisper-rs' own `set_abort_callback_safe` (0.16.0) is not used: it hands whisper.cpp a
+    /// pointer to a `Box<dyn FnMut>` but its trampoline reads it as the closure itself, so the
+    /// "cancel flag" it loads is whatever happens to be on the heap next to the box. With
+    /// leftover bytes there, every encode is reported as aborted (code -6).
+    ///
+    /// # Safety
+    /// `data` must be null or point to an `AtomicBool` that stays alive for the call.
+    pub unsafe extern "C" fn abort_requested(data: *mut c_void) -> bool {
+        // SAFETY: guaranteed by the caller (see `set_cancel_flag`): null or a live AtomicBool.
+        unsafe { data.cast::<AtomicBool>().as_ref() }.is_some_and(|f| f.load(Ordering::SeqCst))
+    }
+
+    /// Makes whisper.cpp stop as soon as `flag` is set.
+    ///
+    /// The params only hold a raw pointer to `flag`: the `'f` bound ties them to it, so the
+    /// flag outlives every use of the params (they are consumed by `WhisperState::full`).
+    pub fn set_cancel_flag<'f>(params: &mut FullParams<'f, 'f>, flag: &'f AtomicBool) {
+        // SAFETY: `abort_requested` only reads the AtomicBool behind the pointer, which lives
+        // at least as long as `params` (lifetime 'f above); AtomicBool is safe to read from
+        // the whisper.cpp worker threads.
+        unsafe {
+            params.set_abort_callback(Some(abort_requested));
+            params.set_abort_callback_user_data(std::ptr::from_ref(flag).cast_mut().cast());
         }
     }
 
@@ -521,7 +576,7 @@ pub mod whisper {
             language: Option<&str>,
             cancel: &Arc<AtomicBool>,
         ) -> Result<Transcript, SttError> {
-            let err = |e: whisper_rs::WhisperError| SttError::Transcription(e.to_string());
+            let err = |e: WhisperError| SttError::Transcription(describe(&e));
             let mut state = self.ctx.create_state().map_err(err)?;
             let lang = language.unwrap_or("auto").to_string();
             let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -534,8 +589,7 @@ pub mod whisper {
             params.set_print_progress(false);
             params.set_print_realtime(false);
             params.set_print_timestamps(false);
-            let flag = Arc::clone(cancel);
-            params.set_abort_callback_safe(move || flag.load(Ordering::SeqCst));
+            set_cancel_flag(&mut params, cancel);
             let r = state.full(params, pcm);
             if cancel.load(Ordering::SeqCst) {
                 return Err(SttError::Cancelled);
@@ -557,6 +611,41 @@ pub mod whisper {
                 });
             }
             Ok(Transcript { language, words })
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn abort_callback_reads_exactly_the_cancel_flag() {
+            let flag = AtomicBool::new(false);
+            let data = std::ptr::from_ref(&flag).cast_mut().cast();
+            // SAFETY: `flag` is alive for both calls.
+            assert!(!unsafe { abort_requested(data) });
+            flag.store(true, Ordering::SeqCst);
+            assert!(unsafe { abort_requested(data) });
+            // SAFETY: null is allowed.
+            assert!(!unsafe { abort_requested(std::ptr::null_mut()) });
+        }
+
+        #[test]
+        fn cancel_flag_is_wired_into_the_params() {
+            let flag = AtomicBool::new(false);
+            let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+            set_cancel_flag(&mut params, &flag);
+            drop(params);
+            assert!(!flag.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn errors_are_described() {
+            assert!(describe(&WhisperError::GenericError(-6)).contains("encoder"));
+            assert_eq!(
+                describe(&WhisperError::NoSamples),
+                WhisperError::NoSamples.to_string()
+            );
         }
     }
 }
@@ -636,6 +725,23 @@ pub(crate) mod tests {
     use super::*;
     use crate::ffmpeg::fake::{FakeRunner, fail};
     use crate::jobs::{Priority, Scheduler};
+
+    #[test]
+    fn whisper_error_codes_are_explained() {
+        assert_eq!(
+            whisper_full_error(-6),
+            "the audio encoder failed or was interrupted (whisper.cpp code -6)"
+        );
+        for code in [-1, -2, -3, -4, -5, -7, -8, -9, 42] {
+            let text = whisper_full_error(code);
+            assert!(
+                text.ends_with(&format!("(whisper.cpp code {code})")),
+                "{text}"
+            );
+        }
+        assert!(whisper_full_error(42).starts_with("unexpected"));
+        assert_ne!(whisper_full_error(-3), whisper_full_error(-8));
+    }
 
     /// What the fake transcriber was given: samples, offset, language.
     pub type Seen = Arc<std::sync::Mutex<Vec<(usize, Micros, Option<String>)>>>;

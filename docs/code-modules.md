@@ -85,7 +85,12 @@ project given on the command line, runs the desktop start-up hooks and opens the
 - Every `.rs` file starts with `// SPDX-License-Identifier: GPL-3.0-only` and
   `// Copyright (C) <year> Andrea Lorenzani`.
 - `unsafe` appears only in `desktop::macos` (Objective-C calls to register the Apple Event
-  handler), each block with a `SAFETY:` comment. Nowhere else.
+  handler) and in `stt::whisper` (the cancel callback handed to whisper.cpp: a C function that
+  reads the cancel flag through a pointer tied to the flag's lifetime), each block with a
+  `SAFETY:` comment. Nowhere else. whisper-rs' `set_abort_callback_safe` must not be used: in
+  0.16.0 it reads heap garbage as the cancel flag (see the testing notes).
+- whisper.cpp error codes are turned into readable text (`stt::whisper_full_error`), e.g.
+  "the audio encoder failed or was interrupted (whisper.cpp code -6)".
 - Times are integer microseconds (`Micros`) inside the model, never floating point.
 - Settings (`settings.json`): ffmpeg/ffprobe override and the proxy switch. Proxies live in the
   user cache folder (`…/videolore/proxies`), the speech model in the user data folder

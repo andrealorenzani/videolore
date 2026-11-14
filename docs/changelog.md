@@ -2,6 +2,17 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release this file is frozen in `release/<version>/docs/changelog.md` and reset.
 
+## 0.2.2 — 2026-11-14 11:21 +0000
+Summary: fixes subtitle generation failing at random on some computers, which affected 0.2.0 and 0.2.1. The cause was a memory-safety bug in the speech-recognition library, not the memory test named in the 0.2.1 entry. Failed subtitle generations now explain the reason in readable words.
+
+- **Fixed**: subtitle generation could fail with "Generic whisper error ... Error code: -6" at random. Cause: whisper-rs 0.16.0 (latest on crates.io) has a bug in `FullParams::set_abort_callback_safe`: its callback read the cancel flag from uninitialised heap memory. On computers whose heap held leftover data, every subtitle generation was reported as interrupted. The same bug leaked memory on each run. videolore now uses its own cancel callback, which reads exactly one atomic flag, with checked lifetimes and SAFETY comments (`src/stt.rs`); the buggy function is no longer used.
+- **Fixed**: whisper.cpp error codes are shown as readable messages, e.g. "the audio encoder failed or was interrupted (whisper.cpp code -6)".
+- **Correction**: the 0.2.1 entry said the CI failure of `real_speech_is_transcribed` was probably caused by the memory test. That was wrong; the cause is the callback bug above. The memory-test change of 0.2.1 stays, as a fix for flakiness.
+- **Changed**: CI test steps keep the `cargo test` output; on failure `scripts/test-annotations.sh` adds GitHub error annotations with the failing test names and panic messages, readable without opening the logs.
+- **Quality**: new integration test `whisper_is_not_aborted_by_heap_garbage`, which failed 3 out of 3 runs with the old code, plus unit tests for the cancel callback, its wiring and the error texts. 139 unit tests and 15 integration tests (plus 1 ignored helper) pass; fmt and clippy (default, no-default and all features) pass; line coverage 95.9%; feature coverage 44/44 implemented requirements.
+
+Known limitations (0.2.2): unchanged from 0.2.1.
+
 ## 0.2.1 — 2026-11-14 11:02 +0000
 Summary: fixes the failed test run of 0.2.0 on GitHub and makes the release programs run on more computers. Subtitle generation (speech recognition) is now built for a common x86-64 processor baseline instead of the CPU of the build server, so the programs no longer crash on processors that lack the build server's instructions. Generating subtitles on Windows and Linux needs a processor with AVX2 (see Known limitations).
 

@@ -56,7 +56,15 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - run: cargo test --locked
+      - name: cargo test --locked
+        # On failure the failing tests and their panic messages also become error annotations
+        # (readable without logging in, through the public check-run annotations).
+        run: |
+          set -o pipefail
+          cargo test --locked 2>&1 | tee "$RUNNER_TEMP/cargo-test.txt" || {
+            scripts/test-annotations.sh "$RUNNER_TEMP/cargo-test.txt"
+            exit 1
+          }
       - name: Licences, advisories and crate sources (cargo-deny)
         run: cargo deny --locked check
       - name: Rust crate notices are up to date
@@ -97,7 +105,15 @@ jobs:
           # does not rebuild on its own, so an old cache would keep the old (native) build.
           prefix-key: v1-rust-ggml-portable
       - run: cargo build --locked --all-targets
-      - run: cargo test --locked
+      - name: cargo test --locked
+        # On failure the failing tests and their panic messages also become error annotations
+        # (readable without logging in, through the public check-run annotations).
+        run: |
+          set -o pipefail
+          cargo test --locked 2>&1 | tee "$RUNNER_TEMP/cargo-test.txt" || {
+            scripts/test-annotations.sh "$RUNNER_TEMP/cargo-test.txt"
+            exit 1
+          }
 
   build:
     # Bare executables on every push and pull request (artifacts only; releases get the

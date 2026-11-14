@@ -24,6 +24,10 @@
   `VIDEOLORE_REQUIRE_FFMPEG=1` (set in CI, where missing libx265/libass also fail).
 - **Real speech recognition** (`real_speech_is_transcribed`, feature `stt`) runs only when
   `VIDEOLORE_STT_MODEL` points to the pinned model file and `espeak-ng` is installed (both in CI).
+  `whisper_is_not_aborted_by_heap_garbage` (needs only the model) fills the heap with freed
+  `0xFF` blocks before each transcription: it guards against the whisper-rs 0.16 cancel callback
+  bug, which read the cancel flag from uninitialised heap memory and so made every transcription
+  fail with "code -6" on CI only.
 - **Fixtures:** `tests/fixtures/project-v1.vlproj` is a project saved by 0.1.x; it must keep
   opening (and exporting) identically.
 - Each implemented requirement (`REQ-NNN (implemented)` in `docs/business*.md`) has at least one
@@ -42,6 +46,7 @@ glue outside the gated test.
 |---|---|---|
 | `check` | every push / PR | apt `ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng`; cached speech model (checked by SHA-256); fmt; clippy with default, no and all features; tests with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check`; Rust crate notices up to date (`scripts/notices.sh --check`); version check; line coverage ≥ 85 %; feature coverage 100 %; frozen release docs untouched |
 | (all jobs) | | `Swatinem/rust-cache` with `prefix-key: v1-rust-ggml-portable`, bumped whenever the whisper.cpp build flags change so no old build is reused |
+| (test steps) | | `cargo test` output is saved; on failure `scripts/test-annotations.sh` turns failing tests (name, file/line, panic message), compiler errors and crashed test binaries into GitHub error annotations, readable without logging in |
 | `msrv` | every push / PR | Build and test with exactly the `rust-version` of `Cargo.toml` |
 | `build` | after `check` + `msrv` | Bare release executables for Linux x86_64, macOS arm64 and Windows x86_64, uploaded as artifacts |
 | `package` | `v*` tags and manual runs, after `check` + `msrv` | Per OS: fetch the pinned ffmpeg, build, `scripts/package.sh` (with the ffmpeg smoke test), the third-party source archive on Linux; artifacts; on tags the five release assets are attached to the GitHub release |
