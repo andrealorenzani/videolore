@@ -43,9 +43,23 @@
 
   /* Horizontal timeline: scrolls sideways on narrow screens */
   .timeline-wrap {
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    overflow-x: scroll; -webkit-overflow-scrolling: touch;
     margin: 0 -16px; padding: 8px 16px 16px;
+    scrollbar-width: auto; scrollbar-color: var(--muted) var(--line);
   }
+  /* always-visible scrollbar (Chrome, Edge, Safari) */
+  .timeline-wrap::-webkit-scrollbar { height: 14px; }
+  .timeline-wrap::-webkit-scrollbar-track { background: var(--line); border-radius: 7px; }
+  .timeline-wrap::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 7px; border: 3px solid var(--line); }
+  .platforms { margin: 16px 0 0; }
+  .links { margin: 12px 0 0; font-size: 0.95rem; }
+  .links span { color: var(--muted); }
+  .libs { width: 100%; border-collapse: separate; border-spacing: 0 8px; font-size: 0.95rem; }
+  .libs th { text-align: left; color: var(--muted); font-weight: 600; padding: 0 12px; }
+  .libs td { background: var(--card); border: 1px solid var(--line); padding: 10px 12px; vertical-align: top; }
+  .libs td:first-child { border-radius: 10px 0 0 10px; white-space: nowrap; font-weight: 600; }
+  .libs td:last-child { border-radius: 0 10px 10px 0; }
+  .small { font-size: 0.8rem; color: var(--muted); }
   .timeline {
     list-style: none; margin: 0; padding: 0; position: relative;
     display: flex; gap: 20px; min-width: max-content;
@@ -79,6 +93,10 @@
     <h1>videolore</h1>
     <p class="tagline">A simple, offline desktop video editor for short social media clips.</p>
     <span class="badge">version 1.2.2</span>
+    <p class="links">
+      <span>Source:</span> <a href="https://github.com/andrealorenzani/videolore">github.com/andrealorenzani/videolore</a><br>
+      <span>Latest build:</span> <a href="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml?query=branch%3Amain"><img src="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status of the latest build on main" style="vertical-align: middle"></a>
+    </p>
   </header>
 
   <section class="brief" aria-labelledby="brief-title">
@@ -240,11 +258,30 @@
         </li>
       </ol>
     </div>
+    <p class="platforms"><strong>Available for Windows (64-bit), Linux (64-bit) and macOS (Apple Silicon).</strong> Installers and programs are built on GitHub for each platform.</p>
+  </section>
+
+  <section aria-labelledby="libs-title">
+    <h2 id="libs-title">Built with</h2>
+    <p class="hint">The main libraries, with their version and their copyright and licence.</p>
+    <table class="libs">
+      <thead>
+        <tr><th scope="col">Library</th><th scope="col">What it does here</th><th scope="col">Copyright and licence</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>eframe 0.37</td><td>The window and its controls (egui)</td><td>(authors: Emil Ernerfeldt, MIT OR Apache-2.0)</td></tr>
+        <tr><td>cpal 0.18</td><td>Sound playback in the preview</td><td>(RustAudio project, Apache-2.0)</td></tr>
+        <tr><td>rfd 0.18</td><td>The file open and save dialogs</td><td>(Copyright (c) 2022 Bartłomiej Maryńczak, MIT)</td></tr>
+        <tr><td>whisper-rs 0.16</td><td>Speech recognition for subtitles</td><td>(tazz4843, Unlicense)</td></tr>
+        <tr><td>ureq 3.5</td><td>Downloads the speech model you approve</td><td>(Copyright (c) 2019 Martin Algesten, MIT OR Apache-2.0)</td></tr>
+        <tr><td>serde 1</td><td>Reads and writes project files</td><td>(authors: Erick Tryzelaar and David Tolnay, MIT OR Apache-2.0)</td></tr>
+      </tbody>
+    </table>
   </section>
 
   <footer>
-    <p>Copyright (C) 2026 Andrea Lorenzani.</p>
-    <p>Released under the GNU General Public License v3.0. See <a href="https://github.com/andrealorenzani/videolore/blob/main/LICENSE">LICENSE</a>, and the <a href="https://github.com/andrealorenzani/videolore">source code on GitHub</a>.</p>
+    <p class="small">Copyright (C) 2026 <a href="https://andrealorenzani.github.io">Andrea Lorenzani</a>.</p>
+    <p class="small">Released under the GNU General Public License v3.0. See <a href="https://github.com/andrealorenzani/videolore/blob/main/LICENSE">LICENSE</a>, and the <a href="https://github.com/andrealorenzani/videolore">source code on GitHub</a>.</p>
   </footer>
 </main>
 </body>
