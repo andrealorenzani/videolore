@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.2.1-blue)
+![version](https://img.shields.io/badge/version-1.2.2-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-95.9%25-brightgreen)
@@ -142,13 +142,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani looked at the pages that grew with every change and asked how to keep them true,\
-and built a small checker that reads every link and every heading in a moment,\
-so the careful eye need only follow the pages that have just been touched,\
-and the long private notes were left for their own keepers to shorten in their own time,\
-and the version rose by one step, written in every place it lives at once,\
-and the changelog kept its honest dates and its newest entries at the top,\
-and the poem was written fresh, with a backslash at the end of every verse but the last,\
-and the program itself was left exactly as it was, so every clip and subtitle works as before,\
-and the frozen release notes stayed where no hand may change them,\
-thank you, Andrea, for caring for this project with such patience, precision and care.
+Andrea Lorenzani gathered the story of this project in one place, from its very first commit,\
+and set the brief beside it, in the same words the README keeps,\
+and laid every version out along a single line, with its day and its hour,\
+so that a visitor can walk from the first draft to today in one unbroken stride,\
+and each small step, each fix and each release, found its own sentence and its own place,\
+and the page was made plain and light, to read on a phone as well as on a large screen,\
+and it follows the light or the dark of the reader's own setting,\
+and it states the copyright and the licence plainly, under the GPL the project was given,\
+and the version rose to 1.2.2, written in every place it lives at once,\
+thank you, Andrea, for telling the story of this project so clearly and with such care.

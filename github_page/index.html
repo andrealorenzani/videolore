@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>videolore — project page</title>
+<meta name="description" content="videolore: a simple, offline desktop video editor for short clips made for social media. Its brief, its story as a timeline, and its licence.">
+<meta name="robots" content="index, follow">
+<style>
+  :root {
+    --bg: #f7f7f5; --fg: #1d1d1f; --muted: #5d5d63; --card: #ffffff; --line: #c9c9cf;
+    --accent: #2456c7; --accent-soft: #e6edfb; --dot: #2456c7; --dot-today: #0f7a4a;
+  }
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --fg: #f1f1f3; --muted: #a6a6ad; --card: #1f1f23; --line: #3a3a41;
+      --accent: #8fb0ff; --accent-soft: #232b40; --dot: #8fb0ff; --dot-today: #5fd39a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141416; --fg: #f1f1f3; --muted: #a6a6ad; --card: #1f1f23; --line: #3a3a41;
+    --accent: #8fb0ff; --accent-soft: #232b40; --dot: #8fb0ff; --dot-today: #5fd39a;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 2.2rem; letter-spacing: -0.01em; }
+  h2 { margin: 40px 0 12px; font-size: 1.4rem; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .tagline { margin: 0; color: var(--muted); }
+  .badge {
+    display: inline-block; margin-top: 10px; padding: 2px 10px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); font-size: 0.9rem; font-weight: 600;
+  }
+  .brief p { margin: 0 0 12px; max-width: 72ch; }
+  a { color: var(--accent); }
+
+  /* Horizontal timeline: scrolls sideways on narrow screens */
+  .timeline-wrap {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    margin: 0 -16px; padding: 8px 16px 16px;
+  }
+  .timeline {
+    list-style: none; margin: 0; padding: 0; position: relative;
+    display: flex; gap: 20px; min-width: max-content;
+  }
+  .timeline::before { /* the horizontal axis */
+    content: ""; position: absolute; left: 0; right: 0; top: 11px; height: 2px; background: var(--line);
+  }
+  .event { position: relative; width: 250px; padding-top: 34px; flex: none; }
+  .event::before { /* the dot on the axis */
+    content: ""; position: absolute; left: 0; top: 4px; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--dot); border: 3px solid var(--bg); box-shadow: 0 0 0 1px var(--dot);
+  }
+  .event.start::before { background: var(--muted); box-shadow: 0 0 0 1px var(--muted); }
+  .event.today::before { background: var(--dot-today); box-shadow: 0 0 0 1px var(--dot-today); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    height: 100%;
+  }
+  .version { font-weight: 700; font-size: 1.05rem; }
+  .when { color: var(--muted); font-size: 0.85rem; margin-bottom: 6px; }
+  .event p { margin: 0; font-size: 0.95rem; }
+  .hint { color: var(--muted); font-size: 0.85rem; margin: 6px 0 0; }
+
+  footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); font-size: 0.95rem; }
+  footer p { margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>videolore</h1>
+    <p class="tagline">A simple, offline desktop video editor for short social media clips.</p>
+    <span class="badge">version 1.2.2</span>
+  </header>
+
+  <section class="brief" aria-labelledby="brief-title">
+    <h2 id="brief-title">The brief</h2>
+    <p><code>videolore</code> is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, or taken from a video's own subtitles, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel, optionally using your computer's video hardware for a faster export. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.</p>
+  </section>
+
+  <section aria-labelledby="story-title">
+    <h2 id="story-title">The story</h2>
+    <p class="hint">From the first commit on 13 November 2026 to today. Every released version, with its date and time (UTC).</p>
+    <div class="timeline-wrap">
+      <ol class="timeline">
+        <li class="event start">
+          <div class="card">
+            <div class="version">Start</div>
+            <div class="when">2026-11-13 23:01 +0000</div>
+            <p>The first commit: a draft of the workflow, and the one decision taken then: to build the project in Rust.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.1.0</div>
+            <div class="when">2026-11-13 23:01 +0000</div>
+            <p>The Rust crate <code>videolore</code> is created, with the GPL-3.0 licence.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.1.1</div>
+            <div class="when">2026-11-13 23:16 +0000</div>
+            <p>Executables for Linux, macOS and Windows are built on GitHub, every source file gets a copyright notice, and the version changes with every change.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.1.2</div>
+            <div class="when">2026-11-13 23:31 +0000</div>
+            <p>A coverage badge in the README, and the code moves into a library with its first unit test.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.1.3</div>
+            <div class="when">2026-11-14 00:26 +0000</div>
+            <p>The project is defined as a desktop, non-destructive video editor built on ffmpeg for short social videos.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.1.4</div>
+            <div class="when">2026-11-14 00:39 +0000</div>
+            <p>The version script becomes all-or-nothing: a failed version change can no longer leave the files half-updated.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.1.5</div>
+            <div class="when">2026-11-14 01:03 +0000</div>
+            <p>The project follows the latest Rust (1.100) and the latest libraries (egui/eframe 0.37).</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.1.6</div>
+            <div class="when">2026-11-14 01:10 +0000</div>
+            <p>The tests run after the coding, in a loop of fixing and rerunning until everything passes, and the coverage is reported.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.2.0</div>
+            <div class="when">2026-11-14 10:17 +0000</div>
+            <p>The first complete version for people who are not editing experts: projects can be saved and reopened, ffmpeg is included, subtitles are made offline, a music track can be added, and each platform has a one-click installer.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.2.1</div>
+            <div class="when">2026-11-14 11:02 +0000</div>
+            <p>The failed test run on GitHub is fixed, and the speech recognition is built for a common processor, so the programs run on more computers.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.2.2</div>
+            <div class="when">2026-11-14 11:21 +0000</div>
+            <p>Subtitle generation that failed at random on some computers is fixed; the cause was a memory-safety bug in the speech library.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.3.0</div>
+            <div class="when">2026-11-14 15:18 +0000</div>
+            <p>The app sets itself up for the computer at first start, a Settings window controls preview and subtitle quality, and older processors get a clear message instead of a crash.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.4.0</div>
+            <div class="when">2026-11-14 20:05 +0000</div>
+            <p>Export can use the video hardware of NVIDIA, Intel, AMD or Apple through the new Faster option; every hardware file is checked, and any problem falls back to the normal method.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.4.1</div>
+            <div class="when">2026-11-14 21:29 +0000</div>
+            <p>The release process: a command that freezes a snapshot of each release, tags it and pushes it, and a roadmap of future work. The program itself is unchanged.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.4.2</div>
+            <div class="when">2026-11-14 21:59 +0000</div>
+            <p>The MVP release. Faster export finds the computer's video hardware reliably, also on a busy computer.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">0.4.3</div>
+            <div class="when">2026-11-14 22:35 +0000</div>
+            <p>The macOS and Windows installers build correctly again.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.0.0</div>
+            <div class="when">2026-11-14 22:36 +0000</div>
+            <p>The first major version opens after the 0.4.2 MVP release. It changes nothing by itself.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.1.0</div>
+            <div class="when">2026-11-15 17:52 +0000</div>
+            <p>The window is reorganised around a menu bar, a toolbar, a status bar, resizable sections and an Effects list.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.0</div>
+            <div class="when">2026-11-15 21:42 +0000</div>
+            <p>Effects apply to one clip or to the whole video, subtitles can reuse a video's own subtitle track, and each subtitle line can be moved on the picture. This version uses a newer project format.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.1</div>
+            <div class="when">2026-11-15 21:52 +0000</div>
+            <p>Workflow only: lighter checks for each development. The app is unchanged.</p>
+          </div>
+        </li>
+        <li class="event today">
+          <div class="card">
+            <div class="version">1.2.2 · today</div>
+            <div class="when">2026-11-15 21:59 +0000</div>
+            <p>This project page: the brief, this story, and the copyright and licence.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    <p>Copyright (C) 2026 Andrea Lorenzani.</p>
+    <p>Released under the GNU General Public License v3.0. See <a href="https://github.com/andrealorenzani/videolore/blob/main/LICENSE">LICENSE</a>, and the <a href="https://github.com/andrealorenzani/videolore">source code on GitHub</a>.</p>
+  </footer>
+</main>
+</body>
+</html>

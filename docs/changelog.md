@@ -2,6 +2,13 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.2.2 — 2026-11-15 21:59 +0000
+
+A project page for the GitHub repository: the brief, the story of the project as a timeline of every version, and the copyright and licence.
+
+### Added
+- **GitHub project page** in `github_page/index.html` (one static page, no build step): the brief taken from the README, the story as a horizontal timeline from the first commit (13 November 2026) to today, with each version's number, date and time and a sentence on what it is, and the copyright and licence. It scrolls sideways on phones and follows the light or dark setting.
+
 ## 1.2.1 — 2026-11-15 21:52 +0000
 
 Workflow only: no change to the program or to what the app does.
