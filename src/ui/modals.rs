@@ -5,7 +5,9 @@
 //! consent, regenerate and remove confirmations, and About.
 
 use super::UiCache;
-use crate::app::{AppState, Command, ConsentChoice, Modal, PendingAction, UnsavedChoice};
+use crate::app::{
+    AppState, Command, ConsentChoice, Modal, PendingAction, SourceChoice, UnsavedChoice,
+};
 use crate::settings::SubtitleQuality;
 use crate::stt::{self, ModelSpec};
 use eframe::egui::{self, Context};
@@ -64,8 +66,29 @@ pub fn consent_choices(app: &AppState, level: SubtitleQuality) -> Vec<(String, C
         "Choose a file on this computer…".into(),
         ConsentChoice::LocalFile,
     ));
+    if app.consent_offers_spread() {
+        v.push((
+            "Use without matching words".into(),
+            ConsentChoice::UseWithoutMatching,
+        ));
+    }
     v.push(("Cancel".into(), ConsentChoice::Cancel));
     v
+}
+
+/// The question of the subtitle source dialog (REQ-087).
+pub const SOURCE_QUESTION: &str =
+    "This video already contains subtitles. Use their text, or recognise the speech?";
+
+/// The "use" button of the subtitle source dialog: on computers that cannot match words
+/// to the speech it says what will happen.
+pub fn source_use_label(can_match: bool) -> &'static str {
+    if can_match {
+        "Use the video's subtitles"
+    } else {
+        "Use the video's subtitles (this computer cannot match words to the speech; they \
+         will be spread evenly)"
+    }
 }
 
 pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
@@ -157,12 +180,69 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                 });
             });
         }
+        Some(Modal::SubtitleSource { labels, can_match }) => {
+            if cache.source_choice >= labels.len() {
+                cache.source_choice = 0;
+            }
+            let mut container = None;
+            egui::Modal::new(egui::Id::unique("subtitle-source")).show(ctx, |ui| {
+                ui.set_max_width(ctx.content_rect().width().min(520.0) - 40.0);
+                ui.heading("Subtitles found");
+                ui.label(SOURCE_QUESTION);
+                if labels.len() > 1 {
+                    ui.label("Subtitles to use:");
+                    // many tracks: the list scrolls, the buttons stay in view
+                    let h = (ctx.content_rect().height() * 0.3).max(60.0);
+                    let out = egui::ScrollArea::vertical()
+                        .id_salt("subtitle-tracks")
+                        .max_height(h)
+                        .show(ui, |ui| {
+                            for (i, l) in labels.iter().enumerate() {
+                                if ui
+                                    .add(
+                                        egui::Button::selectable(cache.source_choice == i, l)
+                                            .truncate(),
+                                    )
+                                    .on_hover_text(l)
+                                    .clicked()
+                                {
+                                    cache.source_choice = i;
+                                }
+                            }
+                        });
+                    container =
+                        Some((out.inner_rect, out.state.clamped_offset(), out.content_size));
+                } else if let Some(l) = labels.first() {
+                    ui.add(egui::Label::new(format!("Subtitles: {l}")).truncate());
+                }
+                ui.weak("Either way, you can correct the text afterwards.");
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add(egui::Button::new(source_use_label(*can_match)).wrap())
+                        .clicked()
+                    {
+                        cmds.push(Command::ChooseSubtitleSource(SourceChoice::Use(
+                            cache.source_choice,
+                        )));
+                    }
+                    if ui.button("Recognise speech").clicked() {
+                        cmds.push(Command::ChooseSubtitleSource(SourceChoice::Recognise));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cmds.push(Command::ChooseSubtitleSource(SourceChoice::Cancel));
+                    }
+                });
+            });
+            if let Some((viewport, offset, size)) = container {
+                super::record(cache, viewport, offset, size);
+            }
+        }
         Some(Modal::ConfirmRegenerate) => {
             egui::Modal::new(egui::Id::unique("regenerate")).show(ctx, |ui| {
                 ui.heading("Replace the subtitles?");
                 ui.label(
-                    "You changed some subtitle lines by hand. Generating again replaces all \
-                     lines, including your changes (you can undo it).",
+                    "You changed some subtitle lines by hand. Creating subtitles again \
+                     replaces the lines it covers, including your changes (you can undo it).",
                 );
                 ui.horizontal(|ui| {
                     if ui.button("Replace").clicked() {

@@ -30,6 +30,32 @@ pub fn status_line(m: &MediaItem) -> String {
     base + &proxy
 }
 
+/// "Contains subtitles (Italian, English)" when the file has text subtitle tracks.
+pub fn subtitles_note(m: &MediaItem) -> Option<String> {
+    let tracks = m
+        .format
+        .subtitle_tracks
+        .as_deref()
+        .filter(|t| !t.is_empty())?;
+    let mut names: Vec<String> = Vec::new();
+    for t in tracks {
+        let n = t
+            .language
+            .as_deref()
+            .filter(|l| *l != "und")
+            .map(|l| {
+                crate::stt::language_name(l)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| l.to_string())
+            })
+            .unwrap_or_else(|| "unknown language".into());
+        if !names.contains(&n) {
+            names.push(n);
+        }
+    }
+    Some(format!("Contains subtitles ({})", names.join(", ")))
+}
+
 /// Shown when the media list is empty.
 pub const EMPTY_HINT: &str = "Import media… or drop files here";
 
@@ -58,8 +84,11 @@ pub fn media_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             })
             .inner;
         ui.add(Label::new(RichText::new(&line).small()).truncate());
+        let subs = subtitles_note(m)
+            .map(|n| format!("\n{n}"))
+            .unwrap_or_default();
         let r = r.on_hover_text(format!(
-            "{}\n{line}\nDouble-click to add it; right-click for more",
+            "{}\n{line}{subs}\nDouble-click to add it; right-click for more",
             m.name
         ));
         if r.clicked() {

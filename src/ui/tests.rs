@@ -1114,3 +1114,160 @@ fn borders_and_popups_stay_responsive_and_export_cancels_from_the_status_bar() {
         .dispatch(Command::CancelSubtitles, Instant::now())
         .unwrap();
 }
+
+/// Dragging an effect onto a clip and a subtitle in the preview while an export runs and
+/// subtitles are being matched to the speech: every frame stays short.
+// covers: REQ-056, REQ-082, REQ-089, REQ-095
+#[test]
+fn effect_and_subtitle_drags_stay_responsive_while_exporting_and_matching() {
+    use super::ux_tests::Harness;
+    use crate::app::{EffectKind, Instance, Modal, SourceChoice, Target};
+    use crate::settings::{Effort, SubtitleQuality};
+    let dir = tempfile::tempdir().unwrap();
+    let f = files(dir.path());
+    let fake = SlowExport {
+        inner: crate::app::tests::runner().holding_streams(),
+        secs: 5.0,
+        hardware: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    };
+    let mut app = AppState::with_ffmpeg(
+        Ok(crate::app::tests::info()),
+        Arc::new(fake),
+        Box::new(FakeDialogs::default()),
+        Box::new(crate::preview::NullSink),
+    );
+    let now = Instant::now();
+    import(&mut app, f);
+    for i in [0, 1] {
+        app.dispatch(Command::Append(Some(app.project.media[i].id)), now)
+            .unwrap();
+    }
+    app.dispatch(Command::SetEffort(Effort::Maximum), now)
+        .unwrap();
+    app.dispatch(Command::Seek(Micros(1_000_000)), now).unwrap();
+    app.dispatch(Command::AddSubtitle, now).unwrap();
+    let line = app.selected_line.unwrap();
+    app.dispatch(Command::ClearSelection, now).unwrap();
+    app.frame = Some(crate::preview::Frame {
+        pts: Micros::ZERO,
+        width: 64,
+        height: 36,
+        rgba: vec![0; 64 * 36 * 4],
+    });
+    app.frame_serial += 1;
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    h.idle(3);
+    // matching the video's subtitles to the speech, every core busy
+    let store = crate::stt::tests::store_for(dir.path(), b"m");
+    std::fs::create_dir_all(&store.dir).unwrap();
+    std::fs::write(
+        store.path(SubtitleQuality::Fast),
+        crate::stt::tests::level_body(b"m", 0),
+    )
+    .unwrap();
+    h.app.model_store = Some(store);
+    h.app.settings.subtitle_quality = SubtitleQuality::Fast;
+    h.app.transcriber =
+        Arc::new(|_, _| Ok(Box::new(BusyTranscriber) as Box<dyn crate::stt::Transcriber>));
+    h.app.project.media[1].format.subtitle_tracks = Some(vec![crate::media::SubtitleTrack {
+        ordinal: 0,
+        codec: crate::media::TextCodec::Srt,
+        language: Some("eng".into()),
+        title: None,
+    }]);
+    let clips: Vec<_> = h.app.project.timeline.clips.iter().map(|c| c.id).collect();
+    if crate::stt::available() {
+        h.app
+            .dispatch(
+                Command::ApplyEffect {
+                    effect: EffectKind::Subtitles,
+                    target: Target::Clip(clips[1]),
+                },
+                now,
+            )
+            .unwrap();
+        assert!(matches!(h.app.modal, Some(Modal::SubtitleSource { .. })));
+        h.app
+            .dispatch(Command::ChooseSubtitleSource(SourceChoice::Use(0)), now)
+            .unwrap();
+        assert!(h.app.is_generating() && h.app.stt_matching);
+        h.app
+            .dispatch(Command::ClosePopup(Popup::Subtitles), now)
+            .unwrap();
+    }
+    h.app
+        .dispatch(Command::Export(dir.path().join("busy.mp4")), now)
+        .unwrap();
+    assert!(h.app.is_exporting());
+    h.idle(2);
+    let row = h.find("Volume").unwrap().rect.center();
+    let clip = h.cache.timeline.unwrap().video;
+    let target = pos2(
+        h.cache.timeline.unwrap().x_of(Micros(2_000_000)),
+        clip.center().y,
+    );
+    let pic = h.find("Drag a subtitle to move it").unwrap().rect;
+    let grab = pos2(pic.center().x, pic.min.y + pic.height() * 0.91);
+    let btn = |pos, pressed| Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    let mut worst = Duration::ZERO;
+    let mut times = Vec::new();
+    let mut timed = |h: &mut Harness, events: Vec<Event>| {
+        let t = Instant::now();
+        h.frame(events);
+        let took = t.elapsed();
+        times.push(took.as_millis());
+        worst = worst.max(took);
+    };
+    // the effect row dragged onto the first clip
+    timed(&mut h, vec![Event::PointerMoved(row)]);
+    timed(&mut h, vec![btn(row, true)]);
+    for i in 1..=10 {
+        let p = row + (target - row) * (i as f32 / 10.0);
+        timed(&mut h, vec![Event::PointerMoved(p)]);
+    }
+    timed(&mut h, vec![btn(target, false)]);
+    timed(&mut h, vec![]);
+    assert_eq!(
+        h.app.popups.instance,
+        Some(Instance::ClipVolume(clips[0])),
+        "the drop applied Volume to the clip"
+    );
+    h.app
+        .dispatch(Command::ClosePopup(Popup::Instance), now)
+        .unwrap();
+    // the subtitle dragged across the preview
+    let to = pic.center();
+    timed(&mut h, vec![Event::PointerMoved(grab)]);
+    timed(&mut h, vec![btn(grab, true)]);
+    for i in 1..=12 {
+        let p = grab + (to - grab) * (i as f32 / 12.0);
+        timed(&mut h, vec![Event::PointerMoved(p)]);
+    }
+    assert!(h.app.drag_pos.is_some(), "the line follows the pointer");
+    timed(&mut h, vec![btn(to, false)]);
+    timed(&mut h, vec![]);
+    assert!(
+        worst <= Duration::from_millis(200),
+        "slowest frame {worst:?} ({times:?} ms)"
+    );
+    assert!(
+        h.app
+            .project
+            .subtitles
+            .get(line)
+            .unwrap()
+            .position
+            .is_some()
+    );
+    assert!(h.app.is_exporting(), "the export was still running");
+    h.app.dispatch(Command::CancelExport, now).unwrap();
+    h.app.wait_export(Instant::now());
+    h.app
+        .dispatch(Command::CancelSubtitles, Instant::now())
+        .unwrap();
+}

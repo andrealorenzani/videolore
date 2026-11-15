@@ -12,11 +12,11 @@ All edits are non-destructive: source files are never modified.
 Professional editors needing multitrack video, color grading or advanced effects are not the target.
 
 ## Documents
-- [Editing](business-editing.md) — media list, projects (save, open, unsaved changes), timeline editing, transitions, preview, responsiveness, preview proxies and memory use.
-- [Window, menus and effects](business-ui.md) — window layout and resizable sections, menus, toolbar, keyboard shortcuts, tooltips, status bar, the Effects section and its popups, fade and subtitle markers on the timeline, clip details, right-click menus, recent projects, drag and drop (since 1.1.0).
+- [Editing](business-editing.md) — media list, projects (save, open, unsaved changes, compatibility with older project files), timeline editing, fades between clips and at the start and end of the video, preview, responsiveness, preview proxies and memory use.
+- [Window, menus and effects](business-ui.md) — window layout and resizable sections, menus, toolbar, keyboard shortcuts, tooltips, status bar, the Effects section and its popups, applying effects to a clip or to the whole video, markers on the timeline, the timeline ruler, clip details, right-click menus, recent projects, drag and drop.
 - [Export](business-export.md) — automatic output format, stream copy vs re-encode, progress and cancel, Apple-compatible HEVC, long timelines, faster export with the computer's video hardware (with automatic fallback and output check).
-- [Music](business-music.md) — the music track, mixing and volumes, how music behaves when the video is edited.
-- [Subtitles](business-subtitles.md) — automatic offline subtitles, the speech model download, editing, styles, how subtitles follow edits.
+- [Music and volume](business-music.md) — the music track, mixing and volumes, the volume of each video clip, how music behaves when the video is edited.
+- [Subtitles](business-subtitles.md) — automatic offline subtitles, the speech model download, editing, styles, how subtitles follow edits, subtitles for one clip, reusing the subtitles already in a video, `.srt` export, moving lines on screen and selecting several lines.
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, third-party notices, first-launch steps.
 - [Settings, performance and safety](business-performance.md) — automatic setup at first start, the Settings window (preview quality, subtitle quality, how hard videolore works, export speed), more accurate speech models, older processors, responsiveness, safe handling of files and downloads, private temporary files, quality goals (including the real-hardware check of faster export).
 
@@ -34,17 +34,23 @@ Professional editors needing multitrack video, color grading or advanced effects
 - Installers are not code-signed in 0.2.0; signing is postponed, not rejected. The README explains the one-time first-launch steps.
 - (0.3.0) videolore detects the computer at its first start and picks recommended settings; installers do no tuning. Everything can be changed in Settings, and "Use recommended settings" restores the recommendation.
 - (0.3.0) Older processors get a clear message instead of a fallback speech engine; in 0.4.0 the fallback engine was dropped (not planned).
+- (1.2.0) Every effect can be applied to one video clip (drag and drop or right-click) or to the whole video (double-click in the Effects list).
+- (1.2.0) When a video already contains subtitles, the user chooses between using their text (matched word by word to the speech) and recognising the speech; the video's text is never replaced.
+- (1.2.0) The project file format changes to store start and end fades, clip volumes and subtitle positions; older projects open with the same result.
 - (0.4.0) Export can use the computer's video hardware (NVIDIA, Intel, AMD, Apple) when the user chooses "Export: Faster" in Settings. Best quality stays the default. Every hardware result is checked, and on any problem the export is silently redone with the normal method, so the user always gets a correct file.
 
 Topic-specific decisions are in each document.
 
-## Known limitations (1.1.0)
+## Known limitations (1.2.0)
 - Dropping files onto the window does not work in Linux Wayland sessions; File > Import media… and File > Open… work there (see [Window, menus and effects](business-ui.md)).
 - Subtitles in scripts other than Latin, Greek and Cyrillic are not fully supported (see [Subtitles](business-subtitles.md)).
 - x86-64 processors without AVX2 (from before about 2013) cannot generate subtitles automatically; videolore shows a clear message instead of crashing, and lines can still be added by hand (see [Settings, performance and safety](business-performance.md)).
 - Installers are unsigned, so each operating system shows a warning on first launch (see [Installation](business-install.md)).
 - On Windows and Linux, double-clicking a project while videolore is open opens a second window.
-- Projects saved by 0.2.0 cannot be opened by 0.1.x versions.
+- Projects saved by 0.2.0 cannot be opened by 0.1.x versions, and projects saved by 1.2.0 cannot be opened by 1.1 or earlier.
+- When a video's own subtitles are reused, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the REQ-095 accuracy target (90% of words, within 0.3 s) is not met yet with the Fast level (measured 82%, 0.48 s average word-start error; see [Subtitles](business-subtitles.md)).
+- Matching a video's own subtitles to the speech works only as well as their text follows what is said; translated or paraphrased subtitles often get evenly spread words (see [Subtitles](business-subtitles.md)).
+- Subtitle lines moved to their own place can overlap when shown at the same time; editing a line's text after moving it can push it past the edge of the picture in the export (see [Subtitles](business-subtitles.md)).
 - On macOS the standard Hide and Minimize menu items are not available, and the menu bar is inside the window rather than at the top of the screen.
 - Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
 - Ctrl/Cmd+V pastes clips only when the system clipboard holds text.

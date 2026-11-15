@@ -18,6 +18,13 @@ pub const MAX_FADE: Micros = Micros(500_000);
 #[serde(transparent)]
 pub struct ClipId(pub u64);
 
+/// Full volume of a clip's own sound (percent).
+pub const FULL_VOLUME: u8 = 100;
+
+fn full_volume() -> u8 {
+    FULL_VOLUME
+}
+
 /// A slice `[src_in, src_out)` of a media item placed on the track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Clip {
@@ -25,9 +32,32 @@ pub struct Clip {
     pub media: MediaId,
     pub src_in: Micros,
     pub src_out: Micros,
+    /// Level of the clip's own sound, 0–100 % (1.2.0; absent = 100).
+    #[serde(default = "full_volume")]
+    pub volume: u8,
+    /// The clip's own sound is muted (1.2.0; absent = not muted).
+    #[serde(default)]
+    pub muted: bool,
 }
 
 impl Clip {
+    /// A clip at full volume, not muted.
+    pub fn new(id: ClipId, media: MediaId, src_in: Micros, src_out: Micros) -> Clip {
+        Clip {
+            id,
+            media,
+            src_in,
+            src_out,
+            volume: FULL_VOLUME,
+            muted: false,
+        }
+    }
+
+    /// True when the clip's sound is changed (level below 100 % or muted).
+    pub fn has_volume(&self) -> bool {
+        self.volume != FULL_VOLUME || self.muted
+    }
+
     pub fn len(&self) -> Micros {
         self.src_out - self.src_in
     }
@@ -66,7 +96,12 @@ pub enum EditError {
     NothingToUndo,
     #[error("nothing to redo")]
     NothingToRedo,
+    #[error("the timeline is empty")]
+    EmptyTimeline,
 }
+
+/// Why two clips cannot be merged although they are parts of the same file.
+pub const DIFFERENT_VOLUMES: &str = "The clips have different volumes";
 
 /// The video track.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -75,6 +110,13 @@ pub struct Timeline {
     /// Boundaries with a fade, as (left clip, right clip). Only adjacent pairs are kept.
     pub fades: BTreeSet<(ClipId, ClipId)>,
     pub next_clip_id: u64,
+    /// Fade from black at the very start of the video (1.2.0). Attached to the video's
+    /// start, not to a clip: it stays there whatever is edited later.
+    #[serde(default)]
+    pub start_fade: bool,
+    /// Fade to black at the very end of the video (1.2.0).
+    #[serde(default)]
+    pub end_fade: bool,
 }
 
 impl Timeline {
@@ -123,17 +165,19 @@ impl Timeline {
         }
     }
 
-    /// Fade-in and fade-out lengths for clip `index` (zero when absent).
+    /// Fade-in and fade-out lengths for clip `index` (zero when absent). The first clip
+    /// fades in with the start fade, the last one fades out with the end fade.
     pub fn fades_of(&self, index: usize) -> (Micros, Micros) {
         let Some(c) = self.clips.get(index) else {
             return (Micros::ZERO, Micros::ZERO);
         };
-        let fin = if index > 0 && self.has_fade(index - 1) {
+        let last = index + 1 == self.clips.len();
+        let fin = if (index > 0 && self.has_fade(index - 1)) || (index == 0 && self.start_fade) {
             c.fade_len()
         } else {
             Micros::ZERO
         };
-        let fout = if self.has_fade(index) {
+        let fout = if self.has_fade(index) || (last && self.end_fade) {
             c.fade_len()
         } else {
             Micros::ZERO
@@ -168,12 +212,8 @@ impl Timeline {
             return Err(EditError::InvalidRange);
         }
         let id = self.new_id();
-        self.clips.push(Clip {
-            id,
-            media: media.id,
-            src_in: Micros::ZERO,
-            src_out: media.duration,
-        });
+        self.clips
+            .push(Clip::new(id, media.id, Micros::ZERO, media.duration));
         Ok(id)
     }
 
@@ -189,13 +229,13 @@ impl Timeline {
         let id = self.new_id();
         let cut = c.src_in + offset;
         self.clips[i].src_out = cut;
+        // the right half keeps the clip's sound settings
         self.clips.insert(
             i + 1,
             Clip {
                 id,
-                media: c.media,
                 src_in: cut,
-                src_out: c.src_out,
+                ..c
             },
         );
         self.rename_fade_left(c.id, id);
@@ -243,8 +283,13 @@ impl Timeline {
         Ok(id)
     }
 
-    /// True when clip `id` and the next one come from the same file and are contiguous in it.
+    /// True when clip `id` and the next one come from the same file, are contiguous in it
+    /// and have the same sound settings.
     pub fn can_merge(&self, id: ClipId) -> bool {
+        self.contiguous_with_next(id) && self.merge_block_reason(id).is_none()
+    }
+
+    fn contiguous_with_next(&self, id: ClipId) -> bool {
         match self.index_of(id) {
             Some(i) if i + 1 < self.clips.len() => {
                 let (a, b) = (&self.clips[i], &self.clips[i + 1]);
@@ -252,6 +297,17 @@ impl Timeline {
             }
             _ => false,
         }
+    }
+
+    /// Why two parts of the same file next to each other cannot be merged (their volumes
+    /// differ); `None` otherwise.
+    pub fn merge_block_reason(&self, id: ClipId) -> Option<&'static str> {
+        if !self.contiguous_with_next(id) {
+            return None;
+        }
+        let i = self.index_of(id)?;
+        let (a, b) = (&self.clips[i], &self.clips[i + 1]);
+        ((a.volume, a.muted) != (b.volume, b.muted)).then_some(DIFFERENT_VOLUMES)
     }
 
     /// Merges clip `id` with the next one (see [`Self::can_merge`]).
@@ -310,6 +366,86 @@ impl Timeline {
             self.fades.insert((a, n));
             Ok(true)
         }
+    }
+
+    /// Applies (`on`) or removes "Fade through black" on a clip: the fades at both of its
+    /// edges (the boundaries with its neighbours, the start fade when it is the first clip,
+    /// the end fade when it is the last).
+    pub fn set_clip_fades(&mut self, id: ClipId, on: bool) -> Result<(), EditError> {
+        let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
+        let mut set = |pair: (ClipId, ClipId)| {
+            if on {
+                self.fades.insert(pair);
+            } else {
+                self.fades.remove(&pair);
+            }
+        };
+        if i > 0 {
+            set((self.clips[i - 1].id, id));
+        }
+        if i + 1 < self.clips.len() {
+            set((id, self.clips[i + 1].id));
+        }
+        if i == 0 {
+            self.start_fade = on;
+        }
+        if i + 1 == self.clips.len() {
+            self.end_fade = on;
+        }
+        Ok(())
+    }
+
+    /// True when every fade of [`Self::set_clip_fades`] is there for clip `id`.
+    pub fn clip_has_fades(&self, id: ClipId) -> bool {
+        let Some(i) = self.index_of(id) else {
+            return false;
+        };
+        let left = if i == 0 {
+            self.start_fade
+        } else {
+            self.has_fade(i - 1)
+        };
+        let right = if i + 1 == self.clips.len() {
+            self.end_fade
+        } else {
+            self.has_fade(i)
+        };
+        left && right
+    }
+
+    /// Fade from black at the very start and to black at the very end of the video.
+    pub fn set_edge_fades(&mut self, on: bool) -> Result<(), EditError> {
+        if self.clips.is_empty() {
+            return Err(EditError::EmptyTimeline);
+        }
+        self.start_fade = on;
+        self.end_fade = on;
+        Ok(())
+    }
+
+    /// True when any fade (boundary, start or end) is set.
+    pub fn has_any_fade(&self) -> bool {
+        !self.fades.is_empty() || self.start_fade || self.end_fade
+    }
+
+    /// Removes every fade (boundaries, start and end).
+    pub fn clear_fades(&mut self) {
+        self.fades.clear();
+        self.start_fade = false;
+        self.end_fade = false;
+    }
+
+    /// Sets a clip's sound level (0–100 %, clamped) and mute.
+    pub fn set_clip_volume(
+        &mut self,
+        id: ClipId,
+        volume: u8,
+        muted: bool,
+    ) -> Result<(), EditError> {
+        let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
+        self.clips[i].volume = volume.min(FULL_VOLUME);
+        self.clips[i].muted = muted;
+        Ok(())
     }
 
     /// Boundary closest to `t` (index and time), if any.
@@ -443,12 +579,7 @@ pub(crate) mod tests {
         assert_eq!(t.clips[0].media, MediaId(1));
         let end_of_first = t.start_of(1);
         t.insert_at(&c, end_of_first - Micros(10), F).unwrap();
-        let empty = Clip {
-            id: ClipId(0),
-            media: MediaId(1),
-            src_in: s(1),
-            src_out: s(1),
-        };
+        let empty = Clip::new(ClipId(0), MediaId(1), s(1), s(1));
         assert_eq!(t.insert_at(&empty, s(0), F), Err(EditError::InvalidRange));
     }
 
@@ -518,12 +649,7 @@ pub(crate) mod tests {
         assert!(!t.toggle_fade(0).unwrap());
         assert!(!t.has_fade(0));
         assert_eq!(t.toggle_fade(1), Err(EditError::NoSuchBoundary));
-        let short = Clip {
-            id: ClipId(1),
-            media: MediaId(1),
-            src_in: s(0),
-            src_out: Micros(600_000),
-        };
+        let short = Clip::new(ClipId(1), MediaId(1), s(0), Micros(600_000));
         assert_eq!(short.fade_len(), Micros(300_000));
         // split keeps the fade on the right half's boundary
         t.toggle_fade(0).unwrap();
@@ -539,5 +665,123 @@ pub(crate) mod tests {
         t3.append(&media(3, 2, true)).unwrap();
         assert_eq!(t3.nearest_boundary(s(9)), Some((1, s(10))));
         assert_eq!(Timeline::default().nearest_boundary(s(1)), None);
+    }
+
+    fn three() -> Timeline {
+        let mut t = track();
+        t.append(&media(3, 5, true)).unwrap();
+        t
+    }
+
+    // covers: REQ-083, REQ-011
+    #[test]
+    fn fade_on_a_clip_sets_both_of_its_edges() {
+        // (a) the middle clip: its two boundaries, nothing at the start or end
+        let mut t = three();
+        let ids: Vec<ClipId> = t.clips.iter().map(|c| c.id).collect();
+        t.set_clip_fades(ids[1], true).unwrap();
+        assert!(t.has_fade(0) && t.has_fade(1));
+        assert!(!t.start_fade && !t.end_fade);
+        assert!(t.clip_has_fades(ids[1]));
+        assert!(!t.clip_has_fades(ids[0]));
+        // removing it from the clip removes both edges
+        t.set_clip_fades(ids[1], false).unwrap();
+        assert!(!t.has_any_fade());
+        // (b) the first clip: fade from black at the start + its boundary
+        t.set_clip_fades(ids[0], true).unwrap();
+        assert!(t.start_fade && t.has_fade(0) && !t.has_fade(1) && !t.end_fade);
+        assert_eq!(t.fades_of(0), (MAX_FADE, MAX_FADE));
+        // the last clip: its boundary + fade to black at the end
+        t.set_clip_fades(ids[2], true).unwrap();
+        assert!(t.end_fade && t.has_fade(1));
+        assert_eq!(t.fades_of(2), (MAX_FADE, MAX_FADE));
+        assert_eq!(
+            t.set_clip_fades(ClipId(99), true),
+            Err(EditError::NoSuchClip)
+        );
+        assert!(!t.clip_has_fades(ClipId(99)));
+        t.clear_fades();
+        assert!(!t.has_any_fade());
+    }
+
+    // covers: REQ-083, REQ-011
+    #[test]
+    fn whole_video_fades_stay_at_the_video_edges() {
+        let mut t = three();
+        assert_eq!(
+            Timeline::default().set_edge_fades(true),
+            Err(EditError::EmptyTimeline)
+        );
+        t.set_edge_fades(true).unwrap();
+        assert!(t.fades.is_empty(), "no boundary fades");
+        assert_eq!(t.fades_of(0), (MAX_FADE, Micros::ZERO));
+        assert_eq!(t.fades_of(2), (Micros::ZERO, MAX_FADE));
+        // cutting the first clip: the new first clip fades in from black
+        let first = t.clips[0].id;
+        t.remove(first).unwrap();
+        assert_eq!(t.fades_of(0).0, MAX_FADE);
+        // moving the first clip to the end: the start fade stays at the start
+        let first = t.clips[0].id;
+        t.move_to(first, 9).unwrap();
+        assert_eq!(t.fades_of(0).0, MAX_FADE);
+        assert_eq!(t.fades_of(1), (Micros::ZERO, MAX_FADE));
+        // a clip shorter than 1 s fades over half its length
+        let mut short = Timeline::default();
+        short.append(&media(1, 4, true)).unwrap();
+        let id = short.clips[0].id;
+        short.trim(id, s(0), Micros(600_000), s(4), F).unwrap();
+        short.set_edge_fades(true).unwrap();
+        assert_eq!(short.fades_of(0), (Micros(300_000), Micros(300_000)));
+        t.set_edge_fades(false).unwrap();
+        assert!(!t.start_fade && !t.end_fade);
+    }
+
+    // covers: REQ-084, REQ-020, REQ-008
+    #[test]
+    fn clip_volume_follows_split_copy_and_reorder_and_blocks_merge() {
+        let mut t = track();
+        let a = t.clips[0].id;
+        assert!(!t.clips[0].has_volume());
+        t.set_clip_volume(a, 250, false).unwrap();
+        assert_eq!(t.clips[0].volume, 100, "never above 100%");
+        t.set_clip_volume(a, 50, true).unwrap();
+        assert!(t.clips[0].has_volume());
+        assert_eq!(
+            t.set_clip_volume(ClipId(77), 1, false),
+            Err(EditError::NoSuchClip)
+        );
+        // (c) split keeps the level on both halves; the halves can be merged back
+        let right = t.split(s(2), F).unwrap();
+        assert_eq!((t.clips[0].volume, t.clips[0].muted), (50, true));
+        let r = *t.get(right).unwrap();
+        assert_eq!((r.volume, r.muted), (50, true));
+        assert!(t.can_merge(a));
+        // a copy keeps it, so does a move
+        let id = t.insert_at(&r, t.duration(), F).unwrap();
+        assert_eq!(t.get(id).unwrap().volume, 50);
+        t.move_to(id, 0).unwrap();
+        assert_eq!(t.clips[0].volume, 50);
+        // different volumes: no merge, with the reason
+        t.set_clip_volume(right, 80, true).unwrap();
+        assert!(!t.can_merge(a));
+        assert_eq!(t.merge_block_reason(a), Some(DIFFERENT_VOLUMES));
+        assert_eq!(t.merge(a), Err(EditError::NotMergeable));
+        assert_eq!(
+            t.merge_block_reason(right),
+            None,
+            "not contiguous: other reason"
+        );
+        t.set_clip_volume(right, 50, true).unwrap();
+        t.merge(a).unwrap();
+    }
+
+    // covers: REQ-094
+    #[test]
+    fn clips_and_timelines_of_1_1_read_with_defaults() {
+        let c: Clip = serde_json::from_str(r#"{"id":1,"media":2,"src_in":0,"src_out":5}"#).unwrap();
+        assert_eq!((c.volume, c.muted), (100, false));
+        let t: Timeline =
+            serde_json::from_str(r#"{"clips":[],"fades":[],"next_clip_id":0}"#).unwrap();
+        assert!(!t.start_fade && !t.end_fade);
     }
 }

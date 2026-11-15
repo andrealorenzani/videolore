@@ -8,13 +8,15 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | Module | Responsibility |
 |---|---|
 | `time` | `Micros` (integer microseconds), `Fps` (rational), frame rounding, timecodes |
-| `media` | `MediaItem` (with `MediaStatus` analysing/ready/rejected and `ProxyState`), `MediaFormat`, defensive parser of `ffprobe` JSON, `probe()` |
-| `timeline` | The video track: contiguous clips + fades at boundaries; every edit returns `Result<_, EditError>` |
+| `media` | `MediaItem` (with `MediaStatus` analysing/ready/rejected and `ProxyState`), `MediaFormat` (with the text subtitle tracks of the file, `SubtitleTrack`), defensive parser of `ffprobe` JSON, `probe()` |
+| `timeline` | The video track: contiguous clips (each with its own volume and mute) + fades at boundaries and at the video's start and end; every edit returns `Result<_, EditError>` |
 | `music` | The music track (`MusicTrack`): audio clips at their own times, never overlapping; `Mix` (volume 0–100 % and mute for video sound and music, gain = (p/100)²) |
-| `subtitles` | Subtitle lines stored in *source* time per file; `project()` maps them onto the timeline (cut removes, copy duplicates, trim hides, split keeps); edits; the three styles |
+| `subtitles` | Subtitle lines stored in *source* time per file; `project()` maps them onto the timeline (cut removes, copy duplicates, trim hides, split keeps); edits; the three styles; each line's own position on screen (`Pos`); replacing the lines of one source range |
+| `srt` | SubRip: writing the timeline's subtitles (`write`), lenient reading of a track converted by ffmpeg (`parse`, capped), tag removal (`strip_tags`) |
+| `align` | Matching the words of a subtitle track to recognised words (per-cue Needleman–Wunsch, close spellings, clamped times, even spread of words not found) |
 | `ass` | Writes the ASS subtitle file: styles, text size `min(0.055·H, 0.09·W)`, word highlight with `\k` tags, escaping of `{ } \` |
 | `history` | Undo/redo by snapshots of `Edit` (timeline + music + subtitles + volumes), up to 100 steps, each with the name of its action ("Undo Split") |
-| `project` | `.vlproj` file (JSON, `schema_version` 2; version 1 files are migrated on load, newer ones refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
+| `project` | `.vlproj` file (JSON, `schema_version` 3 since 1.2.0; version 1 and 2 files load with defaults, newer ones are refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
 | `format` | Same-format check, lowest-quality output choice, codec to encoder mapping with H.264/AAC/MP4 fallback |
 | `render` | Export plan (stream copy or one re-encode), filter graphs (clips grouped by source, music bed and mix, subtitle burn-in), `hvc1` tag, export argv (normal method or a hardware method), preview argv, `FrameKey` |
 | `ffmpeg` | Locating binaries (setting, environment, bundled, `PATH`), version/filter/encoder checks, `Runner` trait (real processes or test fake), progress and keyframe parsers |
@@ -31,8 +33,8 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `notices` | Bundled components with version, licence and source; the About text |
 | `packaging` | Pinned ffmpeg builds and tools (`packaging/*.lock`) and release asset names |
 | `desktop` | Linux menu entry / icon / `.vlproj` type for the AppImage and tar.gz; macOS Apple Event handler for double-clicked projects; queue of projects to open |
-| `app` | `AppState`, the single command dispatcher (`Command`, `AppState::dispatch`), background results in `tick()` |
-| `ui` | The window (see [code-ui.md](code-ui.md)): action table (`actions`), menu bar (`menu`), toolbar (`toolbar`), status bar (`status`), resizable sections (`layout`), media list (`media`), timeline with marker lane and music track (`timeline`, `markers`), Effects section and effect popups (`effects`), floating windows (`popups`), Settings body and banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`) |
+| `app` | `AppState`, the single command dispatcher (`Command`, `AppState::dispatch`), background results in `tick()`; `app/effects.rs` (applying effects, clip volume, edge fades, line selection and positions, SRT export) and `app/subs_create.rs` (creating subtitles for a clip or the whole video) |
+| `ui` | The window (see [code-ui.md](code-ui.md)): action table (`actions`), menu bar (`menu`), toolbar (`toolbar`), status bar (`status`), resizable sections (`layout`), media list (`media`), timeline with marker lane and music track (`timeline`, `markers`), Effects section and effect popups (`effects`), floating windows (`popups`), Settings body and banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`), ruler labels (`ruler`), subtitle boxes and dragging in the preview (`placement`) |
 | `dialogs` | Native file dialogs (rfd) |
 
 ## Main patterns

@@ -5,7 +5,7 @@
 //! the toolbar, the tooltips, the shortcuts window and the key bindings all read it, so
 //! they can never disagree.
 
-use crate::app::{AppState, Command, Popup, ZOOM_STEP};
+use crate::app::{AppState, Command, EffectKind, Popup, Target, ZOOM_STEP};
 use crate::time::Micros;
 use eframe::egui::{Key, KeyboardShortcut, Modifiers};
 
@@ -18,6 +18,7 @@ pub enum ActionId {
     SaveAs,
     Import,
     Export,
+    ExportSubtitles,
     Quit,
     Undo,
     Redo,
@@ -44,6 +45,13 @@ pub enum ActionId {
     ToggleFadeAtPlayhead,
     GenerateSubtitles,
     AddSubtitleLine,
+    ApplyClipFade,
+    ApplyClipSubtitles,
+    ApplyClipVolume,
+    ApplyWholeFade,
+    ApplyWholeSubtitles,
+    ApplyWholeVolume,
+    ResetSubtitlePosition,
     ZoomIn,
     ZoomOut,
     ZoomFit,
@@ -107,6 +115,12 @@ pub const ACTIONS: &[Action] = &[
         "Export…",
         [cmd(Key::E)],
         "Make the final video file"
+    ),
+    action!(
+        ExportSubtitles,
+        "Export subtitles (.srt)…",
+        [],
+        "Save the subtitles of the timeline as an .srt file"
     ),
     action!(Quit, "Quit", [cmd(Key::Q)], "Close videolore"),
     action!(Undo, "Undo", [cmd(Key::Z)], "Undo the last change"),
@@ -245,6 +259,48 @@ pub const ACTIONS: &[Action] = &[
         "Add a subtitle line at the playhead"
     ),
     action!(
+        ApplyClipFade,
+        "Fade through black",
+        [],
+        "Fade the selected clip at both of its edges"
+    ),
+    action!(
+        ApplyClipSubtitles,
+        "Subtitles",
+        [],
+        "Create subtitles for the selected clip only"
+    ),
+    action!(
+        ApplyClipVolume,
+        "Volume",
+        [],
+        "Set the sound level of the selected clip"
+    ),
+    action!(
+        ApplyWholeFade,
+        "Fade through black",
+        [],
+        "Fade from black at the start and to black at the end of the video"
+    ),
+    action!(
+        ApplyWholeSubtitles,
+        "Subtitles",
+        [],
+        "Create subtitles for every clip"
+    ),
+    action!(
+        ApplyWholeVolume,
+        "Volume",
+        [],
+        "Set the sound levels of the whole video"
+    ),
+    action!(
+        ResetSubtitlePosition,
+        "Reset subtitle position",
+        [],
+        "Put the selected subtitle lines back at the place of the style"
+    ),
+    action!(
         ZoomIn,
         "Zoom in",
         [cmd(Key::Equals), cmd(Key::Plus)],
@@ -285,7 +341,12 @@ pub const ACTIONS: &[Action] = &[
 /// Esc closes the topmost popup (handled apart from the table: it is not a command).
 pub const CLOSE_POPUP: KeyboardShortcut = plain(Key::Escape);
 /// What Esc does, for the shortcuts window.
-pub const CLOSE_POPUP_LABEL: &str = "Close the topmost popup";
+pub const CLOSE_POPUP_LABEL: &str =
+    "Close the topmost popup (none open: clear the selected subtitle lines)";
+
+fn apply(effect: EffectKind, target: Target) -> Command {
+    Command::ApplyEffect { effect, target }
+}
 
 /// The table entry of `id`.
 pub fn action(id: ActionId) -> &'static Action {
@@ -307,6 +368,7 @@ impl ActionId {
             Import => Command::PickImport,
             Export if app.is_exporting() => Command::CancelExport,
             Export => Command::PickExport,
+            ExportSubtitles => Command::PickExportSrt,
             Quit => Command::Quit,
             Undo => Command::Undo,
             Redo => Command::Redo,
@@ -333,6 +395,13 @@ impl ActionId {
             ToggleFadeAtPlayhead => Command::ToggleFadeAtPlayhead,
             GenerateSubtitles => Command::GenerateSubtitles,
             AddSubtitleLine => Command::AddSubtitle,
+            ApplyClipFade => apply(EffectKind::Fade, Target::Selected),
+            ApplyClipSubtitles => apply(EffectKind::Subtitles, Target::Selected),
+            ApplyClipVolume => apply(EffectKind::Volume, Target::Selected),
+            ApplyWholeFade => apply(EffectKind::Fade, Target::WholeVideo),
+            ApplyWholeSubtitles => apply(EffectKind::Subtitles, Target::WholeVideo),
+            ApplyWholeVolume => apply(EffectKind::Volume, Target::WholeVideo),
+            ResetSubtitlePosition => Command::ResetPosition,
             ZoomIn => Command::ZoomBy(ZOOM_STEP),
             ZoomOut => Command::ZoomBy(1.0 / ZOOM_STEP),
             ZoomFit => Command::ZoomFit,

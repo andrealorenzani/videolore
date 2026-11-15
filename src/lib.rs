@@ -11,6 +11,7 @@
 //! "open document" handler (`desktop::macos`). Each block there carries a SAFETY comment.
 #![deny(unsafe_code)]
 
+pub mod align;
 pub mod app;
 pub mod ass;
 pub mod desktop;
@@ -33,6 +34,7 @@ pub mod proxy;
 pub mod render;
 pub mod scratch;
 pub mod settings;
+pub mod srt;
 pub mod stt;
 pub mod subtitles;
 pub mod time;

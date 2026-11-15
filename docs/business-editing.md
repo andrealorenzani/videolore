@@ -6,7 +6,7 @@ Back to the [index](business.md).
 - **Media list**: import video and audio files; each item shows "analysing" while it is inspected, then its name and duration, or a clear rejection message. Importing never freezes the window.
 - **Projects**: New, Open, Save and Save As; the window title shows the project name and a marker when there are unsaved changes; closing, quitting, opening or starting a new project with unsaved changes asks to Save, Discard or Cancel.
 - **Timeline editing**: append, split, cut/copy/paste, merge, trim and reorder segments; the timeline closes gaps automatically. Undo/redo of at least 50 steps.
-- **Transitions**: fade through black between clips.
+- **Transitions**: fade through black between clips and, since 1.2.0, a fade in from black at the start and out to black at the end of the video; applied to one clip (fades at both its edges) or to the whole video.
 - **Preview**: play, pause and seek, with fades, music and subtitles visible. Video keeps playing in real time even if audio output stalls.
 - **Proxies**: very large sources get a smaller preview copy automatically, so preview stays smooth; export always uses the originals. Since 0.3.0 this is controlled by "Preview quality" in Settings (see [Settings, performance and safety](business-performance.md)).
 - **Window**: resizable sections, menus, a toolbar, a status bar and keyboard shortcuts (since 1.1.0; see [Window, menus and effects](business-ui.md)).
@@ -23,15 +23,17 @@ Back to the [index](business.md).
 - REQ-027 (implemented): The window title shows the project name and an unsaved-changes marker; saving clears the marker, and undoing back to the saved state also clears it.
 - REQ-028 (implemented): New, Open, closing the window or quitting with unsaved changes asks Save / Discard / Cancel. Save saves and then continues (a failed save or a cancelled Save As stops the action); Discard continues without saving; Cancel returns to the editor unchanged. No prompt appears when there are no unsaved changes.
 - REQ-029 (implemented): Projects created with 0.1.x open in 0.2.0 and produce the same result; project files from a newer version are refused with a clear message and left untouched.
+- REQ-094 (implemented): Projects from 1.1 and earlier open in 1.2.0 with the same result: their fades between clips are kept, there are no start or end fades, every clip volume is 100% and every subtitle line is at its style's usual place. Projects saved by 1.2.0 also store start and end fades, clip volumes and subtitle line positions; older versions refuse them with their "newer version" message and leave the file untouched (REQ-029). Acceptance: 0.1 and 1.1 example projects render and export as before; a 1.2.0 file is refused by the previous version's check; damaged or hostile values in the new fields (position outside the picture, volume above 100%, unknown references) are refused or corrected without a crash (REQ-057).
 
 ### Timeline
 - REQ-005 (implemented): A media item can be appended to the end of the timeline.
 - REQ-006 (implemented): A segment can be split at the playhead.
 - REQ-007 (implemented): Segments can be cut, copied and pasted; the timeline ripples so no gaps remain.
-- REQ-008 (implemented): Contiguous segments from the same source with contiguous source ranges can be merged; the action is disabled otherwise.
+- REQ-008 (implemented): Contiguous segments from the same source with contiguous source ranges can be merged; the action is disabled otherwise. Since 1.2.0 the clips must also have the same volume (REQ-084); otherwise Merge is greyed out with "The clips have different volumes".
 - REQ-009 (implemented): A segment can be trimmed at either edge, within the bounds of its source.
 - REQ-010 (implemented): Segments can be reordered; the timeline ripples.
-- REQ-011 (implemented): A transition between clips is a fade-out followed by a fade-in through black, on video and audio, and can be removed; each fade lasts 0.5 s, or half the clip length for clips shorter than 1 s, so fades never overlap. Since 1.1.0 clicking a fade marker opens its settings, and a fade is removed from there or from the right-click menu (REQ-077).
+- REQ-011 (implemented): A transition between clips is a fade-out followed by a fade-in through black, on video and audio, and can be removed; each fade lasts 0.5 s, or half the clip length for clips shorter than 1 s, so fades never overlap. Since 1.1.0 clicking a fade marker opens its settings, and a fade is removed from there or from the right-click menu (REQ-077). Since 1.2.0 there are also a fade in from black at the start of the video and a fade out to black at its end, applied per clip or to the whole video (REQ-083), with the same length rule.
+- REQ-083 (implemented): Fade through black as an effect (REQ-082). **On a clip**: fades at both edges of the clip; at a boundary with a neighbour this is the REQ-011 fade-out + fade-in; if the clip is the first one, a fade in from black at the start of the video; if it is the last one, a fade out to black at the end. **On the whole video**: a fade in from black at the very start and a fade out to black at the very end. Start and end fades are attached to the edges of the video, not to a clip: they stay at the start and end whatever is edited later (for example when the first clip is cut or moved elsewhere). Each fade lasts 0.5 s, or half the clip for clips shorter than 1 s, on picture and sound. Removing the effect from a clip removes the fades at both its edges. Each start, end and boundary fade has its own marker (REQ-077) and can be removed alone. The "Add fade" handle at boundaries stays. Acceptance: (a) with 3 clips, applying it to clip 2 gives fades at boundaries 1 and 2 and none at the start or end; (b) applying it to clip 1 gives a start fade and a fade at boundary 1; (c) on the whole video the first and last frames are black in preview and export, and still are after cutting the first clip; (d) a 1.1 project shows exactly the same fades as before.
 - REQ-012 (implemented): A zoom slider scales the timeline from showing the whole project to single-frame level. Since 1.1.0 the slider is in the Timeline header, and View > Zoom in / Zoom out / Fit project (with shortcuts) also zoom.
 
 ### Preview
@@ -55,6 +57,8 @@ The window layout (REQ-024), how commands are reached (REQ-025), menus, toolbar,
 - The proxy size rule is an assumption that may be tuned in later versions; it always gives the same answer on the same machine.
 - Undoing back to the saved state counts as "no unsaved changes".
 - Projects are saved in a newer format from 0.2.0 on: a 0.1.x project saved with 0.2.0 can no longer be opened by 0.1.x.
+- (1.2.0) Projects are saved in a newer format again, to store start and end fades, clip volumes and subtitle positions: a project saved with 1.2.0 cannot be opened by 1.1 or earlier.
+- (1.2.0) Start and end fades belong to the edges of the video, not to the first or last clip, so "the video starts from black" stays true whatever is edited.
 - On macOS, Cmd+Q also goes through the unsaved-changes prompt (Ctrl+Q elsewhere).
 - Default shortcuts follow common conventions (Ctrl/Cmd+X/C/V/Z, Space for play/pause, Ctrl/Cmd+B for split, Ctrl/Cmd+S to save, Ctrl/Cmd+Q to quit); exact bindings are an engineering choice. The full list since 1.1.0 is REQ-071 in [Window, menus and effects](business-ui.md).
 - Letterboxing color is black.
@@ -70,3 +74,4 @@ The window layout (REQ-024), how commands are reached (REQ-025), menus, toolbar,
 ## Out of scope
 - Autosave, crash recovery (the recent-projects list is available since 1.1.0).
 - Dockable, movable or hideable panels (resizing is available since 1.1.0).
+- Fades on one side of a boundary only; a different length per fade.

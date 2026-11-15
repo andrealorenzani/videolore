@@ -18,8 +18,9 @@ use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-/// Schema written by this version.
-pub const SCHEMA_VERSION: u64 = 2;
+/// Schema written by this version (3 since 1.2.0: clip volumes, fades at the video's
+/// edges, subtitle positions, subtitle tracks of media).
+pub const SCHEMA_VERSION: u64 = 3;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 16 * 1024 * 1024;
@@ -51,6 +52,16 @@ pub struct Project {
 pub struct ProjectDoc {
     media: Vec<(MediaId, PathBuf, String, Micros, MediaFormat)>,
     edit: Edit,
+}
+
+impl ProjectDoc {
+    /// Records the subtitle tracks found by a later check of a file (the project does not
+    /// become "unsaved" because of it).
+    pub fn set_subtitle_tracks(&mut self, id: MediaId, tracks: Vec<crate::media::SubtitleTrack>) {
+        if let Some(m) = self.media.iter_mut().find(|m| m.0 == id) {
+            m.4.subtitle_tracks = Some(tracks);
+        }
+    }
 }
 
 impl Project {
@@ -291,12 +302,20 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
         if found.is_none() {
             missing.push(name.clone());
         }
+        let mut format = e.format;
+        // subtitle track descriptions come from the file: made safe, never refused
+        format.subtitle_tracks = format.subtitle_tracks.map(|v| {
+            v.into_iter()
+                .take(crate::media::MAX_SUBTITLE_TRACKS)
+                .map(crate::media::SubtitleTrack::sanitised)
+                .collect()
+        });
         media.push(MediaItem {
             id: e.id,
             path: found.clone().unwrap_or(e.path_abs),
             name,
             duration: e.duration,
-            format: e.format,
+            format,
             missing: found.is_none(),
             status: Default::default(),
             proxy: Default::default(),
@@ -315,6 +334,9 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
             .ok_or_else(|| invalid("clip refers to an unknown media id"))?;
         if c.src_in < Micros::ZERO || c.src_out <= c.src_in || c.src_out > m.duration {
             return Err(invalid("clip range outside its source"));
+        }
+        if c.volume > crate::timeline::FULL_VOLUME {
+            return Err(invalid("clip volume above 100%"));
         }
     }
     for (a, b) in &timeline.fades {
@@ -390,6 +412,9 @@ fn validate_subtitles(subs: &mut Subtitles, media: &[MediaItem]) -> Result<(), P
         }
         if l.text.chars().count() > subtitles::MAX_TEXT {
             return Err(invalid("subtitle text too long"));
+        }
+        if l.position.is_some_and(|p| !p.is_valid()) {
+            return Err(invalid("subtitle position outside the picture"));
         }
         if l.words
             .iter()
@@ -743,14 +768,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 2"));
+        assert!(text.contains("\"schema_version\": 3"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 3");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 4");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(3));
+        assert_eq!(e, ProjectError::TooNew(4));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -888,5 +913,135 @@ pub(crate) mod tests {
             Some(PathBuf::from("x.mp4"))
         );
         assert_eq!(relative_path(Path::new("a"), Path::new("b")), None);
+    }
+
+    /// What videolore 1.1 did with the schema number (`SCHEMA_VERSION` was 2 there).
+    fn opened_by_1_1(json: &str) -> Result<(), ProjectError> {
+        let v: serde_json::Value = serde_json::from_str(json).unwrap();
+        let version = v["schema_version"].as_u64().unwrap();
+        if version > 2 {
+            return Err(ProjectError::TooNew(version));
+        }
+        Ok(())
+    }
+
+    // covers: REQ-094, REQ-029
+    #[test]
+    fn projects_of_1_1_open_with_defaults_and_1_2_files_are_newer_for_1_1() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = crate::render::golden_tests::open_fixture(
+            dir.path(),
+            crate::render::golden_tests::V2_FIXTURE,
+        );
+        assert_eq!(p.timeline.clips.len(), 3);
+        assert_eq!(p.timeline.fades.len(), 2, "boundary fades kept");
+        assert!(!p.timeline.start_fade && !p.timeline.end_fade);
+        assert!(p.timeline.clips.iter().all(|c| c.volume == 100 && !c.muted));
+        assert!(p.subtitles.lines.iter().all(|l| l.position.is_none()));
+        assert!(p.media.iter().all(|m| m.format.subtitle_tracks.is_none()));
+        assert_eq!(p.mix.video_volume, 80);
+        // saved by 1.2: schema 3 with the new data, which 1.1 refuses (file untouched)
+        let mut q = p.clone();
+        q.timeline.set_edge_fades(true).unwrap();
+        let first = q.timeline.clips[0].id;
+        q.timeline.set_clip_volume(first, 30, true).unwrap();
+        let line = q.subtitles.lines[0].id;
+        q.subtitles
+            .set_position(&[line], Some(crate::subtitles::Pos { x: 100, y: 200 }))
+            .unwrap();
+        q.media[0].format.subtitle_tracks = Some(vec![]);
+        let file = dir.path().join("new.vlproj");
+        save(&q, &file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("\"schema_version\": 3"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(3)));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+        assert_eq!(
+            opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
+            Ok(())
+        );
+        assert_eq!(load(&file).unwrap().0, q);
+    }
+
+    // covers: REQ-094, REQ-057
+    #[test]
+    fn hostile_values_of_1_2_fields_are_refused_or_contained() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = sample(dir.path());
+        let tl = p.timeline.clone();
+        p.subtitles
+            .add_at(&tl, Micros(100_000), "x", Micros(1))
+            .unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&to_json(&p, &dir.path().join("x.vlproj")).unwrap()).unwrap();
+        let try_with = |f: &dyn Fn(&mut serde_json::Value)| {
+            let mut w = v.clone();
+            f(&mut w);
+            from_json(&w.to_string(), dir.path())
+        };
+        for (what, f) in [
+            (
+                "volume 101",
+                &(|w: &mut serde_json::Value| w["timeline"]["clips"][0]["volume"] = 101.into())
+                    as &dyn Fn(&mut serde_json::Value),
+            ),
+            ("volume -1", &|w| {
+                w["timeline"]["clips"][0]["volume"] = (-1).into()
+            }),
+            ("volume NaN-ish", &|w| {
+                w["timeline"]["clips"][0]["volume"] = "loud".into()
+            }),
+            ("muted number", &|w| {
+                w["timeline"]["clips"][0]["muted"] = 3.into()
+            }),
+            ("start fade string", &|w| {
+                w["timeline"]["start_fade"] = "yes".into()
+            }),
+            ("pos x", &|w| {
+                w["subtitles"]["lines"][0]["position"] = serde_json::json!({"x": 10001, "y": 0})
+            }),
+            ("pos huge", &|w| {
+                w["subtitles"]["lines"][0]["position"] = serde_json::json!({"x": 1e300, "y": 0})
+            }),
+            ("pos negative", &|w| {
+                w["subtitles"]["lines"][0]["position"] = serde_json::json!({"x": -5, "y": 0})
+            }),
+            ("pos text", &|w| {
+                w["subtitles"]["lines"][0]["position"] = "top".into()
+            }),
+            ("tracks text", &|w| {
+                w["media"][0]["format"]["subtitle_tracks"] = "many".into()
+            }),
+        ] {
+            assert!(try_with(f).is_err(), "{what} must be refused");
+        }
+        // subtitle track descriptions are made safe, never refused
+        let (q, _) = try_with(&|w| {
+            let t = serde_json::json!({"ordinal": 3, "codec": "srt",
+                "language": "!!", "title": format!("a\u{202E}{}", "b".repeat(5000))});
+            w["media"][0]["format"]["subtitle_tracks"] = serde_json::Value::Array(vec![t; 1000]);
+        })
+        .unwrap();
+        let t = q.media[0].format.subtitle_tracks.as_ref().unwrap();
+        assert_eq!(t.len(), crate::media::MAX_SUBTITLE_TRACKS);
+        assert_eq!(t[0].language, None);
+        assert!(t[0].title.as_ref().unwrap().chars().count() <= crate::media::MAX_TRACK_TITLE);
+        assert!(!t[0].title.as_ref().unwrap().contains('\u{202E}'));
+        // edge fades on an empty timeline are harmless
+        let (q, _) = try_with(&|w| {
+            w["timeline"]["clips"] = serde_json::json!([]);
+            w["timeline"]["fades"] = serde_json::json!([]);
+            w["timeline"]["start_fade"] = true.into();
+            w["subtitles"]["lines"] = serde_json::json!([]);
+        })
+        .unwrap();
+        assert!(q.timeline.clips.is_empty());
+        // a clip volume of 100 and a valid position are accepted
+        let (q, _) = try_with(&|w| {
+            w["timeline"]["clips"][0]["volume"] = 0.into();
+            w["subtitles"]["lines"][0]["position"] = serde_json::json!({"x": 10000, "y": 0});
+        })
+        .unwrap();
+        assert_eq!(q.timeline.clips[0].volume, 0);
     }
 }

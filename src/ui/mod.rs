@@ -16,7 +16,9 @@ pub mod markers;
 pub mod media;
 pub mod menu;
 pub mod modals;
+pub mod placement;
 pub mod popups;
+pub mod ruler;
 pub mod settings;
 pub mod status;
 pub mod timeline;
@@ -70,6 +72,15 @@ pub struct UiCache {
     pub context_marker: Option<markers::Marker>,
     /// The timeline time a right-click menu is about.
     pub context_time: Option<Micros>,
+    /// The track picked in the subtitle source dialog.
+    pub source_choice: usize,
+    /// A clip's volume while its slider is dragged (one undo step on release).
+    pub clip_volume_drag: Option<(crate::timeline::ClipId, u8, bool)>,
+    /// The subtitle being dragged in the preview: its lines, the pointer offset from the
+    /// box centre, the box size (frame pixels).
+    pub subtitle_drag: Option<placement::Drag>,
+    /// Where a Shift+drag on the timeline started (time) and whether it adds.
+    pub range_drag: Option<(Micros, bool)>,
 }
 
 impl UiCache {
@@ -99,6 +110,7 @@ pub fn modal_open(app: &AppState) -> bool {
 pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Instant) {
     let ctx = root.ctx().clone();
     let ctx = &ctx;
+    register_subtitle_font(ctx);
     app.tick(now);
     // Ctrl/Cmd +, - and 0 zoom the timeline, not the whole interface
     if ctx.options(|o| o.zoom_with_keyboard) {
@@ -415,6 +427,7 @@ fn preview_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
             let r = fit_rect(area, t.size_vec2());
             let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
             ui.painter().image(t.id(), r, uv, Color32::WHITE);
+            subtitle_drag(ui, app, cache, cmds, r);
         }
         if let Some(e) = &app.preview.error {
             ui.painter().text(
@@ -468,6 +481,135 @@ fn preview_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
             cmds.push(Command::Seek(Micros::from_secs_f64(secs)));
         }
     });
+}
+
+/// The font family the subtitles are measured with (the bundled subtitle font).
+pub const SUBTITLE_FAMILY: &str = "videolore-subtitle";
+
+/// Makes the bundled subtitle font available for measuring (once per context).
+pub fn register_subtitle_font(ctx: &Context) {
+    ctx.add_font(egui::epaint::text::FontInsert::new(
+        SUBTITLE_FAMILY,
+        egui::FontData::from_static(crate::ass::FONT),
+        vec![egui::epaint::text::InsertFontFamily {
+            family: egui::FontFamily::Name(SUBTITLE_FAMILY.into()),
+            priority: egui::epaint::text::FontPriority::Highest,
+        }],
+    ));
+}
+
+/// The subtitle font at `size`, or the normal one while it is not loaded yet.
+fn subtitle_font(ctx: &Context, size: f32) -> egui::FontId {
+    let family = egui::FontFamily::Name(SUBTITLE_FAMILY.into());
+    let loaded = ctx.fonts(|f| f.definitions().families.contains_key(&family));
+    egui::FontId::new(
+        size.max(1.0),
+        if loaded {
+            family
+        } else {
+            egui::FontFamily::Proportional
+        },
+    )
+}
+
+/// Dragging a subtitle on the preview picture moves its line (or the selected lines,
+/// when it is one of them): an outline follows the pointer at once, the picture is
+/// rendered again, and one undo step is recorded on release.
+fn subtitle_drag(
+    ui: &mut Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    cmds: &mut Vec<Command>,
+    picture: Rect,
+) {
+    let Some(frame) = app.output_size() else {
+        return;
+    };
+    let resp = ui
+        .interact(
+            picture,
+            Id::unique("videolore-subtitle-drag"),
+            Sense::drag(),
+        )
+        .on_hover_text("Drag a subtitle to move it");
+    let ctx = ui.ctx().clone();
+    let shown = app.shown_project();
+    let painter = ui.painter().clone();
+    let mut measure = |t: &str, size: f32, wrap: f32| {
+        painter
+            .layout(
+                t.to_string(),
+                subtitle_font(&ctx, size),
+                Color32::WHITE,
+                wrap,
+            )
+            .size()
+    };
+    let boxes = placement::boxes(&shown, app.playhead, frame, &mut measure);
+    let to_frame = |p: Pos2| placement::to_frame(p, picture, frame);
+    if let Some(p) = resp.hover_pos()
+        && placement::hit(&boxes, to_frame(p)).is_some()
+    {
+        ctx.set_cursor_icon(CursorIcon::Grab);
+    }
+    // selected lines are outlined
+    for (id, r) in &boxes {
+        if app.selection.contains(id) {
+            let s = placement::to_screen(*r, picture, frame);
+            ui.painter().rect_stroke(
+                s,
+                2.0,
+                Stroke::new(1.0, ui.visuals().selection.stroke.color),
+                egui::StrokeKind::Outside,
+            );
+        }
+    }
+    if resp.drag_started() {
+        let origin = ui
+            .input(|i| i.pointer.press_origin())
+            .or(resp.interact_pointer_pos());
+        cache.subtitle_drag = origin.and_then(|o| {
+            let f = to_frame(o);
+            placement::hit(&boxes, f).map(|(line, r)| placement::Drag {
+                line,
+                ids: app.drag_group(line),
+                grab: f - r.center(),
+                size: r.size(),
+                frame,
+            })
+        });
+    }
+    let Some(d) = cache.subtitle_drag.clone() else {
+        return;
+    };
+    let pointer = resp.interact_pointer_pos().or(resp.hover_pos());
+    let pos = pointer
+        .map(|p| placement::drag_to(&d, to_frame(p)))
+        .or(app.drag_pos.as_ref().map(|(_, p)| *p));
+    if let Some(pos) = pos {
+        let (fx, fy) = pos.fraction();
+        let c = pos2(fx as f32 * frame.0 as f32, fy as f32 * frame.1 as f32);
+        let ghost = placement::to_screen(Rect::from_center_size(c, d.size), picture, frame);
+        ui.painter().rect_stroke(
+            ghost,
+            2.0,
+            Stroke::new(2.0, Color32::YELLOW),
+            egui::StrokeKind::Outside,
+        );
+        ctx.set_cursor_icon(CursorIcon::Grabbing);
+        if resp.drag_stopped() {
+            cache.subtitle_drag = None;
+            cmds.push(Command::SetLinePositions {
+                ids: d.ids,
+                pos: Some(pos),
+            });
+        } else if app.drag_pos.as_ref() != Some(&(d.ids.clone(), pos)) {
+            cmds.push(Command::DragLines(Some((d.ids, pos))));
+        }
+    } else if resp.drag_stopped() {
+        cache.subtitle_drag = None;
+        cmds.push(Command::DragLines(None));
+    }
 }
 
 /// Tooltip of an action: what it does and its shortcut ("Save the project (Ctrl+S)").

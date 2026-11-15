@@ -111,3 +111,15 @@ click on a clip opens Clip details.
 without changing its version: files of 1.0 load silently, damaged values become the default
 (each recent entry is checked alone) and the rest of the file is kept. Videolore 1.0 drops the
 two fields when it saves.
+
+## Since 1.2.0
+
+The Effects rows show only the effect's name (tooltip: "Drag onto a clip to apply it to that
+clip; double-click to apply it to the whole video"). The menus gained File > Export subtitles
+(.srt)…, Effects > Apply to selected clip ▸ / Apply to whole video ▸ (submenus, `menu::Item::Submenu`)
+and Reset subtitle position; the clip menu gained Effects ▸; the shortcuts window also lists the
+mouse gestures (`popups::GESTURES`). New markers: ◆ at the very start/end for the edge fades,
+● at the start of a clip whose volume is changed. Clip details has the clip's volume slider and
+mute. The media tooltip says "Contains subtitles (<language>)". Details in
+[code-effects.md](code-effects.md).
+

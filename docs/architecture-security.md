@@ -3,7 +3,7 @@
 Part of [Architecture](architecture.md).
 
 ## Threat model
-Treated as untrusted: media files (names and contents), project files, the contents of the settings file, the `ffmpeg` found on `PATH`, downloaded files (the `ffmpeg` builds used at packaging time, the speech models), text typed into subtitles, and file paths passed by the operating system (double-click, and since 1.1.0 files dropped on the window and the recent-projects list).
+Treated as untrusted: media files (names and contents, including subtitle tracks inside them since 1.2.0), project files, the contents of the settings file, the `ffmpeg` found on `PATH`, downloaded files (the `ffmpeg` builds used at packaging time, the speech models), text typed into subtitles, and file paths passed by the operating system (double-click, and since 1.1.0 files dropped on the window and the recent-projects list).
 
 The settings file is parsed defensively, but it is trusted at the level of the user account: anyone who can change it (for example to point to another `ffmpeg`) can already run programs as that user.
 
@@ -27,13 +27,16 @@ There are no secrets, accounts or telemetry.
 - Paths in a project are used only as `ffmpeg` inputs, which are only read. Relative paths with `..` are resolved against the project folder; this is accepted because they are never written.
 - Names shown on screen have control characters and text-direction override characters replaced, so a crafted name cannot disguise itself.
 - **Layout and recent projects (1.1.0):** section proportions must be finite numbers between 0 and 1; anything else falls back to the default without a notice and the other settings are kept. Recent projects are checked one by one: only absolute paths of at most 1024 bytes without control characters, at most 10, duplicates removed. Paths that are not valid UTF-8 are never stored, so they cannot break later saves. Even with every field at its maximum the settings file stays well under the 64 KiB limit.
-- Automated tests feed hostile files (invalid or truncated data, huge or negative numbers, `..` and absolute paths, control characters, oversized files, a pipe in place of a project) and check: no crash, a clear refusal, nothing written, source files unchanged.
+- **Project version 3 (1.2.0):** a clip volume above 100% or a subtitle position outside the picture makes the project refused as damaged; references to unknown clips or lines are refused; subtitle track descriptions are cleaned instead (see [project files](architecture-projects.md#loading-and-validation)).
+- Automated tests feed hostile files (invalid or truncated data, huge or negative numbers, `..` and absolute paths, control characters, oversized files, a pipe in place of a project; since 1.2.0 also wrong values in the new project fields, 10,000 subtitle tracks, 1 MB track titles and damaged SRT data) and check: no crash, a clear refusal, nothing written, source files unchanged.
 
 ## Subtitles
-- Subtitle text is escaped so it cannot add styling or override tags; only `videolore` emits line breaks and highlight tags. Text is limited to 1000 characters per line.
+- Subtitle text is escaped so it cannot add styling or override tags; only `videolore` emits line breaks, highlight tags and (since 1.2.0) position tags, the latter only from numbers checked to lie inside the picture. Text is limited to 1000 characters per line.
+- **Subtitle tracks inside videos (1.2.0):** the track is converted by `ffmpeg` (a separate process) into a fixed file name inside the private work folder; `videolore` reads it only as a regular file of at most 16 MiB, with a parser that never panics, checks every time value and keeps at most 100,000 cues. Formatting tags and control characters are removed and the usual escaping still applies before burn-in. Track language and title from `ffprobe` are checked (language code pattern, title cleaned and at most 64 characters, at most 16 tracks); tracks are selected by a number counted by `videolore`, so nothing from the file reaches `ffmpeg`'s arguments. See [subtitle tracks](architecture-subtitle-tracks.md).
+- **SRT export (1.2.0):** written only to the path chosen in the save dialog, through a temporary file and a rename, with text already cleaned.
 
 ## Network
-- The only network access is the speech model download of the chosen quality level, after explicit consent each time a model is needed. There is no telemetry and no update check.
+- The only network access is the speech model download of the chosen quality level, after explicit consent each time a model is needed. There is no telemetry and no update check. Using a video's own subtitles without matching words (1.2.0) needs no network at all.
 - Addresses come only from a fixed built-in table (an automated test checks that all are HTTPS); anything that is not HTTPS is refused before connecting; redirects are followed only to HTTPS, at most 5.
 - The download is limited to the expected size and checked against the known SHA-256 before it is used; a partial or wrong file is deleted.
 - A model file supplied by the user must match the same size and SHA-256 before it is loaded (whisper.cpp is C++ code parsing that file). Before each use the size is checked again, and the SHA-256 once per session.

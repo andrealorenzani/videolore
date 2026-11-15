@@ -16,13 +16,28 @@ pub enum Item {
     Action(ActionId),
     /// File > Open recent ▸
     OpenRecent,
+    /// A submenu of actions ("Apply to selected clip ▸").
+    Submenu(&'static str, &'static [ActionId]),
     Separator,
 }
+
+/// Effects > Apply to selected clip ▸
+pub const APPLY_TO_CLIP: &[ActionId] = &[
+    ActionId::ApplyClipFade,
+    ActionId::ApplyClipSubtitles,
+    ActionId::ApplyClipVolume,
+];
+/// Effects > Apply to whole video ▸
+pub const APPLY_TO_VIDEO: &[ActionId] = &[
+    ActionId::ApplyWholeFade,
+    ActionId::ApplyWholeSubtitles,
+    ActionId::ApplyWholeVolume,
+];
 
 /// The menus and their items, in order.
 pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
     use ActionId::*;
-    use Item::{Action as A, OpenRecent, Separator as S};
+    use Item::{Action as A, OpenRecent, Separator as S, Submenu};
     vec![
         (
             "File",
@@ -36,6 +51,7 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 S,
                 A(Import),
                 A(Export),
+                A(ExportSubtitles),
                 S,
                 A(Quit),
             ],
@@ -80,9 +96,13 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(Subtitles),
                 A(Volume),
                 S,
+                Submenu("Apply to selected clip", APPLY_TO_CLIP),
+                Submenu("Apply to whole video", APPLY_TO_VIDEO),
+                S,
                 A(ToggleFadeAtPlayhead),
                 A(GenerateSubtitles),
                 A(AddSubtitleLine),
+                A(ResetSubtitlePosition),
             ],
         ),
         (
@@ -157,6 +177,13 @@ pub fn menu_bar(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                             Item::Action(id) => action_item(ui, app, id, cmds),
                             Item::OpenRecent => {
                                 ui.menu_button("Open recent", |ui| recent_menu(ui, app, cmds));
+                            }
+                            Item::Submenu(name, ids) => {
+                                ui.menu_button(name, |ui| {
+                                    for id in ids {
+                                        action_item(ui, app, *id, cmds);
+                                    }
+                                });
                             }
                             Item::Separator => {
                                 ui.separator();

@@ -8,7 +8,7 @@
 //! actual frame. Text is escaped so that a subtitle can never inject ASS override tags:
 //! only this module emits `{\k..}` tags.
 
-use crate::subtitles::{Preset, ShownLine, Word};
+use crate::subtitles::{POS_MAX, Pos, Preset, ShownLine, Word};
 use crate::time::Micros;
 
 /// File name of the subtitles inside the ffmpeg working folder.
@@ -54,11 +54,54 @@ pub fn ass_time(t: Micros) -> String {
     )
 }
 
+/// Outline width (pixels) of the text at font size `size`; with the box style it is the
+/// padding of the box around the text.
+pub fn outline(size: u32) -> f64 {
+    (f64::from(size) * 0.08).round().max(1.0)
+}
+
+/// Left and right margin (pixels): the widest a line may be is `width - 2 * margin`.
+pub fn margin_lr(width: u32) -> u32 {
+    (f64::from(width) * 0.06).round() as u32
+}
+
+/// Distance (pixels) of the bottom of the text from the bottom of the picture.
+pub fn margin_v(preset: Preset, height: u32) -> f64 {
+    let h = f64::from(height);
+    match preset {
+        Preset::Classic => (h * 0.06).round(),
+        Preset::Boxed => (h * 0.25).round(),
+        Preset::WordHighlight => (h * 0.18).round(),
+    }
+}
+
+/// Extra space (pixels) around the text that belongs to its box on screen (outline or
+/// background box), on each side.
+pub fn box_padding(_preset: Preset, size: u32) -> f64 {
+    outline(size)
+}
+
+/// Centre (pixels) of a line's text box of height `box_h` at the style's place.
+pub fn default_centre(preset: Preset, width: u32, height: u32, box_h: f64) -> (f64, f64) {
+    (
+        f64::from(width) / 2.0,
+        f64::from(height) - margin_v(preset, height) - box_h / 2.0,
+    )
+}
+
+/// The `{\an5\pos(x,y)}` tag of a line's own position (picture of `width` x `height`).
+pub fn pos_tag(p: Pos, width: u32, height: u32) -> String {
+    let c = |v: u16, size: u32| {
+        (f64::from(v.min(POS_MAX)) * f64::from(size) / f64::from(POS_MAX)).round() as u32
+    };
+    format!("{{\\an5\\pos({},{})}}", c(p.x, width), c(p.y, height))
+}
+
 fn style(preset: Preset, width: u32, height: u32) -> String {
     let size = font_size(width, height);
-    let outline = (f64::from(size) * 0.08).round().max(1.0);
+    let outline = outline(size);
     let h = f64::from(height);
-    let margin_lr = (f64::from(width) * 0.06).round() as u32;
+    let margin_lr = margin_lr(width);
     // Colours are &HAABBGGRR (alpha 00 = opaque).
     let (primary, secondary, outline_c, back, border, margin_v) = match preset {
         Preset::Classic => (
@@ -93,7 +136,7 @@ fn style(preset: Preset, width: u32, height: u32) -> String {
 }
 
 /// Words of a line: the recognised ones, or the text split evenly over the line.
-fn words_of(l: &ShownLine) -> Vec<Word> {
+pub fn words_of(l: &ShownLine) -> Vec<Word> {
     if !l.words.is_empty() {
         return l.words.clone();
     }
@@ -139,8 +182,14 @@ pub fn document(
     );
     let at = |t: Micros| (t - shift).max(Micros::ZERO);
     for l in lines.iter().filter(|l| l.end > shift) {
+        // only this module writes tags: the position comes from validated numbers
+        let tag = l
+            .position
+            .map(|p| pos_tag(p, width, height))
+            .unwrap_or_default();
         if preset != Preset::WordHighlight {
-            s.push_str(&dialogue(at(l.start), at(l.end), &escape(&l.text)));
+            let text = format!("{tag}{}", escape(&l.text));
+            s.push_str(&dialogue(at(l.start), at(l.end), &text));
             continue;
         }
         let words = words_of(l);
@@ -155,7 +204,7 @@ pub fn document(
             if end <= shift {
                 continue;
             }
-            let mut text = String::new();
+            let mut text = tag.clone();
             let mut cursor = start;
             for (wi, w) in chunk.iter().enumerate() {
                 // each word lasts until the next one starts (gaps go to the previous word)
@@ -185,6 +234,7 @@ mod tests {
             end: Micros(end * 1000),
             text: text.into(),
             words,
+            position: None,
         }
     }
 
@@ -256,5 +306,34 @@ mod tests {
         assert!(!d.contains("gone"));
         assert!(d.contains("evil"));
         assert!(FONT.len() > 100_000);
+    }
+
+    // covers: REQ-089, REQ-017
+    #[test]
+    fn own_positions_become_position_tags() {
+        let mut l = line(1000, 3000, "hello {world}", vec![]);
+        let plain = document(&[l.clone()], Preset::Classic, 1280, 720, Micros::ZERO);
+        assert!(!plain.contains("\\pos"), "no position: exactly as before");
+        l.position = Some(Pos { x: 2500, y: 2000 });
+        let d = document(&[l.clone()], Preset::Classic, 1280, 720, Micros::ZERO);
+        assert!(d.contains(",,{\\an5\\pos(320,144)}hello (world)"), "{d}");
+        // word highlight: every group of words carries the tag
+        let words: Vec<Word> = (0..6).map(|i| word(i * 300, i * 300 + 250, "w")).collect();
+        let mut wl = line(0, 1800, "w w w w w w", words);
+        wl.position = Some(Pos { x: 10_000, y: 0 });
+        let d = document(&[wl], Preset::WordHighlight, 1000, 500, Micros::ZERO);
+        assert_eq!(d.matches("{\\an5\\pos(1000,0)}{\\k").count(), 2, "{d}");
+        assert_eq!(
+            pos_tag(Pos { x: 60_000, y: 5000 }, 100, 100),
+            "{\\an5\\pos(100,50)}"
+        );
+        // the style's place: centred, above the bottom margin
+        let (x, y) = default_centre(Preset::Classic, 1280, 720, 40.0);
+        assert_eq!(
+            (x, y),
+            (640.0, 720.0 - margin_v(Preset::Classic, 720) - 20.0)
+        );
+        assert!(box_padding(Preset::Boxed, 40) >= 1.0);
+        assert_eq!(margin_lr(1000), 60);
     }
 }

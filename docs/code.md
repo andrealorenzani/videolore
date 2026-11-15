@@ -10,6 +10,7 @@ This page covers building and running; the details are in the sub-documents:
 | Document | Contents |
 |---|---|
 | [code-modules.md](code-modules.md) | Module map, main patterns, background jobs, conventions |
+| [code-effects.md](code-effects.md) | Effects on a clip or the whole video, clip volume, fades at the video's edges, the video's own subtitles and word matching, subtitle positions, SRT export, timeline ruler, project format 3 (all since 1.2.0) |
 | [code-ui.md](code-ui.md) | The window: menus, toolbar, resizable sections, shortcuts, popups, timeline markers, status bar, recent projects, drag and drop |
 | [code-testing.md](code-testing.md) | Unit, UI and integration tests, coverage, CI jobs |
 | [code-packaging.md](code-packaging.md) | Installers, bundled ffmpeg, notices, release assets, manual checklist per OS, known limitations |
@@ -71,7 +72,7 @@ release builds. whisper-rs-sys does not notice when these values change: after e
 
 `cargo build --no-default-features` is the minimal build: no cmake/libclang needed, no sound,
 and "Generate subtitles" reports that it is not available (subtitle editing, styles and burn-in
-still work).
+still work; a video's own subtitles can be used, with their words spread evenly).
 
 ### Finding ffmpeg
 

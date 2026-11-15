@@ -8,7 +8,7 @@ Part of [Architecture](architecture.md).
 - Editing (REQ-016, all undoable): add a line at the playhead (2 s, inside the clip under the playhead), delete, change text, change timing (converted through the clip it is shown in and kept inside it).
 - A line used in two copies of the same clip is the same speech: changing its text changes both.
 - Changing a line's text drops its word timings; the word-highlight style then spreads the highlight evenly over the words.
-- One language and one style per project.
+- One language and one style per project. Since 1.2.0 each line can also have its own position on screen (see [Position on screen](#position-on-screen-120)).
 
 ## Styles and burn-in
 Three styles (REQ-017):
@@ -26,7 +26,7 @@ Three styles (REQ-017):
 ## Speech-to-text
 - **Engine:** whisper.cpp through the `whisper-rs` crate, running on the CPU, fully offline (REQ-014). Alternatives rejected: cloud services (privacy, cost), Vosk (quality), candle-whisper (speed and maturity).
 - **Included in release builds** (build feature `stt`, on by default). Building it from source needs `cmake`, a C++ compiler and libclang. A build with `--no-default-features` leaves it out: "Generate subtitles" then says it is not available in this build, while editing, styles and burn-in still work.
-- **What is transcribed:** for each source used on the timeline, its whole audio track (so lengthening a trim reveals more subtitles). Only the video's own audio, never the music.
+- **What is transcribed:** see [Creating subtitles](#creating-subtitles). Only the video's own audio, never the music.
 - **Steps:**
   1. The processor is checked (see [CPU requirements](#cpu-requirements-since-021)), and the model of the chosen [quality level](#subtitle-quality-levels-030) must be present (otherwise the consent dialog opens).
   2. `ffmpeg` extracts the audio as 16 kHz mono to a file in `videolore`'s private work folder (one background slot of the job queue).
@@ -36,7 +36,26 @@ Three styles (REQ-017):
 - **Background, progress, cancel:** progress is per chunk; cancel takes effect during transcription.
 - **Threads:** set by "How hard videolore works" (since 0.3.0; based on physical cores, see [performance](architecture-performance.md#how-hard-videolore-works)); one transcription at a time. It does not count toward the `ffmpeg` process limit.
 - **Speed (0.3.0):** flash attention was measured and is off at every level (it made subtitles slower); one decoding state is reused for the whole job instead of one per chunk; decoding stays greedy at every level (beam search would make "Most accurate" 2–3 times slower).
-- **Regenerating** replaces all lines; if any line was edited by hand, the user is asked first (REQ-044). Changing the quality level never regenerates by itself.
+- Changing the quality level never regenerates by itself.
+
+## Creating subtitles
+Since 1.2.0 Subtitles is applied like the other effects (see [effects](architecture-effects.md#applying-an-effect)):
+- **On a clip:** only the part of the source that the clip uses is processed (the audio is extracted with a start time and a length); lines of that source outside this part are left untouched. Lines of that source overlapping the part are replaced by the new ones, which are kept inside it.
+- **On the whole video:** each source used on the timeline is processed in full, as before (so lengthening a trim later reveals more subtitles), and all lines are replaced.
+- If a source involved contains a text subtitle track, the user chooses between its text and speech recognition; see [subtitle tracks](architecture-subtitle-tracks.md).
+- If lines in the processed part were edited by hand, the user is asked first (REQ-044); lines elsewhere do not count.
+- One subtitle job at a time; while it runs, starting another is greyed with "Subtitles are being created". Progress shows "Creating subtitles", or "Matching subtitles to the speech" when a track's text is used.
+- The result is applied as **one undo step** only when the whole job has finished. Cancelling, at any point, changes nothing.
+
+## Position on screen (1.2.0)
+- Each line has an optional position: the centre of its text box, stored as a fraction of the picture (in 1/10000 steps), so it survives a change of output format. Without a position the line sits where its style puts it, exactly as in 1.1.
+- The position belongs to the line, so copies of the same clip share it (they are the same speech).
+- **Burn-in:** a positioned line gets a centre-anchor and position tag at the start of its ASS line, computed from the stored fraction at the export resolution. Only `videolore` writes these tags, from checked numbers. Preview and export use the same subtitle file, so the text appears in the same place (an automated test with `ffmpeg` checks the centre of the burned text is within 2% of the frame height of the requested place).
+- **Dragging in the preview:** `videolore` computes the boxes of the lines visible at the playhead with egui's text layout and the same bundled font (Noto Sans Bold) at the same size and wrap width as the export. The box is kept fully inside the picture. While dragging, an outline of the text follows the pointer at once and the preview frame is re-rendered in the background (only the latest request); nothing is saved during the drag. Releasing is one undo step. "Reset position" returns to the style's place.
+- **Selecting several lines:** Ctrl+click (Cmd+click on macOS) on a line marker or in the Subtitles popup list adds or removes a line; a plain click selects only that line. Shift+drag on the timeline selects every line whose start is in the dragged range (with Ctrl/Cmd too it adds to the selection), and moves the playhead to the first one. Clicking empty timeline clears the selection; Esc closes the topmost popup first, then clears it.
+- **Moving a group:** dragging one of the selected lines moves them all to exactly the same position (their previous relative positions are not kept), as one undo step. Only the dragged line's box is kept inside the picture. Reset position on a selection resets all of them.
+- The selection is part of the window state, not of the project or the undo history.
+- **Known limits:** egui and the burn-in library may measure text a few pixels differently near the edges (the burned result is what counts); a line made longer after being placed near an edge may then cross it; positioned lines shown at the same time can overlap.
 
 ## CPU requirements (since 0.2.1)
 - whisper.cpp is compiled for a **fixed instruction-set baseline**, not for the machine that builds it. This is set once in `.cargo/config.toml` (`GGML_NATIVE=OFF`), which the `whisper-rs` build passes on to whisper.cpp's build.
@@ -77,7 +96,7 @@ Three styles (REQ-017):
 - **Storage:** Settings shows the space used by downloaded speech files (the sum of the known model files present) and offers to remove them after confirmation. Only the known model files and their partial downloads are deleted; subtitles already in projects are not affected, and a model is downloaded again (with consent) when next needed.
 
 ## Tests
-- Transcription and download are behind small interfaces with test doubles, so the whole flow (chunking, language, progress, cancel, consent per level, "Use Fast instead", checksum mismatch, interrupted download, non-HTTPS refusal, storage and removal, old-processor message, regenerate confirmation) is tested without the real models.
+- Transcription and download are behind small interfaces with test doubles, so the whole flow (chunking, language, progress, cancel, consent per level, "Use Fast instead", checksum mismatch, interrupted download, non-HTTPS refusal, storage and removal, old-processor message, regenerate confirmation) is tested without the real models. Since 1.2.0 also: only the clip's part reaches `ffmpeg` and the recogniser, lines of other clips are unchanged, positions in the ASS file, selection and group moves.
 - One integration test runs the real model on a short synthetic voice clip (made with `espeak-ng`) and checks that "hello" is recognised with increasing word times. It runs in CI with the model cached.
 
 ## Risks

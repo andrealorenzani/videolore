@@ -534,7 +534,7 @@ fn an_old_processor_gets_a_message_and_never_reaches_the_speech_engine() {
     assert_eq!(app.notice.as_deref(), Some(TOO_OLD_FOR_SUBTITLES));
     assert!(app.modal.is_none(), "no download is offered");
     assert!(!app.is_generating());
-    assert!(app.generate_subtitles(None).is_ok());
+    assert!(app.create_subtitles(None).is_ok());
     assert_eq!(loads.load(Ordering::SeqCst), 0);
     // every level is greyed out, Fast is what gets recommended
     let fp = app.fingerprint();

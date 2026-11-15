@@ -34,6 +34,8 @@ Exact versions are in `Cargo.toml` and `Cargo.lock`, which are the source of tru
 
 **1.1.0.** The new interface adds no crate. It uses features already in egui 0.37 (menu bar, popups, windows, scroll areas, shortcut display, and the accessibility tree for the interface tests). Drag and drop comes from eframe through winit 0.30, which does not report dropped files in native Linux Wayland sessions. Docking libraries (`egui_dock`, `egui_tiles`) and native menus (`muda`) were considered and not chosen. The `egui_kittest` test library (0.37) is kept as a fallback for the interface tests, not added. See [user interface](architecture-ui.md).
 
+**1.2.0.** No crate is added. Dragging effects uses egui's built-in drag and drop; subtitle text is measured with egui's text layout and the bundled font. The SRT reader and writer, the word matching (sequence alignment and edit distance) and the table of language codes are small in-house modules; the crates `srtparse`, `subparse`, `strsim` and `isolang`, Rust MKV/MP4 readers, font crates (`ab_glyph`, `fontdue`) and separate forced-alignment tools were considered and not chosen. Subtitle tracks are read with the bundled `ffmpeg`. See [subtitle tracks](architecture-subtitle-tracks.md).
+
 Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDLA-Permissive-2.0). Both are listed in the notices and allowed by the CI licence check.
 
 ## Bundled with the installers (not Rust)
@@ -53,7 +55,7 @@ Not part of `videolore`; not linked.
 | appimagetool | pinned in `packaging/tools.lock` | Linux AppImage. |
 | cargo-deny | 0.20.2 | Licence, advisory and banned-crate checks. |
 | cargo-about | 0.9.3 | Generates the Rust crate notices. |
-| `espeak-ng` | system package | Synthetic speech for the speech-to-text and accuracy tests. |
+| `espeak-ng` | system package | Synthetic speech for the speech-to-text and accuracy tests; since 1.2.0 also to recreate the committed word-matching test clip (`tests/fixtures/align/make.sh`, not needed to run the tests). |
 | cargo-llvm-cov | installed in CI | Line coverage; since 0.3.0 CI runs the tests once, under coverage. |
 | `qemu-user` (optional) | system package | Running the tests on an emulated older processor to confirm the old-processor check. |
 | `cmake`, libclang, C++ compiler | system | Building whisper.cpp. |

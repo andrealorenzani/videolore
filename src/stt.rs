@@ -100,6 +100,8 @@ pub enum SttError {
     Download(String),
     #[error("could not read the audio of '{0}'")]
     Extraction(String),
+    #[error("could not read the subtitles inside '{0}'")]
+    Track(String),
     #[error("speech recognition failed: {0}")]
     Transcription(String),
     #[error("cancelled")]
@@ -163,6 +165,134 @@ pub trait ModelFetcher: Send + Sync {
 /// Loads a transcriber for a model file with `threads` threads.
 pub type TranscriberFactory =
     Arc<dyn Fn(&Path, usize) -> Result<Box<dyn Transcriber>, SttError> + Send + Sync>;
+
+/// The languages of the speech model: its code (ISO 639-1, or whisper's own for a few),
+/// the ISO 639-2 codes (bibliographic and terminology) files use, the English name.
+const LANGUAGE_TABLE: &[(&str, &[&str], &str)] = &[
+    ("en", &["eng"], "English"),
+    ("zh", &["chi", "zho"], "Chinese"),
+    ("de", &["ger", "deu"], "German"),
+    ("es", &["spa"], "Spanish"),
+    ("ru", &["rus"], "Russian"),
+    ("ko", &["kor"], "Korean"),
+    ("fr", &["fre", "fra"], "French"),
+    ("ja", &["jpn"], "Japanese"),
+    ("pt", &["por"], "Portuguese"),
+    ("tr", &["tur"], "Turkish"),
+    ("pl", &["pol"], "Polish"),
+    ("ca", &["cat"], "Catalan"),
+    ("nl", &["dut", "nld"], "Dutch"),
+    ("ar", &["ara"], "Arabic"),
+    ("sv", &["swe"], "Swedish"),
+    ("it", &["ita"], "Italian"),
+    ("id", &["ind"], "Indonesian"),
+    ("hi", &["hin"], "Hindi"),
+    ("fi", &["fin"], "Finnish"),
+    ("vi", &["vie"], "Vietnamese"),
+    ("he", &["heb"], "Hebrew"),
+    ("uk", &["ukr"], "Ukrainian"),
+    ("el", &["gre", "ell"], "Greek"),
+    ("ms", &["may", "msa"], "Malay"),
+    ("cs", &["cze", "ces"], "Czech"),
+    ("ro", &["rum", "ron"], "Romanian"),
+    ("da", &["dan"], "Danish"),
+    ("hu", &["hun"], "Hungarian"),
+    ("ta", &["tam"], "Tamil"),
+    ("no", &["nor", "nob"], "Norwegian"),
+    ("th", &["tha"], "Thai"),
+    ("ur", &["urd"], "Urdu"),
+    ("hr", &["hrv"], "Croatian"),
+    ("bg", &["bul"], "Bulgarian"),
+    ("lt", &["lit"], "Lithuanian"),
+    ("la", &["lat"], "Latin"),
+    ("mi", &["mao", "mri"], "Maori"),
+    ("ml", &["mal"], "Malayalam"),
+    ("cy", &["wel", "cym"], "Welsh"),
+    ("sk", &["slo", "slk"], "Slovak"),
+    ("te", &["tel"], "Telugu"),
+    ("fa", &["per", "fas"], "Persian"),
+    ("lv", &["lav"], "Latvian"),
+    ("bn", &["ben"], "Bengali"),
+    ("sr", &["srp"], "Serbian"),
+    ("az", &["aze"], "Azerbaijani"),
+    ("sl", &["slv"], "Slovenian"),
+    ("kn", &["kan"], "Kannada"),
+    ("et", &["est"], "Estonian"),
+    ("mk", &["mac", "mkd"], "Macedonian"),
+    ("br", &["bre"], "Breton"),
+    ("eu", &["baq", "eus"], "Basque"),
+    ("is", &["ice", "isl"], "Icelandic"),
+    ("hy", &["arm", "hye"], "Armenian"),
+    ("ne", &["nep"], "Nepali"),
+    ("mn", &["mon"], "Mongolian"),
+    ("bs", &["bos"], "Bosnian"),
+    ("kk", &["kaz"], "Kazakh"),
+    ("sq", &["alb", "sqi"], "Albanian"),
+    ("sw", &["swa"], "Swahili"),
+    ("gl", &["glg"], "Galician"),
+    ("mr", &["mar"], "Marathi"),
+    ("pa", &["pan"], "Punjabi"),
+    ("si", &["sin"], "Sinhala"),
+    ("km", &["khm"], "Khmer"),
+    ("sn", &["sna"], "Shona"),
+    ("yo", &["yor"], "Yoruba"),
+    ("so", &["som"], "Somali"),
+    ("af", &["afr"], "Afrikaans"),
+    ("oc", &["oci"], "Occitan"),
+    ("ka", &["geo", "kat"], "Georgian"),
+    ("be", &["bel"], "Belarusian"),
+    ("tg", &["tgk"], "Tajik"),
+    ("sd", &["snd"], "Sindhi"),
+    ("gu", &["guj"], "Gujarati"),
+    ("am", &["amh"], "Amharic"),
+    ("yi", &["yid"], "Yiddish"),
+    ("lo", &["lao"], "Lao"),
+    ("uz", &["uzb"], "Uzbek"),
+    ("fo", &["fao"], "Faroese"),
+    ("ht", &["hat"], "Haitian Creole"),
+    ("ps", &["pus"], "Pashto"),
+    ("tk", &["tuk"], "Turkmen"),
+    ("nn", &["nno"], "Norwegian Nynorsk"),
+    ("mt", &["mlt"], "Maltese"),
+    ("sa", &["san"], "Sanskrit"),
+    ("lb", &["ltz"], "Luxembourgish"),
+    ("my", &["bur", "mya"], "Burmese"),
+    ("bo", &["tib", "bod"], "Tibetan"),
+    ("tl", &["tgl", "fil"], "Tagalog"),
+    ("mg", &["mlg"], "Malagasy"),
+    ("as", &["asm"], "Assamese"),
+    ("tt", &["tat"], "Tatar"),
+    ("haw", &["haw"], "Hawaiian"),
+    ("ln", &["lin"], "Lingala"),
+    ("ha", &["hau"], "Hausa"),
+    ("ba", &["bak"], "Bashkir"),
+    ("jw", &["jav", "jv"], "Javanese"),
+    ("su", &["sun"], "Sundanese"),
+    ("yue", &["yue"], "Cantonese"),
+];
+
+fn language_entry(
+    code: &str,
+) -> Option<&'static (&'static str, &'static [&'static str], &'static str)> {
+    let base = code.split(['-', '_']).next()?.to_ascii_lowercase();
+    if base.is_empty() || base == "und" {
+        return None;
+    }
+    LANGUAGE_TABLE
+        .iter()
+        .find(|(one, two, _)| *one == base || two.contains(&base.as_str()))
+}
+
+/// The speech model's code for a language code found in a file (`ita`, `ger`, `en-US`,
+/// `it`); `None` when unknown or undetermined (the language is then detected).
+pub fn iso639_2_to_1(code: &str) -> Option<&'static str> {
+    language_entry(code).map(|e| e.0)
+}
+
+/// English name of a language code (`it`, `ita`, …), when known.
+pub fn language_name(code: &str) -> Option<&'static str> {
+    language_entry(code).map(|e| e.2)
+}
 
 /// True when this build can generate subtitles.
 pub fn available() -> bool {
@@ -426,8 +556,47 @@ impl ModelStore {
 }
 
 /// ffmpeg arguments extracting the first audio stream as 16 kHz mono f32 (video sound only:
-/// the music track is never part of it).
-pub fn extraction_args(source: &Path, out: &Path) -> Vec<OsString> {
+/// the music track is never part of it). With `range` only that part of the source
+/// (`[from, to)`, source time) is read.
+pub fn extraction_args(
+    source: &Path,
+    out: &Path,
+    range: Option<(Micros, Micros)>,
+) -> Vec<OsString> {
+    let mut a = argv([
+        "-hide_banner",
+        "-nostdin",
+        "-loglevel",
+        "error",
+        "-y",
+        "-protocol_whitelist",
+        "file,pipe",
+    ]);
+    if let Some((from, to)) = range {
+        a.extend(argv([
+            "-ss".to_string(),
+            from.ff(),
+            "-t".to_string(),
+            (to - from).max(Micros::ZERO).ff(),
+        ]));
+    }
+    a.extend(argv(["-i"]));
+    a.push(file_arg(source));
+    a.extend(argv([
+        "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le",
+    ]));
+    a.push(file_arg(out));
+    a
+}
+
+/// File name of an extracted subtitle track inside the work folder.
+pub const TRACK_FILE: &str = "track.srt";
+/// Largest extracted subtitle track read.
+pub const MAX_TRACK_BYTES: u64 = 16 * 1024 * 1024;
+
+/// ffmpeg arguments converting the text subtitle track `ordinal` of `source` to SRT. The
+/// track number comes from videolore's own count, never from the file.
+pub fn track_args(source: &Path, ordinal: u8, out: &Path) -> Vec<OsString> {
     let mut a = argv([
         "-hide_banner",
         "-nostdin",
@@ -440,7 +609,12 @@ pub fn extraction_args(source: &Path, out: &Path) -> Vec<OsString> {
     ]);
     a.push(file_arg(source));
     a.extend(argv([
-        "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le",
+        "-map".to_string(),
+        format!("0:s:{ordinal}"),
+        "-c:s".to_string(),
+        "srt".to_string(),
+        "-f".to_string(),
+        "srt".to_string(),
     ]));
     a.push(file_arg(out));
     a
@@ -482,101 +656,314 @@ pub fn words_to_lines(media: MediaId, words: &[Word]) -> Vec<NewLine> {
     lines
 }
 
-/// One subtitle generation.
+/// How the subtitles of one part of a source are made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Mode {
+    /// Speech recognition (words grouped into lines).
+    Recognise,
+    /// The text of the file's subtitle track `track`, each word matched to the speech.
+    Align { track: u8 },
+    /// The text of the file's subtitle track `track`, words spread evenly (no recognition).
+    Spread { track: u8 },
+}
+
+/// One part of a source to make subtitles for.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RangeJob {
+    pub media: MediaId,
+    pub path: PathBuf,
+    /// Source range `[from, to)`; `None` = the whole file.
+    pub range: Option<(Micros, Micros)>,
+    pub mode: Mode,
+    /// Language code of the subtitle track used (as found in the file).
+    pub track_language: Option<String>,
+}
+
+impl RangeJob {
+    fn needs_speech(&self) -> bool {
+        !matches!(self.mode, Mode::Spread { .. })
+    }
+}
+
+/// One subtitle creation.
 #[derive(Debug, Clone)]
 pub struct SttJob {
-    /// Files used on the timeline that have sound.
-    pub sources: Vec<(MediaId, PathBuf)>,
-    /// Chosen language, or `None` to detect it.
+    /// The parts of the sources to process, in order.
+    pub ranges: Vec<RangeJob>,
+    /// Language chosen by the user, or `None` to detect it (or take the track's).
     pub language: Option<String>,
     pub ffmpeg: PathBuf,
     pub model: PathBuf,
     pub threads: usize,
-    /// Root of the private work folder (extracted audio).
+    /// Root of the private work folder (extracted audio and subtitle tracks).
     pub work_root: PathBuf,
     /// When set, the model file is checked against it (size, SHA-256 once per session)
     /// before it is loaded.
     pub model_check: Option<ModelSpec>,
 }
 
+impl SttJob {
+    /// True when some part needs speech recognition (and so the model).
+    pub fn needs_model(&self) -> bool {
+        self.ranges.iter().any(RangeJob::needs_speech)
+    }
+
+    /// True when some part matches a subtitle track to the speech.
+    pub fn is_matching(&self) -> bool {
+        self.ranges
+            .iter()
+            .any(|r| matches!(r.mode, Mode::Align { .. }))
+    }
+}
+
+/// The new lines of one part of a source.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RangeResult {
+    pub media: MediaId,
+    pub range: Option<(Micros, Micros)>,
+    pub lines: Vec<NewLine>,
+}
+
+/// What a finished creation produced.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SttResult {
+    pub language: Option<String>,
+    pub ranges: Vec<RangeResult>,
+    /// Lines of subtitle tracks that could not be matched to the speech, and all the lines
+    /// that were to be matched.
+    pub unmatched: (usize, usize),
+    /// Why speech recognition could not be used for matching (words spread evenly).
+    pub fallback: Option<String>,
+}
+
+impl SttResult {
+    /// Every new line.
+    pub fn lines(&self) -> Vec<NewLine> {
+        self.ranges
+            .iter()
+            .flat_map(|r| r.lines.iter().cloned())
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SttEvent {
     Progress(f32),
-    Done {
-        language: Option<String>,
-        lines: Vec<NewLine>,
-    },
+    Done(SttResult),
     Failed(String),
     Cancelled,
 }
 
-/// Result of a generation: the language and the lines.
-pub type SttOutcome = (Option<String>, Vec<NewLine>);
+/// Message after matching when some lines kept evenly spread words.
+pub fn unmatched_message(unmatched: usize, total: usize) -> String {
+    format!(
+        "{unmatched} of {total} lines could not be matched to the speech; their words are \
+         spread evenly over the line"
+    )
+}
 
-/// Runs a generation (synchronous, testable).
-pub fn run(
+/// Reads the text subtitle track `ordinal` of `source` (cues overlapping `range`, kept
+/// inside it).
+fn read_track(
+    job: &SttJob,
+    runner: &dyn Runner,
+    work: &Path,
+    source: &Path,
+    ordinal: u8,
+    range: Option<(Micros, Micros)>,
+) -> Result<Vec<crate::srt::Cue>, SttError> {
+    let name = crate::media::display_name(source);
+    let file = work.join(TRACK_FILE);
+    let failed = || SttError::Track(name.clone());
+    let out = runner
+        .run(&job.ffmpeg, &track_args(source, ordinal, &file))
+        .map_err(|e| match e.kind() {
+            io::ErrorKind::Interrupted => SttError::Cancelled,
+            _ => failed(),
+        })?;
+    if !out.success {
+        return Err(failed());
+    }
+    let bytes = crate::project::read_limited(&file, MAX_TRACK_BYTES).map_err(|_| failed())?;
+    let _ = std::fs::remove_file(&file);
+    let mut cues = crate::srt::parse(&String::from_utf8_lossy(&bytes));
+    if let Some((from, to)) = range {
+        cues.retain(|c| c.end > from && c.start < to);
+        for c in &mut cues {
+            c.start = c.start.max(from);
+            c.end = c.end.min(to);
+        }
+        cues.retain(|c| c.end > c.start);
+    }
+    Ok(cues)
+}
+
+/// Recognises the speech of one part of a source; word times are source times.
+#[allow(clippy::too_many_arguments)]
+fn recognise(
     job: &SttJob,
     runner: &dyn Runner,
     transcriber: &mut dyn Transcriber,
+    work: &Path,
+    r: &RangeJob,
+    language: &mut Option<String>,
     cancel: &Arc<AtomicBool>,
-    tx: &Sender<SttEvent>,
-) -> Result<SttOutcome, SttError> {
-    let work = crate::scratch::Work::new(&job.work_root).map_err(io_err)?;
-    let audio = work.path().join("audio.f32");
-    let mut language = job.language.clone();
-    let mut lines = Vec::new();
-    let n = job.sources.len().max(1) as f32;
+    progress: &mut dyn FnMut(f32),
+) -> Result<Vec<Word>, SttError> {
+    let audio = work.join("audio.f32");
+    let name = crate::media::display_name(&r.path);
     let chunk_bytes = (CHUNK.0 as u64 * u64::from(SAMPLE_RATE) / 1_000_000 * 4) as usize;
-    for (i, (media, source)) in job.sources.iter().enumerate() {
+    let out = runner
+        .run(&job.ffmpeg, &extraction_args(&r.path, &audio, r.range))
+        .map_err(|e| match e.kind() {
+            io::ErrorKind::Interrupted => SttError::Cancelled,
+            _ => SttError::Extraction(name.clone()),
+        })?;
+    if !out.success {
+        return Err(SttError::Extraction(name));
+    }
+    let base = r.range.map(|(from, _)| from).unwrap_or(Micros::ZERO);
+    let total = std::fs::metadata(&audio).map_err(io_err)?.len() as usize;
+    let chunks = total.div_ceil(chunk_bytes).max(1);
+    let mut f = std::fs::File::open(&audio).map_err(io_err)?;
+    let mut words = Vec::new();
+    let mut buf = vec![0u8; chunk_bytes];
+    for c in 0..chunks {
         if cancel.load(Ordering::SeqCst) {
             return Err(SttError::Cancelled);
         }
-        let name = crate::media::display_name(source);
-        let out = runner
-            .run(&job.ffmpeg, &extraction_args(source, &audio))
-            .map_err(|e| match e.kind() {
-                io::ErrorKind::Interrupted => SttError::Cancelled,
-                _ => SttError::Extraction(name.clone()),
-            })?;
-        if !out.success {
-            return Err(SttError::Extraction(name));
+        let mut got = 0;
+        while got < buf.len() {
+            let k = f.read(&mut buf[got..]).map_err(io_err)?;
+            if k == 0 {
+                break;
+            }
+            got += k;
         }
-        let total = std::fs::metadata(&audio).map_err(io_err)?.len() as usize;
-        let chunks = total.div_ceil(chunk_bytes).max(1);
-        let mut f = std::fs::File::open(&audio).map_err(io_err)?;
-        let mut words = Vec::new();
-        let mut buf = vec![0u8; chunk_bytes];
-        for c in 0..chunks {
-            if cancel.load(Ordering::SeqCst) {
-                return Err(SttError::Cancelled);
-            }
-            let mut got = 0;
-            while got < buf.len() {
-                let k = f.read(&mut buf[got..]).map_err(io_err)?;
-                if k == 0 {
-                    break;
-                }
-                got += k;
-            }
-            let (samples, _) = buf[..got - got % 4].as_chunks::<4>();
-            let pcm: Vec<f32> = samples.iter().map(|b| f32::from_le_bytes(*b)).collect();
-            let offset = Micros(CHUNK.0 * c as i64);
-            let t = transcriber.transcribe(&pcm, offset, language.as_deref(), cancel)?;
-            if language.is_none() {
-                language = t.language;
-            }
-            words.extend(t.words);
-            let _ = tx.send(SttEvent::Progress(
-                (i as f32 + (c + 1) as f32 / chunks as f32) / n,
-            ));
+        let (samples, _) = buf[..got - got % 4].as_chunks::<4>();
+        let pcm: Vec<f32> = samples.iter().map(|b| f32::from_le_bytes(*b)).collect();
+        let offset = base + Micros(CHUNK.0 * c as i64);
+        let t = transcriber.transcribe(&pcm, offset, language.as_deref(), cancel)?;
+        if language.is_none() {
+            *language = t.language;
         }
-        let _ = std::fs::remove_file(&audio);
-        lines.extend(words_to_lines(*media, &words));
+        words.extend(t.words);
+        progress((c + 1) as f32 / chunks as f32);
     }
-    Ok((language, lines))
+    let _ = std::fs::remove_file(&audio);
+    Ok(words)
 }
 
-/// A running generation.
+/// Runs a creation (synchronous, testable). `transcriber` is `None` when the speech
+/// engine could not be loaded (`why`): parts matching a subtitle track then keep its text
+/// with words spread evenly; parts that need recognition fail.
+pub fn run(
+    job: &SttJob,
+    runner: &dyn Runner,
+    mut transcriber: Option<&mut dyn Transcriber>,
+    why: Option<&SttError>,
+    cancel: &Arc<AtomicBool>,
+    tx: &Sender<SttEvent>,
+) -> Result<SttResult, SttError> {
+    let work = crate::scratch::Work::new(&job.work_root).map_err(io_err)?;
+    let n = job.ranges.len().max(1) as f32;
+    let mut result = SttResult::default();
+    // the language chosen by the user, else the one of the first subtitle track used,
+    // else the one detected in the speech
+    let track_language = job
+        .ranges
+        .iter()
+        .filter(|r| !matches!(r.mode, Mode::Recognise))
+        .find_map(|r| r.track_language.clone())
+        .filter(|l| crate::media::valid_language(l))
+        .map(|l| iso639_2_to_1(&l).map(str::to_string).unwrap_or(l));
+    let mut detected = job.language.clone();
+    for (i, r) in job.ranges.iter().enumerate() {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(SttError::Cancelled);
+        }
+        let mut progress = |p: f32| {
+            let _ = tx.send(SttEvent::Progress((i as f32 + p) / n));
+        };
+        let lines = match &r.mode {
+            Mode::Recognise => {
+                let t = transcriber
+                    .as_deref_mut()
+                    .ok_or_else(|| why.cloned().unwrap_or(SttError::NotAvailable))?;
+                let words = recognise(
+                    job,
+                    runner,
+                    t,
+                    work.path(),
+                    r,
+                    &mut detected,
+                    cancel,
+                    &mut progress,
+                )?;
+                words_to_lines(r.media, &words)
+            }
+            Mode::Spread { track } => {
+                let cues = read_track(job, runner, work.path(), &r.path, *track, r.range)?;
+                progress(1.0);
+                crate::align::spread(r.media, &cues)
+            }
+            Mode::Align { track } => {
+                let cues = read_track(job, runner, work.path(), &r.path, *track, r.range)?;
+                result.unmatched.1 += cues.len();
+                let mut language = job.language.clone().or_else(|| {
+                    r.track_language
+                        .as_deref()
+                        .and_then(iso639_2_to_1)
+                        .map(str::to_string)
+                });
+                let words = match transcriber.as_deref_mut() {
+                    None => Err(why.cloned().unwrap_or(SttError::NotAvailable)),
+                    Some(t) => recognise(
+                        job,
+                        runner,
+                        t,
+                        work.path(),
+                        r,
+                        &mut language,
+                        cancel,
+                        &mut progress,
+                    ),
+                };
+                match words {
+                    Ok(words) => {
+                        let a = crate::align::align(r.media, &cues, &words);
+                        result.unmatched.0 += a.unmatched;
+                        a.lines
+                    }
+                    Err(SttError::Cancelled) => return Err(SttError::Cancelled),
+                    Err(e) => {
+                        // the track's text is never lost: its words are spread evenly
+                        result.unmatched.0 += cues.len();
+                        result.fallback = Some(format!(
+                            "The words of the video's subtitles could not be matched to the \
+                             speech ({e}); they are spread evenly over each line."
+                        ));
+                        progress(1.0);
+                        crate::align::spread(r.media, &cues)
+                    }
+                }
+            }
+        };
+        // all or nothing: a cancel during the last step still gives nothing
+        if cancel.load(Ordering::SeqCst) {
+            return Err(SttError::Cancelled);
+        }
+        result.ranges.push(RangeResult {
+            media: r.media,
+            range: r.range,
+            lines,
+        });
+    }
+    result.language = job.language.clone().or(track_language).or(detected);
+    Ok(result)
+}
+
+/// A running creation.
 pub struct SttHandle {
     pub rx: Receiver<SttEvent>,
     cancel: Arc<AtomicBool>,
@@ -603,22 +990,30 @@ impl Drop for SttHandle {
     }
 }
 
-/// Starts a generation in a thread. Only one runs at a time (the caller enforces it).
+/// Starts a creation in a thread. Only one runs at a time (the caller enforces it). The
+/// model is checked and loaded only when some part needs speech recognition.
 pub fn start(job: SttJob, runner: crate::jobs::Limited, factory: TranscriberFactory) -> SttHandle {
     let (tx, rx) = channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&cancel);
     let thread = std::thread::spawn(move || {
         let runner = runner.cancellable(Arc::clone(&flag));
-        let checked = match &job.model_check {
-            Some(spec) => verify_cached(spec, &job.model),
-            None => Ok(()),
+        let loaded = if job.needs_model() {
+            let checked = match &job.model_check {
+                Some(spec) => verify_cached(spec, &job.model),
+                None => Ok(()),
+            };
+            Some(checked.and_then(|()| factory(&job.model, job.threads)))
+        } else {
+            None
         };
-        let result = checked
-            .and_then(|()| factory(&job.model, job.threads))
-            .and_then(|mut t| run(&job, &runner, t.as_mut(), &flag, &tx));
+        let result = match loaded {
+            None => run(&job, &runner, None, None, &flag, &tx),
+            Some(Ok(mut t)) => run(&job, &runner, Some(t.as_mut()), None, &flag, &tx),
+            Some(Err(e)) => run(&job, &runner, None, Some(&e), &flag, &tx),
+        };
         let ev = match result {
-            Ok((language, lines)) => SttEvent::Done { language, lines },
+            Ok(r) => SttEvent::Done(r),
             Err(SttError::Cancelled) => SttEvent::Cancelled,
             Err(e) => SttEvent::Failed(e.to_string()),
         };
@@ -977,10 +1372,20 @@ pub(crate) mod tests {
         })
     }
 
-    fn job(sources: usize) -> SttJob {
+    pub fn range(i: u64, range: Option<(Micros, Micros)>, mode: Mode) -> RangeJob {
+        RangeJob {
+            media: MediaId(i),
+            path: PathBuf::from(format!("/m/{i}.mp4")),
+            range,
+            mode,
+            track_language: None,
+        }
+    }
+
+    pub fn job(sources: usize) -> SttJob {
         SttJob {
-            sources: (1..=sources as u64)
-                .map(|i| (MediaId(i), PathBuf::from(format!("/m/{i}.mp4"))))
+            ranges: (1..=sources as u64)
+                .map(|i| range(i, None, Mode::Recognise))
                 .collect(),
             language: None,
             ffmpeg: "ffmpeg".into(),
@@ -999,7 +1404,8 @@ pub(crate) mod tests {
         let seen = Arc::clone(&t.seen);
         let (tx, rx) = channel();
         let cancel = Arc::new(AtomicBool::new(false));
-        let (lang, lines) = run(&job(1), &runner, &mut t, &cancel, &tx).unwrap();
+        let r = run(&job(1), &runner, Some(&mut t), None, &cancel, &tx).unwrap();
+        let (lang, lines) = (r.language.clone(), r.lines());
         assert_eq!(lang.as_deref(), Some("it"));
         // 250 s in chunks of 120 s; the detected language is used after the first chunk
         let seen = seen.lock().unwrap().clone();
@@ -1036,8 +1442,16 @@ pub(crate) mod tests {
         let mut j = job(2);
         j.language = Some("en".into());
         let (tx, _rx) = channel();
-        let (lang, lines) =
-            run(&j, &runner, &mut t, &Arc::new(AtomicBool::new(false)), &tx).unwrap();
+        let r = run(
+            &j,
+            &runner,
+            Some(&mut t),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &tx,
+        )
+        .unwrap();
+        let (lang, lines) = (r.language.clone(), r.lines());
         assert_eq!(lang.as_deref(), Some("en"));
         assert!(
             seen.lock()
@@ -1058,7 +1472,7 @@ pub(crate) mod tests {
         };
         let cancel = Arc::new(AtomicBool::new(false));
         assert_eq!(
-            run(&job(2), &extractor(1), &mut t, &cancel, &tx),
+            run(&job(2), &extractor(1), Some(&mut t), None, &cancel, &tx),
             Err(SttError::Cancelled)
         );
         let broken = FakeRunner::default().on(|_, _| fail("no audio"));
@@ -1066,7 +1480,8 @@ pub(crate) mod tests {
             run(
                 &job(1),
                 &broken,
-                &mut t,
+                Some(&mut t),
+                None,
                 &Arc::new(AtomicBool::new(false)),
                 &tx
             ),
@@ -1092,7 +1507,7 @@ pub(crate) mod tests {
             factory,
         );
         let ev = h.join();
-        assert!(matches!(ev.last(), Some(SttEvent::Done { lines, .. }) if lines.len() == 3));
+        assert!(matches!(ev.last(), Some(SttEvent::Done(r)) if r.lines().len() == 3));
         let none: TranscriberFactory = Arc::new(|_, _| Err(SttError::NotAvailable));
         let h = start(
             job(1),
@@ -1102,6 +1517,251 @@ pub(crate) mod tests {
         assert!(
             matches!(h.join().last(), Some(SttEvent::Failed(m)) if m.contains("not available"))
         );
+    }
+
+    /// The SRT a fake ffmpeg "extracts" from subtitle tracks.
+    pub const TRACK_SRT: &str = "1\n00:00:01,000 --> 00:00:02,000\n<i>w1</i>\n\n\
+        2\n00:00:03,000 --> 00:00:04,000\n{\\an8}w3\n\n\
+        3\n00:00:06,000 --> 00:00:08,000\nsomething else entirely\n\n\
+        4\n00:00:11,000 --> 00:00:12,000\nw11\n";
+
+    /// ffmpeg that writes `secs` seconds of audio, or [`TRACK_SRT`] for a subtitle track.
+    pub fn extractor_with_track(secs: usize) -> FakeRunner {
+        FakeRunner::default().on(move |_, a| {
+            let out = a.last()?.strip_prefix("file:")?.to_string();
+            if a.iter().any(|x| x == "srt") {
+                std::fs::write(out, TRACK_SRT).ok()?;
+            } else {
+                std::fs::write(out, vec![0u8; secs * SAMPLE_RATE as usize * 4]).ok()?;
+            }
+            crate::ffmpeg::fake::ok("")
+        })
+    }
+
+    fn run_job(
+        j: &SttJob,
+        runner: &FakeRunner,
+        t: Option<&mut FakeTranscriber>,
+    ) -> Result<SttResult, SttError> {
+        let (tx, _rx) = channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        run(
+            j,
+            runner,
+            t.map(|t| t as &mut dyn Transcriber),
+            None,
+            &cancel,
+            &tx,
+        )
+    }
+
+    // covers: REQ-085
+    #[test]
+    fn only_the_range_of_the_clip_is_recognised() {
+        let runner = extractor(4);
+        let mut t = FakeTranscriber::default();
+        let seen = Arc::clone(&t.seen);
+        let mut j = job(1);
+        j.ranges[0].range = Some((Micros(5_000_000), Micros(9_000_000)));
+        let r = run_job(&j, &runner, Some(&mut t)).unwrap();
+        // the audio of [5 s, 9 s) only: -ss/-t before the input
+        let calls = runner.calls.lock().unwrap();
+        let a = &calls[0];
+        let ss = a.iter().position(|x| x == "-ss").unwrap();
+        assert_eq!(a[ss + 1], "5.000000");
+        assert_eq!(
+            a[ss + 2..ss + 4],
+            ["-t".to_string(), "4.000000".to_string()]
+        );
+        assert!(ss < a.iter().position(|x| x == "-i").unwrap());
+        // the words are in source time: offset by the start of the range
+        assert_eq!(seen.lock().unwrap()[0].1, Micros(5_000_000));
+        assert_eq!(
+            r.ranges[0].range,
+            Some((Micros(5_000_000), Micros(9_000_000)))
+        );
+        assert!(r.lines().iter().all(|l| l.start >= Micros(5_000_000)));
+        assert_eq!(r.lines().len(), 4);
+        assert!(!j.is_matching() && j.needs_model());
+        // without a range the whole file is read
+        assert!(
+            !extraction_args(Path::new("/a.mp4"), Path::new("/o"), None).contains(&"-ss".into())
+        );
+    }
+
+    // covers: REQ-087, REQ-095, REQ-015
+    #[test]
+    fn subtitle_tracks_are_aligned_or_spread() {
+        // Align: track text kept, tags removed, words timed from the speech
+        let runner = extractor_with_track(14);
+        let mut t = FakeTranscriber::default();
+        let seen = Arc::clone(&t.seen);
+        let mut j = job(1);
+        j.ranges[0].mode = Mode::Align { track: 2 };
+        j.ranges[0].track_language = Some("ita".into());
+        j.ranges[0].range = Some((Micros(0), Micros(10_000_000)));
+        let r = run_job(&j, &runner, Some(&mut t)).unwrap();
+        let calls = runner.calls.lock().unwrap().clone();
+        assert!(calls[0].windows(2).any(|w| w == ["-map", "0:s:2"]));
+        assert!(calls[0].windows(2).any(|w| w == ["-c:s", "srt"]));
+        // the track's language goes to the recogniser and to the project
+        assert_eq!(seen.lock().unwrap()[0].2.as_deref(), Some("it"));
+        assert_eq!(r.language.as_deref(), Some("it"));
+        let lines = r.lines();
+        let texts: Vec<&str> = lines.iter().map(|l| l.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            ["w1", "w3", "something else entirely"],
+            "cue in range only"
+        );
+        assert_eq!(lines[0].words[0].start, Micros(1_000_000));
+        assert_eq!(lines[1].words[0].start, Micros(3_000_000));
+        assert!(lines[2].words.is_empty(), "not matched: spread evenly");
+        assert_eq!(r.unmatched, (1, 3));
+        assert!(r.fallback.is_none());
+        assert!(j.is_matching());
+        // Spread: no recognition at all
+        let runner = extractor_with_track(14);
+        let mut j = job(1);
+        j.ranges[0].mode = Mode::Spread { track: 0 };
+        assert!(!j.needs_model());
+        let r = run_job(&j, &runner, None).unwrap();
+        assert_eq!(r.lines().len(), 4);
+        assert!(r.lines().iter().all(|l| l.words.is_empty()));
+        assert_eq!(r.unmatched, (0, 0), "nothing to report: the user chose it");
+        assert_eq!(runner.calls.lock().unwrap().len(), 1, "no audio extracted");
+        // a track that cannot be read stops everything (nothing changes)
+        let broken = FakeRunner::default().on(|_, _| fail("no such stream"));
+        assert_eq!(
+            run_job(&j, &broken, None),
+            Err(SttError::Track("1.mp4".into()))
+        );
+    }
+
+    // covers: REQ-095, REQ-054
+    #[test]
+    fn matching_falls_back_to_the_track_timing_when_recognition_fails() {
+        struct Failing;
+        impl Transcriber for Failing {
+            fn transcribe(
+                &mut self,
+                _: &[f32],
+                _: Micros,
+                _: Option<&str>,
+                _: &Arc<AtomicBool>,
+            ) -> Result<Transcript, SttError> {
+                Err(SttError::Transcription("boom".into()))
+            }
+        }
+        let (tx, _rx) = channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut j = job(1);
+        j.ranges[0].mode = Mode::Align { track: 0 };
+        let r = run(
+            &j,
+            &extractor_with_track(14),
+            Some(&mut Failing),
+            None,
+            &cancel,
+            &tx,
+        )
+        .unwrap();
+        assert_eq!(r.lines().len(), 4);
+        assert!(r.lines().iter().all(|l| l.words.is_empty()));
+        assert_eq!(r.unmatched, (4, 4));
+        assert!(r.fallback.as_deref().unwrap().contains("boom"));
+        // the engine could not be loaded: same, recognition-only parts fail
+        let why = SttError::Model("broken".into());
+        let r = run(
+            &j,
+            &extractor_with_track(14),
+            None,
+            Some(&why),
+            &cancel,
+            &tx,
+        )
+        .unwrap();
+        assert!(r.fallback.unwrap().contains("broken"));
+        let both = SttJob {
+            ranges: vec![j.ranges[0].clone(), range(2, None, Mode::Recognise)],
+            ..job(0)
+        };
+        assert_eq!(
+            run(
+                &both,
+                &extractor_with_track(14),
+                None,
+                Some(&why),
+                &cancel,
+                &tx
+            ),
+            Err(why)
+        );
+        assert!(unmatched_message(2, 5).starts_with("2 of 5 lines could not be matched"));
+    }
+
+    // covers: REQ-095
+    #[test]
+    fn cancelling_while_matching_gives_nothing() {
+        let mut t = FakeTranscriber {
+            cancel_after: Some(1),
+            ..Default::default()
+        };
+        let mut j = job(2);
+        j.ranges[0].mode = Mode::Align { track: 0 };
+        j.ranges[1].mode = Mode::Align { track: 0 };
+        let (tx, _rx) = channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        assert_eq!(
+            run(
+                &j,
+                &extractor_with_track(130),
+                Some(&mut t),
+                None,
+                &cancel,
+                &tx
+            ),
+            Err(SttError::Cancelled)
+        );
+        // through the thread: only Spread parts never load the model
+        let loads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let l2 = Arc::clone(&loads);
+        let factory: TranscriberFactory = Arc::new(move |_, _| {
+            l2.fetch_add(1, Ordering::SeqCst);
+            Err(SttError::NotAvailable)
+        });
+        let sched = crate::jobs::Scheduler::new(2);
+        let mut spread = job(1);
+        spread.ranges[0].mode = Mode::Spread { track: 0 };
+        let h = start(
+            spread,
+            sched.runner(
+                crate::jobs::Priority::Background,
+                Arc::new(extractor_with_track(1)),
+            ),
+            factory,
+        );
+        assert!(matches!(h.join().last(), Some(SttEvent::Done(r)) if r.lines().len() == 4));
+        assert_eq!(loads.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn language_codes_of_files_map_to_the_model() {
+        assert_eq!(iso639_2_to_1("ita"), Some("it"));
+        assert_eq!(iso639_2_to_1("ger"), Some("de"));
+        assert_eq!(iso639_2_to_1("deu"), Some("de"));
+        assert_eq!(iso639_2_to_1("en-US"), Some("en"));
+        assert_eq!(iso639_2_to_1("EN"), Some("en"));
+        assert_eq!(iso639_2_to_1("und"), None);
+        assert_eq!(iso639_2_to_1(""), None);
+        assert_eq!(iso639_2_to_1("xx"), None);
+        assert_eq!(iso639_2_to_1("yue"), Some("yue"));
+        assert_eq!(language_name("it"), Some("Italian"));
+        assert_eq!(language_name("fre"), Some("French"));
+        assert!(LANGUAGE_TABLE.len() >= 99);
+        let ta = track_args(Path::new("/v.mkv"), 3, Path::new("/w/t.srt"));
+        assert_eq!(ta.last().unwrap(), "file:/w/t.srt");
+        assert!(ta.iter().any(|x| x == "0:s:3"));
     }
 
     #[test]

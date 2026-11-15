@@ -34,13 +34,13 @@ These are the defaults at first start and after **View > Reset layout**. Each fr
 - Shortcuts use Cmd on macOS and Ctrl elsewhere, shown in the system's style. They do nothing while typing in a text field or while a dialog that needs an answer is open. Esc closes the topmost popup.
 - egui's own keyboard zoom (Ctrl/Cmd with +, - and 0 scaling the whole interface) is turned off, because those keys zoom the timeline.
 - The toolbar shows 12 common commands as one row. When the window is too narrow, the commands that do not fit move into a "»" menu at the right end, so all 12 stay usable at 800 px.
-- Menus are drawn inside the window on every system, including macOS, where the system menu bar stays off so that Cmd+Q asks about unsaved changes (see [Projects](architecture.md#projects)). Very long menus scroll.
+- Menus are drawn inside the window on every system, including macOS, where the system menu bar stays off so that Cmd+Q asks about unsaved changes (see [project files](architecture-projects.md#unsaved-changes)). Very long menus scroll.
 
 ## Status bar
 Left: the latest message. Middle: background work with progress (files being analysed, preview copies, speech model download, subtitle generation with Cancel, export with Cancel). Right: the output folder. The list of background jobs is computed by a function of the application state, tested without a window.
 
 ## Effects and popups
-- The Effects section lists the effect types (Fade through black, Subtitles, Volume) with a count or the current levels. Clicking one opens its popup.
+- The Effects section lists the effect types (Fade through black, Subtitles, Volume). Since 1.2.0 each row shows only the name, with a tooltip explaining how to apply it: drag it onto a clip, or double-click it for the whole video. Clicking one opens its popup. See [effects](architecture-effects.md).
 - Popups (Fades, Subtitles, Volume, Clip details, the selected fade or subtitle line, Keyboard shortcuts, Settings) are windows inside the main window, like Settings since 0.3.0. They are **not modal**: editing and playback continue while they are open. There is one popup per type; its position is kept for the session.
 - Which popups are open, and which fade or subtitle line is selected, is part of the application state and changed only through commands. This makes the behaviour testable without drawing and lets menus, shortcuts, the timeline and the Effects list open the same popups.
 - Each change in a popup is one undo step (a text edit when the field loses focus, a slider when released, "Remove all fades" as a whole). A popup for a fade or line that no longer exists (for example after a cut) closes.
@@ -50,6 +50,11 @@ Left: the latest message. Middle: background work with progress (files being ana
 - Each fade and each subtitle line has a marker in a lane above the video track: a diamond for a fade at its clip boundary, a flag with a thin bar for a subtitle line. A boundary without a fade shows a small "+" handle that adds one.
 - Markers are computed from the edit every time it is drawn (nothing new is stored, so the project format does not change). They follow cuts, ripples and zoom, and disappear with the clip they belong to. Only markers in the visible part of the timeline are drawn.
 - Clicking a marker selects it, moves the playhead there and opens its popup. When several markers are under the pointer, a small list lets the user choose.
+- Since 1.2.0 there are also markers for the fade from black at the start and to black at the end, and for a clip whose volume is not 100% or is muted. Ctrl/Cmd+click on subtitle line markers selects several lines, and Shift+drag on the timeline selects the lines starting in a range (see [subtitles](architecture-subtitles.md#position-on-screen-120)). Dragging an effect from the Effects list onto a video clip applies it there.
+
+## Time ruler (1.2.0)
+- Labels depend on the time at the right edge of the visible part: up to 90 s in seconds ("45s"), up to 90 minutes as minutes and seconds ("01:40", minutes may go past 59, e.g. "75:30"), beyond that as hours, minutes and seconds ("01:05:00").
+- Ticks fall on round steps (1, 2, 5, 10, 15, 30 s; 1, 2, 5, 10, 15, 30 min; 1 h and more). The step is the smallest one that leaves room for the widest label, so labels never overlap at any zoom; only visible ticks are computed. The rule is a small pure module, tested on its own.
 - Double-clicking a clip opens Clip details; right-clicking a clip, a marker or the empty timeline opens a context menu with the same commands as the menus.
 
 ## Recent projects
@@ -67,6 +72,7 @@ The interface is tested headless (no window): egui's accessibility tree, which l
 
 ## Performance
 - While an export and subtitle generation run, every frame stays under 200 ms, also while dragging a border or with popups open (automated test). The goal is under 16 ms per frame at 1280x800 with 50 media items and 200 subtitle lines (estimate, not a gate).
+- Since 1.2.0 the same 200 ms limit is tested while dragging an effect onto a clip and a subtitle in the preview during an export and word matching.
 - The layout is computed in constant time, markers outside the view are skipped, the subtitle list draws only visible rows, and the settings file is written only when a drag ends, the layout is reset or the recent list changes.
 
 ## Risks

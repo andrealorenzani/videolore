@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! The Effects section (REQ-075): one row per effect type with a count; a click opens the
-//! effect's popup. The popup bodies (REQ-076) are here too: Fades, Subtitles, Volume.
+//! The Effects section (REQ-075): one row per effect, only its name. A click opens the
+//! effect's popup, a double-click applies it to the whole video, dragging it onto a clip
+//! applies it to that clip (REQ-082). The popup bodies (REQ-076) are here too: Fades,
+//! Subtitles, Volume and the volume of one clip.
 
 use super::{UiCache, button, record};
-use crate::app::{AppState, Command, Instance, Popup};
+use crate::app::{AppState, Command, Edge, EffectKind, Instance, Target};
 use crate::music::Mix;
 use crate::subtitles::Preset;
 use crate::time::{Micros, timecode};
@@ -53,44 +55,52 @@ pub fn volume_text(m: &Mix) -> String {
     )
 }
 
-/// The rows of the Effects section: popup, name, description, count.
-pub fn rows(app: &AppState) -> [(Popup, &'static str, &'static str, String); 3] {
+/// Tooltip of every row of the Effects section.
+pub const EFFECT_TOOLTIP: &str =
+    "Drag onto a clip to apply it to that clip; double-click to apply it to the whole video";
+
+/// The rows of the Effects section: the effect and its name (nothing else is shown).
+pub fn rows() -> [(EffectKind, &'static str); 3] {
+    EffectKind::ALL.map(|e| (e, e.name()))
+}
+
+/// Number of fades of every kind (boundaries, start, end).
+pub fn fade_count(app: &AppState) -> usize {
     let tl = &app.project.timeline;
-    let lines = app.project.subtitles.project(tl).len();
-    [
-        (
-            Popup::Fades,
-            "Fade through black",
-            "Black between two clips, picture and sound",
-            count(tl.fades.len(), "fade", "fades"),
-        ),
-        (
-            Popup::Subtitles,
-            "Subtitles",
-            "Words shown over the video",
-            count(lines, "line", "lines"),
-        ),
-        (
-            Popup::Volume,
-            "Volume",
-            "Video sound and music levels",
-            volume_text(&app.project.mix),
-        ),
-    ]
+    tl.fades.len() + usize::from(tl.start_fade) + usize::from(tl.end_fade)
 }
 
 pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let w = ui.available_width();
-    for (popup, name, description, n) in rows(app) {
-        let text = format!("{name}\n{description}\n{n}");
+    for (effect, name) in rows() {
+        let popup = effect.popup();
         let r = ui
             .add(
-                Button::selectable(app.popups.is_open(popup), text)
-                    .wrap()
-                    .min_size(egui::vec2(w, 0.0)),
+                Button::selectable(app.popups.is_open(popup), name)
+                    .min_size(egui::vec2(w, 0.0))
+                    .sense(egui::Sense::click_and_drag()),
             )
-            .on_hover_text(format!("Open the {name} settings"));
-        if r.clicked() {
+            .on_hover_text(EFFECT_TOOLTIP);
+        r.dnd_set_drag_payload(effect);
+        if r.dragged() && egui::DragAndDrop::has_payload_of_type::<EffectKind>(ui.ctx()) {
+            // what is being dragged follows the pointer
+            if let Some(p) = ui.ctx().pointer_interact_pos() {
+                egui::Area::new(egui::Id::unique("videolore-effect-drag"))
+                    .order(egui::Order::Tooltip)
+                    .fixed_pos(p + egui::vec2(12.0, 4.0))
+                    .interactable(false)
+                    .show(ui.ctx(), |ui| {
+                        egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(name));
+                    });
+            }
+        }
+        // (a quick third click still counts: it must not just reopen the popup)
+        if r.double_clicked() || r.triple_clicked() {
+            cmds.push(Command::ApplyEffect {
+                effect,
+                target: Target::WholeVideo,
+            });
+        } else if r.clicked() {
             cmds.push(Command::OpenPopup(popup));
         }
     }
@@ -142,10 +152,48 @@ pub fn fades_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             on: true,
         });
     }
+    ui.horizontal_wrapped(|ui| {
+        button(
+            ui,
+            app,
+            "Fade the whole video",
+            Command::ApplyEffect {
+                effect: EffectKind::Fade,
+                target: Target::WholeVideo,
+            },
+            cmds,
+        );
+        button(
+            ui,
+            app,
+            "Fade the selected clip",
+            Command::ApplyEffect {
+                effect: EffectKind::Fade,
+                target: Target::Selected,
+            },
+            cmds,
+        );
+    });
     ui.separator();
-    ui.strong(count(tl.fades.len(), "fade", "fades"));
-    if tl.fades.is_empty() {
+    ui.strong(count(fade_count(app), "fade", "fades"));
+    if !tl.has_any_fade() {
         ui.weak("No fades yet: click a \"+\" handle on the timeline, or the button above.");
+    }
+    for (on, i, text) in [
+        (
+            tl.start_fade,
+            Instance::FadeStart,
+            "Fade from black at the start",
+        ),
+        (tl.end_fade, Instance::FadeEnd, "Fade to black at the end"),
+    ] {
+        if on
+            && ui
+                .add(Button::selectable(app.popups.instance == Some(i), text).truncate())
+                .clicked()
+        {
+            cmds.push(Command::OpenInstance(i));
+        }
     }
     for b in 0..tl.clips.len().saturating_sub(1) {
         if !tl.has_fade(b) {
@@ -247,16 +295,49 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
         }
         button(ui, app, "Add line at playhead", Command::AddSubtitle, cmds);
     });
+    ui.horizontal_wrapped(|ui| {
+        button(
+            ui,
+            app,
+            "Create for the selected clip",
+            Command::ApplyEffect {
+                effect: EffectKind::Subtitles,
+                target: Target::Selected,
+            },
+            cmds,
+        );
+        button(
+            ui,
+            app,
+            "Export subtitles (.srt)…",
+            Command::PickExportSrt,
+            cmds,
+        );
+    });
     if let Some(p) = app.model_progress {
         ui.label("Downloading the speech recognition file…");
         ui.add(ProgressBar::new(p).show_percentage());
     }
     if let Some(p) = app.stt_progress {
+        if app.stt_matching {
+            ui.label("Matching subtitles to the speech");
+        }
         ui.add(ProgressBar::new(p).show_percentage());
+    }
+    if !app.selection.is_empty() {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(count(
+                app.selection.len(),
+                "line selected",
+                "lines selected",
+            ));
+            button(ui, app, "Reset position", Command::ResetPosition, cmds);
+        });
     }
     let shown = subs.project(&app.project.timeline);
     ui.separator();
-    ui.strong(count(shown.len(), "line", "lines"));
+    ui.strong(count(shown.len(), "line", "lines"))
+        .on_hover_text("Ctrl/Cmd+click a line to select several");
     if shown.is_empty() {
         ui.weak("No subtitles on the timeline.");
         return;
@@ -268,14 +349,20 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
         .show_rows(ui, LINE_ROW, shown.len(), |ui, range| {
             for l in &shown[range] {
                 let i = Instance::Line(l.line, l.clip);
-                let on = app.popups.instance == Some(i) || app.selected_line == Some(l.line);
+                let on = app.popups.instance == Some(i)
+                    || app.selected_line == Some(l.line)
+                    || app.selection.contains(&l.line);
                 let text = format!("{}  {}", timecode(l.start), l.text);
                 if ui
                     .add(Button::selectable(on, text.as_str()).truncate())
                     .on_hover_text(text)
                     .clicked()
                 {
-                    cmds.push(Command::OpenInstance(i));
+                    if ui.input(|x| x.modifiers.command) {
+                        cmds.push(Command::ToggleLine(l.line));
+                    } else {
+                        cmds.push(Command::OpenInstance(i));
+                    }
                 }
             }
         });
@@ -284,6 +371,102 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
         out.inner_rect,
         out.state.clamped_offset(),
         out.content_size,
+    );
+}
+
+/// Level slider and mute of one video clip (REQ-084, REQ-078): one undo step when the
+/// slider is released or the switch changes.
+pub fn clip_volume_controls(
+    ui: &mut Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    clip: crate::timeline::ClipId,
+    cmds: &mut Vec<Command>,
+) {
+    let Some(c) = app.project.timeline.get(clip) else {
+        ui.label("This clip no longer exists.");
+        return;
+    };
+    let (mut volume, mut muted) = match cache.clip_volume_drag {
+        Some((id, v, m)) if id == clip => (v, m),
+        _ => (c.volume, c.muted),
+    };
+    let mut commit = false;
+    let mut dragging = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Clip sound");
+        let r = ui.add(egui::Slider::new(&mut volume, 0..=100).suffix("%"));
+        dragging |= r.dragged();
+        commit |= r.drag_stopped() || (r.changed() && !r.dragged());
+        commit |= ui.checkbox(&mut muted, "Mute").changed();
+    });
+    if commit {
+        cache.clip_volume_drag = None;
+        cmds.push(Command::SetClipVolume {
+            clip,
+            volume,
+            muted,
+        });
+    } else if dragging {
+        cache.clip_volume_drag = Some((clip, volume, muted));
+    } else if cache
+        .clip_volume_drag
+        .is_some_and(|(id, v, m)| id == clip && (v, m) == (c.volume, c.muted))
+    {
+        cache.clip_volume_drag = None;
+    }
+}
+
+/// The popup of one clip's volume.
+pub fn clip_volume_body(
+    ui: &mut Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    clip: crate::timeline::ClipId,
+    cmds: &mut Vec<Command>,
+) {
+    if let Some(name) = app.clip_name(clip) {
+        ui.add(egui::Label::new(format!("Clip: {name}")).truncate());
+    }
+    ui.weak("The video's volume (Volume, whole video) multiplies this level.");
+    clip_volume_controls(ui, app, cache, clip, cmds);
+    button(
+        ui,
+        app,
+        "Reset to 100%",
+        Command::SetClipVolume {
+            clip,
+            volume: 100,
+            muted: false,
+        },
+        cmds,
+    );
+}
+
+/// The popup of the fade at the very start or end of the video.
+pub fn edge_fade_body(ui: &mut Ui, app: &AppState, edge: Edge, cmds: &mut Vec<Command>) {
+    let tl = &app.project.timeline;
+    let on = match edge {
+        Edge::Start => tl.start_fade,
+        Edge::End => tl.end_fade,
+    };
+    if !on {
+        ui.label("This fade no longer exists.");
+        return;
+    }
+    ui.strong(match edge {
+        Edge::Start => "Fade from black at the start of the video",
+        Edge::End => "Fade to black at the end of the video",
+    });
+    ui.weak(
+        "It stays at the edge of the video whatever is edited. Picture and sound fade together.",
+    );
+    button(
+        ui,
+        app,
+        "Remove",
+        Command::SetEdgeFade { edge, on: false },
+        cmds,
     );
 }
 

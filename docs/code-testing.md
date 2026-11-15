@@ -33,6 +33,18 @@
   with each popup, dialog and menu open: every interactive widget must be inside the window, and
   inside its section, unless it is inside a scroll area (recorded each frame in
   `UiCache::containers`) whose visible part can be reached.
+- **1.2.0:** `src/app/effects_tests.rs` (effects on a clip or the whole video, the video's own
+  subtitles with a fake runner that "extracts" an SRT track and a scripted recogniser, the
+  consent choices, cancel at every step, line selection and positions, SRT export); pure
+  tests in `align`, `srt`, `ui/ruler`, `ui/placement`; interface tests drag an effect row onto
+  a clip, drag a subtitle in the preview, Ctrl/Cmd+click markers and Shift+drag the timeline;
+  a third responsiveness test drags an effect and a subtitle while an export and a matching
+  job run.
+- **Frozen 1.1 output:** `tests/fixtures/project-v2-1.1.vlproj` (a 1.1 project with fades,
+  music, mix and word-timed subtitles) and `project-v1.vlproj` must give exactly the export
+  arguments and subtitle document in `tests/fixtures/export-argv-1.1.0.txt`, captured with the
+  1.1.0 code. Regenerate it only on purpose
+  (`cargo test --lib write_golden_1_1 -- --ignored`).
 - **Settings and hostile input:** the settings decisions are pure functions tested with corpora
   (bad JSON, unknown values, huge numbers, nesting, relative paths, newer formats, 0.2.x files);
   project files are tested with a hostile corpus (truncated, nested, out-of-range numbers,
@@ -86,3 +98,21 @@ glue outside the gated test.
 | (security) | | Read-only token by default (`contents: write` only in `package`); every action pinned to a full commit SHA (tag in a comment, all on Node 24); runners pinned (`ubuntu-24.04`, `macos-15`, `windows-2025`); a unit test checks both |
 | `build` | after `check` + `msrv` | Bare release executables for Linux x86_64, macOS arm64 and Windows x86_64, uploaded as artifacts |
 | `package` | `v*` tags and manual runs, after `check` + `msrv` | Per OS: fetch the pinned ffmpeg, build, `scripts/package.sh` (with the ffmpeg smoke test; on Linux it also refuses an executable needing glibc newer than 2.39), the third-party source archive on Linux; artifacts; on tags the five release assets are attached to the GitHub release |
+
+### 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`)
+
+Real ffmpeg: a whole-video fade starts and ends in black (also after cutting the first clip);
+a muted clip is silent and a 50 % clip is a quarter of the level; a positioned subtitle is
+burned in within 2 % of the frame height of its position (measured: 0.5 px off at 320x180) and
+the preview uses the same subtitle document; the exported SRT is read back by ffmpeg; MKV + SRT
+and MP4 + timed text are reported with their language and read, also for a file whose time
+stamps start at 5 s.
+
+The alignment fixture `tests/fixtures/align/` is committed: `speech.mkv` (synthetic speech,
+Opus, with an English SRT track that has one misspelt word), `reference.json` (where each word
+really starts) and `track.srt`. `make.sh` rebuilds them (development only; needs espeak-ng and
+ffmpeg). Two tests use it when `VIDEOLORE_STT_MODEL` points to the Fast speech file (as in CI):
+`alignment_keeps_the_track_and_times_its_words_from_real_speech` (text and cue times kept,
+every word timed inside its line, at least half of the words found) and the accuracy target
+`alignment_matches_real_speech`, which is `#[ignore]`d because it is not met yet (see
+[code-effects.md](code-effects.md)).

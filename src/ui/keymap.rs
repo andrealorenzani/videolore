@@ -115,6 +115,9 @@ pub fn collect(ctx: &Context, app: &AppState) -> Vec<Command> {
             out.push(Command::ChooseInstance(Vec::new()));
         } else if let Some(p) = topmost_popup(ctx, app) {
             out.push(Command::ClosePopup(p));
+        } else if !app.selection.is_empty() {
+            // with no popup open, Esc clears the selected subtitle lines
+            out.push(Command::ClearSelection);
         }
     }
     out

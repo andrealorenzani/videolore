@@ -26,7 +26,7 @@ use crate::stt::{
     self, ModelEvent, ModelFetcher, ModelSource, ModelStore, SttEvent, SttHandle, SttJob,
     TranscriberFactory,
 };
-use crate::subtitles::{LineId, Preset};
+use crate::subtitles::{LineId, Pos, Preset};
 use crate::time::{Fps, Micros};
 use crate::timeline::{Clip, ClipId, EditError};
 use std::collections::HashMap;
@@ -55,7 +55,83 @@ pub enum ConsentChoice {
     DownloadFastInstead,
     /// Use a copy of the file the user already has.
     LocalFile,
+    /// Reuse the video's subtitles without matching their words to the speech (no
+    /// download; words spread evenly). Offered only when subtitles are being reused.
+    UseWithoutMatching,
     Cancel,
+}
+
+/// An effect of the Effects section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EffectKind {
+    Fade,
+    Subtitles,
+    Volume,
+}
+
+impl EffectKind {
+    pub const ALL: [EffectKind; 3] = [EffectKind::Fade, EffectKind::Subtitles, EffectKind::Volume];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            EffectKind::Fade => "Fade through black",
+            EffectKind::Subtitles => "Subtitles",
+            EffectKind::Volume => "Volume",
+        }
+    }
+
+    /// The popup of the effect.
+    pub fn popup(self) -> Popup {
+        match self {
+            EffectKind::Fade => Popup::Fades,
+            EffectKind::Subtitles => Popup::Subtitles,
+            EffectKind::Volume => Popup::Volume,
+        }
+    }
+}
+
+/// What an effect is applied to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Target {
+    /// One video clip.
+    Clip(ClipId),
+    /// The selected clip (or the one under the playhead).
+    Selected,
+    /// The whole video: one clip from the start of the timeline to its end.
+    WholeVideo,
+}
+
+/// The very start or the very end of the video.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Edge {
+    Start,
+    End,
+}
+
+/// Answer to "This video already contains subtitles…".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceChoice {
+    /// Use the subtitle track with this label (index in the dialog's list).
+    Use(usize),
+    Recognise,
+    Cancel,
+}
+
+/// A subtitle creation waiting for an answer or a background check.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CreateRequest {
+    /// `None`: the whole video.
+    pub clip: Option<ClipId>,
+    /// Replacing hand-edited lines was confirmed.
+    pub confirmed: bool,
+    /// The user's choice in the subtitle source dialog (`None`: not asked yet).
+    pub source: Option<SourceChoice>,
+    /// The labels of the subtitle tracks offered (dialog list).
+    pub labels: Vec<String>,
+    /// Reuse the tracks without matching words to the speech.
+    pub spread: bool,
+    /// Speech recognition level for this creation only (`None`: the setting).
+    pub level: Option<SubtitleQuality>,
 }
 
 /// A non-blocking message at the top of the window.
@@ -113,6 +189,12 @@ pub enum Modal {
     /// Consent to download the speech recognition file of a subtitle level.
     ModelConsent(SubtitleQuality),
     ConfirmRegenerate,
+    /// "This video already contains subtitles": the track labels to choose from, and
+    /// whether this computer can match their words to the speech.
+    SubtitleSource {
+        labels: Vec<String>,
+        can_match: bool,
+    },
     /// Confirmation before removing the downloaded speech recognition files.
     ConfirmRemoveSpeechFiles,
     About,
@@ -162,6 +244,12 @@ pub enum Instance {
     Fade(ClipId, ClipId),
     /// A subtitle line as shown in this clip.
     Line(LineId, ClipId),
+    /// The fade from black at the very start of the video.
+    FadeStart,
+    /// The fade to black at the very end of the video.
+    FadeEnd,
+    /// The sound level of one video clip.
+    ClipVolume(ClipId),
 }
 
 /// The open floating windows, most recently opened last.
@@ -172,6 +260,8 @@ pub struct Popups {
     pub instance: Option<Instance>,
     /// Overlapping markers the user must choose from.
     pub chooser: Option<Vec<Instance>>,
+    /// What each effect popup was last applied to (shown in its title).
+    pub targets: Vec<(Popup, Target)>,
 }
 
 impl Popups {
@@ -187,9 +277,20 @@ impl Popups {
 
     pub fn close(&mut self, p: Popup) {
         self.open.retain(|x| *x != p);
+        self.targets.retain(|(x, _)| *x != p);
         if p == Popup::Instance {
             self.instance = None;
         }
+    }
+
+    /// What popup `p` shows the effect of, when it was opened by applying it.
+    pub fn target(&self, p: Popup) -> Option<Target> {
+        self.targets.iter().find(|(x, _)| *x == p).map(|(_, t)| *t)
+    }
+
+    fn set_target(&mut self, p: Popup, t: Target) {
+        self.targets.retain(|(x, _)| *x != p);
+        self.targets.push((p, t));
     }
 }
 
@@ -371,6 +472,46 @@ pub enum Command {
     ClearRecent,
     /// Files dropped on the window.
     DropFiles(Vec<PathBuf>),
+    /// Applies an effect to a clip or to the whole video (and opens its popup).
+    ApplyEffect {
+        effect: EffectKind,
+        target: Target,
+    },
+    /// Sound level (0–100 %) and mute of one video clip.
+    SetClipVolume {
+        clip: ClipId,
+        volume: u8,
+        muted: bool,
+    },
+    /// Adds or removes the fade at the very start or end of the video.
+    SetEdgeFade {
+        edge: Edge,
+        on: bool,
+    },
+    /// Adds a subtitle line to the selection, or takes it out (Ctrl/Cmd+click).
+    ToggleLine(LineId),
+    /// Selects the lines whose timeline start is in `[from, to]` (`add`: keeps the
+    /// current selection too) and moves the playhead to the first one.
+    SelectRange {
+        from: Micros,
+        to: Micros,
+        add: bool,
+    },
+    ClearSelection,
+    /// Gives the lines their own place on screen (`None`: the style's place).
+    SetLinePositions {
+        ids: Vec<LineId>,
+        pos: Option<Pos>,
+    },
+    /// The selected lines go back to the style's place.
+    ResetPosition,
+    /// Where lines are while being dragged in the preview (not an edit).
+    DragLines(Option<(Vec<LineId>, Pos)>),
+    /// Asks where to save the subtitles as an `.srt` file.
+    PickExportSrt,
+    ExportSrt(PathBuf),
+    /// Answer to the subtitle source dialog.
+    ChooseSubtitleSource(SourceChoice),
 }
 
 /// Zoom step of Zoom in / Zoom out.
@@ -407,6 +548,22 @@ impl Command {
             Command::RetimeSubtitle { .. } => "Change subtitle timing",
             Command::SetPreset(_) => "Subtitle style",
             Command::SetLanguage(_) => "Subtitle language",
+            Command::ApplyEffect {
+                effect: EffectKind::Fade,
+                ..
+            } => "Fade through black",
+            Command::ApplyEffect {
+                effect: EffectKind::Subtitles,
+                ..
+            } => "Create subtitles",
+            Command::ApplyEffect { .. } => "Volume",
+            Command::SetClipVolume { .. } => "Clip volume",
+            Command::SetEdgeFade { on: true, .. } => "Add fade",
+            Command::SetEdgeFade { on: false, .. } => "Remove fade",
+            Command::SetLinePositions { pos: Some(_), .. } => "Move subtitle",
+            Command::SetLinePositions { pos: None, .. } | Command::ResetPosition => {
+                "Reset subtitle position"
+            }
             _ => "Edit",
         }
     }
@@ -420,6 +577,8 @@ pub trait Dialogs {
     fn pick_export(&mut self, extension: &str) -> Option<PathBuf>;
     fn pick_ffmpeg(&mut self) -> Option<PathBuf>;
     fn pick_model_file(&mut self) -> Option<PathBuf>;
+    /// Where to save the subtitles (`.srt`), proposing `default_name`.
+    fn pick_subtitles_save(&mut self, default_name: &str) -> Option<PathBuf>;
 }
 
 /// State of a running or finished export, for the UI.
@@ -429,6 +588,9 @@ pub struct ExportStatus {
     pub progress: f32,
     pub stream_copy: Option<bool>,
 }
+
+/// The subtitle tracks found in a file (`Some(empty)` when the check failed).
+type TrackCheck = (MediaId, Vec<media::SubtitleTrack>);
 
 /// A file to analyse with ffprobe.
 struct ProbeJob {
@@ -484,6 +646,20 @@ pub struct AppState {
     pub selected_media: Option<MediaId>,
     pub selected_music: Option<MusicClipId>,
     pub selected_line: Option<LineId>,
+    /// Selected subtitle lines (Ctrl/Cmd+click, Shift+drag): moved together. Not part of
+    /// the project or of undo.
+    pub selection: std::collections::BTreeSet<LineId>,
+    /// Lines being dragged in the preview and where (shown at once, saved on release).
+    pub drag_pos: Option<(Vec<LineId>, Pos)>,
+    /// A subtitle creation waiting for an answer or a background check.
+    pub pending_create: Option<CreateRequest>,
+    /// The clip the running creation is for (`None`: the whole video).
+    creating_for: Option<Option<ClipId>>,
+    /// The running creation matches subtitle tracks to the speech.
+    pub stt_matching: bool,
+    /// Media whose subtitle tracks are being checked (media of projects before 1.2.0).
+    pub tracks_checking: std::collections::BTreeSet<MediaId>,
+    track_check: Option<(Receiver<TrackCheck>, Arc<AtomicBool>)>,
     pub playhead: Micros,
     pub clipboard: Option<Clip>,
     /// Timeline zoom in pixels per second (0 = fit all on next frame).
@@ -690,6 +866,13 @@ impl AppState {
             selected_media: None,
             selected_music: None,
             selected_line: None,
+            selection: Default::default(),
+            drag_pos: None,
+            pending_create: None,
+            creating_for: None,
+            stt_matching: false,
+            tracks_checking: Default::default(),
+            track_check: None,
             playhead: Micros::ZERO,
             clipboard: None,
             zoom: 0.0,
@@ -790,6 +973,7 @@ impl AppState {
         for id in ids {
             self.maybe_proxy(id);
         }
+        self.start_track_check();
     }
 
     /// Starts the background check of the video hardware (needs a working ffmpeg; an
@@ -954,6 +1138,14 @@ impl AppState {
             .unwrap_or(Fps { num: 30, den: 1 })
     }
 
+    /// Size of the exported picture (the preview's subtitles are placed in it).
+    pub fn output_size(&self) -> Option<(u32, u32)> {
+        let enc = self.encoders();
+        render::output_geometry(&self.project, &enc)
+            .ok()
+            .map(|g| (g.width, g.height))
+    }
+
     fn frame_len(&self) -> Micros {
         self.fps().frame_duration()
     }
@@ -1031,6 +1223,21 @@ impl AppState {
             Command::Cut | Command::Copy | Command::Delete => self.target_clip().is_some(),
             Command::Paste => self.clipboard.is_some(),
             Command::Merge => self.target_clip().is_some_and(|c| tl.can_merge(c)),
+            Command::ApplyEffect { effect, target } => {
+                let clip_ok = match target {
+                    Target::Selected => self.target_clip().is_some(),
+                    Target::Clip(c) => tl.get(*c).is_some(),
+                    Target::WholeVideo => !tl.clips.is_empty(),
+                };
+                clip_ok && (*effect != EffectKind::Subtitles || (has_ff && !self.is_generating()))
+            }
+            Command::SetClipVolume { clip, .. } => tl.get(*clip).is_some(),
+            Command::SetEdgeFade { .. } => !tl.clips.is_empty(),
+            Command::ResetPosition => self
+                .selected_lines()
+                .iter()
+                .any(|id| self.project.subtitles.get(*id).is_some()),
+            Command::PickExportSrt | Command::ExportSrt(_) => self.has_shown_subtitles(),
             Command::MoveLeft => self
                 .target_clip()
                 .and_then(|c| tl.index_of(c))
@@ -1072,7 +1279,7 @@ impl AppState {
             Command::RemoveDesktopIntegration => self.desktop_integrated,
             Command::OpenInstance(i) => self.instance_start(*i).is_some(),
             Command::SetFade { left, right, .. } => self.boundary_of(*left, *right).is_some(),
-            Command::RemoveAllFades => !tl.fades.is_empty(),
+            Command::RemoveAllFades => tl.has_any_fade(),
             Command::PlayLine(id) => {
                 has_ff
                     && self
@@ -1351,23 +1558,18 @@ impl AppState {
                 })
             }
             Command::GenerateSubtitles => {
-                if !stt::available() {
-                    return Err("subtitle generation is not available in this build".into());
-                }
-                // The speech engine is never reached on a processor it cannot run on.
-                if !self.machine.speech_supported() {
-                    self.notice = Some(TOO_OLD_FOR_SUBTITLES.into());
-                    return Ok(());
-                }
-                if self.project.subtitles.has_edits() {
-                    self.modal = Some(Modal::ConfirmRegenerate);
-                    return Ok(());
-                }
-                self.generate_subtitles(None)
+                self.show_popup_for(Popup::Subtitles, Target::WholeVideo);
+                self.create_subtitles(None)
             }
             Command::ConfirmRegenerate => {
                 self.modal = None;
-                self.generate_subtitles(None)
+                if self.stt.is_some() || self.model_install.is_some() {
+                    return Err(subs_create::BEING_CREATED.into());
+                }
+                let mut r = self.pending_create.take().unwrap_or_default();
+                r.confirmed = true;
+                self.pending_create = Some(r);
+                self.continue_create()
             }
             Command::ModelConsent(choice) => {
                 let level = match self.modal.take() {
@@ -1382,13 +1584,30 @@ impl AppState {
                     .clone()
                     .ok_or("no folder for speech recognition files")?;
                 let (level, source) = match choice {
-                    ConsentChoice::Cancel => return Ok(()),
+                    ConsentChoice::Cancel => {
+                        self.pending_create = None;
+                        return Ok(());
+                    }
+                    ConsentChoice::UseWithoutMatching => {
+                        if !self.consent_offers_spread() {
+                            self.modal = Some(Modal::ModelConsent(level));
+                            return Ok(());
+                        }
+                        // no download: the video's subtitles with words spread evenly
+                        if let Some(r) = &mut self.pending_create {
+                            r.spread = true;
+                        }
+                        return self.continue_create();
+                    }
                     ConsentChoice::UseFastInstead => {
                         if !store.is_installed(SubtitleQuality::Fast) {
                             return Err("the Fast speech file is not installed".into());
                         }
                         // this generation only: the setting does not change
-                        return self.generate_subtitles(Some(SubtitleQuality::Fast));
+                        if let Some(r) = &mut self.pending_create {
+                            r.level = Some(SubtitleQuality::Fast);
+                        }
+                        return self.continue_create();
                     }
                     ConsentChoice::Download => (level, ModelSource::Download),
                     ConsentChoice::DownloadFastInstead => {
@@ -1413,6 +1632,7 @@ impl AppState {
                 Ok(())
             }
             Command::CancelSubtitles => {
+                self.pending_create = None;
                 if let Some(h) = &self.stt {
                     h.cancel();
                 }
@@ -1468,6 +1688,7 @@ impl AppState {
             }
             Command::SelectLine(id) => {
                 self.selected_line = id;
+                self.selection = id.into_iter().collect();
                 Ok(())
             }
             Command::SetPreset(p) => {
@@ -1664,6 +1885,7 @@ impl AppState {
             }
             Command::CloseModal => {
                 self.modal = None;
+                self.pending_create = None;
                 Ok(())
             }
             Command::RemoveDesktopIntegration => {
@@ -1694,6 +1916,8 @@ impl AppState {
                     .ok_or("that fade or subtitle line no longer exists")?;
                 if let Instance::Line(id, _) = i {
                     self.selected_line = Some(id);
+                    self.selection.clear();
+                    self.selection.insert(id);
                 }
                 self.popups.instance = Some(i);
                 self.popups.chooser = None;
@@ -1717,11 +1941,11 @@ impl AppState {
                 })
             }
             Command::RemoveAllFades => {
-                if self.project.timeline.fades.is_empty() {
+                if !self.project.timeline.has_any_fade() {
                     return Ok(());
                 }
                 self.edit(now, label, |e| {
-                    e.timeline.fades.clear();
+                    e.timeline.clear_fades();
                     Ok(())
                 })
             }
@@ -1781,6 +2005,40 @@ impl AppState {
                 self.settings.recent.clear();
                 self.save_settings()
             }
+            Command::ApplyEffect { effect, target } => self.apply_effect(effect, target, now),
+            Command::SetClipVolume {
+                clip,
+                volume,
+                muted,
+            } => self.set_clip_volume(clip, volume, muted, now),
+            Command::SetEdgeFade { edge, on } => self.set_edge_fade(edge, on, now),
+            Command::ToggleLine(id) => self.toggle_line(id),
+            Command::SelectRange { from, to, add } => self.select_range(from, to, add, now),
+            Command::ClearSelection => {
+                self.selection.clear();
+                Ok(())
+            }
+            Command::SetLinePositions { ids, pos } => self.set_line_positions(ids, pos, now),
+            Command::ResetPosition => {
+                let ids = self.selected_lines();
+                self.set_line_positions(ids, None, now)
+            }
+            Command::DragLines(d) => {
+                self.drag_lines(d, now);
+                Ok(())
+            }
+            Command::PickExportSrt => {
+                if !self.has_shown_subtitles() {
+                    return Err(effects::NO_SUBTITLES.into());
+                }
+                let name = self.srt_name();
+                match self.dialogs.pick_subtitles_save(&name) {
+                    Some(p) => self.export_srt(p),
+                    None => Ok(()),
+                }
+            }
+            Command::ExportSrt(p) => self.export_srt(p),
+            Command::ChooseSubtitleSource(c) => self.choose_subtitle_source(c),
             Command::DropFiles(paths) => {
                 if self.modal.is_some() || self.notice.is_some() {
                     self.status = "Close the open dialog before dropping files".into();
@@ -1828,7 +2086,37 @@ impl AppState {
                 .into_iter()
                 .find(|x| x.line == id && x.clip == clip)
                 .map(|x| x.start),
+            Instance::FadeStart => (tl.start_fade && !tl.clips.is_empty()).then_some(Micros::ZERO),
+            Instance::FadeEnd => {
+                let last = tl.clips.last().filter(|_| tl.end_fade)?;
+                Some(tl.duration() - last.fade_len())
+            }
+            Instance::ClipVolume(c) => tl.index_of(c).map(|i| tl.start_of(i)),
         }
+    }
+
+    /// Opens popup `p` showing the effect as applied to `t`.
+    fn show_popup_for(&mut self, p: Popup, t: Target) {
+        self.popups.show(p);
+        self.popups.set_target(p, t);
+    }
+
+    /// The speech-file consent dialog offers "Use without matching words": subtitles of
+    /// the video are being reused and nothing else needs the speech file.
+    pub fn consent_offers_spread(&self) -> bool {
+        let Some(req) = &self.pending_create else {
+            return false;
+        };
+        if !matches!(req.source, Some(SourceChoice::Use(_))) {
+            return false;
+        }
+        // every part with a track can do without; parts without one would still need it
+        self.create_ranges(req.clip).iter().all(|(m, _)| {
+            self.project
+                .media(*m)
+                .and_then(|x| x.format.subtitle_tracks.as_ref())
+                .is_some_and(|t| !t.is_empty())
+        })
     }
 
     /// "Undo Split", or "Undo" when there is nothing to undo.
@@ -1895,9 +2183,20 @@ impl AppState {
                 cancel: Some(Command::CancelSubtitles),
             });
         }
+        if !self.tracks_checking.is_empty() {
+            jobs.push(Job {
+                label: subs_create::CHECKING_TRACKS.trim_end_matches('…').into(),
+                progress: None,
+                cancel: None,
+            });
+        }
         if let Some(p) = self.stt_progress {
             jobs.push(Job {
-                label: "Generating subtitles".into(),
+                label: if self.stt_matching {
+                    "Matching subtitles to the speech".into()
+                } else {
+                    "Generating subtitles".into()
+                },
                 progress: Some(p),
                 cancel: Some(Command::CancelSubtitles),
             });
@@ -1931,6 +2230,14 @@ impl AppState {
             Command::Split | Command::AddSubtitle => "Move the playhead over a clip first",
             Command::Cut | Command::Copy | Command::Delete => "Select a clip first",
             Command::Merge if self.target_clip().is_none() => "Select a clip first",
+            Command::Merge
+                if self
+                    .target_clip()
+                    .and_then(|c| tl.merge_block_reason(c))
+                    .is_some() =>
+            {
+                crate::timeline::DIFFERENT_VOLUMES
+            }
             Command::Merge => "Only two parts of the same clip, next to each other, can be merged",
             Command::MoveLeft | Command::MoveRight if self.target_clip().is_none() => {
                 "Select a clip first"
@@ -1947,6 +2254,21 @@ impl AppState {
             Command::CancelExport => "No export is running",
             Command::CancelSubtitles => "Subtitles are not being generated",
             Command::ClearRecent => "The list is empty",
+            Command::PickExportSrt | Command::ExportSrt(_) => effects::NO_SUBTITLES,
+            Command::ResetPosition => effects::SELECT_A_LINE,
+            Command::ApplyEffect {
+                target: Target::Selected,
+                ..
+            } if self.target_clip().is_none() => effects::SELECT_A_CLIP,
+            Command::ApplyEffect {
+                effect: EffectKind::Subtitles,
+                ..
+            }
+            | Command::GenerateSubtitles
+                if self.is_generating() =>
+            {
+                subs_create::BEING_CREATED
+            }
             _ if no_ffmpeg => "ffmpeg is not ready",
             Command::PickExport | Command::Export(_) if self.is_exporting() => {
                 "An export is already running"
@@ -1954,12 +2276,11 @@ impl AppState {
             Command::GenerateSubtitles if !stt::available() => {
                 "Subtitle generation is not available in this build"
             }
-            Command::GenerateSubtitles if self.is_generating() => {
-                "Subtitles are already being generated"
-            }
             Command::PickExport
             | Command::Export(_)
             | Command::GenerateSubtitles
+            | Command::ApplyEffect { .. }
+            | Command::SetEdgeFade { .. }
             | Command::PlayPause
             | Command::PlayLine(_)
                 if tl.clips.is_empty() =>
@@ -2046,6 +2367,9 @@ impl AppState {
         self.proxy_events = channel();
         self.stt = None;
         self.stt_progress = None;
+        self.stop_track_check();
+        self.pending_create = None;
+        self.creating_for = None;
     }
 
     fn load_project(&mut self, p: Project, path: Option<PathBuf>, now: Instant) {
@@ -2060,6 +2384,8 @@ impl AppState {
         self.selected_media = None;
         self.selected_music = None;
         self.selected_line = None;
+        self.selection.clear();
+        self.drag_pos = None;
         self.clipboard = None;
         self.frame = None;
         self.zoom = 0.0;
@@ -2067,11 +2393,13 @@ impl AppState {
         self.popups.instance = None;
         self.popups.chooser = None;
         self.popups.close(Popup::Instance);
+        self.popups.targets.clear();
         self.close_allowed = false;
         let ids: Vec<MediaId> = self.project.media.iter().map(|m| m.id).collect();
         for id in ids {
             self.maybe_proxy(id);
         }
+        self.start_track_check();
         self.seek(Micros::ZERO, now);
         self.refresh_dirty();
     }
@@ -2188,64 +2516,6 @@ impl AppState {
         }
     }
 
-    /// Starts a generation at `level` (default: the Subtitle quality setting), asking for
-    /// consent first when its speech recognition file is not installed.
-    fn generate_subtitles(&mut self, level: Option<SubtitleQuality>) -> Result<(), String> {
-        if self.stt.is_some() {
-            return Err("subtitles are already being generated".into());
-        }
-        if !self.machine.speech_supported() {
-            self.notice = Some(TOO_OLD_FOR_SUBTITLES.into());
-            return Ok(());
-        }
-        let info = self.ffmpeg.as_ref().map_err(|e| e.clone())?;
-        let store = self
-            .model_store
-            .clone()
-            .ok_or("no folder for speech recognition files")?;
-        let mut level = level.unwrap_or(self.settings.subtitle_quality);
-        if settings::availability(&self.fingerprint())[level.index()].is_some() {
-            level = SubtitleQuality::Fast;
-        }
-        if !store.is_installed(level) {
-            self.modal = Some(Modal::ModelConsent(level));
-            return Ok(());
-        }
-        let mut sources: Vec<(MediaId, PathBuf)> = Vec::new();
-        for c in &self.project.timeline.clips {
-            if sources.iter().any(|(id, _)| *id == c.media) {
-                continue;
-            }
-            if let Some(m) = self.project.media(c.media)
-                && m.format.has_audio()
-                && !m.missing
-            {
-                sources.push((m.id, m.path.clone()));
-            }
-        }
-        if sources.is_empty() {
-            return Err("the clips on the timeline have no sound to transcribe".into());
-        }
-        let subs = &self.project.subtitles;
-        let job = SttJob {
-            sources,
-            language: subs.language.clone().filter(|_| subs.language_overridden),
-            ffmpeg: info.ffmpeg.clone(),
-            model: store.path(level),
-            threads: self.budget.stt_threads,
-            work_root: self.work_root.clone(),
-            model_check: Some(store.spec(level).clone()),
-        };
-        self.stt = Some(stt::start(
-            job,
-            self.limited(Priority::Background),
-            Arc::clone(&self.transcriber),
-        ));
-        self.stt_progress = Some(0.0);
-        self.status = "Generating subtitles…".into();
-        Ok(())
-    }
-
     fn start_export(&mut self, path: PathBuf) -> Result<(), String> {
         if self.is_exporting() {
             return Err("an export is already running".into());
@@ -2310,6 +2580,7 @@ impl AppState {
         {
             self.selected_line = None;
         }
+        self.prune_selection();
         if self.preview.is_playing() {
             self.preview.invalidate(now);
             self.playhead = self.preview.position(now);
@@ -2340,7 +2611,12 @@ impl AppState {
             && self.ffmpeg.is_ok()
         {
             let t = self.playhead;
-            let _ = self.preview.request_still(&self.project, t, now);
+            if self.drag_pos.is_some() {
+                let shown = self.shown_project().into_owned();
+                let _ = self.preview.request_still(&shown, t, now);
+            } else {
+                let _ = self.preview.request_still(&self.project, t, now);
+            }
         }
     }
 
@@ -2379,6 +2655,7 @@ impl AppState {
             let _ = self.dispatch(Command::OpenProject(p), now);
         }
         self.tick_probes();
+        self.tick_tracks();
         self.tick_proxies(now);
         self.tick_stt(now);
         self.tick_model();
@@ -2514,26 +2791,22 @@ impl AppState {
         for ev in events {
             match ev {
                 SttEvent::Progress(p) => self.stt_progress = Some(p),
-                SttEvent::Done { language, lines } => {
+                SttEvent::Done(r) => {
                     self.stt = None;
                     self.stt_progress = None;
-                    let n = lines.len();
-                    let _ = self.edit(now, "Generate subtitles", |e| {
-                        e.subtitles.replace_all(lines, language);
-                        Ok(())
-                    });
-                    self.refresh_dirty();
-                    self.status = format!("Generated {n} subtitle line(s)");
+                    self.finish_create(r, now);
                 }
                 SttEvent::Failed(m) => {
                     self.stt = None;
                     self.stt_progress = None;
+                    self.creating_for = None;
                     self.notice = Some(format!("Subtitles could not be generated: {m}"));
                     self.status = "Subtitle generation failed".into();
                 }
                 SttEvent::Cancelled => {
                     self.stt = None;
                     self.stt_progress = None;
+                    self.creating_for = None;
                     self.status = "Subtitle generation cancelled".into();
                 }
             }
@@ -2553,13 +2826,22 @@ impl AppState {
                     self.model_progress = None;
                     self.refresh_speech_files_size();
                     self.status = "Speech recognition file installed".into();
-                    if let Err(e) = self.generate_subtitles(Some(level)) {
+                    // the creation that asked for the file goes on (the whole video when
+                    // nothing was waiting)
+                    let mut r = self.pending_create.take().unwrap_or(CreateRequest {
+                        confirmed: true,
+                        ..Default::default()
+                    });
+                    r.level = Some(level);
+                    self.pending_create = Some(r);
+                    if let Err(e) = self.continue_create() {
                         self.status = e;
                     }
                 }
                 ModelEvent::Failed(m) => {
                     self.model_install = None;
                     self.model_progress = None;
+                    self.pending_create = None;
                     self.notice = Some(format!(
                         "The speech recognition file could not be installed: {m}"
                     ));
@@ -2591,6 +2873,7 @@ impl AppState {
             || self.is_generating()
             || self.ffmpeg_checking
             || self.hw_probe.is_some()
+            || self.track_check.is_some()
             || !self.probe_cancel.is_empty()
             || !self.proxy_jobs.is_empty()
     }
@@ -2631,6 +2914,12 @@ fn preview_config(
     })
 }
 
+mod effects;
+mod subs_create;
+pub use subs_create::pick_track;
+
+#[cfg(test)]
+mod effects_tests;
 #[cfg(test)]
 mod hw_tests;
 #[cfg(test)]

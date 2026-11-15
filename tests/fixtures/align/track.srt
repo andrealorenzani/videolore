@@ -1,0 +1,16 @@
+1
+00:00:00,400 --> 00:00:04,307
+Hello world, this is a test.
+
+2
+00:00:05,307 --> 00:00:11,219
+The quik brown fox jumps over the lazy dog.
+
+3
+00:00:12,219 --> 00:00:17,155
+Subtitles follow the speech, word by word.
+
+4
+00:00:18,155 --> 00:00:22,379
+Thank you for watching this video!
+

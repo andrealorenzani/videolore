@@ -8,7 +8,7 @@
 //! window and scrolls when its content does not fit.
 
 use super::{UiCache, button, effects, keymap, scroll_body, settings};
-use crate::app::{AppState, Command, Instance, Popup};
+use crate::app::{AppState, Command, Edge, Instance, Popup};
 use crate::time::{Micros, timecode};
 use eframe::egui::{self, Align2, Button, Context, Id, Order, ScrollArea, Ui};
 
@@ -38,7 +38,7 @@ fn window(
     let width = width.min(screen.width() - 24.0).max(120.0);
     let max_h = (screen.height() - 90.0).max(80.0);
     let offset = egui::vec2(24.0, 24.0) * (n % 5) as f32;
-    egui::Window::new(p.title())
+    egui::Window::new(app.popup_title(p))
         .id(keymap::popup_id(p))
         .open(&mut open)
         .collapsible(false)
@@ -58,7 +58,7 @@ fn window(
                 Popup::Fades => effects::fades_body(ui, app, cmds),
                 Popup::Subtitles => effects::subtitles_body(ui, app, cache, cmds),
                 Popup::Volume => effects::volume_body(ui, app, cache, cmds),
-                Popup::ClipDetails => clip_details_body(ui, app, cmds),
+                Popup::ClipDetails => clip_details_body(ui, app, cache, cmds),
                 Popup::Instance => instance_body(ui, app, cache, cmds),
                 Popup::Shortcuts => shortcuts_body(ui),
             });
@@ -83,8 +83,30 @@ pub fn instance_label(app: &AppState, i: Instance) -> String {
             .find(|x| x.line == id && x.clip == clip)
             .map(|x| format!("Subtitle {}  {}", timecode(x.start), x.text))
             .unwrap_or_else(|| "Subtitle".into()),
+        Instance::FadeStart => "Fade from black at the start".into(),
+        Instance::FadeEnd => "Fade to black at the end".into(),
+        Instance::ClipVolume(c) => format!(
+            "Volume of {}",
+            app.clip_name(c).unwrap_or_else(|| "a clip".into())
+        ),
     }
 }
+
+/// Mouse gestures listed in the shortcuts window (they are not keyboard shortcuts).
+pub const GESTURES: [(&str, &str); 3] = [
+    (
+        "Ctrl/Cmd+click",
+        "Add a subtitle line to the selection, or take it out",
+    ),
+    (
+        "Shift+drag",
+        "Select the subtitle lines starting in a part of the timeline",
+    ),
+    (
+        "Shift+Ctrl/Cmd+drag",
+        "Add the lines starting in a part of the timeline to the selection",
+    ),
+];
 
 /// The small list shown when several markers are under the pointer.
 fn chooser(ctx: &Context, app: &AppState, cache: &UiCache, cmds: &mut Vec<Command>) {
@@ -130,6 +152,11 @@ pub fn shortcuts_body(ui: &mut Ui) {
                 ui.label(label);
                 ui.end_row();
             }
+            for (gesture, label) in GESTURES {
+                ui.monospace(gesture);
+                ui.label(label);
+                ui.end_row();
+            }
         });
 }
 
@@ -141,6 +168,9 @@ pub fn instance_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mu
         }
         Some(Instance::Fade(l, r)) => fade_instance(ui, app, l, r, cmds),
         Some(Instance::Line(id, clip)) => line_instance(ui, app, cache, id, clip, cmds),
+        Some(Instance::FadeStart) => effects::edge_fade_body(ui, app, Edge::Start, cmds),
+        Some(Instance::FadeEnd) => effects::edge_fade_body(ui, app, Edge::End, cmds),
+        Some(Instance::ClipVolume(c)) => effects::clip_volume_body(ui, app, cache, c, cmds),
     }
 }
 
@@ -264,11 +294,36 @@ fn line_instance(
         button(ui, app, "Play this line", Command::PlayLine(id), cmds);
         button(ui, app, "Delete", Command::DeleteSubtitle(id), cmds);
     });
+    let own = l.position.is_some();
+    // with several lines selected, the reset applies to all of them
+    let ids = if app.selection.contains(&id) && app.selection.len() > 1 {
+        app.selection.iter().copied().collect()
+    } else {
+        vec![id]
+    };
+    let label = if ids.len() > 1 {
+        "Reset position of the selected lines"
+    } else {
+        "Reset position"
+    };
+    let r = ui
+        .add_enabled(own || ids.len() > 1, Button::new(label))
+        .on_hover_text("Back to the place of the subtitle style")
+        .on_disabled_hover_text("The line is at the place of the subtitle style");
+    if r.clicked() {
+        cmds.push(Command::SetLinePositions { ids, pos: None });
+    }
+    ui.weak("Drag the subtitle in the preview to move it.");
 }
 
 /// Clip details: the selected video clip and the selected music clip (it follows the
 /// selection).
-pub fn clip_details_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+pub fn clip_details_body(
+    ui: &mut Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    cmds: &mut Vec<Command>,
+) {
     let tl = &app.project.timeline;
     let video = app.selected_clip.and_then(|id| tl.index_of(id));
     let music = app
@@ -278,7 +333,7 @@ pub fn clip_details_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         ui.label("Select a clip on the timeline (double-click opens this window).");
     }
     if let Some(i) = video {
-        clip_settings(ui, app, i, cmds);
+        clip_settings(ui, app, cache, i, cmds);
     }
     if music.is_some() {
         if video.is_some() {
@@ -288,7 +343,13 @@ pub fn clip_details_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     }
 }
 
-fn clip_settings(ui: &mut Ui, app: &AppState, i: usize, cmds: &mut Vec<Command>) {
+fn clip_settings(
+    ui: &mut Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    i: usize,
+    cmds: &mut Vec<Command>,
+) {
     let tl = &app.project.timeline;
     let c = tl.clips[i];
     let start = tl.start_of(i);
@@ -361,13 +422,15 @@ fn clip_settings(ui: &mut Ui, app: &AppState, i: usize, cmds: &mut Vec<Command>)
             }
         }
     });
+    effects::clip_volume_controls(ui, app, cache, c.id, cmds);
     if tl.can_merge(c.id) {
         button(ui, app, "Merge with next", Command::Merge, cmds);
     } else {
+        let why = tl
+            .merge_block_reason(c.id)
+            .unwrap_or("Only two parts of the same clip, next to each other, can be merged");
         ui.add_enabled(false, Button::new("Merge with next"))
-            .on_disabled_hover_text(
-                "Only two parts of the same clip, next to each other, can be merged",
-            );
+            .on_disabled_hover_text(why);
     }
 }
 

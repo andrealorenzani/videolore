@@ -4,6 +4,8 @@ Back to the [index](business.md).
 
 Since 1.1.0 the window is reorganised: resizable sections, a menu bar, a toolbar, a status bar, an Effects section with one popup per effect, and markers on the timeline for every fade and subtitle line. Nothing changes in how projects are saved: the markers show data the project already contains.
 
+Since 1.2.0 every effect can be applied either to one video clip (drag it from the Effects list onto the clip, or right-click the clip) or to the whole video (double-click it in the Effects list), and the timeline ruler shows seconds, minutes or hours depending on how much of the timeline is visible. The project file format changes in 1.2.0 to store the new settings (see [Editing](business-editing.md), REQ-094).
+
 ## Features
 - **Window**: from top to bottom, a menu bar, a toolbar, the four sections (Media, Preview, Timeline, Effects) and a status bar. Each section has a title header.
 - **Resizable sections**: the borders between Media and Preview, between Timeline and Effects, and between the top and bottom rows can be dragged. Sizes are remembered for the next start; View > Reset layout restores the defaults.
@@ -11,9 +13,11 @@ Since 1.1.0 the window is reorganised: resizable sections, a menu bar, a toolbar
 - **Menus**: File, Edit, Playback, Effects, View, Help, each item with its keyboard shortcut and greyed out when it cannot be used.
 - **Toolbar**: the most common commands in one row; at narrow widths the rest goes into a "»" menu.
 - **Status bar**: the latest message, background work with progress (imports, preview copies, speech file download, subtitle generation, export, with Cancel where possible) and the output folder.
-- **Effects section**: a list of the effects (Fade through black, Subtitles, Volume) with a count; clicking one opens its settings popup.
-- **Markers on the timeline**: every fade and every subtitle line has a marker; clicking it opens the settings of that single fade or line. Clip boundaries without a fade show a small "Add fade" handle.
-- **Clip details**: double-click a clip to trim it, set its fades or merge it (video), or trim, move, split and delete it (music).
+- **Effects section**: a list of the effect names (Fade through black, Subtitles, Volume); clicking one opens its settings popup.
+- **Applying effects** (1.2.0): drag an effect from the Effects list onto a video clip, or right-click the clip and choose Effects ▸, to apply it to that clip; double-click it in the list to apply it to the whole video.
+- **Markers on the timeline**: every fade (between clips, at the start and at the end of the video), every subtitle line and every clip with its own volume has a marker; clicking it opens the settings of that single item. Clip boundaries without a fade show a small "Add fade" handle.
+- **Timeline ruler** (1.2.0): seconds when up to 90 seconds are visible, minutes and seconds up to 90 minutes, hours beyond.
+- **Clip details**: double-click a clip to trim it, set its fades, its volume or merge it (video), or trim, move, split and delete it (music).
 - **Right-click menus** on clips, markers and the empty timeline.
 - **Recent projects**: File > Open recent lists the last 10 projects.
 - **Drag and drop**: drop media files onto the window to import them, or a project to open it (Windows, macOS and Linux X11; not on Linux Wayland).
@@ -29,10 +33,10 @@ Since 1.1.0 the window is reorganised: resizable sections, a menu bar, a toolbar
 
 ### Menus, toolbar, shortcuts and status bar
 - REQ-069 (implemented): A menu bar has the menus File, Edit, Playback, Effects, View and Help. Each item shows its keyboard shortcut and is greyed out exactly when its command is unavailable. Acceptance: every item runs its command, its enabled state matches the command's availability, and an open menu scrolls if it does not fit in the window.
-  - File: New, Open…, Open recent ▸, Save, Save as…, Import media…, Export… (Cancel export while exporting), Quit.
+  - File: New, Open…, Open recent ▸, Save, Save as…, Import media…, Export… (Cancel export while exporting), Export subtitles (.srt)… (since 1.2.0, REQ-088), Quit.
   - Edit: Undo, Redo, Cut, Copy, Paste, Delete, Split at playhead, Merge, Move left, Move right, Add selected media to timeline, Add selected media to music track, Clip details…, Settings…
   - Playback: Play/Pause, Go to start, Go to end, Previous frame, Next frame.
-  - Effects: Fades…, Subtitles…, Volume…, Add/remove fade at playhead, Generate subtitles, Add subtitle line at playhead.
+  - Effects: Fades…, Subtitles…, Volume…, Add/remove fade at playhead, Generate subtitles, Add subtitle line at playhead; since 1.2.0 also "Apply to selected clip ▸" and "Apply to whole video ▸" (each with Fade through black, Subtitles, Volume) and "Reset subtitle position".
   - View: Zoom in, Zoom out, Fit project, Reset layout.
   - Help: Keyboard shortcuts, About videolore and third-party notices.
 - REQ-070 (implemented): A toolbar (replacing the 0.x command bar) shows in one row: Import, Add to timeline, Add music, Split, Cut, Copy, Paste, Delete, Undo, Redo, Play/Pause, Export (Cancel export while exporting). When the window is too narrow, the buttons that do not fit go into a "»" menu at the right end. Acceptance: at 800 pixels wide all 12 commands can be triggered.
@@ -43,23 +47,28 @@ Since 1.1.0 the window is reorganised: resizable sections, a menu bar, a toolbar
 - REQ-074 (implemented): The Undo and Redo menu items and toolbar tooltips name the action: "Undo <action>" / "Redo <action>". Acceptance: after a split the menu shows "Undo Split"; after undoing it shows "Redo Split".
 
 ### Effects
-- REQ-075 (implemented): The Effects section is a vertical list of the effect types Fade through black, Subtitles and Volume. Each row shows the name, a one-line description and a count ("3 fades", "42 lines"; Volume shows the current levels). Clicking a row opens that effect's popup. The list scrolls if needed. Clip details, music clip details, export and the shortcut list are no longer in this section. Acceptance: three rows with correct counts; clicking each opens its popup.
+- REQ-075 (implemented): The Effects section is a vertical list of the effect types Fade through black, Subtitles and Volume. Since 1.2.0 each row shows only the effect name, with the tooltip "Drag onto a clip to apply it to that clip; double-click to apply it to the whole video". Clicking a row opens that effect's popup; double-clicking applies it to the whole video (REQ-082); rows can be dragged onto video clips. The list scrolls if needed. Clip details, music clip details, export and the shortcut list are not in this section. (In 1.1.0 each row also showed a one-line description and a count.) Acceptance: the three rows' text is exactly the effect names; clicking each opens its popup; the tooltip exists.
+- REQ-082 (implemented): Each effect (Fade through black, Subtitles, Volume) can be applied **to a video clip**, by dragging it from the Effects list onto the clip or by right-clicking the clip and choosing Effects ▸ <effect>, or **to the whole video**, by double-clicking it in the Effects list (the whole video counts as one clip from the start to the end of the timeline). A single click still opens the effect's popup (REQ-076). Each application opens the popup of the instance created or changed and is one undo step; for Volume the undo step is recorded when a value is changed in the popup that opens (slider release or mute), not when the popup opens. Dropping an effect anywhere other than a video clip (for example on the music track or empty space) does nothing, and while dragging the pointer shows whether a drop is possible. Acceptance: (a) for each effect, dropping it on clip 2 of 3 gives the same result as the right-click menu, and one undo restores the previous state (for Volume, one undo restores the changed level); (b) double-clicking gives the whole-video result (REQ-083, REQ-084, REQ-085) and one undo restores the previous state; (c) dropping on the music track or on empty space changes nothing.
 - REQ-076 (implemented): Effect popups are floating windows inside videolore (like Settings), not blocking: editing and playback continue while one is open. There is one per effect type; each can be moved and closed with its close button or Esc. Changes apply immediately, show in the preview and are each one undo step.
   - Fades: explains the effect (fixed length, REQ-011; video and audio); "Add fade at the boundary nearest the playhead"; list of all fades with their time (clicking one moves the playhead there and opens that fade's popup); "Remove all fades" (one undo step).
   - Subtitles: style, language, Generate / Cancel with progress and speech file download progress, "Add line at playhead", and a scrollable list of lines (clicking one opens that line's popup). REQ-014 to REQ-018, REQ-044 and REQ-052 to REQ-054 are unchanged.
   - Volume: video sound and music sliders and mute switches (REQ-020 unchanged; one undo step per slider release).
   - Acceptance: changing the subtitle style changes the preview and undo restores it; with 3 fades, "Remove all fades" leaves 0 and one undo brings back 3; playback continues while a popup is open.
-- REQ-077 (implemented): Every fade and every subtitle line has a marker on the timeline at its position; markers differ by type (shape and colour); the tooltip gives the type, the time and, for subtitles, the start of the line's text. Clicking a marker selects that instance, moves the playhead to its start, highlights it and opens its popup:
-  - Fade: the two clips it sits between, its time, and Remove.
-  - Subtitle line: a text field, start and end adjustable by ±0.1 s, Delete, and "Play this line".
+- REQ-077 (implemented): Every fade and every subtitle line has a marker on the timeline at its position; since 1.2.0 so do the fade from black at the start of the video, the fade to black at its end (REQ-083), and every video clip whose own volume is not 100% or is muted (marker at the clip start, REQ-084). Markers differ by type (shape and colour); the tooltip gives the type, the time and, for subtitles, the start of the line's text. Clicking a marker selects that instance, moves the playhead to its start, highlights it and opens its popup:
+  - Fade between clips: the two clips it sits between, its time, and Remove. Start or end fade: its time and Remove.
+  - Clip volume: that clip's volume slider and mute switch.
+  - Subtitle line: a text field, start and end adjustable by ±0.1 s, Delete, "Play this line" and (since 1.2.0) "Reset position" (REQ-089). Ctrl+click (Cmd+click on macOS) on a line marker adds it to or removes it from the selection instead (REQ-090).
   - A clip boundary without a fade shows a small "Add fade" handle; clicking it adds a fade (one undo step). Clicking an existing fade marker opens its popup (it no longer removes the fade directly).
   - When several markers overlap under the pointer, a small chooser lists them all.
   - Markers follow edits (ripple, REQ-018) and zoom.
   - Acceptance: (a) a marker's position equals its instance's start within 1 pixel at minimum, middle and maximum zoom; (b) clicking a fade marker opens the popup for that boundary, Remove makes the marker disappear and undo brings it back; (c) clicking a line marker opens the popup with that line's text, and editing it can be undone; (d) after cutting a clip its line markers are gone; (e) with overlapping markers the chooser lists all of them.
 
+### Timeline ruler
+- REQ-093 (implemented): The timeline ruler labels depend on the time at the right edge of the visible part of the timeline: up to 90 seconds, plain seconds ("45s"); up to 90 minutes, minutes and seconds `mm:ss` (minutes may go past 59, for example "75:30"); beyond that, `hh:mm:ss`. Ticks fall on round steps (1, 2, 5, 10, 15, 30 seconds; 1, 2, 5, 10, 15, 30 minutes; 1 hour and more) chosen so that labels never overlap. Acceptance: (a) with 0–60 s visible the labels read "Ns"; (b) with 0–5 min visible, or scrolled to 100–110 s, they read `mm:ss`; (c) with 0–2 h visible they read `hh:mm:ss`; (d) labels do not overlap at three zoom levels including the minimum and maximum.
+
 ### Clips, context menus, recent projects, drag and drop
-- REQ-078 (implemented): A Clip details popup opens by double-clicking a clip (video or music track), from Edit > Clip details… or from the right-click menu. For a video clip: source, in/out/length, trim by ±1 frame or "at playhead", fade in/out and Merge. For a music clip: start/end trim, Move to playhead, Split and Delete. It does not block the editor, closes with Esc and follows the selection. Acceptance: its trim buttons give the same results as the REQ-009 and REQ-019 tests.
-- REQ-079 (implemented): Right-click menus: on a video clip Split here, Cut, Copy, Paste after, Delete, Merge with next, Add/remove fade before/after, Clip details…; on a music clip Split, Delete, Move to playhead, Clip details…; on a marker Open settings and Remove/Delete; on the empty timeline Paste and Add subtitle line here. Media items keep their existing menu. Entries are greyed out when their command is unavailable.
+- REQ-078 (implemented): A Clip details popup opens by double-clicking a clip (video or music track), from Edit > Clip details… or from the right-click menu. For a video clip: source, in/out/length, trim by ±1 frame or "at playhead", fade in/out, Merge and (since 1.2.0) the clip's volume slider and mute switch (REQ-084). For a music clip: start/end trim, Move to playhead, Split and Delete. It does not block the editor, closes with Esc and follows the selection. Acceptance: its trim buttons give the same results as the REQ-009 and REQ-019 tests.
+- REQ-079 (implemented): Right-click menus: on a video clip Split here, Cut, Copy, Paste after, Delete, Merge with next, Add/remove fade before/after, Clip details… and (since 1.2.0) Effects ▸ Fade through black, Subtitles, Volume (REQ-082); on a music clip Split, Delete, Move to playhead, Clip details…; on a marker Open settings and Remove/Delete, plus "Reset position" on a subtitle line marker (since 1.2.0); on the empty timeline Paste and Add subtitle line here. Media items keep their existing menu. Entries are greyed out when their command is unavailable.
 - REQ-080 (implemented): File > Open recent lists up to 10 projects opened or saved, most recent first, by file name with the full path in a tooltip, plus "Clear list". Choosing one goes through the unsaved-changes prompt (REQ-028). A missing file gives a clear message and is removed from the list. The list is a program setting, never stored in a project. Acceptance: after opening 12 projects the 10 most recent are listed in order; a deleted file gives the message and is removed; Clear list empties it; a damaged list is reset without a crash (REQ-057).
 - REQ-081 (implemented): On Windows, macOS and Linux X11, dropping media files onto the window imports them with the usual rules (REQ-002, REQ-032). Dropping a `.vlproj` project opens it after the unsaved-changes prompt (REQ-028); if the dropped files include one or more projects, only the first project is opened and a status message says the other files were ignored. The empty media list reads "Import media… or drop files here". On Linux Wayland sessions drag and drop is not available (known limitation); File > Import media… and File > Open… work there as usual. Acceptance: dropping 3 videos and 1 unsupported file imports the 3 and shows 1 rejection; dropping a project while there are unsaved changes shows the prompt.
 
@@ -68,7 +77,9 @@ Since 1.1.0 the window is reorganised: resizable sections, a menu bar, a toolbar
 - The layout and the recent-projects list are program settings, never part of a project (like every other setting). Older settings files load without any notice; old 1.0 builds drop these two values when they save their settings (accepted).
 - Effect and clip popups do not block the editor, so the user can keep playing and editing while one is open.
 - Clicking a fade marker opens its settings instead of removing it, so a fade is never removed by accident; a separate "Add fade" handle adds one.
-- Only the existing effects are listed (Fade through black, Subtitles, Volume). Volume has no timeline marker, because it applies to the whole project.
+- Only the existing effects are listed (Fade through black, Subtitles, Volume). The whole-video Volume has no timeline marker; since 1.2.0 a clip with its own volume (not 100% or muted) has one.
+- (1.2.0) Effects are applied by drag and drop or the right-click menu (one clip) and by double-click (whole video); a single click still only opens the popup, so nothing changes by accident. Effects apply only to video clips; drops elsewhere are ignored.
+- (1.2.0) The ruler switches unit based on the right edge of the visible part, so the labels never change while the visible range stays the same.
 - The command bar of 0.x is replaced by the toolbar and the status bar; the zoom slider moves to the Timeline header.
 - Settings… is in the Edit menu, and Ctrl/Cmd+, still opens it.
 - When a drop contains several projects, the first one wins and the other files are ignored, with a message.
@@ -85,7 +96,14 @@ Since 1.1.0 the window is reorganised: resizable sections, a menu bar, a toolbar
 - REQ-031 and REQ-046: About is opened from the Help menu, Settings from the Edit menu.
 - REQ-056: responsiveness also covers dragging section borders and open popups.
 - REQ-057: the damaged-settings test set also covers layout values and the recent-projects list.
-- The project file format does not change (REQ-029 unaffected).
+- The project file format does not change in 1.1.0 (REQ-029 unaffected). It changes in 1.2.0 (REQ-094).
+
+### Since 1.2.0
+- REQ-071: the keyboard shortcuts window also lists the gestures Ctrl/Cmd+click (add a subtitle line to the selection) and Shift+drag on the timeline (select lines in a time range); Esc first closes the topmost popup and, when none is open, clears the subtitle line selection.
+- REQ-072: new greyed-out reasons: "No subtitles on the timeline", "Subtitles are being created", "Select a clip first", "The clips have different volumes".
+- REQ-073: the status bar also shows checking videos for subtitle tracks and "Matching subtitles to the speech", with Cancel.
+- REQ-076: popups say whether they show the whole-video instance or a clip's ("— whole video" or "— <clip name>"); new popups for a clip's volume and for the start and end fades.
+- REQ-068: the new dialog, menu items and popup fields fit at 800x500.
 
 ## Known limitations
 - Drag and drop does not work in Linux Wayland sessions (the windowing library used by videolore does not report dropped files there); use File > Import media… and File > Open….
@@ -97,9 +115,10 @@ Since 1.1.0 the window is reorganised: resizable sections, a menu bar, a toolbar
 ## Out of scope
 - Moving, docking, hiding, collapsing or detaching sections; saved layouts or workspaces; resizing the menu bar, toolbar or status bar.
 - A customisable toolbar; changing keyboard shortcuts.
-- New effect types (titles or text overlays, speed, colour, other transitions, fade from or to black at the start or end) and per-fade length (fade length stays fixed).
+- New effect types (titles or text overlays, speed, colour, other transitions) and per-fade length (fade length stays fixed); fades on one side of a boundary only.
+- Effects on music clips (dropping an effect on the music track does nothing).
 - Dragging markers to re-time lines or move fades; dragging clip edges to trim.
+- Ruler labels below one second.
 - A native macOS menu bar.
 - Themes or light mode, interface text size, translation.
 - Autosave and crash recovery.
-- Any change to the project file format.

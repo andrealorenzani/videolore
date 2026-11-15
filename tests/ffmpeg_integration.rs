@@ -23,6 +23,8 @@ use videolore::time::Micros;
 
 #[path = "ffmpeg_integration/hw.rs"]
 mod hw;
+#[path = "ffmpeg_integration/v12.rs"]
+mod v12;
 
 struct Env {
     info: FfmpegInfo,
@@ -900,7 +902,13 @@ fn real_speech_is_transcribed() {
         return;
     }
     let job = videolore::stt::SttJob {
-        sources: vec![(videolore::media::MediaId(1), wav)],
+        ranges: vec![videolore::stt::RangeJob {
+            media: videolore::media::MediaId(1),
+            path: wav,
+            range: None,
+            mode: videolore::stt::Mode::Recognise,
+            track_language: None,
+        }],
         language: None,
         ffmpeg: env.info.ffmpeg.clone(),
         model: model.into(),
@@ -911,14 +919,16 @@ fn real_speech_is_transcribed() {
     let mut t = videolore::stt::whisper::WhisperTranscriber::load(&job.model, 2).unwrap();
     let (tx, _rx) = channel();
     let runner = limited(Priority::Background);
-    let (lang, lines) = videolore::stt::run(
+    let r = videolore::stt::run(
         &job,
         &runner as &dyn videolore::ffmpeg::Runner,
-        &mut t,
+        Some(&mut t),
+        None,
         &Arc::new(AtomicBool::new(false)),
         &tx,
     )
     .unwrap();
+    let (lang, lines) = (r.language.clone(), r.lines());
     assert_eq!(lang.as_deref(), Some("en"));
     let text: String = lines.iter().map(|l| l.text.to_lowercase() + " ").collect();
     assert!(text.contains("hello"), "{text}");
@@ -1026,7 +1036,13 @@ fn higher_levels_are_at_least_as_accurate() {
         let model = Path::new(&models).join(&spec.file);
         assert!(model.is_file(), "missing {}", model.display());
         let job = videolore::stt::SttJob {
-            sources: vec![(videolore::media::MediaId(1), wav.clone())],
+            ranges: vec![videolore::stt::RangeJob {
+                media: videolore::media::MediaId(1),
+                path: wav.clone(),
+                range: None,
+                mode: videolore::stt::Mode::Recognise,
+                track_language: None,
+            }],
             language: Some("en".into()),
             ffmpeg: env.info.ffmpeg.clone(),
             model: model.clone(),
@@ -1037,14 +1053,16 @@ fn higher_levels_are_at_least_as_accurate() {
         let mut t = videolore::stt::whisper::WhisperTranscriber::load(&model, threads).unwrap();
         let (tx, _rx) = channel();
         let runner = limited(Priority::Background);
-        let (_, lines) = videolore::stt::run(
+        let lines = videolore::stt::run(
             &job,
             &runner as &dyn videolore::ffmpeg::Runner,
-            &mut t,
+            Some(&mut t),
+            None,
             &Arc::new(AtomicBool::new(false)),
             &tx,
         )
-        .unwrap();
+        .unwrap()
+        .lines();
         let heard: String = lines.iter().map(|l| l.text.clone() + " ").collect();
         let rate = wer(&reference, &words(&heard));
         eprintln!("{:?}: WER {rate:.2} \"{heard}\"", spec.level);

@@ -14,7 +14,8 @@ Priorities, highest first: **preview**, **export**, **import analysis**, **backg
 | Export | 1 | keyframe checks before it run one at a time |
 | Import analysis (`ffprobe`) | 1 each | up to the limit in parallel; stopped after 30 s |
 | Proxy generation | 1 | can be interrupted |
-| Audio extraction for subtitles | 1 | short |
+| Audio extraction for subtitles | 1 | short; since 1.2.0 can be limited to one clip's part |
+| Reading a subtitle track (1.2.0) | 1 | converts one text track to SRT; reads the file without decoding video |
 
 At the limit of 3, export + playback use all slots; everything else waits.
 
@@ -32,7 +33,8 @@ At the limit of 3, export + playback use all slots; everything else waits.
 - **Threads:** in Light, each export uses at most half the cores; in Balanced and Maximum `ffmpeg` chooses, as in 0.2.2.
 - **Fewer inputs (REQ-037):** consecutive clips cut from the same source, in forward order, share one `ffmpeg` input, which is split inside `ffmpeg`. A new input is opened only when the order goes back in time (reordered or repeated clips). 200 segments cut in order from one source use one input and one decoder, and `ffmpeg` memory stays bounded. Music clips are grouped the same way. Large filter graphs go through a script file, as before.
 - **HEVC tag (REQ-036):** HEVC in MP4 or MOV gets the `hvc1` tag (needed by Apple players), with stream copy and with re-encode.
-- **Re-encode is needed** when there is any fade, music clip, subtitle line, video volume other than 100% or muted, mixed source formats, or a cut not on a keyframe (REQ-023).
+- **Re-encode is needed** when there is any fade (including, since 1.2.0, a fade from or to black at the start or end), music clip, subtitle line, video volume or clip volume other than 100% or muted, mixed source formats, or a cut not on a keyframe (REQ-023).
+- **Clip volume (1.2.0):** a clip whose level is not 100% gets its own `volume` filter before its fades; see [effects](architecture-effects.md#clip-volume).
 - **Originals only:** export never uses proxies; the export plan is identical whatever the Preview quality.
 - Cancel and failures still leave no partial file.
 - **Video hardware (0.4.0):** with Export "Faster", an H.264/HEVC re-encode may run on the video hardware first, followed by an output check and, on any problem, a redo with the normal method. These processes run one after another in the export slot. See [hardware export](architecture-hardware-export.md).
@@ -40,7 +42,7 @@ At the limit of 3, export + playback use all slots; everything else waits.
 ## Music mix
 - One music track below the video track; music clips never overlap and do not move when video is edited (REQ-019, REQ-043).
 - The music bed is built from the music clips with silence in the gaps, cut at the end of the video. A clip that runs past the end fades out over the last 0.5 s. There is no music where there is no music clip.
-- Video audio and music each have a volume (0–100%) and a mute switch, saved in the project (REQ-020). Volume follows a perceptual curve: gain = (volume / 100)², so 50% is about −12 dB; mute is silence.
+- Video audio and music each have a volume (0–100%) and a mute switch, saved in the project (REQ-020); since 1.2.0 each video clip also has its own, multiplied by the video level. Volume follows a perceptual curve: gain = (volume / 100)², so 50% is about −12 dB; mute is silence.
 - The two are mixed without automatic level reduction, followed by a limiter that prevents clipping.
 
 ## Proxies

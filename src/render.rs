@@ -80,6 +80,10 @@ pub struct Segment {
     pub skip: Micros,
     pub fade_in: Micros,
     pub fade_out: Micros,
+    /// Linear gain of the clip's own sound (1.0 = unchanged).
+    pub gain: f64,
+    /// The fade-out is the one at the very end of the video: its last frame is black.
+    pub to_black: bool,
 }
 
 impl Segment {
@@ -114,6 +118,8 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 skip: (from - start).max(Micros::ZERO),
                 fade_in,
                 fade_out,
+                gain: crate::music::clip_gain(c),
+                to_black: tl.end_fade && i + 1 == tl.clips.len() && !tl.has_fade(i),
             });
         }
         start = end;
@@ -315,14 +321,16 @@ fn fan_out(parts: &mut Vec<String>, input: usize, kind: char, users: usize) -> V
     labels
 }
 
-fn fades(c: &mut String, filter: &str, s: &Segment) {
+/// The fade filters of a segment. `early` moves the fade-out that much earlier (for the
+/// picture of the fade at the very end of the video, so that the last frame is black).
+fn fades(c: &mut String, filter: &str, s: &Segment, early: Micros) {
     if s.fade_in > Micros::ZERO {
         c.push_str(&format!(",{filter}=t=in:st=0:d={}", s.fade_in.ff()));
     }
     if s.fade_out > Micros::ZERO {
         c.push_str(&format!(
             ",{filter}=t=out:st={}:d={}",
-            (s.len - s.fade_out).ff(),
+            (s.len - s.fade_out - early).max(Micros::ZERO).ff(),
             s.fade_out.ff()
         ));
     }
@@ -391,7 +399,13 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                 f = g.fps.ff(),
                 pf = spec.pix_fmt,
             );
-            fades(&mut c, "fade", s);
+            // two frames: sources often start a few milliseconds late, which costs one
+            let early = if s.to_black {
+                Micros(g.fps.frame_duration().0 * 2)
+            } else {
+                Micros::ZERO
+            };
+            fades(&mut c, "fade", s, early);
             c.push_str(&format!(",setpts=PTS-STARTPTS[v{i}]"));
             parts.push(c);
             concat_in.push_str(&format!("[v{i}]"));
@@ -413,7 +427,10 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     o = s.skip.ff()
                 )
             };
-            fades(&mut c, "afade", s);
+            if s.gain != 1.0 {
+                c.push_str(&format!(",volume={:.6}", s.gain));
+            }
+            fades(&mut c, "afade", s, Micros::ZERO);
             c.push_str(&format!(",asetpts=PTS-STARTPTS[a{i}]"));
             parts.push(c);
             concat_in.push_str(&format!("[a{i}]"));
@@ -597,7 +614,8 @@ pub fn plan_export(
     let geometry = Geometry::of(&settings);
     let subtitles = subtitles_doc(project, &geometry, Micros::ZERO);
     let bed = music_bed(project, Micros::ZERO)?;
-    let no_effects = project.timeline.fades.is_empty()
+    let no_effects = !project.timeline.has_any_fade()
+        && project.timeline.clips.iter().all(|c| !c.has_volume())
         && bed.is_none()
         && subtitles.is_none()
         && project.mix.video_neutral();
@@ -971,8 +989,8 @@ pub struct FrameKey {
     /// `(fade in, fade out, offset in clip, clip length)` when the frame is inside a fade.
     pub fade: Option<(Micros, Micros, Micros, Micros)>,
     pub size: (u32, u32),
-    /// Subtitles on screen and the highlighted word.
-    pub subtitles: Vec<(String, Option<usize>)>,
+    /// Subtitles on screen, the highlighted word and the line's own position.
+    pub subtitles: Vec<(String, Option<usize>, Option<crate::subtitles::Pos>)>,
     pub preset: Preset,
 }
 
@@ -1000,7 +1018,7 @@ pub fn frame_key(
             let w = (preset == Preset::WordHighlight)
                 .then(|| l.word_at(at))
                 .flatten();
-            (l.text, w)
+            (l.text, w, l.position)
         })
         .collect();
     let g = export.preview();
@@ -1015,7 +1033,7 @@ pub fn frame_key(
 }
 
 #[cfg(test)]
-mod golden_tests;
+pub(crate) mod golden_tests;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -1513,10 +1531,10 @@ pub(crate) mod tests {
             .add_at(&tl, Micros(400_000), "a b", Micros(1))
             .unwrap();
         let ks = frame_key(&p, Micros(500_000), src, &eg).unwrap();
-        assert_eq!(ks.subtitles, vec![("a b".to_string(), None)]);
+        assert_eq!(ks.subtitles, vec![("a b".to_string(), None, None)]);
         p.subtitles.preset = Preset::WordHighlight;
         let kw = frame_key(&p, Micros(500_000), src, &eg).unwrap();
-        assert_eq!(kw.subtitles, vec![("a b".to_string(), Some(0))]);
+        assert_eq!(kw.subtitles, vec![("a b".to_string(), Some(0), None)]);
         // a ready proxy changes the file read by the preview but never the export
         p.media[0].proxy = ProxyState::Ready("/cache/x.mkv".into());
         let kp = frame_key(&p, Micros(500_000), src, &eg).unwrap();
@@ -1587,5 +1605,101 @@ pub(crate) mod tests {
             };
             assert_eq!((muxer.as_str(), faststart), (m, fs), "{c}");
         }
+    }
+
+    // covers: REQ-084, REQ-020, REQ-023
+    #[test]
+    fn clip_volume_is_a_gain_on_that_clip_only() {
+        let mut p = project(&[(2, 640, 360, 25), (3, 640, 360, 25)]);
+        let (a, b) = (p.timeline.clips[0].id, p.timeline.clips[1].id);
+        assert!(matches!(
+            plan_export(&p, &enc(), |_, _| true).unwrap(),
+            Plan::StreamCopy { .. }
+        ));
+        // (d) a clip level below 100 % or muted forces a re-encode
+        p.timeline.set_clip_volume(a, 50, false).unwrap();
+        let Plan::Reencode { graph, .. } = plan_export(&p, &enc(), |_, _| true).unwrap() else {
+            panic!("clip volume must re-encode")
+        };
+        let parts: Vec<&str> = graph.graph.split(';').collect();
+        let a0 = parts.iter().find(|x| x.ends_with("[a0]")).unwrap();
+        let a1 = parts.iter().find(|x| x.ends_with("[a1]")).unwrap();
+        assert!(a0.contains(",volume=0.250000"), "{a0}");
+        assert!(!a1.contains("volume="), "other clips untouched: {a1}");
+        // (b) muted: silence for that clip only
+        p.timeline.set_clip_volume(b, 100, true).unwrap();
+        let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
+        assert_eq!(segs[1].gain, 0.0);
+        let g = build_graph(&segs, None, &spec(true, true)).graph;
+        assert!(g.contains(",volume=0.000000"));
+        // (a) clip 50 % with the video at 100 % gives the same gain as clip 100 % with
+        // the video at 50 %
+        let mut x = project(&[(2, 640, 360, 25)]);
+        let id = x.timeline.clips[0].id;
+        x.timeline.set_clip_volume(id, 50, false).unwrap();
+        let clip_gain =
+            segments(&x, Micros::ZERO, Source::Export).unwrap()[0].gain * x.mix.video_gain();
+        let mut y = project(&[(2, 640, 360, 25)]);
+        y.mix.video_volume = 50;
+        let video_gain =
+            segments(&y, Micros::ZERO, Source::Export).unwrap()[0].gain * y.mix.video_gain();
+        assert!((clip_gain - video_gain).abs() < 1e-12);
+        // the preview's sound uses the same graph
+        let dir = tempfile::tempdir().unwrap();
+        let a = strs(
+            &preview_audio_args(
+                &p,
+                Micros::ZERO,
+                48_000,
+                2,
+                FfVersion::Release(6, 1, 0),
+                &dir.path().join("g.txt"),
+                Source::Preview { proxies: false },
+            )
+            .unwrap(),
+        );
+        assert!(a.iter().any(|x| x.contains("volume=0.250000")));
+    }
+
+    // covers: REQ-083, REQ-011, REQ-023
+    #[test]
+    fn start_and_end_fades_are_rendered_at_the_video_edges() {
+        let mut p = project(&[(2, 640, 360, 25), (3, 640, 360, 25), (2, 640, 360, 25)]);
+        p.timeline.set_edge_fades(true).unwrap();
+        let Plan::Reencode { graph, .. } = plan_export(&p, &enc(), |_, _| true).unwrap() else {
+            panic!("edge fades must re-encode")
+        };
+        let parts: Vec<&str> = graph.graph.split(';').collect();
+        let v0 = parts.iter().find(|x| x.ends_with("[v0]")).unwrap();
+        let v1 = parts.iter().find(|x| x.ends_with("[v1]")).unwrap();
+        let v2 = parts.iter().find(|x| x.ends_with("[v2]")).unwrap();
+        assert!(v0.contains("fade=t=in:st=0:d=0.500000") && !v0.contains("t=out"));
+        assert!(!v1.contains("fade="), "{v1}");
+        // the picture's fade ends two frames early: the very last frame is black
+        assert!(v2.contains("fade=t=out:st=1.420000:d=0.500000") && !v2.contains("t=in"));
+        let a2 = parts.iter().find(|x| x.ends_with("[a2]")).unwrap();
+        assert!(a2.contains("afade=t=out:st=1.500000:d=0.500000"));
+        let a0 = parts.iter().find(|x| x.ends_with("[a0]")).unwrap();
+        assert!(a0.contains("afade=t=in:st=0"));
+        // the preview's first and last frames are inside the fades
+        let g = Geometry {
+            width: 640,
+            height: 360,
+            fps: Fps { num: 25, den: 1 },
+        };
+        let first = frame_key(&p, Micros::ZERO, Source::Export, &g).unwrap();
+        assert!(first.fade.is_some());
+        let last = frame_key(
+            &p,
+            p.timeline.duration() - Micros(40_000),
+            Source::Export,
+            &g,
+        );
+        assert!(last.unwrap().fade.is_some());
+        // after cutting the first clip the new first clip fades in
+        let first_id = p.timeline.clips[0].id;
+        p.timeline.remove(first_id).unwrap();
+        let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
+        assert_eq!(segs[0].fade_in, Micros(500_000));
     }
 }

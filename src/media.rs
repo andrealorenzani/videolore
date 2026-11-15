@@ -31,6 +31,124 @@ pub struct MediaFormat {
     pub audio_bit_rate: Option<u64>,
     pub sample_rate: Option<u32>,
     pub channels: Option<u32>,
+    /// Text subtitle tracks inside the file (1.2.0). `None`: not checked yet (media
+    /// imported before 1.2.0); `Some(empty)`: checked, there are none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle_tracks: Option<Vec<SubtitleTrack>>,
+}
+
+/// Most subtitle tracks recorded for one file.
+pub const MAX_SUBTITLE_TRACKS: usize = 16;
+/// Longest track title kept (characters).
+pub const MAX_TRACK_TITLE: usize = 64;
+
+/// Kind of a text subtitle track.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextCodec {
+    Srt,
+    Ass,
+    MovText,
+    WebVtt,
+    Text,
+}
+
+impl TextCodec {
+    /// The text codecs videolore can read; picture-based tracks (DVD, Blu-ray PGS, DVB,
+    /// teletext, …) are `None`.
+    pub fn from_ffprobe(name: &str) -> Option<TextCodec> {
+        Some(match name {
+            "subrip" | "srt" => TextCodec::Srt,
+            "ass" | "ssa" => TextCodec::Ass,
+            "mov_text" => TextCodec::MovText,
+            "webvtt" => TextCodec::WebVtt,
+            "text" => TextCodec::Text,
+            _ => return None,
+        })
+    }
+}
+
+/// A text subtitle track inside a video file.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SubtitleTrack {
+    /// Position among the file's subtitle streams (`-map 0:s:<ordinal>`).
+    pub ordinal: u8,
+    pub codec: TextCodec,
+    /// Language code from the file (`eng`, `it`, …), when valid.
+    #[serde(default)]
+    pub language: Option<String>,
+    /// Title from the file, sanitised for display.
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// A language code as stored in files: 1–16 letters, digits or `-`.
+pub fn valid_language(code: &str) -> bool {
+    (1..=16).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+impl SubtitleTrack {
+    /// Makes stored values safe: language code checked, title sanitised and capped.
+    pub fn sanitised(mut self) -> SubtitleTrack {
+        self.language = self.language.filter(|l| valid_language(l));
+        self.title = self
+            .title
+            .map(|t| sanitize_for_display(&t.chars().take(MAX_TRACK_TITLE).collect::<String>()))
+            .filter(|t| !t.trim().is_empty());
+        self
+    }
+
+    /// How the track is named to the user: language name (or code) and title.
+    pub fn label(&self) -> String {
+        let lang = self.language.as_deref().filter(|l| *l != "und").map(|l| {
+            crate::stt::language_name(l)
+                .map(str::to_string)
+                .unwrap_or_else(|| l.to_string())
+        });
+        match (lang, &self.title) {
+            (Some(l), Some(t)) => format!("{l} — {t}"),
+            (Some(l), None) => l,
+            (None, Some(t)) => t.clone(),
+            (None, None) => format!("Track {}", u32::from(self.ordinal) + 1),
+        }
+    }
+}
+
+/// Reads the text subtitle tracks of an ffprobe `streams` list. Damaged entries are
+/// skipped; at most [`MAX_SUBTITLE_TRACKS`] are kept.
+pub fn subtitle_tracks(streams: &[Value]) -> Vec<SubtitleTrack> {
+    let mut out = Vec::new();
+    let subs = streams
+        .iter()
+        .filter(|s| s.get("codec_type").and_then(Value::as_str) == Some("subtitle"));
+    for (ordinal, s) in subs.enumerate() {
+        if out.len() >= MAX_SUBTITLE_TRACKS || ordinal > usize::from(u8::MAX) {
+            break;
+        }
+        let Some(codec) = s
+            .get("codec_name")
+            .and_then(Value::as_str)
+            .and_then(TextCodec::from_ffprobe)
+        else {
+            continue;
+        };
+        let tag = |k: &str| {
+            s.get("tags")
+                .and_then(|t| t.get(k))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        };
+        out.push(
+            SubtitleTrack {
+                ordinal: ordinal as u8,
+                codec,
+                language: tag("language"),
+                title: tag("title"),
+            }
+            .sanitised(),
+        );
+    }
+    out
 }
 
 impl MediaFormat {
@@ -258,7 +376,9 @@ pub fn parse_ffprobe(json: &str, path: &Path) -> Result<(Micros, MediaFormat), M
             .and_then(Value::as_str)
             .map(str::to_string)
     };
+    let tracks = subtitle_tracks(&streams);
     let mut f = MediaFormat {
+        subtitle_tracks: Some(tracks),
         container: normalize_container(
             format
                 .get("format_name")
@@ -564,5 +684,98 @@ pub(crate) mod tests {
         assert_eq!(a.name, "clip.mov");
         assert!(a.path.is_absolute());
         assert_eq!(a.kind(), MediaKind::Audio);
+    }
+
+    // covers: REQ-086, REQ-057
+    #[test]
+    fn text_subtitle_tracks_are_recorded_and_pictures_ignored() {
+        let json = r#"{
+          "streams": [
+            {"codec_type": "video", "codec_name": "h264", "width": 640, "height": 360,
+             "avg_frame_rate": "25/1"},
+            {"codec_type": "audio", "codec_name": "aac"},
+            {"codec_type": "subtitle", "codec_name": "subrip",
+             "tags": {"language": "ita", "title": "Italiano\u202e\u0007"}},
+            {"codec_type": "subtitle", "codec_name": "hdmv_pgs_subtitle", "tags": {"language": "eng"}},
+            {"codec_type": "subtitle", "codec_name": "mov_text", "tags": {"language": "eng"}},
+            {"codec_type": "subtitle", "codec_name": "dvd_subtitle"},
+            {"codec_type": "subtitle", "codec_name": "ass", "tags": {"language": "bad code!"}},
+            {"codec_type": "subtitle", "codec_name": "webvtt", "tags": {"title": 5}},
+            {"codec_type": "subtitle"},
+            {"codec_type": "subtitle", "codec_name": "text"}
+          ],
+          "format": {"format_name": "matroska,webm", "duration": "5.0"}
+        }"#;
+        let (_, f) = parse_ffprobe(json, Path::new("/a/film.mkv")).unwrap();
+        let t = f.subtitle_tracks.unwrap();
+        let kinds: Vec<(u8, TextCodec)> = t.iter().map(|x| (x.ordinal, x.codec)).collect();
+        // ordinals count every subtitle stream (they select it with -map 0:s:N)
+        assert_eq!(
+            kinds,
+            [
+                (0, TextCodec::Srt),
+                (2, TextCodec::MovText),
+                (4, TextCodec::Ass),
+                (5, TextCodec::WebVtt),
+                (7, TextCodec::Text)
+            ]
+        );
+        assert_eq!(t[0].language.as_deref(), Some("ita"));
+        assert_eq!(t[0].title.as_deref(), Some("Italiano\u{FFFD}\u{FFFD}"));
+        assert_eq!(t[0].label(), "Italian — Italiano\u{FFFD}\u{FFFD}");
+        assert_eq!(t[1].label(), "English");
+        assert_eq!(t[2].language, None, "bad codes are dropped");
+        assert_eq!(t[2].label(), "Track 5");
+        // only picture subtitles: none
+        let pgs = r#"{"streams": [
+            {"codec_type": "video", "codec_name": "h264", "width": 64, "height": 64},
+            {"codec_type": "subtitle", "codec_name": "hdmv_pgs_subtitle"}],
+            "format": {"duration": "1"}}"#;
+        let (_, f) = parse_ffprobe(pgs, Path::new("/a/b.mkv")).unwrap();
+        assert_eq!(f.subtitle_tracks, Some(vec![]));
+        // hostile: thousands of tracks, huge titles; never more than the caps
+        let mut streams = vec![
+            serde_json::json!({"codec_type": "video", "codec_name": "h264",
+            "width": 64, "height": 64}),
+        ];
+        for _ in 0..10_000 {
+            streams.push(
+                serde_json::json!({"codec_type": "subtitle", "codec_name": "subrip",
+                "tags": {"title": "x".repeat(1_000_000), "language": "e".repeat(40)}}),
+            );
+        }
+        let t = subtitle_tracks(&streams);
+        assert_eq!(t.len(), MAX_SUBTITLE_TRACKS);
+        assert!(
+            t.iter()
+                .all(|x| x.title.as_ref().unwrap().chars().count() <= MAX_TRACK_TITLE)
+        );
+        assert!(t.iter().all(|x| x.language.is_none()));
+        // tracks of files analysed before 1.2.0 are unknown, not "none"
+        let old: MediaFormat = serde_json::from_str(
+            r#"{"container":"mp4","vcodec":null,
+            "acodec":null,"width":0,"height":0,"fps":null,"bit_rate":null,
+            "audio_bit_rate":null,"sample_rate":null,"channels":null}"#,
+        )
+        .unwrap();
+        assert_eq!(old.subtitle_tracks, None);
+        assert!(valid_language("pt-BR") && !valid_language("") && !valid_language("a b"));
+        let blank = SubtitleTrack {
+            ordinal: 0,
+            codec: TextCodec::Srt,
+            language: Some("und".into()),
+            title: Some("  ".into()),
+        }
+        .sanitised();
+        assert_eq!(blank.title, None);
+        assert_eq!(blank.label(), "Track 1");
+        assert_eq!(
+            SubtitleTrack {
+                language: Some("xyz".into()),
+                ..blank
+            }
+            .label(),
+            "xyz"
+        );
     }
 }

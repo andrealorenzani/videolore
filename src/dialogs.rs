@@ -53,4 +53,11 @@ impl Dialogs for NativeDialogs {
             .add_filter("Speech model", &["bin"])
             .pick_file()
     }
+
+    fn pick_subtitles_save(&mut self, default_name: &str) -> Option<PathBuf> {
+        rfd::FileDialog::new()
+            .add_filter("Subtitles", &["srt"])
+            .set_file_name(default_name)
+            .save_file()
+    }
 }

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! Markers of the timeline (pure): one per fade (a diamond at its clip boundary), one per
-//! subtitle line (a flag at its start with a bar to its end), and an "Add fade" handle on
+//! Markers of the timeline (pure): one per fade (a diamond at its clip boundary, at the
+//! very start or at the very end), one per subtitle line (a flag at its start with a bar
+//! to its end), one per clip whose sound level is changed, and an "Add fade" handle on
 //! every boundary without a fade. They are computed from the project each frame, so they
 //! follow every edit (ripple, cuts) and the zoom.
 
@@ -18,7 +19,11 @@ const TOOLTIP_TEXT: usize = 40;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarkerKind {
     Fade,
+    /// Fade from black at the start or to black at the end of the video.
+    EdgeFade,
     Line,
+    /// A clip whose own sound is not at 100 % (or is muted).
+    ClipVolume,
     /// A boundary without a fade: clicking adds one.
     AddFade,
 }
@@ -91,6 +96,52 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
             tooltip,
         });
     }
+    if !tl.clips.is_empty() {
+        let end = tl.duration();
+        if tl.start_fade {
+            out.push(Marker {
+                kind: MarkerKind::EdgeFade,
+                instance: Instance::FadeStart,
+                x: x_of(Micros::ZERO),
+                x_end: x_of(Micros::ZERO),
+                tooltip: "Fade from black at the start of the video. Click for its settings."
+                    .into(),
+            });
+        }
+        if tl.end_fade {
+            out.push(Marker {
+                kind: MarkerKind::EdgeFade,
+                instance: Instance::FadeEnd,
+                x: x_of(end),
+                x_end: x_of(end),
+                tooltip: format!(
+                    "Fade to black at the end of the video ({}). Click for its settings.",
+                    timecode(end)
+                ),
+            });
+        }
+    }
+    let mut start = Micros::ZERO;
+    for (i, c) in tl.clips.iter().enumerate() {
+        if c.has_volume() {
+            let level = if c.muted {
+                "muted".to_string()
+            } else {
+                format!("{}%", c.volume)
+            };
+            out.push(Marker {
+                kind: MarkerKind::ClipVolume,
+                instance: Instance::ClipVolume(c.id),
+                x: x_of(start),
+                x_end: x_of(start),
+                tooltip: format!(
+                    "Volume of \"{}\": {level}. Click for its settings.",
+                    name(i)
+                ),
+            });
+        }
+        start = start + c.len();
+    }
     for l in project.subtitles.project(tl) {
         out.push(Marker {
             kind: MarkerKind::Line,
@@ -115,8 +166,14 @@ pub fn hits(markers: &[Marker], x: f32, tol: f32) -> Vec<&Marker> {
     markers.iter().filter(|m| (m.x - x).abs() <= tol).collect()
 }
 
-/// What clicking a marker does: open the fade or line, or add the fade.
+/// What clicking a marker does: open the fade, line or clip volume, or add the fade.
 pub fn click_command(m: &Marker) -> crate::app::Command {
+    click_command_with(m, false)
+}
+
+/// [`click_command`] with Ctrl/Cmd held (`toggle`): a line goes in or out of the
+/// selection instead.
+pub fn click_command_with(m: &Marker, toggle: bool) -> crate::app::Command {
     use crate::app::Command;
     match (m.kind, m.instance) {
         (MarkerKind::AddFade, Instance::Fade(left, right)) => Command::SetFade {
@@ -124,6 +181,7 @@ pub fn click_command(m: &Marker) -> crate::app::Command {
             right,
             on: true,
         },
+        (MarkerKind::Line, Instance::Line(id, _)) if toggle => Command::ToggleLine(id),
         (_, i) => Command::OpenInstance(i),
     }
 }
@@ -244,5 +302,48 @@ mod tests {
         assert!(visible.len() < wide.len());
         assert!(visible.iter().all(|m| m.x - HIT_TOLERANCE <= 50.0));
         assert_eq!(short(&"a".repeat(50)).chars().count(), TOOLTIP_TEXT + 1);
+    }
+
+    // covers: REQ-077, REQ-083, REQ-084, REQ-090
+    #[test]
+    fn edge_fades_clip_volumes_and_line_toggles_have_markers() {
+        let mut p = project();
+        p.timeline.set_edge_fades(true).unwrap();
+        let first = p.timeline.clips[0].id;
+        p.timeline.set_clip_volume(first, 40, false).unwrap();
+        let end_x = p.timeline.duration().as_secs_f64() as f32 * 10.0;
+        let m = layout(&p, 10.0, 0.0, ALL);
+        let edges: Vec<&Marker> = m
+            .iter()
+            .filter(|m| m.kind == MarkerKind::EdgeFade)
+            .collect();
+        assert_eq!(edges.len(), 2);
+        assert_eq!((edges[0].instance, edges[0].x), (Instance::FadeStart, 0.0));
+        assert_eq!(edges[1].instance, Instance::FadeEnd);
+        assert!((edges[1].x - end_x).abs() < 0.5);
+        let vol = m.iter().find(|m| m.kind == MarkerKind::ClipVolume).unwrap();
+        assert_eq!(vol.instance, Instance::ClipVolume(first));
+        assert!(vol.tooltip.contains("40%"));
+        assert_eq!(
+            click_command(vol),
+            Command::OpenInstance(Instance::ClipVolume(first))
+        );
+        // a clip at 100 % has no marker; muted shows "muted"
+        p.timeline.set_clip_volume(first, 100, true).unwrap();
+        let m = layout(&p, 10.0, 0.0, ALL);
+        assert!(m.iter().any(|m| m.tooltip.contains("muted")));
+        p.timeline.set_clip_volume(first, 100, false).unwrap();
+        let m = layout(&p, 10.0, 0.0, ALL);
+        assert!(m.iter().all(|m| m.kind != MarkerKind::ClipVolume));
+        // Ctrl/Cmd+click on a line toggles it; a plain click opens it
+        let line = m.iter().find(|m| m.kind == MarkerKind::Line).unwrap();
+        let Instance::Line(id, _) = line.instance else {
+            panic!()
+        };
+        assert_eq!(click_command_with(line, true), Command::ToggleLine(id));
+        assert_eq!(
+            click_command_with(line, false),
+            Command::OpenInstance(line.instance)
+        );
     }
 }

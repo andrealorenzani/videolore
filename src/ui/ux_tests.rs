@@ -255,7 +255,7 @@ fn menus_list_every_item_with_shortcut_and_availability() {
     );
     let mut listed = Vec::new();
     for (title, items) in menu::menus() {
-        let nodes = open_menu(&mut h, title);
+        let mut nodes = open_menu(&mut h, title);
         for item in items {
             match item {
                 menu::Item::Action(id) => {
@@ -271,6 +271,29 @@ fn menus_list_every_item_with_shortcut_and_availability() {
                 }
                 menu::Item::OpenRecent => {
                     assert!(find_in(&nodes, "Open recent").is_some());
+                }
+                menu::Item::Submenu(name, ids) => {
+                    // "Apply to selected clip ▸": its items, with their availability
+                    let sub = find_in(&nodes, name)
+                        .unwrap_or_else(|| panic!("{title} > {name} missing"))
+                        .clone();
+                    let before = h.nodes.clone();
+                    h.frame(vec![Event::PointerMoved(sub.rect.center())]);
+                    h.click(sub.rect.center());
+                    let inner = opened(&before, &h.nodes);
+                    for id in ids {
+                        listed.push(*id);
+                        let label = id.label(&h.app);
+                        let n = find_in(&inner, &label)
+                            .unwrap_or_else(|| panic!("{name} > {label} missing: {inner:#?}"));
+                        let enabled = h.app.is_enabled(&id.command(&h.app));
+                        assert_eq!(n.disabled, !enabled, "{name} > {label}");
+                    }
+                    close_menus(&mut h);
+                    if !h.app.popups.open.is_empty() || egui::Popup::is_any_open(&h.ctx) {
+                        close_menus(&mut h);
+                    }
+                    nodes = open_menu(&mut h, title);
                 }
                 menu::Item::Separator => {}
             }
@@ -733,7 +756,7 @@ fn keyboard_shortcuts_run_and_esc_closes_the_topmost_popup() {
     assert_eq!(h.app.project.timeline.clips.len(), n);
 }
 
-// covers: REQ-071
+// covers: REQ-071, REQ-090, REQ-091
 #[test]
 fn the_shortcuts_window_lists_exactly_the_bindings() {
     let (_d, app) = loaded();
@@ -751,10 +774,16 @@ fn the_shortcuts_window_lists_exactly_the_bindings() {
             .unwrap()
     });
     let shown: Vec<String> = rows.iter().map(|n| n.label.clone()).collect();
-    let want: Vec<String> = keymap::bindings()
+    let mut want: Vec<String> = keymap::bindings()
         .into_iter()
         .flat_map(|(s, l)| [h.ctx.format_shortcut(&s), l.to_string()])
         .collect();
+    // then the mouse gestures (Ctrl/Cmd+click, Shift+drag)
+    want.extend(
+        popups::GESTURES
+            .iter()
+            .flat_map(|(g, l)| [g.to_string(), l.to_string()]),
+    );
     let start = shown
         .iter()
         .position(|l| *l == want[0])
@@ -826,15 +855,15 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
         .unwrap();
     app.dispatch(Command::AddSubtitle, Instant::now()).unwrap();
     let mut h = Harness::new(app, 1280.0, 800.0);
-    let rows: Vec<_> = effects::rows(&h.app).into_iter().collect();
-    assert_eq!(rows[0].3, "1 fade");
-    assert_eq!(rows[1].3, "1 line");
-    assert_eq!(rows[2].3, "Video 100% · Music 100%");
-    for (popup, name, _, count) in rows {
+    let rows: Vec<_> = effects::rows().into_iter().collect();
+    let names: Vec<&str> = rows.iter().map(|r| r.1).collect();
+    assert_eq!(names, ["Fade through black", "Subtitles", "Volume"]);
+    for (effect, name) in rows {
+        // the row shows only the name, with the tooltip explaining how to apply it
         let n = h.find(name).unwrap_or_else(|| panic!("{name}"));
-        assert!(n.label.ends_with(&count), "{}", n.label);
+        assert_eq!(n.label, name);
         h.click(n.rect.center());
-        assert!(h.app.popups.is_open(popup), "{name}");
+        assert!(h.app.popups.is_open(effect.popup()), "{name}");
     }
     h.idle(2);
     // each popup's content is there
@@ -978,12 +1007,32 @@ fn everything_is_reachable_at_the_smallest_window() {
         let bad = reachable(&h, false);
         assert!(bad.is_empty(), "{p:?}: {bad:#?}");
     }
+    // the popups of 1.2: a clip's volume, the fades at the video's edges
+    h.app.project.timeline.set_edge_fades(true).unwrap();
+    let clip = h.app.project.timeline.clips[0].id;
+    for i in [
+        Instance::ClipVolume(clip),
+        Instance::FadeStart,
+        Instance::FadeEnd,
+    ] {
+        h.app.popups.instance = Some(i);
+        h.app.popups.open = vec![Popup::Instance];
+        h.idle(3);
+        let bad = reachable(&h, false);
+        assert!(bad.is_empty(), "{i:?}: {bad:#?}");
+    }
     h.app.popups.open.clear();
     for m in [
         Modal::About,
         Modal::Unsaved(PendingAction::Quit),
         Modal::ConfirmRegenerate,
         Modal::ConfirmRemoveSpeechFiles,
+        Modal::SubtitleSource {
+            labels: (0..16)
+                .map(|i| format!("Italian — track {i} {}", "x".repeat(60)))
+                .collect(),
+            can_match: false,
+        },
     ] {
         h.app.modal = Some(m.clone());
         h.idle(3);
@@ -1006,5 +1055,261 @@ fn everything_is_reachable_at_the_smallest_window() {
             .iter()
             .any(|c| c.content.height() > c.viewport.height() + 1.0)
     );
+    settle(&mut h.app);
+}
+
+/// Three clips (a, b, a) and a music clip.
+fn three_clips() -> (tempfile::TempDir, AppState) {
+    let (d, mut app) = loaded();
+    let now = Instant::now();
+    app.dispatch(Command::ToggleFade(0), now).unwrap();
+    app.dispatch(Command::Append(Some(app.project.media[0].id)), now)
+        .unwrap();
+    app.dispatch(Command::PlaceMusic(Some(app.project.media[2].id)), now)
+        .unwrap();
+    (d, app)
+}
+
+fn clip_nodes(h: &Harness) -> Vec<Node> {
+    let mut v: Vec<Node> = h
+        .nodes
+        .iter()
+        .filter(|n| {
+            n.label
+                .contains("Double-click for details, right-click for more")
+        })
+        .cloned()
+        .collect();
+    v.sort_by(|a, b| a.rect.min.x.partial_cmp(&b.rect.min.x).unwrap());
+    v
+}
+
+// covers: REQ-082, REQ-075, REQ-079, REQ-083
+#[test]
+fn an_effect_dragged_onto_a_clip_applies_to_that_clip_only() {
+    let (_d, app) = three_clips();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let clips = clip_nodes(&h);
+    assert_eq!(clips.len(), 3);
+    let ids: Vec<_> = h.app.project.timeline.clips.iter().map(|c| c.id).collect();
+    let before = h.app.project.edit();
+    // (c) dropped on the music track or on empty space: nothing changes
+    let row = h.find("Fade through black").unwrap();
+    let music = h
+        .nodes
+        .iter()
+        .find(|n| n.label.starts_with("song.mp3\nDrag to move"))
+        .cloned()
+        .unwrap();
+    h.drag(row.rect.center(), music.rect.center());
+    assert_eq!(h.app.project.edit(), before);
+    let media = h.cache.sections.unwrap().media;
+    h.drag(row.rect.center(), media.center());
+    assert_eq!(h.app.project.edit(), before);
+    assert!(h.app.history.undo_len() >= 1);
+    // (a) dropped on clip 2: fades at both of its edges, one undo step
+    let n = h.app.history.undo_len();
+    h.drag(row.rect.center(), clips[1].rect.center());
+    let tl = &h.app.project.timeline;
+    assert!(tl.has_fade(0) && tl.has_fade(1) && !tl.start_fade && !tl.end_fade);
+    assert_eq!(h.app.history.undo_len(), n + 1);
+    assert_eq!(
+        tl.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
+        ids,
+        "no clip moved"
+    );
+    let dropped = h.app.project.edit();
+    assert!(h.has("Fade through black — b.mp4"), "{:#?}", h.labels());
+    h.key(Key::Escape, Modifiers::NONE);
+    h.key(Key::Z, Modifiers::COMMAND);
+    assert_eq!(h.app.project.edit(), before);
+    // the same from the clip's menu: Effects > Fade through black
+    let clips = clip_nodes(&h);
+    let nodes_before = h.nodes.clone();
+    h.right_click(clips[1].rect.center());
+    let menu = opened(&nodes_before, &h.nodes);
+    let effects = find_in(&menu, "Effects").expect("Effects submenu").clone();
+    let nodes_before = h.nodes.clone();
+    h.frame(vec![Event::PointerMoved(effects.rect.center())]);
+    h.click(effects.rect.center());
+    let sub = opened(&nodes_before, &h.nodes);
+    for name in ["Fade through black", "Subtitles", "Volume"] {
+        assert!(find_in(&sub, name).is_some(), "{name}: {sub:#?}");
+    }
+    let item = find_in(&sub, "Fade through black").unwrap().clone();
+    h.click(item.rect.center());
+    assert_eq!(h.app.project.edit(), dropped);
+    // (b) a double-click applies it to the whole video
+    h.key(Key::Escape, Modifiers::NONE);
+    h.key(Key::Z, Modifiers::COMMAND);
+    let row = h.find("Fade through black").unwrap();
+    h.double_click(row.rect.center());
+    let tl = &h.app.project.timeline;
+    assert!(
+        tl.start_fade && tl.end_fade && tl.fades.is_empty(),
+        "{tl:?} {:?} {:?} {:#?}",
+        h.app.status,
+        h.app.popups,
+        h.labels()
+    );
+}
+
+// covers: REQ-089, REQ-092
+#[test]
+fn a_subtitle_dragged_in_the_preview_moves_and_stays_inside_the_picture() {
+    let (_d, mut app) = loaded();
+    let now = Instant::now();
+    app.dispatch(Command::Seek(Micros(1_000_000)), now).unwrap();
+    app.dispatch(Command::AddSubtitle, now).unwrap();
+    let id = app.selected_line.unwrap();
+    app.dispatch(Command::AddSubtitle, now).unwrap();
+    let other = app.selected_line.unwrap();
+    // the second line sits elsewhere (top right) so only the first is grabbed
+    app.dispatch(
+        Command::SetLinePositions {
+            ids: vec![other],
+            pos: Some(crate::subtitles::Pos { x: 9000, y: 1000 }),
+        },
+        now,
+    )
+    .unwrap();
+    app.dispatch(Command::SetSubtitleText(other, "x".into()), now)
+        .unwrap();
+    app.dispatch(Command::ClearSelection, now).unwrap();
+    let (w, hgt) = app.output_size().unwrap();
+    app.frame = Some(crate::preview::Frame {
+        pts: Micros::ZERO,
+        width: 64,
+        height: 36,
+        rgba: vec![0; 64 * 36 * 4],
+    });
+    app.frame_serial += 1;
+    assert_eq!((w, hgt), (1280, 720));
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let pic = h
+        .find("Drag a subtitle to move it")
+        .unwrap_or_else(|| panic!("{:#?}", h.labels()))
+        .rect;
+    // the line is at the style's place: centred, just above the bottom margin
+    let grab = pos2(pic.center().x, pic.min.y + pic.height() * 0.91);
+    let n = h.app.history.undo_len();
+    // (b) dragged far past the top-left corner: it stops with the box inside the picture
+    h.drag(grab, pic.min - vec2(300.0, 300.0));
+    let p = h.app.project.subtitles.get(id).unwrap().position;
+    let p = p.unwrap_or_else(|| panic!("the line did not move: {:?}", h.app.status));
+    assert!(p.x > 0 && p.x < 3000 && p.y > 0 && p.y < 1500, "{p:?}");
+    assert_eq!(h.app.history.undo_len(), n + 1, "one undo step per drag");
+    assert!(h.app.drag_pos.is_none());
+    // (e) the other line did not move
+    assert_eq!(
+        h.app.project.subtitles.get(other).unwrap().position,
+        Some(crate::subtitles::Pos { x: 9000, y: 1000 })
+    );
+    // (c) undo puts it back at the style's place
+    h.key(Key::Z, Modifiers::COMMAND);
+    assert_eq!(h.app.project.subtitles.get(id).unwrap().position, None);
+    // a drag that starts outside any subtitle does nothing
+    h.drag(pic.center(), pic.min);
+    assert_eq!(h.app.project.subtitles.get(id).unwrap().position, None);
+    // REQ-092: with both lines selected, dragging one moves both to the same place
+    h.app.selection = [id, other].into_iter().collect();
+    h.drag(grab, pic.center());
+    let a = h.app.project.subtitles.get(id).unwrap().position;
+    assert!(a.is_some());
+    assert_eq!(h.app.project.subtitles.get(other).unwrap().position, a);
+    settle(&mut h.app);
+}
+
+// covers: REQ-090, REQ-091, REQ-077
+#[test]
+fn lines_are_selected_with_ctrl_click_and_shift_drag_on_the_timeline() {
+    let (_d, mut app) = loaded();
+    let now = Instant::now();
+    for t in [2, 6, 8] {
+        app.dispatch(Command::Seek(Micros(t * 1_000_000)), now)
+            .unwrap();
+        app.dispatch(Command::AddSubtitle, now).unwrap();
+    }
+    app.dispatch(Command::ClearSelection, now).unwrap();
+    app.dispatch(Command::SelectLine(None), now).unwrap();
+    let ids: Vec<_> = app.project.subtitles.lines.iter().map(|l| l.id).collect();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let g = h.cache.timeline.unwrap();
+    let at = |s: f64, y: f32| pos2(g.x_of(Micros::from_secs_f64(s)), y);
+    let lane_y = g.lane.center().y;
+    let ctrl_click = |h: &mut Harness, p: Pos2| {
+        let ev = |pressed| Event::PointerButton {
+            pos: p,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::COMMAND,
+        };
+        h.frame(vec![
+            Event::ModifiersChanged(Modifiers::COMMAND),
+            Event::PointerMoved(p),
+            ev(true),
+        ]);
+        h.frame(vec![ev(false)]);
+        h.frame(vec![Event::ModifiersChanged(Modifiers::NONE)]);
+        h.idle(1);
+    };
+    // Ctrl/Cmd+click three markers: 3 selected; one again: 2; a plain click: 1
+    for t in [2.0, 6.0, 8.0] {
+        ctrl_click(&mut h, at(t, lane_y));
+    }
+    assert_eq!(h.app.selection.len(), 3, "{:?}", h.app.status);
+    ctrl_click(&mut h, at(6.0, lane_y));
+    assert_eq!(
+        h.app.selection.iter().copied().collect::<Vec<_>>(),
+        [ids[0], ids[2]]
+    );
+    h.click(at(8.0, lane_y));
+    assert_eq!(
+        h.app.selection.iter().copied().collect::<Vec<_>>(),
+        [ids[2]]
+    );
+    // Esc closes the popup the click opened, then clears the selection
+    h.key(Key::Escape, Modifiers::NONE);
+    assert_eq!(h.app.selection.len(), 1);
+    assert!(h.app.popups.open.is_empty());
+    h.key(Key::Escape, Modifiers::NONE);
+    assert!(h.app.selection.is_empty());
+    // Shift+drag over 4–9 s of the tracks: the lines starting at 6 s and 8 s
+    let y = g.video.center().y;
+    let (from, to) = (at(4.0, y), at(9.0, y));
+    let ev = |pos, pressed| Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::SHIFT,
+    };
+    let order: Vec<_> = h.app.project.timeline.clips.iter().map(|c| c.id).collect();
+    h.frame(vec![
+        Event::ModifiersChanged(Modifiers::SHIFT),
+        Event::PointerMoved(from),
+    ]);
+    h.frame(vec![ev(from, true)]);
+    for i in 1..=5 {
+        let p = from + (to - from) * (i as f32 / 5.0);
+        h.frame(vec![Event::PointerMoved(p)]);
+    }
+    h.frame(vec![ev(to, false)]);
+    h.frame(vec![Event::ModifiersChanged(Modifiers::NONE)]);
+    h.idle(2);
+    assert_eq!(
+        h.app.selection.iter().copied().collect::<Vec<_>>(),
+        [ids[1], ids[2]]
+    );
+    assert_eq!(
+        h.app.playhead,
+        Micros(6_000_000),
+        "playhead at the first selected line"
+    );
+    let now_order: Vec<_> = h.app.project.timeline.clips.iter().map(|c| c.id).collect();
+    assert_eq!(now_order, order, "the clips were not dragged");
+    // a click on the empty part of the timeline clears the selection
+    let empty = pos2(g.x_of(Micros(10_000_000)) + 15.0, g.video.center().y);
+    h.click(empty);
+    assert!(h.app.selection.is_empty());
     settle(&mut h.app);
 }

@@ -20,6 +20,9 @@ pub struct FakeDialogs {
     pub export: Option<PathBuf>,
     pub ffmpeg: Option<PathBuf>,
     pub model: Option<PathBuf>,
+    /// Where "Export subtitles" saves, and the name it proposed.
+    pub srt: Option<PathBuf>,
+    pub srt_name: Arc<std::sync::Mutex<String>>,
     /// How many times the "save as" dialog was shown.
     pub save_asked: Arc<AtomicUsize>,
 }
@@ -43,6 +46,10 @@ impl Dialogs for FakeDialogs {
     }
     fn pick_model_file(&mut self) -> Option<PathBuf> {
         self.model.clone()
+    }
+    fn pick_subtitles_save(&mut self, default_name: &str) -> Option<PathBuf> {
+        *self.srt_name.lock().unwrap() = default_name.to_string();
+        self.srt.clone()
     }
 }
 
@@ -1094,7 +1101,7 @@ fn without_ffmpeg_everything_degrades_gracefully() {
     assert_eq!(app.fps(), Fps { num: 30, den: 1 });
     assert!(app.output_description().is_none());
     assert_eq!(app.export_extension(), "mp4");
-    assert!(app.generate_subtitles(None).is_err());
+    assert!(app.create_subtitles(None).is_err());
 }
 
 #[test]
@@ -1190,12 +1197,7 @@ fn play_pause_and_tick() {
         app.playhead
     );
     // paste of a clip whose source was removed is refused
-    app.clipboard = Some(Clip {
-        id: ClipId(9),
-        media: MediaId(99),
-        src_in: Micros::ZERO,
-        src_out: Micros(1),
-    });
+    app.clipboard = Some(Clip::new(ClipId(9), MediaId(99), Micros::ZERO, Micros(1)));
     assert!(app.dispatch(Command::Paste, t0).is_err());
     // removing the clip's file is refused while it is on the timeline
     let id = app.project.media[0].id;

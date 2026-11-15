@@ -70,3 +70,11 @@
 - open: docs/business.md line "Projects saved by 0.2.0 cannot be opened by 0.1.x" (fine, historic)
 - open: docs/business-editing.md Known limitations still say Hide/Minimize only (macOS) — consistent with README
 - open: docs/workflow.md and .claude/ untouched in 1.1.0; no commit made by documenter (caller commits)
+- 1.2.0 dev (2026-11-15 21:42 +0000): version set via scripts/version.sh set 1.2.0 (consistent); changelog 1.2.0 entry at top (Added/Changed/Quality/Known limitations); coverage badge 95.9 (PE), features 95/95; tests 310 unit (1 ignored) + 29 integration (3 ignored)
+- 1.2.0 README: what-it-is 199 words; usage items 3, 4, 5 rewritten (effects per clip/whole video, own subtitles, drag/group, .srt export); shortcut row for multi-select; limitations: schema 3 (not openable by 1.1.0), REQ-095 target not met (82%, 0.48 s), overlap/edge/fades/srt limits; latest changes 1.2.0, 1.1.0, 0.4.3; poem replaced (10 verses, 1-9 end with backslash)
+- 1.2.0 REQ-095 status note added (not met: 23/28 words, 0.48 s mean, 1.10 s max): docs/business-subtitles.md (REQ-095 acceptance, limitations, word-highlight claim softened), docs/business.md known limitations, docs/architecture-subtitle-tracks.md (acceptance + risks). PM/Architect informed via changelog only
+- 1.2.0 roadmap: Effects "More effect types" lost fades-from-black part (delivered); Subtitles/Effects/Editing/Interface/Performance/Quality items added; app.rs size 2,900; not-verified items under Quality
+- 1.2.0 links: 0 dead links, 0 bad anchors, all sub-docs linked from indexes (architecture 12, business 7, code 6)
+- open: docs/workflow.md and .claude/, AGENTS.md untouched in 1.2.0 (workflow.md 118 lines, no split needed)
+- open: plan file path given by caller (scratchpad final-plan-1.2.0.md) does not exist; used the summary in the message
+- open: no commit made by documenter in 1.2.0 (caller commits)

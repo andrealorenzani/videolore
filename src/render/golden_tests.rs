@@ -236,3 +236,78 @@ fn hardware_tail_reaches_the_graph_script() {
     assert!(a.windows(2).any(|w| w == ["-map", "[outvhw]"]));
     assert!(a.windows(2).any(|w| w == ["-threads", "2"]));
 }
+
+/// The 1.1 project files of the compatibility check (REQ-094): their export argv and
+/// burned-in subtitles, as written by videolore 1.1.0.
+const GOLDEN_1_1: &str = include_str!("../../tests/fixtures/export-argv-1.1.0.txt");
+
+/// A committed 1.1 project (schema 2) with fades, music, mix and word-timed subtitles.
+pub(crate) const V2_FIXTURE: &str = include_str!("../../tests/fixtures/project-v2-1.1.vlproj");
+
+/// Opens a project fixture next to dummy sources in `dir`.
+pub(crate) fn open_fixture(dir: &Path, text: &str) -> Project {
+    for n in ["a.mp4", "b.mp4", "song.mp3"] {
+        std::fs::write(dir.join(n), n).unwrap();
+    }
+    let file = dir.join("fixture.vlproj");
+    std::fs::write(&file, text).unwrap();
+    let (p, missing) = crate::project::load(&file).unwrap();
+    assert!(missing.is_empty());
+    p
+}
+
+/// Export argv (folder replaced by `<dir>`) and ASS document of the v1 and 1.1 fixtures.
+fn render_fixtures() -> String {
+    let mut text = String::new();
+    for (name, body) in [
+        ("project-v1", crate::project::tests::V1_FIXTURE),
+        ("project-v2-1.1", V2_FIXTURE),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let p = open_fixture(dir.path(), body);
+        let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
+        let out = dir.path().join("o.mp4");
+        let list = dir.path().join("l.txt");
+        let script = dir.path().join("g.txt");
+        let paths = ExportPaths {
+            output: &out,
+            concat_list: &list,
+            graph_script: &script,
+        };
+        let a = export_args(&plan, &paths, FfVersion::Release(6, 1, 0), None, None).unwrap();
+        let prefix = dir.path().to_string_lossy().into_owned();
+        text.push_str(&format!("## {name}\n"));
+        for x in strs(&a) {
+            text.push_str(&x.replace(&prefix, "<dir>"));
+            text.push('\n');
+        }
+        if let Some(doc) = plan.subtitles() {
+            text.push_str(&format!("## {name}.ass\n{doc}\n"));
+        }
+    }
+    text
+}
+
+/// Writes the 1.1 golden file. Run on purpose only (it froze the 1.1.0 output).
+#[test]
+#[ignore]
+fn write_golden_1_1() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/export-argv-1.1.0.txt"
+    );
+    std::fs::write(path, render_fixtures()).unwrap();
+}
+
+/// Projects saved by 1.1 and earlier export exactly as they did in 1.1.0.
+// covers: REQ-094, REQ-029
+#[test]
+fn projects_of_1_1_export_as_in_1_1_0() {
+    let now = render_fixtures();
+    if now != GOLDEN_1_1 {
+        for (a, b) in now.lines().zip(GOLDEN_1_1.lines()) {
+            assert_eq!(a, b);
+        }
+        assert_eq!(now.lines().count(), GOLDEN_1_1.lines().count());
+    }
+}

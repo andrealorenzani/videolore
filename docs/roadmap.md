@@ -17,11 +17,29 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Under extreme load the check can still find no hardware** — after its repeat, a very busy computer can still end with "no hardware", so Faster uses the normal method. (source: 0.4.2, known limitation)
 
 ## Effects
-- **More effect types** — fade from black at the start and to black at the end of the project, title or text overlays, per-clip volume and speed. Each needs its own requirements. (source: 1.1.0, postponed from the 1.1.0 request)
+- **More effect types** — title or text overlays and per-clip speed. Each needs its own requirements. (source: 1.1.0, postponed from the 1.1.0 request)
 - **Length of each fade** — every fade lasts 0.5 s (or half a shorter clip) and cannot be changed; let the user choose the length of each fade. (source: 1.1.0, postponed from the 1.1.0 request)
-- **Volume over time** — volume that changes along the timeline (automation), instead of one level for the video sound and one for the music. (source: 1.1.0, postponed from the 1.1.0 request)
+- **Volume over time** — volume that changes along the timeline (automation), instead of one level per clip and one for the music. (source: 1.1.0, postponed from the 1.1.0 request)
+- **Effects on music clips** — per-clip music volume and fades on music; today only the video clips take effects. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **One-sided boundary fades** — a fade only in or only out at a clip boundary, instead of a fade in both directions. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **Start and end fades follow the clip** — the fades from and to black stay at the edges of the video when clips move; let them follow the first or last clip. (source: 1.2.0, known limitation)
 
 ## Subtitles
+- **Meet the accuracy target of reused subtitles** — the word timing of a video's own subtitles is approximate: 82% of the words were matched and the start error averaged 0.48 s, against a target of 90% and 0.3 s. Improve the word timing (DTW timestamps, sound-onset snapping, or a larger model), then re-enable the strict test `alignment_matches_real_speech`. (source: 1.2.0, known limitation, REQ-095)
+- **Import subtitle files** — import .srt and .vtt files and sidecar files next to the video. Optionally re-time the start and end of lines from the speech, and make matching faster by checking only the uncertain lines. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **WebVTT export** — write .vtt as well as .srt. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **Switchable subtitle track in MP4 and MKV export** — keep the subtitles as a track the player can switch off, instead of only burning them in. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **ASS export with positions** — write the moved lines with their places; the .srt file has no positions. (source: 1.2.0, known limitation)
+- **Text from picture-based tracks** — read DVD, Blu-ray (PGS) and DVB subtitle tracks with OCR; they are ignored today. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **Keep moved lines inside the picture when the text grows** — a text edit after a drag can push a line past the edge in the export; keep it inside, or warn. (source: 1.2.0, known limitation)
+- **Keep moved lines apart** — two lines shown at the same time at the same place overlap; keep them apart, or warn. (source: 1.2.0, known limitation)
+- **Preview hit boxes for stacked lines** — lines without their own position that share a place can be hard to pick in the preview. (source: 1.2.0, known limitation)
+- **Measuring font for the preview** — the font used to measure the box has no CJK glyphs, so the box widths of such text are approximate. (source: 1.2.0, known limitation)
+- **Re-check the tracks of replaced files** — a file replaced on disk keeps its old subtitle-track list until it is imported again; only media with unknown tracks is checked when a project opens. (source: 1.2.0, known limitation)
+- **Style per line or clip** — each line or clip with its own style; today there are three styles for the whole project. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **Custom style editor** — change the colours, fonts and placement of the three styles. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **Translation and more than one language per project** — one language per project today. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **Other speech models** — only the three quality levels are offered. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **Measure the larger speech levels** — speed and memory of Balanced and Most accurate are estimates; measure them and tune the recommendation thresholds. (source: 0.3.0, assumption)
 - **Subtitle fonts for other scripts** — Chinese, Japanese, Arabic, Hindi and similar scripts use whatever fonts the system has, so they may look different per computer or show empty boxes, and the subtitle editor cannot show them. Bundle fonts for these scripts. (source: 0.2.0, known limitation)
 - **Speech in pieces without lost words** — speech is recognised in pieces of about two minutes, and a word cut at a boundary can be lost; overlap the pieces or join them at word boundaries. (source: 0.3.0, known limitation)
@@ -31,6 +49,8 @@ Known limitations and improvements identified so far, to consider for future ver
 - **One window for double-clicked projects** — on Windows and Linux a double-clicked project opens a second window instead of reusing the open one (macOS keeps one window). (source: 0.2.0, known limitation)
 - **Drag subtitle markers to re-time lines** — move the start and end of a subtitle line by dragging its marker on the timeline; today the times are typed in the line's settings. (source: 1.1.0, postponed from the 1.1.0 request)
 - **Drag fade markers** — move a fade by dragging its marker; fades sit on clip boundaries today. (source: 1.1.0, postponed from the 1.1.0 request)
+- **Group actions on selected lines** — delete or shift the timing of several subtitle lines selected together; today only moving and resetting their positions works on a selection. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **Snap and safe-area guides** — snap moved subtitle lines to guides, and show title-safe areas in the preview. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **Drag clip edges to trim** — trim a clip by dragging its edge on the timeline; today trimming uses the Clip details window. (source: 1.1.0, postponed from the 1.1.0 request)
 
 ## Interface
@@ -48,6 +68,8 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Better default popup positions** — popups open near the centre of the window and can cover the timeline; choose positions that leave the timeline visible. (source: 1.1.0, known limitation)
 - **Ctrl/Cmd+V for clips** — the shortcut pastes clips only when the system clipboard holds text, because the windowing layer sends no paste event otherwise. The menu and toolbar Paste always work. (source: 1.1.0, known limitation)
 - **Drag and drop on Linux Wayland** — dropping files onto the window does not work in Wayland sessions, because the windowing library does not report dropped files there. Enable it when the library supports it. File > Import media… and File > Open… work there. (source: 1.1.0, known limitation)
+- **Discover Ctrl/Cmd+click and Shift+drag** — selecting several subtitle lines with these gestures is not shown anywhere on screen; add a hint or a menu entry. (source: 1.2.0, known limitation)
+- **Sub-second ruler labels** — the timeline ruler shows whole seconds only; at frame zoom show fractions of a second. (source: 1.2.0, known limitation)
 - **Autosave and crash recovery** — save the project automatically and offer to recover unsaved work after a crash. (source: 1.1.0, postponed from the 1.1.0 request)
 
 ## Performance
@@ -57,6 +79,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Preview copies for 720p sources under Automatic** — a 1280x720 source never gets a preview copy in Automatic; check whether slower computers need one. (source: 0.2.0, known limitation)
 - **Limit the preview copy cache** — the cache is never cleaned automatically; "Clear preview copies" is the only way to empty it. Add an age or size limit. (source: 0.2.0, known limitation)
 - **Playback and export without waiting** — while an export and playback run together, other ffmpeg work (analysis, proxies) waits. (source: 0.3.0, known limitation)
+- **Headless frame-time baseline** — record the frame time of the preview and timeline without a window, to compare versions; not done in 1.2.0. (source: 1.2.0, skipped item)
 - **Measured quality goals** — the numbers of the quality goals (detection time, regressions, speed) are assumptions to confirm with measurements. (source: 0.3.0, assumption)
 
 ## Quality
@@ -64,8 +87,10 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Split the hardware developer document** — [code-hardware](code-hardware.md) is 237 lines and mixes the check, the export, the tests and the QG-05 results; split it into smaller documents. (source: 0.4.2, documentation size)
 - **Large-file memory test** — the memory acceptance test runs on a few minutes of video, not 4 GB; add a run on a large file. (source: 0.4.2, assumption in the product documentation)
 - **Stable computer identity on virtual machines** — a virtual machine or container whose number of cores changes between starts is treated as a new computer; with custom settings this only shows a notice. (source: 0.3.0, known limitation)
-- **Split the application module** — `src/app.rs` (about 2,600 lines) mixes the editing state with popups, recent projects and drops; move the popups, recent projects and drops into their own submodules. (source: 1.1.0, size of the module)
+- **Split the application module** — `src/app.rs` (about 2,900 lines) mixes the editing state with popups, recent projects, drops and the effect and subtitle commands; move them into their own submodules. (source: 1.1.0, size of the module; grown in 1.2.0)
 - **Robust preview test under load** — the test `preview_delivers_rgba_frames_of_expected_size` failed once under heavy parallel load; make it independent of the load on the machine. (source: 1.1.0, test failure seen once)
+- **Gated alignment test on CI's versions** — the real-speech test of reused subtitles has been run only on the development machine; confirm it with the ffmpeg and espeak versions CI uses. (source: 1.2.0, not verified locally)
+- **macOS and Windows builds of 1.2.0** — these were checked only by CI; confirm the builds and the subtitle export on real systems. (source: 1.2.0, not verified locally)
 - **Interface tests with a test harness** — the interface tests use a small helper on the window's accessibility tree; move them to `egui_kittest` if the helper grows. (source: 1.1.0, planned fallback)
 
 ## Packaging

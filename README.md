@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.1.0-blue)
+![version](https://img.shields.io/badge/version-1.2.0-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-96.1%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-95.9%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -20,7 +20,7 @@
 [![build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg)](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml)
 
 ## What it is
-`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel, optionally using your computer's video hardware for a faster export. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
+`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, or taken from a video's own subtitles, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel, optionally using your computer's video hardware for a faster export. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
 
 ## System requirements
 - **Windows** (64-bit, x86_64) and **Linux** (64-bit, x86_64; current Ubuntu LTS and Fedora).
@@ -65,9 +65,9 @@ Start videolore from the menu, the Applications folder, the AppImage or the extr
 
 1. **Import** video or audio files with File > Import media… (Ctrl/Cmd+I), or drop them onto the window (Windows, macOS and Linux with X11). Each file shows "analysing" while it is read, then its name and duration; unreadable files are rejected with a message. Importing never blocks the window.
 2. **Build the clip** by appending media to the timeline, then split, cut, copy, paste, merge, trim or move the pieces. Double-click a clip to open its Clip details, or right-click it for its menu.
-3. **Add fades** between two clips to get a fade through black on video and audio: use the "Add fade" handle at a clip boundary, or Effects > Fades. Each fade has a marker on the timeline; click it to change or remove that fade.
-4. **Add music**: place audio files on the music track below the video. Music can be moved, trimmed, split and deleted. The volume and mute of the video audio and of the music are set in the Volume window (Effects > Volume). Music does not move when you edit the video, and it ends with a fade-out where the video ends.
-5. **Add subtitles**: choose **Generate subtitles** in the Subtitles window (Effects > Subtitles). The first time you use a subtitle quality level, you are asked to approve the download of its speech model (32 MB for Fast, 190 MB for Balanced, 574 MB for Most accurate), or you can provide the model file yourself. Choose the level in Settings. Recognition runs on your computer in the background, the language is detected automatically, and you can edit and re-word every line, and re-time it, from its marker on the timeline. Choose a style: Classic, Box or Word highlight. Subtitles are visible in the preview and burned into the exported video.
+3. **Add effects**: fades through black between two clips (use the "Add fade" handle at a clip boundary, or Effects > Fades), and fades from black at the start and to black at the end of the video. Drag an effect from the Effects list onto a clip, or right-click the clip and choose Effects, to apply it to that clip only; double-click an effect in the list to apply it to the whole video. Each fade has a marker on the timeline; click it to change or remove that fade.
+4. **Add music**: place audio files on the music track below the video. Music can be moved, trimmed, split and deleted. The volume and mute of the video audio, for the whole video or for one clip, and of the music are set with Effects > Volume. Music does not move when you edit the video, and it ends with a fade-out where the video ends.
+5. **Add subtitles**: choose **Generate subtitles** in the Subtitles window (Effects > Subtitles), or drag Subtitles onto one clip to create them only for that clip. The first time you use a subtitle quality level, you are asked to approve the download of its speech model (32 MB for Fast, 190 MB for Balanced, 574 MB for Most accurate), or you can provide the model file yourself. Choose the level in Settings. Recognition runs on your computer in the background, the language is detected automatically, and you can edit and re-word every line, and re-time it, from its marker on the timeline. If the video already contains a subtitle track (SRT, ASS/SSA, MP4 timed text or WebVTT), you can choose to use its text instead of recognising the speech; the words are then matched to the speech. Choose a style: Classic, Box or Word highlight. Subtitles are visible in the preview and burned into the exported video. Drag a subtitle line in the preview to move it; Reset position puts it back. Ctrl/Cmd+click selects several lines, and dragging one of them moves the group. File > Export subtitles (.srt)… saves the lines with their timeline times.
 6. **Preview** the result with play, pause and seek from the playhead. Very large sources get a smaller preview copy, made in the background; the export always uses your original files. **Preview quality** in Settings chooses whether lighter preview copies are made, and the copies can be cleared there.
 7. **Save** the project (**Save** or **Save as**, Ctrl/Cmd+S or Ctrl/Cmd+Shift+S) and reopen it later with **Open**, or from File > Open recent, which lists the last 10 projects. A `•` in the window title means unsaved changes. New, Open, closing the window and Quit ask whether to **Save**, **Discard** or **Cancel**. Projects are `.vlproj` files: double-click one to open it in videolore.
 8. **Export** to one file (File > Export…, the toolbar, or Ctrl/Cmd+E), with progress in the status bar; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades, music, subtitles or volume changes and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched. HEVC files play on Apple devices. With **Export: Faster** in Settings, a re-encoded H.264 or HEVC video is made by your computer's video hardware when it can; every such file is checked, and if the hardware is missing or does not produce a correct file, the normal method is used automatically. The default, **Best quality**, always uses the normal method.
@@ -93,6 +93,7 @@ The About screen lists every bundled third-party component with its version, lic
 | Zoom in / out / fit project | Ctrl/Cmd + = / Ctrl/Cmd + - / Ctrl/Cmd + 0 |
 | Settings | Ctrl/Cmd + , |
 | Keyboard shortcuts | F1 |
+| Select several subtitle lines | Ctrl/Cmd + click on markers or in the list; Shift + drag on the timeline |
 | Quit | Ctrl/Cmd + Q |
 
 ### Known limitations
@@ -114,7 +115,12 @@ The About screen lists every bundled third-party component with its version, lic
 - Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
 - The window size and position are not remembered, and popups keep their place only until videolore is closed.
 - On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the menu bar is inside the window, not at the top of the screen, and the Hide and Minimize menu items are not available.
-- Projects saved by this version cannot be opened by versions 0.1.x.
+- Projects saved by this version cannot be opened by version 1.1.0 or earlier; they are refused with a message and left untouched. Older projects open unchanged.
+- When a video's own subtitles are used, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the accuracy target is not met yet with the Fast model (on the reference clip 82% of the words were matched, with an average start error of 0.48 s).
+- Matching a video's subtitles to the speech works only as well as their text follows what is said; translated or paraphrased subtitles often get evenly spread words.
+- Moved subtitle lines shown at the same time can overlap, and editing a line's text after moving it can push it past the edge of the picture in the export; use Reset position or drag it again.
+- Start and end fades stay at the edges of the video when clips are moved.
+- The `.srt` file has no subtitle positions.
 - Removing a file from the media list also drops the undo history when an undo step refers to it.
 - Cleared preview copies are made again only after reopening the project or changing Preview quality. Under Automatic, a 1280x720 source never gets a preview copy.
 - The preview copy cache is never cleaned automatically.
@@ -122,9 +128,9 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **1.2.0** — Effects apply to one clip or to the whole video: fades from and to black, volume and mute per clip, and subtitles for one clip. A video's own subtitle track can be used instead of recognising the speech. Each subtitle line can be dragged to its own place, alone or as a group, subtitles can be exported as an `.srt` file, and the timeline ruler shows seconds, minutes and seconds, or hours, depending on the view. Projects saved by this version need version 1.2.0 or later.
 - **1.1.0** — The window is reorganised: a menu bar and a toolbar with every action (greyed out with the reason when it is not available), a status bar with progress and Cancel, resizable sections, an Effects list whose fades and subtitle lines are markers on the timeline, a Clip details window, Open recent, drag and drop of media and projects, more keyboard shortcuts and F1 for their list.
 - **0.4.3** — The macOS and Windows installers build correctly again. The 0.4.2 release has only the Linux installers.
-- **0.4.2** — Faster export finds the computer's video hardware reliably, even on a busy computer: a slow hardware test gets a second, longer try, and an uncertain check is repeated in the background.
 
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
@@ -136,13 +142,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani drew the window again, from the top down, and gave it a menu bar where every action has its place,\
-and a toolbar whose twelve most used buttons stay within reach, even when the window is narrow,\
-and a status bar that tells the truth about each long task, with a Cancel button at hand,\
-and borders that bend to the hand, so every section grows or shrinks with a single drag,\
-and markers on the timeline for every fade and every subtitle line, where one click opens its own settings,\
-and an Effects list whose popups float beside the work, so editing and playback never stop,\
-and recent projects, dropped files and a list of shortcuts waiting behind the F1 key,\
-and scrollbars wherever a section, a popup or a small screen would hide something,\
-and undo steps that name what they undo, so no step is a mystery,\
-thank you, Andrea, for listening to every small friction and turning it into a window that is simple to use.
+Andrea Lorenzani taught a single clip to carry its own fade, its own volume and its own subtitles,\
+and taught the whole video to receive the same gifts with one double-click on its name,\
+and gave the fades their black at the very first frame and the very last,\
+and let every subtitle line be dragged to the place on the picture where it reads best,\
+and taught the markers to answer Ctrl and Shift, so a whole group can be chosen in one gesture,\
+and let a video's own words be read and matched to the speech, keeping every line exactly as it was written,\
+and wrote the sentences out as an SRT file that any player can open,\
+and taught the timeline ruler to speak in seconds, minutes or hours, whichever fits the view,\
+and wrote down honestly the accuracy it has not yet reached, so the goal stays in sight,\
+thank you, Andrea, for building these effects and subtitles with such patience and care.

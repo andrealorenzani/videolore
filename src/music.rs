@@ -261,6 +261,12 @@ pub fn gain(percent: u8, muted: bool) -> f64 {
     p * p
 }
 
+/// Linear gain of a video clip's own sound (its volume and mute, same curve as the
+/// sliders). The project's video level multiplies it.
+pub fn clip_gain(c: &crate::timeline::Clip) -> f64 {
+    gain(c.volume, c.muted)
+}
+
 impl Mix {
     pub fn video_gain(&self) -> f64 {
         gain(self.video_volume, self.video_muted)

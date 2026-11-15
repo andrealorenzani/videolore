@@ -6,8 +6,8 @@
 //! ways when the tracks do not fit.
 
 use super::markers::{self, HIT_TOLERANCE, MarkerKind};
-use super::{UiCache, scroll_body, zoom};
-use crate::app::{AppState, Command, Instance, Popup};
+use super::{UiCache, ruler, scroll_body, zoom};
+use crate::app::{AppState, Command, Edge, EffectKind, Instance, Popup, Target};
 use crate::time::Micros;
 use crate::timeline::Timeline;
 use eframe::egui::{
@@ -171,25 +171,29 @@ fn tracks(
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, Color32::from_gray(30));
     let visible = ui.clip_rect();
-    // ruler: a tick every second (or less often when zoomed out)
-    let step = (60.0 / z).ceil().max(1.0) as i64;
-    let mut s = 0;
-    while (s as f32) * z <= rect.width() {
+    // ruler: labels follow the time at the right edge of the visible part (REQ-093)
+    let ruler_font = FontId::monospace(9.0);
+    let char_w = ui
+        .painter()
+        .layout_no_wrap("0".into(), ruler_font.clone(), Color32::GRAY)
+        .size()
+        .x;
+    let t0 = f64::from(((visible.min.x - x0) / z).max(0.0));
+    let t1 = f64::from(((visible.max.x - x0) / z).max(0.0)).min(f64::from(rect.width() / z));
+    let (ticks, mode) = ruler::ticks(t0, t1, z, char_w);
+    for s in ticks {
         let x = x0 + s as f32 * z;
-        if x >= visible.min.x - 40.0 && x <= visible.max.x {
-            painter.line_segment(
-                [pos2(x, rect.min.y), pos2(x, rect.min.y + 5.0)],
-                Stroke::new(1.0_f32, Color32::GRAY),
-            );
-            painter.text(
-                pos2(x + 2.0, rect.min.y),
-                Align2::LEFT_TOP,
-                format!("{s}s"),
-                FontId::monospace(9.0),
-                Color32::GRAY,
-            );
-        }
-        s += step;
+        painter.line_segment(
+            [pos2(x, rect.min.y), pos2(x, rect.min.y + 5.0)],
+            Stroke::new(1.0_f32, Color32::GRAY),
+        );
+        painter.text(
+            pos2(x + 2.0, rect.min.y),
+            Align2::LEFT_TOP,
+            ruler::label(s, mode),
+            ruler_font.clone(),
+            Color32::GRAY,
+        );
     }
     let lane = Rect::from_min_size(
         pos2(rect.min.x, rect.min.y + RULER_H),
@@ -219,8 +223,12 @@ fn tracks(
     {
         cmds.push(Command::SelectClip(None));
         cmds.push(Command::SelectMusic(None));
+        cmds.push(Command::ClearSelection);
         cmds.push(Command::Seek(t_at(p.x)));
     }
+    // an effect dragged from the Effects list: only video clips accept it
+    let effect_payload = egui::DragAndDrop::has_payload_of_type::<EffectKind>(ui.ctx());
+    let mut over_clip = false;
     if bg.secondary_clicked()
         && let Some(p) = bg.interact_pointer_pos()
     {
@@ -261,6 +269,23 @@ fn tracks(
             .on_hover_text(format!(
                 "{name}\nDouble-click for details, right-click for more"
             ));
+        if resp.dnd_hover_payload::<EffectKind>().is_some() {
+            over_clip = true;
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Copy);
+            painter.rect_stroke(
+                r,
+                3.0,
+                Stroke::new(3.0_f32, Color32::LIGHT_GREEN),
+                StrokeKind::Inside,
+            );
+        }
+        if let Some(effect) = resp.dnd_release_payload::<EffectKind>() {
+            cmds.push(Command::SelectClip(Some(c.id)));
+            cmds.push(Command::ApplyEffect {
+                effect: *effect,
+                target: Target::Clip(c.id),
+            });
+        }
         if !r.intersects(visible) {
             continue;
         }
@@ -331,8 +356,12 @@ fn tracks(
             ));
         }
     }
+    if effect_payload && !over_clip && ui.rect_contains_pointer(rect) {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::NoDrop);
+    }
     marker_lane(ui, app, cache, &painter, lane, x0, z, visible, cmds);
     music_track(ui, app, cache, &painter, music, x0, z, visible, cmds);
+    range_select(ui, cache, &painter, rect, x0, z, cmds);
     let xp = x0 + px(app.playhead);
     painter.line_segment(
         [pos2(xp, rect.min.y), pos2(xp, rect.max.y)],
@@ -405,6 +434,23 @@ fn clip_menu(ui: &mut Ui, app: &AppState, i: usize, at: Micros, cmds: &mut Vec<C
         };
         entry(ui, true, label, cmds, vec![cmd]);
     }
+    ui.menu_button("Effects", |ui| {
+        for effect in EffectKind::ALL {
+            entry(
+                ui,
+                true,
+                effect.name(),
+                cmds,
+                vec![
+                    select.clone(),
+                    Command::ApplyEffect {
+                        effect,
+                        target: Target::Clip(c.id),
+                    },
+                ],
+            );
+        }
+    });
     ui.separator();
     entry(
         ui,
@@ -413,6 +459,58 @@ fn clip_menu(ui: &mut Ui, app: &AppState, i: usize, at: Micros, cmds: &mut Vec<C
         cmds,
         vec![select, Command::OpenPopup(Popup::ClipDetails)],
     );
+}
+
+/// Shift+drag over the timeline selects the subtitle lines starting in the dragged time
+/// range (Shift+Ctrl/Cmd adds them to the selection). Only active with Shift held, so it
+/// never takes clicks or drags from the clips.
+#[allow(clippy::too_many_arguments)]
+fn range_select(
+    ui: &mut Ui,
+    cache: &mut UiCache,
+    painter: &Painter,
+    rect: Rect,
+    x0: f32,
+    z: f32,
+    cmds: &mut Vec<Command>,
+) {
+    let shift = ui.input(|i| i.modifiers.shift);
+    if !shift && cache.range_drag.is_none() {
+        return;
+    }
+    let t_at = |x: f32| Micros::from_secs_f64(f64::from(((x - x0) / z).max(0.0)));
+    let resp = ui
+        .interact(rect, Id::unique("videolore-range-select"), Sense::drag())
+        .on_hover_text("Shift+drag: select the subtitle lines starting here");
+    if resp.drag_started()
+        && let Some(o) = ui.input(|i| i.pointer.press_origin())
+    {
+        let add = ui.input(|i| i.modifiers.command);
+        cache.range_drag = Some((t_at(o.x), add));
+    }
+    let Some((from, add)) = cache.range_drag else {
+        return;
+    };
+    let pointer = resp.interact_pointer_pos().or(resp.hover_pos());
+    if let Some(p) = pointer {
+        let xa = x0 + (from.as_secs_f64() * f64::from(z)) as f32;
+        let band = Rect::from_x_y_ranges(xa.min(p.x)..=xa.max(p.x), rect.y_range());
+        painter.rect_filled(
+            band,
+            0.0,
+            Color32::from_rgba_unmultiplied(120, 160, 255, 40),
+        );
+    }
+    if resp.drag_stopped() || !ui.input(|i| i.pointer.any_down()) {
+        cache.range_drag = None;
+        if let Some(p) = pointer {
+            cmds.push(Command::SelectRange {
+                from,
+                to: t_at(p.x),
+                add,
+            });
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -431,7 +529,8 @@ fn marker_lane(
     let mid = lane.center().y;
     for m in &all {
         let chosen = app.popups.instance == Some(m.instance)
-            || matches!(m.instance, Instance::Line(id, _) if app.selected_line == Some(id));
+            || matches!(m.instance, Instance::Line(id, _)
+                if app.selected_line == Some(id) || app.selection.contains(&id));
         let outline = Stroke::new(
             if chosen { 2.0 } else { 1.0 },
             if chosen {
@@ -441,7 +540,11 @@ fn marker_lane(
             },
         );
         match m.kind {
-            MarkerKind::Fade => {
+            MarkerKind::ClipVolume => {
+                let c = pos2(m.x + 5.0, mid);
+                painter.circle(c, 4.0, Color32::from_rgb(60, 140, 200), outline);
+            }
+            MarkerKind::Fade | MarkerKind::EdgeFade => {
                 let d = 6.0;
                 painter.add(Shape::convex_polygon(
                     vec![
@@ -493,7 +596,8 @@ fn marker_lane(
     let hover = resp.hover_pos().map(|p| under(p.x)).unwrap_or_default();
     let resp = if hover.is_empty() {
         resp.on_hover_text(
-            "Markers: ◆ fade, ⚑ subtitle line, + add a fade. Click one for its settings.",
+            "Markers: ◆ fade, ⚑ subtitle line (Ctrl/Cmd+click: select several), ● clip \
+             volume, + add a fade. Click one for its settings.",
         )
     } else {
         let text: Vec<&str> = hover.iter().map(|m| m.tooltip.as_str()).collect();
@@ -503,11 +607,15 @@ fn marker_lane(
         && let Some(p) = resp.interact_pointer_pos()
     {
         let hit = under(p.x);
+        let toggle = ui.input(|i| i.modifiers.command);
         match hit.as_slice() {
-            [] => cmds.push(Command::Seek(Micros::from_secs_f64(f64::from(
-                ((p.x - x0) / z).max(0.0),
-            )))),
-            [one] => cmds.push(markers::click_command(one)),
+            [] => {
+                cmds.push(Command::ClearSelection);
+                cmds.push(Command::Seek(Micros::from_secs_f64(f64::from(
+                    ((p.x - x0) / z).max(0.0),
+                ))));
+            }
+            [one] => cmds.push(markers::click_command_with(one, toggle)),
             many => {
                 cache.chooser_pos = Some(p);
                 cmds.push(Command::ChooseInstance(
@@ -549,8 +657,37 @@ fn marker_lane(
                         },
                     ),
                     Instance::Line(id, _) => ("Delete", Command::DeleteSubtitle(id)),
+                    Instance::FadeStart => (
+                        "Remove",
+                        Command::SetEdgeFade {
+                            edge: Edge::Start,
+                            on: false,
+                        },
+                    ),
+                    Instance::FadeEnd => (
+                        "Remove",
+                        Command::SetEdgeFade {
+                            edge: Edge::End,
+                            on: false,
+                        },
+                    ),
+                    Instance::ClipVolume(clip) => (
+                        "Reset volume",
+                        Command::SetClipVolume {
+                            clip,
+                            volume: 100,
+                            muted: false,
+                        },
+                    ),
                 };
                 entry(ui, app.is_enabled(&cmd), label, cmds, vec![cmd]);
+                if let Instance::Line(id, _) = i {
+                    let reset = Command::SetLinePositions {
+                        ids: vec![id],
+                        pos: None,
+                    };
+                    entry(ui, true, "Reset position", cmds, vec![reset]);
+                }
             }
         }
     });
