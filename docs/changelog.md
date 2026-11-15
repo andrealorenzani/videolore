@@ -2,12 +2,19 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.2.4 — 2026-11-15 22:02 +0000
+
+Workflow only: the project page can be published.
+
+### Workflow
+- **Fixed the Pages deployment**: the workflow no longer asks GitHub to switch Pages on (the default token is not allowed to), so the deployment step failed. Turning Pages on is now a one-time manual step, see 1.2.3.
+
 ## 1.2.3 — 2026-11-15 22:01 +0000
 
 Workflow only: the project page is published on GitHub Pages.
 
 ### Workflow
-- **GitHub Pages deployment** with `.github/workflows/pages.yml`: on every push to `main` that changes `github_page/`, the page is published with the official Pages actions, pinned to commit SHAs like the other workflows. It can also be started by hand. The first run enables Pages for the repository.
+- **GitHub Pages deployment** with `.github/workflows/pages.yml`: on every push to `main` that changes `github_page/`, the page is published with the official Pages actions, pinned to commit SHAs like the other workflows. It can also be started by hand. Before the first run, turn Pages on once in the repository settings: Settings → Pages → Build and deployment → Source: GitHub Actions.
 
 ## 1.2.2 — 2026-11-15 21:59 +0000
 

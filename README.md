@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.2.3-blue)
+![version](https://img.shields.io/badge/version-1.2.4-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-95.9%25-brightgreen)
@@ -150,5 +150,5 @@ and each small step, each fix and each release, found its own sentence and its o
 and the page was made plain and light, to read on a phone as well as on a large screen,\
 and it follows the light or the dark of the reader's own setting,\
 and it states the copyright and the licence plainly, under the GPL the project was given,\
-and the version rose to 1.2.3, written in every place it lives at once,\
+and the version rose to 1.2.4, written in every place it lives at once,\
 thank you, Andrea, for bringing this story to the open web with such care and patience.
