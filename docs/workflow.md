@@ -50,6 +50,22 @@ MINOR ambiguities and TECHNICAL questions are decided by the agents and recorded
 7. **Only the Principal Engineer runs tests**, after coding, looping (fix code, rerun) until the suite passes; it reports line coverage and feature coverage, which everyone else uses (the Documenter writes the badge with `scripts/coverage.sh --badge`). No other agent or command runs tests, builds or coverage; `/release` asks the Principal Engineer for a VERIFY run. CI reruns everything independently. Code passes `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`; line coverage ≥ 85% and feature coverage 100% (`REQ-NNN (implemented)` in `docs/business.md` and `docs/business-*.md` ↔ `// covers: REQ-NNN` in tests); README coverage badge with one decimal. CI enforces all of it.
 8. Every development ends with a commit with a single human-readable line (no prefixes, body or trailers). Push only on request.
 9. `LICENSE` is the unmodified GPL-3.0 text; Andrea Lorenzani's copyright is in the README and in the header of each `.rs` file.
+10. **Token economy** (`AGENTS.md` rule 12): agents read only what their task needs. The Documenter checks all of `docs/` with `scripts/docs-check.sh` and reads in full only the files a development changed; a full prose read happens on `/release`. The Principal Engineer runs the tests quietly and reads summaries and failures.
+
+## Token economy
+Measured at 1.2.0 (bytes ÷ 4 ≈ tokens). The main cost is not the number of agents but the notes and docs that get read in full again and again:
+
+| File | Size | Read by |
+|---|---|---|
+| `ai-docs/architecture.md` | 131 KB | Architect, up to 3 calls per feature |
+| `ai-docs/code.md` | 52 KB | Principal Engineer, each development |
+| `ai-docs/business.md` | 48 KB | Product Manager, 2–3 calls per feature |
+| `docs/` (all, 30 files) | 355 KB | Documenter, each development before 1.2.1 |
+| `AGENTS.md` + agent definitions | about 30 KB | every agent, each call |
+
+- **Aggregating agents: not worth it.** Merging the Product Manager and the Architect would save one cold start per feature, but the notes still get read, and one agent would own two notes files (against rule 2). The Documenter stays separate on purpose: it is the cheap model.
+- **Compacting the notes: the real saving.** Halving the three notes (231 KB, about 58k tokens per full read of all three) cuts every later read. Each owner does it in its own development (recorded in `docs/roadmap.md`, Workflow). Human docs stay whole: they are the readable record.
+- **Docs checks mechanised** (1.2.1): links, sub-document indexes, forbidden terms, changelog headers and the README's latest changes and poem are checked by `scripts/docs-check.sh`, which prints only the problems. Prose consistency is checked only for the files a development changed, and in full on release. Trade-off: a stale fact in an untouched page can survive until the next release.
 
 ## Skills
 None yet. Project skills go in `.claude/skills/<name>/SKILL.md`.
@@ -61,6 +77,7 @@ None yet. Project skills go in `.claude/skills/<name>/SKILL.md`.
 | Script | Purpose |
 |---|---|
 | `scripts/version.sh` | `get`, `next-patch`, `next-major`, `set X.Y.Z` (all locations, all-or-nothing: restored if any step fails; no build needed), `check` |
+| `scripts/docs-check.sh` | mechanical docs consistency (Documenter): dead links, sub-documents missing from their index, forbidden AI/agent terms in README and human docs, changelog headers, README latest changes (max 3) and poem (10 verses) |
 | `scripts/coverage.sh` | line coverage with one decimal (`cargo llvm-cov`), `--update-readme`, `--fail-under N` (Principal Engineer and CI only); `--badge NN.N` writes the README badge without running tests (Documenter) |
 | `scripts/feature-coverage.sh` | every implemented `REQ-NNN` (in `docs/business.md` and `docs/business-*.md`) has a `covers:` test |
 | `scripts/collect-release.sh` | `<version> "<name>"`: create `releases/<version> - <name>/` with `docs/` (README, docs, ai-docs unchanged), `sources.zip` (tracked + new files, without `releases/`) and `RELEASE_NOTES.md` (changelog entries) |
@@ -116,3 +133,4 @@ Used by `/clone-workflow`.
 - 2026-11-14 — v0.1.5: CI on the latest stable Rust (1.100) and a separate MSRV job; GitHub Actions on current major versions; policy "follow the latest Rust and libraries" recorded in `docs/architecture.md`.
 - 2026-11-14 — v0.1.6: tests run only by the Principal Engineer after coding, in a fix-and-rerun loop until green; it reports line and feature coverage; no other agent or command runs tests (`/release` uses a Principal Engineer VERIFY run; badge via `scripts/coverage.sh --badge`).
 - 2026-11-14 — v0.4.1: `/release` releases the current version into `releases/<version> - <name>/` (docs, `sources.zip`, `RELEASE_NOTES.md`), cleans the changelog, tags and pushes, then moves to the next major and pushes; `release/` renamed `releases/`; `docs/roadmap.md` fed by every agent's `## Future work`; README shows the last 3 versions.
+- 2026-11-15 — v1.2.1: token economy: `scripts/docs-check.sh` replaces the Documenter's full read of `docs/` at each development (prose read of changed files, full read on release); quiet test output for the Principal Engineer; rule 12 in `AGENTS.md`; agent merge rejected and notes compaction recorded in the roadmap.

@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.2.0-blue)
+![version](https://img.shields.io/badge/version-1.2.1-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-95.9%25-brightgreen)
@@ -142,13 +142,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani taught a single clip to carry its own fade, its own volume and its own subtitles,\
-and taught the whole video to receive the same gifts with one double-click on its name,\
-and gave the fades their black at the very first frame and the very last,\
-and let every subtitle line be dragged to the place on the picture where it reads best,\
-and taught the markers to answer Ctrl and Shift, so a whole group can be chosen in one gesture,\
-and let a video's own words be read and matched to the speech, keeping every line exactly as it was written,\
-and wrote the sentences out as an SRT file that any player can open,\
-and taught the timeline ruler to speak in seconds, minutes or hours, whichever fits the view,\
-and wrote down honestly the accuracy it has not yet reached, so the goal stays in sight,\
-thank you, Andrea, for building these effects and subtitles with such patience and care.
+Andrea Lorenzani looked at the pages that grew with every change and asked how to keep them true,\
+and built a small checker that reads every link and every heading in a moment,\
+so the careful eye need only follow the pages that have just been touched,\
+and the long private notes were left for their own keepers to shorten in their own time,\
+and the version rose by one step, written in every place it lives at once,\
+and the changelog kept its honest dates and its newest entries at the top,\
+and the poem was written fresh, with a backslash at the end of every verse but the last,\
+and the program itself was left exactly as it was, so every clip and subtitle works as before,\
+and the frozen release notes stayed where no hand may change them,\
+thank you, Andrea, for caring for this project with such patience, precision and care.

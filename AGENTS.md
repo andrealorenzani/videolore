@@ -13,7 +13,7 @@ The full description of the workflow lives in `docs/workflow.md`; read it before
 | `product-manager` | blue | `ai-docs/business.md` | `docs/business.md` |
 | `architect` | green | `ai-docs/architecture.md` | `docs/architecture.md` |
 | `principal-engineer` | red | `ai-docs/code.md` | `docs/code.md` + the code in `src/`, `tests/`, `Cargo.toml` (except `version`), `.github/workflows/` |
-| `documenter` | yellow, cheapest model | `ai-docs/notes.md` | `README.md`, `LICENSE`, `docs/changelog.md`, `docs/roadmap.md`, `docs/workflow.md`, the version (via `scripts/version.sh`), consistency of all `docs/` |
+| `documenter` | yellow, cheapest model | `ai-docs/notes.md` | `README.md`, `LICENSE`, `docs/changelog.md`, `docs/roadmap.md`, `docs/workflow.md`, the version (via `scripts/version.sh`), consistency of `docs/` (mechanical check of all of it, prose read of the files a development changed, see rule 12) |
 
 ## Rules (MUST)
 1. **The `documenter` agent MUST ALWAYS be called at the end of each development** (every feature, fix, refactor, dependency change or workflow change) so that it updates `docs/changelog.md` and keeps `docs/` and `README.md` consistent. A development is not finished until the documenter has run.
@@ -32,6 +32,7 @@ The full description of the workflow lives in `docs/workflow.md`; read it before
 9. **Commits**: every development ends with a git commit whose message is a single human-readable line (e.g. `Add prebuilt executables for Linux, macOS and Windows`): no prefixes like `feat:`, no body, no trailers, no mention of agents or AI. Push only when the user asks.
 10. **Licence notice**: `LICENSE` holds the unmodified GPL-3.0 text. The copyright holder (Andrea Lorenzani) appears in the README licence section and in a header at the top of every Rust source file: `// SPDX-License-Identifier: GPL-3.0-only` and `// Copyright (C) <year> Andrea Lorenzani`.
 11. **CI**: `.github/workflows/build.yml` checks fmt/clippy/test, coverage ≥85%, feature coverage 100%, version consistency and frozen release docs, then builds release executables (Linux, macOS, Windows) on every push to `main`; pushing a `v*` tag creates the GitHub release with the executables and the release log. Keep it green.
+12. **Token economy**: agents read only what their task needs. Every development the Documenter runs `scripts/docs-check.sh` (links, sub-document indexes, forbidden AI/agent terms, changelog headers, README latest changes and poem), which covers all of `docs/` mechanically, and fixes what it reports; it reads in full only the files the development changed (`git diff --name-only`) and the indexes they belong to. A full prose read of every `docs/` file happens on `/release`. Notes in `ai-docs/` are read in full by their owner only when the task needs them; long notes are compacted by their owner, never by another agent.
 
 ## Commands
 - `/add-feature <description>` — full feature pipeline (PM → Architect → PM+Architect+Principal Engineer → Documenter).
@@ -40,4 +41,4 @@ The full description of the workflow lives in `docs/workflow.md`; read it before
 - `/release [name]` — release the current version into `releases/<version> - <name>/` (docs, sources zip, release notes), clean the changelog, tag `v<version>` and push, then move to the next major version and push.
 
 ## Scripts (`scripts/`)
-`version.sh` (get/next-patch/next-major/set/check), `coverage.sh`, `feature-coverage.sh`, `collect-release.sh` (release snapshot), `release-guard.sh`, `test-annotations.sh` (CI test failures as annotations), `notices.sh`, `icons.sh`, `fetch-ffmpeg.sh`, `package.sh` (installers).
+`version.sh` (get/next-patch/next-major/set/check), `docs-check.sh` (mechanical docs consistency, Documenter), `coverage.sh`, `feature-coverage.sh`, `collect-release.sh` (release snapshot), `release-guard.sh`, `test-annotations.sh` (CI test failures as annotations), `notices.sh`, `icons.sh`, `fetch-ffmpeg.sh`, `package.sh` (installers).

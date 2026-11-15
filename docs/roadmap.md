@@ -106,6 +106,10 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Weekly security-advisory check** — a scheduled CI run of the dependency advisory check, not only on pushes. (source: 0.3.0, skipped item)
 - **Other systems** — builds exist for Windows and Linux on x86-64 and for macOS on Apple Silicon only; Intel Macs and ARM Windows or Linux are not built. (source: 0.4.0, scope decision)
 
+## Workflow
+- **Compact the private notes** — the architecture notes (131 KB), code notes (52 KB) and business notes (48 KB) are read in full on almost every planning or coding step, about 58k tokens per full read of all three. Each owner keeps the decisions, IDs and open points and drops the repetition, aiming at about half the size, in its own development. (source: 1.2.1, token estimate)
+
 ## Not planned
 - **Slower speech engine for old processors** — dropped on 2026-11-14: processors without AVX2 get a clear message and subtitle lines can still be added by hand.
+- **Merge the business and architecture planning into one step** — saves one fresh start per feature, but the notes still dominate the cost and one owner would hold two private notes files, against the ownership rule. Decided on 2026-11-15.
 - **Keeping layout and recent projects in versions before 1.1.0** — versions before 1.1.0 do not know the saved layout and the recent-projects list, so they drop both when they save their settings. Accepted on 2026-11-15: downgrades are rare and the projects themselves are not affected.

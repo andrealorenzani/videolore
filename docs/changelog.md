@@ -2,6 +2,16 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.2.1 — 2026-11-15 21:52 +0000
+
+Workflow only: no change to the program or to what the app does.
+
+### Workflow
+- **Fewer tokens for each development.** The Documenter no longer reads all of `docs/` (355 KB at 1.2.0) each time: `scripts/docs-check.sh` checks links, sub-document indexes, forbidden AI/agent terms, changelog headers, and the README's latest changes and poem, and the Documenter reads in full only the files the development changed. A full prose read happens on release.
+- **Shorter test reports.** The Principal Engineer runs the tests in quiet mode and reads only the summaries and the failures, not the full logs.
+- **Rule 12 (token economy)** in `AGENTS.md`: agents read only what their task needs; long notes are compacted by their owner, never by another agent.
+- Considered and not done: merging agents (saves one cold start per feature, the notes still dominate the cost) and compacting the notes now (owners' files, planned in the roadmap). Details in `docs/workflow.md`, section Token economy.
+
 ## 1.2.0 — 2026-11-15 21:42 +0000
 
 Effects can be applied to one clip or to the whole video, subtitles can reuse a video's own subtitle track, and each subtitle line can be moved on the picture. Projects saved by this version use a newer format: versions 1.1.0 and earlier cannot open them.
