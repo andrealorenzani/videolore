@@ -3,7 +3,7 @@
 Part of [Architecture](architecture.md).
 
 ## Threat model
-Treated as untrusted: media files (names and contents), project files, the contents of the settings file, the `ffmpeg` found on `PATH`, downloaded files (the `ffmpeg` builds used at packaging time, the speech models), text typed into subtitles, and file paths passed by the operating system.
+Treated as untrusted: media files (names and contents), project files, the contents of the settings file, the `ffmpeg` found on `PATH`, downloaded files (the `ffmpeg` builds used at packaging time, the speech models), text typed into subtitles, and file paths passed by the operating system (double-click, and since 1.1.0 files dropped on the window and the recent-projects list).
 
 The settings file is parsed defensively, but it is trusted at the level of the user account: anyone who can change it (for example to point to another `ffmpeg`) can already run programs as that user.
 
@@ -26,6 +26,7 @@ There are no secrets, accounts or telemetry.
 - A damaged settings file is replaced by recommended settings with a notice; the bad copy is kept as `settings.json.bad`.
 - Paths in a project are used only as `ffmpeg` inputs, which are only read. Relative paths with `..` are resolved against the project folder; this is accepted because they are never written.
 - Names shown on screen have control characters and text-direction override characters replaced, so a crafted name cannot disguise itself.
+- **Layout and recent projects (1.1.0):** section proportions must be finite numbers between 0 and 1; anything else falls back to the default without a notice and the other settings are kept. Recent projects are checked one by one: only absolute paths of at most 1024 bytes without control characters, at most 10, duplicates removed. Paths that are not valid UTF-8 are never stored, so they cannot break later saves. Even with every field at its maximum the settings file stays well under the 64 KiB limit.
 - Automated tests feed hostile files (invalid or truncated data, huge or negative numbers, `..` and absolute paths, control characters, oversized files, a pipe in place of a project) and check: no crash, a clear refusal, nothing written, source files unchanged.
 
 ## Subtitles
@@ -50,6 +51,8 @@ There are no secrets, accounts or telemetry.
 - Speech files: removal deletes only the known model file names and their partial downloads.
 - Linux menu entry: written only under `~/.local/share`; the launch command is quoted as the desktop-entry specification requires and points to an existing absolute path; the helper tools are run with fixed arguments, no shell, and their errors are ignored.
 - macOS "open document" paths go through the same open and validation steps as a file picked by the user.
+- **Dropped files (1.1.0):** dropped media go through exactly the same checks as File > Import (analysis in the background with its time limit); a dropped project goes through the same loading and validation as File > Open, after the unsaved-changes prompt. Drops are ignored while a dialog needs an answer.
+- **Recent projects (1.1.0):** names are shown with control and direction-override characters replaced, the full path appears only in a tooltip, and a project is opened only when the user clicks it, through the normal loading path. A missing file is reported and removed. The list stores full project paths in the user's own settings folder; File > Open recent > Clear list removes them.
 - Exports go to a temporary file renamed on success; source files are never written.
 
 ## Unsafe code

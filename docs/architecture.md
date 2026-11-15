@@ -1,15 +1,16 @@
 # Architecture
 
-Version 0.4.0. Rust (edition 2024), minimum Rust 1.100 (the project follows the latest stable Rust). License GPL-3.0.
+Version 1.1.0. Rust (edition 2024), minimum Rust 1.100 (the project follows the latest stable Rust). License GPL-3.0.
 
 ## Overview
 `videolore` is a desktop video editor with a native window (Linux, macOS, Windows). It does not decode or encode video itself: it drives the `ffmpeg` and `ffprobe` programs, which are **bundled with the installers** since 0.2.0. The editor keeps the edit (video clips, cuts, fades, a music track, subtitles) in memory, previews it, and exports it with a single `ffmpeg` run.
 
-Implemented: requirements REQ-001..065 (see [business](business.md)). 0.3.0 added automatic setup for each computer, a plain-language Settings window, three subtitle quality levels, a processor check before generating subtitles, and security hardening (REQ-045..054, 056..059). 0.4.0 adds an opt-in faster export with the computer's video hardware (NVIDIA, Intel, AMD, Linux VA-API, Apple VideoToolbox), with an automatic check of every result and a silent redo with the normal method on any problem (REQ-055, 060..065; see [hardware export](architecture-hardware-export.md)).
+Implemented: requirements REQ-001..081 (see [business](business.md)). 0.3.0 added automatic setup for each computer, a plain-language Settings window, three subtitle quality levels, a processor check before generating subtitles, and security hardening (REQ-045..054, 056..059). 0.4.0 adds an opt-in faster export with the computer's video hardware (NVIDIA, Intel, AMD, Linux VA-API, Apple VideoToolbox), with an automatic check of every result and a silent redo with the normal method on any problem (REQ-055, 060..065; see [hardware export](architecture-hardware-export.md)). 1.1.0 restructures the window: resizable sections, a menu bar, a toolbar, a status bar, an Effects list with popups, markers for fades and subtitle lines on the timeline, recent projects and drag and drop (REQ-066..081; see [user interface](architecture-ui.md)).
 
 ## Sub-documents
 | Document | Contents |
 |---|---|
+| [architecture-ui.md](architecture-ui.md) | The window (1.1.0): layout and resizable sections, menus, toolbar, shortcuts, status bar, effect popups, timeline markers, recent projects, drag and drop, interface tests. |
 | [architecture-performance.md](architecture-performance.md) | Machine detection, recommended settings, the "How hard videolore works" levels and what they control, the 0.3.0 performance review. |
 | [architecture-hardware-export.md](architecture-hardware-export.md) | Faster export with video hardware (0.4.0): supported hardware, encoder settings (including VA-API constant quality), background check (including the Linux libva check), output check, software redo, remembered failures, measured results, testing and known limitations. |
 | [architecture-ffmpeg.md](architecture-ffmpeg.md) | The bundled `ffmpeg`: which builds, where they live, how they are found, licences and source code. |
@@ -28,7 +29,7 @@ Implemented: requirements REQ-001..065 (see [business](business.md)). 0.3.0 adde
 | `music` | The music track: audio clips that never overlap; place, move, trim, split, delete. |
 | `subtitles` | Subtitle lines stored against the source speech, and how they appear on the timeline. |
 | `ass` | Writes the subtitle file (ASS format) used by `ffmpeg` for the chosen style. |
-| `history` | Undo and redo of the whole edit (video, music, subtitles, volumes). |
+| `history` | Undo and redo of the whole edit (video, music, subtitles, volumes); since 1.1.0 each step has a name ("Undo Split"). |
 | `project` | Save/load projects as versioned JSON (version 2, opens version 1); unsaved-changes tracking. |
 | `format` | Output formats, codecs and which encoder to use, with fallbacks. |
 | `render` | Turns the edit into an export plan and the exact `ffmpeg` arguments; also the preview graphs. |
@@ -41,12 +42,12 @@ Implemented: requirements REQ-001..065 (see [business](business.md)). 0.3.0 adde
 | `proxy` | Lower-resolution preview copies of large sources, and their cache. |
 | `stt` | Speech-to-text: audio extraction, transcription, language detection, the three model levels, download and storage. |
 | `machine` | Detects the computer: cores, memory, operating system, processor features. |
-| `settings` (0.3.0) | Program settings file, first-start setup, recommended settings, how each level translates into processes and threads; since 0.4.0 the Export choice and remembered hardware failures. |
+| `settings` (0.3.0) | Program settings file, first-start setup, recommended settings, how each level translates into processes and threads; since 0.4.0 the Export choice and remembered hardware failures; since 1.1.0 the section layout and recent projects. |
 | `scratch` (0.3.0) | Private work folders for temporary files, and clean-up after a crash. |
 | `notices` | The third-party notices shown in About. |
 | `desktop` | Linux application-menu entry and file association; macOS "open document" events. |
-| `ui` | Windows and panels, including the Settings window. Kept thin. |
-| `app` | Application state and wiring between the UI and background workers. |
+| `ui` | Windows and panels, including the Settings window. Kept thin. Since 1.1.0 also: the section layout and borders, the table of actions shared by menus, toolbar and shortcuts, the menu bar, toolbar, status bar, effect and clip popups, and the timeline markers. See [user interface](architecture-ui.md). |
+| `app` | Application state and wiring between the UI and background workers; since 1.1.0 also which popups are open, recent projects and dropped files. |
 
 ## Data flow
 - **Start-up (0.3.0):** detect the computer, clean up leftovers of a crashed session, read the settings file, decide the settings (first start, same computer, changed computer, older version, damaged file), apply them to the job queue and preview, and show a notice if needed. Details in [performance](architecture-performance.md#start-up).
@@ -55,6 +56,8 @@ Implemented: requirements REQ-001..065 (see [business](business.md)). 0.3.0 adde
 - **Export:** `render` builds a plan from the original files (never proxies); the export worker runs one `ffmpeg` and reports progress; the result is renamed into place only when complete. With Export "Faster" (0.4.0) and working video hardware, an H.264/HEVC re-encode runs on the hardware first, is checked, and is redone with the normal method if anything is wrong. Details in [hardware export](architecture-hardware-export.md#export-with-hardware).
 - **Subtitles:** the processor is checked; the model of the chosen quality level is used (downloaded after consent if missing); the audio of each source on the timeline is extracted, transcribed on the machine, and turned into subtitle lines.
 - **Changing a setting:** applies immediately to the next job; running jobs continue unchanged. Settings are saved atomically and never stored in projects.
+- **User interface (1.1.0):** every menu item, toolbar button, shortcut and context-menu entry produces a command from one shared table; the application state runs it. Dragging a section border updates the layout live and saves it once when released. See [user interface](architecture-ui.md).
+- **Recent projects and drag and drop (1.1.0):** opening a recent or dropped project goes through the unsaved-changes prompt; dropped media follow the same path as File > Import.
 - **Opening a project by double-click:** on Windows and Linux the file path arrives on the command line; on macOS it arrives as a system event. Both go through the unsaved-changes prompt.
 
 The UI never waits on `ffmpeg` or on disk, apart from saving or loading the project file itself (at most 16 MiB), the settings file (at most 64 KiB) and a few small files written at Linux startup.
@@ -72,6 +75,8 @@ The UI never waits on `ffmpeg` or on disk, apart from saving or loading the proj
   - Output goes to a temporary file in the destination folder and is renamed when complete; a failed or cancelled export leaves no partial file. Source files are never overwritten.
 - **Encoders:** each output format has a preferred encoder list with fallbacks; formats with no available encoder are disabled with an explanation. Software encoders by default.
 - **Hardware export (0.4.0):** opt-in ("Best quality" stays the default everywhere), H.264 and HEVC only, the same target bitrate as the software method so files are about the same size, a background check run only when "Faster" is chosen, a 30 s stall watchdog, a check of every hardware result (strict full decode, file details, and a comparison with the normal pipeline's frames matched by position, 3 samples by PSNR) and a silent software redo on any problem. Drivers that refuse bitrate control get a VA-API constant-quality variant with size limits; with the bundled `ffmpeg`, VA-API and Quick Sync are skipped on Linux systems whose libva is older than 2.21 (for example Ubuntu 24.04). The settings file stays at version 2 with two optional fields, so 0.3.x can still read it. See [hardware export](architecture-hardware-export.md).
+- **User interface (1.1.0):** our own proportional layout for the four sections instead of egui's resizable panels; one table of actions for menus, toolbar, tooltips and shortcuts; non-modal popups inside the window whose state belongs to the application; markers computed from the edit, so the project format does not change; egui's keyboard zoom turned off; menus inside the window on every system. No new crates. See [user interface](architecture-ui.md).
+- **Drag and drop (1.1.0):** supported on Windows, macOS and Linux X11; not in native Linux Wayland sessions, where the windowing library does not report dropped files (decided by Andrea: ship where supported, documented as a known limitation).
 - **Fades:** 0.5 s or half the clip, whichever is shorter; video and audio aligned.
 - **Speech-to-text:** local whisper.cpp, included in release builds; three quality levels, each model downloaded once after consent. See [subtitles](architecture-subtitles.md).
 - **whisper.cpp CPU baseline (0.2.1):** compiled for AVX2/FMA/F16C on x86-64 instead of for the build machine's CPU. Since 0.3.0 the processor is checked first, so older computers get a clear message instead of a crash. A slower speech engine for older processors is not planned (decided on 2026-11-14). See [subtitles](architecture-subtitles.md#cpu-requirements-since-021).
@@ -79,7 +84,7 @@ The UI never waits on `ffmpeg` or on disk, apart from saving or loading the proj
 - **Installers:** unsigned. See [packaging](architecture-packaging.md).
 
 ## Projects
-- Version 2 adds the music track, the volume/mute settings and the subtitles (language, style, lines with word timings). 0.3.0 does not change the project format.
+- Version 2 adds the music track, the volume/mute settings and the subtitles (language, style, lines with word timings). 0.3.0, 0.4.0 and 1.1.0 do not change the project format (1.1.0 timeline markers are computed from the existing data; the layout and recent projects are program settings, never stored in a project).
 - Version 1 files (0.1.x) are converted in memory when opened and export exactly as before. Once saved they become version 2 and can no longer be opened by 0.1.x.
 - Files from a newer version are refused with a clear message and are never modified.
 - Loading reads only regular files, at most 16 MiB (0.3.0: a special file such as a pipe can no longer block the program). After loading, everything is validated: music clips use audio-only files and do not overlap, subtitle lines refer to existing media, have start before end and at most 1000 characters.
@@ -92,7 +97,8 @@ The UI never waits on `ffmpeg` or on disk, apart from saving or loading the proj
 - Computer detection: deterministic, no network, at most 3 s (expected: a few milliseconds).
 - At recommended settings, export and Fast subtitles at most 5% slower than 0.2.2 on the same machine (measured by comparing the two versions). With "Best quality" (the default), 0.4.0 exports run the same commands as 0.3.0.
 - Hardware check (0.4.0, limits changed in 0.4.2): 1 s first try per candidate plus one 4 s retry if it does not answer in time, at most 10 s in total, repeated once automatically when a time-out left a format without hardware (at most about 20 s), in the background, only when "Faster" is chosen. Hardware export: no progress for 30 s means a stall; cancel within 1 s in every phase. Target: at least 40% faster than "Best quality" at 1080p including the check; not met on the integrated Intel graphics measured for 0.4.0 (see [hardware export](architecture-hardware-export.md#performance)).
-- The window keeps reacting while an export and subtitle generation run together at any level: every frame within 200 ms in an automated test.
+- The window keeps reacting while an export and subtitle generation run together at any level: every frame within 200 ms in an automated test (since 1.1.0 also while dragging a section border and with popups open).
+- Interface (1.1.0): the smallest window stays 800x500; there every control is visible or reachable by scrolling; section proportions hold within 1 pixel at 800x500, 1280x800 and 2560x1440; all 12 toolbar commands usable at 800 px wide. Goal: under 16 ms per frame at 1280x800 (estimate).
 - Importing 10 files does not block the UI (each frame under 50 ms).
 - Still preview frame: no render for edits that do not change the picture at the playhead; at most one render for a burst of 10 edits.
 - Playback: video keeps real time if audio stalls; audio/video drift after the audio resumes at most 40 ms (requirement: 100 ms).
@@ -122,4 +128,5 @@ Listed in each sub-document; the main ones:
 - Speed and memory of the larger speech models are estimates; the recommendation thresholds may be adjusted after measurement.
 - Some behaviour can only be checked by hand on real machines: first launch of unsigned installers, double-click on a project on macOS while starting, Linux file managers.
 - Speech-to-text needs a C++ toolchain and libclang on every CI platform, which makes builds slower and more fragile.
+- Drag and drop does not work in native Linux Wayland sessions (1.1.0); File > Import… and Open… remain the way there.
 - egui releases often change its API; a new stable Rust can add lints: GUI code is kept thin and the code is fixed promptly.

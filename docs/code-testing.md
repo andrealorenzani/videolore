@@ -18,7 +18,21 @@
   button via `ViewportEvent::Close`, the Settings window and the banner, read back from the
   painted text). `stays_responsive_while_exporting_and_transcribing` runs 30 frames with
   play/pause, timeline clicks and Settings while a fake export streams progress and a fake
-  speech job keeps every core busy: every frame must take ≤ 200 ms and show its effect.
+  speech job keeps every core busy: every frame must take ≤ 200 ms and show its effect;
+  `borders_and_popups_stay_responsive_and_export_cancels_from_the_status_bar` does the same
+  while dragging a section border with three effect popups open, then cancels the export from
+  the status bar and checks that no file is left.
+- **Interface tests through the accessibility tree** (`src/ui/ux_tests.rs`): a small `Harness`
+  turns on egui's AccessKit output and reads every widget's role, label, bounds and enabled
+  state each frame; clicks, right-clicks, double-clicks, drags and keys are real input events at
+  those positions. They check the menus against the action table (labels, shortcuts, greyed
+  items), the toolbar's "»" menu, border drags (live, saved once), markers and the chooser,
+  context menus, Clip details, Esc and the shortcuts, the shortcuts window, dropped files, the
+  Effects section. The "everything reachable" test (REQ-068) runs at 800x500 with 50 media
+  items, 200 subtitle lines and a 200-character name, with sections at their minimum sizes and
+  with each popup, dialog and menu open: every interactive widget must be inside the window, and
+  inside its section, unless it is inside a scroll area (recorded each frame in
+  `UiCache::containers`) whose visible part can be reached.
 - **Settings and hostile input:** the settings decisions are pure functions tested with corpora
   (bad JSON, unknown values, huge numbers, nesting, relative paths, newer formats, 0.2.x files);
   project files are tested with a hostile corpus (truncated, nested, out-of-range numbers,

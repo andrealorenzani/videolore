@@ -647,3 +647,192 @@ fn hardware_memory_resets_with_a_new_version_or_computer() {
             .hardware_is_off(Codec::Hevc, Vendor::Amf)
     );
 }
+
+/// The settings file of videolore 1.0 (no layout, no recent projects).
+fn file_1_0(m: &Fingerprint) -> serde_json::Value {
+    let mut v = serde_json::to_value(Settings::with(recommend(m), Some(m.clone()))).unwrap();
+    let o = v.as_object_mut().unwrap();
+    o.remove("layout");
+    o.remove("recent");
+    v
+}
+
+// covers: REQ-067, REQ-080
+#[test]
+fn files_of_1_0_load_silently_and_1_1_values_round_trip() {
+    let m = fp(8, 4, 16);
+    let st = startup(&bytes(&file_1_0(&m).to_string()), &m);
+    assert_eq!(st.notice, None);
+    assert!(!st.write && !st.backup);
+    assert_eq!(st.settings.layout, None);
+    assert!(st.settings.recent.is_empty());
+    // 1.1 values are kept as they are
+    let mut s = st.settings.clone();
+    s.layout = Some(SavedLayout {
+        top: 0.5,
+        media: 0.25,
+        timeline: 0.6,
+    });
+    let root = if cfg!(windows) { "C:\\p" } else { "/p" };
+    for i in 0..3 {
+        push_recent(&mut s.recent, &PathBuf::from(format!("{root}/{i}.vlproj")));
+    }
+    let st = startup(&saved(&s), &m);
+    assert_eq!(st.notice, None);
+    assert!(!st.write);
+    assert_eq!(st.settings, s);
+    // no layout saved: the field is left out (1.0 files look the same)
+    let v = serde_json::to_value(Settings::with(recommend(&m), None)).unwrap();
+    assert!(v.get("layout").is_none());
+    assert_eq!(v["recent"], serde_json::json!([]));
+    assert!(SavedLayout::DEFAULT.is_valid());
+    assert_eq!(SavedLayout::default(), SavedLayout::DEFAULT);
+}
+
+// covers: REQ-057, REQ-067, REQ-080
+#[test]
+fn damaged_layout_and_recent_values_give_defaults_and_keep_the_rest() {
+    let m = fp(8, 4, 16);
+    let root = if cfg!(windows) { "C:\\p\\" } else { "/p/" };
+    let base = || {
+        let mut f = file_1_0(&m);
+        f["effort"] = serde_json::json!("maximum");
+        f
+    };
+    let bad_layouts = [
+        serde_json::json!({"top": -0.5, "media": 0.3, "timeline": 0.7}),
+        serde_json::json!({"top": 0.0, "media": 0.3, "timeline": 0.7}),
+        serde_json::json!({"top": 1.0, "media": 0.3, "timeline": 0.7}),
+        serde_json::json!({"top": 2.5, "media": 0.3, "timeline": 0.7}),
+        serde_json::json!({"top": 1e300, "media": 0.3, "timeline": 0.7}),
+        serde_json::json!({"top": null, "media": 0.3, "timeline": 0.7}),
+        serde_json::json!({"top": "half", "media": 0.3, "timeline": 0.7}),
+        serde_json::json!({"top": 0.5}),
+        serde_json::json!([[0.5, 0.3, 0.7]]),
+        serde_json::json!("wide"),
+        serde_json::json!(42),
+        serde_json::json!(null),
+    ];
+    for layout in bad_layouts {
+        let mut f = base();
+        f["layout"] = layout.clone();
+        let st = startup(&bytes(&f.to_string()), &m);
+        assert_eq!(st.notice, None, "{layout}");
+        assert!(!st.write && !st.backup, "{layout}");
+        assert_eq!(st.settings.layout, None, "{layout}");
+        assert_eq!(st.settings.effort, Effort::Maximum, "other settings kept");
+    }
+    // the recent list: entry by entry
+    let long = format!("{root}{}", "x".repeat(5000));
+    let mut f = base();
+    f["recent"] = serde_json::json!([
+        format!("{root}a.vlproj"),
+        "relative/b.vlproj",
+        format!("{root}c\u{1}.vlproj"),
+        format!("{root}d\n.vlproj"),
+        long,
+        42,
+        null,
+        ["nested"],
+        format!("{root}a.vlproj"),
+        format!("{root}e.vlproj"),
+    ]);
+    let st = startup(&bytes(&f.to_string()), &m);
+    assert_eq!(st.notice, None);
+    assert!(!st.write);
+    assert_eq!(
+        st.settings.recent,
+        vec![
+            PathBuf::from(format!("{root}a.vlproj")),
+            PathBuf::from(format!("{root}e.vlproj"))
+        ]
+    );
+    assert_eq!(st.settings.effort, Effort::Maximum);
+    // not a list, or a huge one
+    for recent in [
+        serde_json::json!("x"),
+        serde_json::json!({"a": 1}),
+        serde_json::Value::Array(
+            (0..10_000)
+                .map(|i| serde_json::json!(format!("{root}{i}.vlproj")))
+                .collect(),
+        ),
+    ] {
+        let mut f = base();
+        f["recent"] = recent;
+        let st = startup_at(&bytes(&f.to_string()), &m, "1");
+        assert_eq!(st.notice, None);
+        assert!(st.settings.recent.len() <= MAX_RECENT);
+    }
+}
+
+// covers: REQ-080
+#[test]
+fn recent_projects_are_most_recent_first_without_duplicates() {
+    let root = if cfg!(windows) { "C:\\p\\" } else { "/p/" };
+    let p = |i: usize| PathBuf::from(format!("{root}{i}.vlproj"));
+    let mut list = Vec::new();
+    for i in 0..12 {
+        assert!(push_recent(&mut list, &p(i)));
+    }
+    assert_eq!(list, (2..12).rev().map(p).collect::<Vec<_>>());
+    // opening one again moves it first
+    assert!(push_recent(&mut list, &p(5)));
+    assert_eq!(list[0], p(5));
+    assert_eq!(list.len(), MAX_RECENT);
+    assert_eq!(list.iter().filter(|x| **x == p(5)).count(), 1);
+    assert!(!push_recent(&mut list, &p(5)), "already first: no change");
+    // never remembered: relative, control characters, too long
+    for bad in [
+        PathBuf::from("rel.vlproj"),
+        PathBuf::from(format!("{root}a\tb.vlproj")),
+        PathBuf::from(format!("{root}{}", "y".repeat(MAX_RECENT_PATH))),
+    ] {
+        assert!(!push_recent(&mut list, &bad));
+    }
+    assert_eq!(list.len(), MAX_RECENT);
+}
+
+#[cfg(unix)]
+// covers: REQ-080
+#[test]
+fn non_utf8_paths_are_never_remembered() {
+    use std::os::unix::ffi::OsStrExt;
+    let p = PathBuf::from(std::ffi::OsStr::from_bytes(b"/p/\xff\xfe.vlproj"));
+    let mut list = Vec::new();
+    assert!(!push_recent(&mut list, &p));
+    assert!(list.is_empty());
+}
+
+// covers: REQ-080, REQ-057
+#[test]
+fn the_largest_settings_file_fits_the_size_limit() {
+    let m = fp(4096, 4096, 1 << 20);
+    let mut s = Settings::with(recommend(&m), Some(m.clone()));
+    s.ffmpeg = Some(PathBuf::from(format!("/{}", "f".repeat(4000))));
+    s.ffprobe = s.ffmpeg.clone();
+    s.layout = Some(SavedLayout::DEFAULT);
+    let root = if cfg!(windows) { "C:\\" } else { "/" };
+    for i in 0..MAX_RECENT {
+        let name = format!("{root}{i}{}", "\u{10348}".repeat((MAX_RECENT_PATH - 8) / 4));
+        assert!(push_recent(&mut s.recent, Path::new(&name)), "{i}");
+    }
+    for i in 0..MAX_HARDWARE_OFF {
+        s.turn_hardware_off(
+            Codec::H264,
+            Vendor::ALL[i % Vendor::ALL.len()],
+            &"9".repeat(32),
+        );
+        s.turn_hardware_off(
+            Codec::Hevc,
+            Vendor::ALL[i % Vendor::ALL.len()],
+            &"9".repeat(32),
+        );
+    }
+    let json = serde_json::to_string_pretty(&s).unwrap();
+    assert!(
+        (json.len() as u64) < MAX_SETTINGS_BYTES,
+        "{} bytes",
+        json.len()
+    );
+}

@@ -9,7 +9,8 @@ Back to the [index](business.md).
 - **Transitions**: fade through black between clips.
 - **Preview**: play, pause and seek, with fades, music and subtitles visible. Video keeps playing in real time even if audio output stalls.
 - **Proxies**: very large sources get a smaller preview copy automatically, so preview stays smooth; export always uses the originals. Since 0.3.0 this is controlled by "Preview quality" in Settings (see [Settings, performance and safety](business-performance.md)).
-- **Layout**: fixed five-panel window with a command bar and keyboard shortcuts.
+- **Window**: resizable sections, menus, a toolbar, a status bar and keyboard shortcuts (since 1.1.0; see [Window, menus and effects](business-ui.md)).
+- **Recent projects**: File > Open recent (since 1.1.0; see [Window, menus and effects](business-ui.md)).
 
 ## Requirements
 
@@ -30,8 +31,8 @@ Back to the [index](business.md).
 - REQ-008 (implemented): Contiguous segments from the same source with contiguous source ranges can be merged; the action is disabled otherwise.
 - REQ-009 (implemented): A segment can be trimmed at either edge, within the bounds of its source.
 - REQ-010 (implemented): Segments can be reordered; the timeline ripples.
-- REQ-011 (implemented): A transition between clips is a fade-out followed by a fade-in through black, on video and audio, and can be removed; each fade lasts 0.5 s, or half the clip length for clips shorter than 1 s, so fades never overlap.
-- REQ-012 (implemented): A zoom slider scales the timeline from showing the whole project to single-frame level.
+- REQ-011 (implemented): A transition between clips is a fade-out followed by a fade-in through black, on video and audio, and can be removed; each fade lasts 0.5 s, or half the clip length for clips shorter than 1 s, so fades never overlap. Since 1.1.0 clicking a fade marker opens its settings, and a fade is removed from there or from the right-click menu (REQ-077).
+- REQ-012 (implemented): A zoom slider scales the timeline from showing the whole project to single-frame level. Since 1.1.0 the slider is in the Timeline header, and View > Zoom in / Zoom out / Fit project (with shortcuts) also zoom.
 
 ### Preview
 - REQ-013 (implemented): The preview supports play, pause and seek, and shows effects.
@@ -39,8 +40,7 @@ Back to the [index](business.md).
 - REQ-035 (implemented): During playback, video continues in real time if audio output stalls; audio catches up or skips. Acceptance: with a simulated stall video time keeps advancing, and audio/video drift is at most 100 ms after audio resumes.
 
 ### Layout and commands
-- REQ-024 (implemented): The window has a fixed five-panel layout: top 60% (media list 30%, preview 70%), middle 30% (timeline 70%, effects 30%), bottom 10% command bar including the zoom slider. The music track and the subtitle list fit inside the existing panels without changing these proportions.
-- REQ-025 (implemented): Every operation is reachable from the command bar or panels (including Save, Save As, Generate subtitles, Settings and About / third-party notices); keyboard shortcuts exist for split, cut, copy, paste, undo, redo and play/pause.
+The window layout (REQ-024), how commands are reached (REQ-025), menus, toolbar, shortcuts, status bar, effect popups and timeline markers are described in [Window, menus and effects](business-ui.md) since 1.1.0.
 
 ### Responsiveness and performance
 - REQ-032 (implemented): Importing never freezes the window: each item shows "analysing" and then its name and duration, or its rejection; several imports can run while the user keeps editing. Acceptance: importing 10 files does not block user input.
@@ -56,7 +56,7 @@ Back to the [index](business.md).
 - Undoing back to the saved state counts as "no unsaved changes".
 - Projects are saved in a newer format from 0.2.0 on: a 0.1.x project saved with 0.2.0 can no longer be opened by 0.1.x.
 - On macOS, Cmd+Q also goes through the unsaved-changes prompt (Ctrl+Q elsewhere).
-- Default shortcuts follow common conventions (Ctrl/Cmd+X/C/V/Z, Space for play/pause, Ctrl/Cmd+B for split, Ctrl/Cmd+S to save, Ctrl/Cmd+Q to quit); exact bindings are an engineering choice.
+- Default shortcuts follow common conventions (Ctrl/Cmd+X/C/V/Z, Space for play/pause, Ctrl/Cmd+B for split, Ctrl/Cmd+S to save, Ctrl/Cmd+Q to quit); exact bindings are an engineering choice. The full list since 1.1.0 is REQ-071 in [Window, menus and effects](business-ui.md).
 - Letterboxing color is black.
 
 ## Known limitations
@@ -68,5 +68,5 @@ Back to the [index](business.md).
 - The memory acceptance test runs on a few minutes of video, not 4 GB; assumption: since nothing in the application grows with file size, the result holds for larger files.
 
 ## Out of scope
-- Recent-projects list, autosave, crash recovery.
-- Resizable or dockable panels.
+- Autosave, crash recovery (the recent-projects list is available since 1.1.0).
+- Dockable, movable or hideable panels (resizing is available since 1.1.0).

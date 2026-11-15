@@ -12,7 +12,8 @@ All edits are non-destructive: source files are never modified.
 Professional editors needing multitrack video, color grading or advanced effects are not the target.
 
 ## Documents
-- [Editing](business-editing.md) — media list, projects (save, open, unsaved changes), timeline editing, transitions, preview, layout, responsiveness, preview proxies and memory use.
+- [Editing](business-editing.md) — media list, projects (save, open, unsaved changes), timeline editing, transitions, preview, responsiveness, preview proxies and memory use.
+- [Window, menus and effects](business-ui.md) — window layout and resizable sections, menus, toolbar, keyboard shortcuts, tooltips, status bar, the Effects section and its popups, fade and subtitle markers on the timeline, clip details, right-click menus, recent projects, drag and drop (since 1.1.0).
 - [Export](business-export.md) — automatic output format, stream copy vs re-encode, progress and cancel, Apple-compatible HEVC, long timelines, faster export with the computer's video hardware (with automatic fallback and output check).
 - [Music](business-music.md) — the music track, mixing and volumes, how music behaves when the video is edited.
 - [Subtitles](business-subtitles.md) — automatic offline subtitles, the speech model download, editing, styles, how subtitles follow edits.
@@ -28,7 +29,8 @@ Professional editors needing multitrack video, color grading or advanced effects
 - Output format is automatic: there is no export settings dialog.
 - Stream copy is used only when the result is guaranteed frame-accurate; correctness comes before speed.
 - Fade length is fixed (not user-tunable) to keep the editor simple.
-- The window layout is fixed; panels cannot be moved or resized.
+- (1.1.0) Window sections can be resized by dragging their borders, and the sizes are remembered; sections still cannot be moved, docked or hidden. (Until 1.0 the layout was fixed.)
+- (1.1.0) Every command is in the menus; effects are configured in popups that do not block editing, opened from the Effects section or from markers on the timeline.
 - Installers are not code-signed in 0.2.0; signing is postponed, not rejected. The README explains the one-time first-launch steps.
 - (0.3.0) videolore detects the computer at its first start and picks recommended settings; installers do no tuning. Everything can be changed in Settings, and "Use recommended settings" restores the recommendation.
 - (0.3.0) Older processors get a clear message instead of a fallback speech engine; in 0.4.0 the fallback engine was dropped (not planned).
@@ -36,13 +38,16 @@ Professional editors needing multitrack video, color grading or advanced effects
 
 Topic-specific decisions are in each document.
 
-## Known limitations (0.4.0)
+## Known limitations (1.1.0)
+- Dropping files onto the window does not work in Linux Wayland sessions; File > Import media… and File > Open… work there (see [Window, menus and effects](business-ui.md)).
 - Subtitles in scripts other than Latin, Greek and Cyrillic are not fully supported (see [Subtitles](business-subtitles.md)).
 - x86-64 processors without AVX2 (from before about 2013) cannot generate subtitles automatically; videolore shows a clear message instead of crashing, and lines can still be added by hand (see [Settings, performance and safety](business-performance.md)).
 - Installers are unsigned, so each operating system shows a warning on first launch (see [Installation](business-install.md)).
 - On Windows and Linux, double-clicking a project while videolore is open opens a second window.
 - Projects saved by 0.2.0 cannot be opened by 0.1.x versions.
-- On macOS the standard Hide and Minimize menu items are not available.
+- On macOS the standard Hide and Minimize menu items are not available, and the menu bar is inside the window rather than at the top of the screen.
+- Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
+- Ctrl/Cmd+V pastes clips only when the system clipboard holds text.
 - Faster export needs NVIDIA graphics driver 610 or newer; on Fedora, AMD and Intel hardware export needs the RPM Fusion "freeworld" video drivers; on Linux, Intel and AMD hardware with the bundled ffmpeg needs system libva 2.21 or newer (Ubuntu 24.04 has 2.20, so it is skipped there); on integrated Intel graphics Faster was measured to be sometimes slower than Best quality; on computers with several graphics cards NVIDIA is always preferred; some combinations are not yet verified on real hardware. In every case a problem with the hardware leads to the normal method automatically, so the exported file is still correct (see [Export](business-export.md)).
 
 ## Out of scope
@@ -51,7 +56,7 @@ Topic-specific decisions are in each document.
 - Accounts, cloud storage, sync, collaboration, direct upload to social networks.
 - Mobile versions.
 - Export settings dialog.
-- Recent-projects list, autosave, crash recovery, automatic updates.
+- Autosave, crash recovery, automatic updates.
 - Code signing and notarisation (postponed).
 - Telemetry, online services for detecting the computer, performance settings per project.
 

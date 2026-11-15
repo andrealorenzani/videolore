@@ -62,3 +62,11 @@
 - 0.4.3 links: 0 dead links, 0 bad anchors, all sub-docs linked; no forbidden words in README (only GitHub workflow URLs)
 - open: README Installation still says "Each release has one installer per system" (true from 0.4.3 on if installer job passes; limitation line covers 0.4.2)
 - open: docs/workflow.md and .claude/ untouched in 0.4.3; no commit made by documenter (caller commits)
+- 1.1.0 dev (2026-11-15 17:52 +0000): version set via scripts/version.sh set 1.1.0 (consistent); coverage badge 96.1 (PE), features 81/81; changelog 1.1.0 entry (Added/Changed/Removed/Quality/Known limitations; no Fixed: none in plan)
+- 1.1.0 README: usage rewritten (menu bar, toolbar, 4 sections, status bar, F1); shortcut table extended; known limitations +Wayland DnD, +1.0 settings downgrade, +Ctrl/Cmd+V clipboard, +window/popup memory, +macOS menu inside window; latest changes 1.1.0, 0.4.3, 0.4.2 (0.4.0 dropped); poem replaced (10 verses, 1-9 end with backslash), last poem date 2026-11-15
+- 1.1.0 roadmap: new groups Effects and Interface; Editing gets marker/clip-edge drags; macOS Hide/Minimize item merged with native menu bar item; Not planned += 1.0 settings downgrade (accepted)
+- 1.1.0 docs fixes (other owners): business-ui.md + business.md known limitations gained 1.0 downgrade and Ctrl/Cmd+V bullets (PM docs; list in report)
+- 1.1.0 links: 0 dead links, 0 bad anchors, all sub-docs linked from indexes
+- open: docs/business.md line "Projects saved by 0.2.0 cannot be opened by 0.1.x" (fine, historic)
+- open: docs/business-editing.md Known limitations still say Hide/Minimize only (macOS) — consistent with README
+- open: docs/workflow.md and .claude/ untouched in 1.1.0; no commit made by documenter (caller commits)

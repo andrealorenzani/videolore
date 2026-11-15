@@ -19,7 +19,8 @@ use crate::project::{self, Edit, Project, ProjectDoc};
 use crate::proxy::{self, ProxyCache, ProxyEvent, ProxyTask, ProxyWorker};
 use crate::render;
 use crate::settings::{
-    self, Budget, Effort, ExportChoice, PreviewQuality, Settings, StartNotice, SubtitleQuality,
+    self, Budget, Effort, ExportChoice, PreviewQuality, SavedLayout, Settings, StartNotice,
+    SubtitleQuality,
 };
 use crate::stt::{
     self, ModelEvent, ModelFetcher, ModelSource, ModelStore, SttEvent, SttHandle, SttJob,
@@ -115,6 +116,119 @@ pub enum Modal {
     /// Confirmation before removing the downloaded speech recognition files.
     ConfirmRemoveSpeechFiles,
     About,
+}
+
+/// A floating window of the editor. None of them blocks editing or playback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Popup {
+    Settings,
+    Fades,
+    Subtitles,
+    Volume,
+    ClipDetails,
+    /// The settings of one fade or one subtitle line ([`Popups::instance`]).
+    Instance,
+    Shortcuts,
+}
+
+impl Popup {
+    pub const ALL: [Popup; 7] = [
+        Popup::Settings,
+        Popup::Fades,
+        Popup::Subtitles,
+        Popup::Volume,
+        Popup::ClipDetails,
+        Popup::Instance,
+        Popup::Shortcuts,
+    ];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Popup::Settings => settings::SETTINGS_TITLE,
+            Popup::Fades => "Fade through black",
+            Popup::Subtitles => "Subtitles",
+            Popup::Volume => "Volume",
+            Popup::ClipDetails => "Clip details",
+            Popup::Instance => "Selected effect",
+            Popup::Shortcuts => "Keyboard shortcuts",
+        }
+    }
+}
+
+/// One fade or one subtitle line on the timeline (what a marker stands for).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Instance {
+    /// The fade between these two adjacent clips.
+    Fade(ClipId, ClipId),
+    /// A subtitle line as shown in this clip.
+    Line(LineId, ClipId),
+}
+
+/// The open floating windows, most recently opened last.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Popups {
+    pub open: Vec<Popup>,
+    /// The fade or line shown by [`Popup::Instance`].
+    pub instance: Option<Instance>,
+    /// Overlapping markers the user must choose from.
+    pub chooser: Option<Vec<Instance>>,
+}
+
+impl Popups {
+    pub fn is_open(&self, p: Popup) -> bool {
+        self.open.contains(&p)
+    }
+
+    /// Opens `p` (or brings it forward when already open).
+    pub fn show(&mut self, p: Popup) {
+        self.open.retain(|x| *x != p);
+        self.open.push(p);
+    }
+
+    pub fn close(&mut self, p: Popup) {
+        self.open.retain(|x| *x != p);
+        if p == Popup::Instance {
+            self.instance = None;
+        }
+    }
+}
+
+/// Background work shown in the status bar.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Job {
+    pub label: String,
+    /// 0..=1 when known.
+    pub progress: Option<f32>,
+    /// The command that stops it, when it can be stopped.
+    pub cancel: Option<Command>,
+}
+
+/// What dropping files on the window does (REQ-081).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DropPlan {
+    Nothing,
+    /// Open this project; the number of other dropped files that are ignored.
+    Open(PathBuf, usize),
+    /// Import these files as media.
+    Import(Vec<PathBuf>),
+}
+
+/// The first dropped project wins (everything else is ignored); without a project every
+/// file is imported.
+pub fn drop_plan(paths: Vec<PathBuf>) -> DropPlan {
+    let is_project = |p: &PathBuf| {
+        p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case(project::EXTENSION))
+    };
+    match paths.iter().position(is_project) {
+        Some(i) => {
+            let ignored = paths.len() - 1;
+            DropPlan::Open(paths[i].clone(), ignored)
+        }
+        None if paths.is_empty() => DropPlan::Nothing,
+        None => DropPlan::Import(paths),
+    }
 }
 
 /// Every user operation.
@@ -229,6 +343,73 @@ pub enum Command {
     CloseModal,
     RemoveDesktopIntegration,
     DismissNotice,
+    OpenPopup(Popup),
+    ClosePopup(Popup),
+    /// Selects a fade or line, moves the playhead to its start and opens its popup.
+    OpenInstance(Instance),
+    /// Shows the chooser of overlapping markers (an empty list closes it).
+    ChooseInstance(Vec<Instance>),
+    /// Adds (`on`) or removes the fade between two adjacent clips.
+    SetFade {
+        left: ClipId,
+        right: ClipId,
+        on: bool,
+    },
+    /// Removes every fade (one undo step).
+    RemoveAllFades,
+    /// Plays one subtitle line and stops at its end.
+    PlayLine(LineId),
+    /// Multiplies the timeline zoom.
+    ZoomBy(f32),
+    /// Fits the whole project in the timeline.
+    ZoomFit,
+    /// New section sizes (saved in the settings).
+    SetLayout(SavedLayout),
+    /// Back to the default section sizes.
+    ResetLayout,
+    OpenRecent(PathBuf),
+    ClearRecent,
+    /// Files dropped on the window.
+    DropFiles(Vec<PathBuf>),
+}
+
+/// Zoom step of Zoom in / Zoom out.
+pub const ZOOM_STEP: f32 = std::f32::consts::SQRT_2;
+
+impl Command {
+    /// The name of the undo step this command makes, if it edits the project.
+    pub fn undo_name(&self) -> &'static str {
+        match self {
+            Command::Append(_) => "Add to timeline",
+            Command::Split => "Split",
+            Command::Cut => "Cut",
+            Command::Delete => "Delete",
+            Command::Paste => "Paste",
+            Command::Merge => "Merge",
+            Command::SetTrim { .. } => "Trim",
+            Command::MoveClip { .. } => "Move clip",
+            Command::MoveLeft => "Move left",
+            Command::MoveRight => "Move right",
+            Command::SetFade { on: true, .. } => "Add fade",
+            Command::SetFade { on: false, .. } => "Remove fade",
+            Command::ToggleFade(_) | Command::ToggleFadeAtPlayhead => "Fade",
+            Command::RemoveAllFades => "Remove all fades",
+            Command::PlaceMusic(_) => "Add music",
+            Command::MoveMusic { .. } => "Move music",
+            Command::TrimMusic { .. } => "Trim music",
+            Command::SplitMusic => "Split music",
+            Command::DeleteMusic => "Delete music",
+            Command::SetMix(_) => "Volume",
+            Command::GenerateSubtitles | Command::ConfirmRegenerate => "Generate subtitles",
+            Command::AddSubtitle => "Add subtitle line",
+            Command::DeleteSubtitle(_) => "Delete subtitle line",
+            Command::SetSubtitleText(..) => "Edit subtitle text",
+            Command::RetimeSubtitle { .. } => "Change subtitle timing",
+            Command::SetPreset(_) => "Subtitle style",
+            Command::SetLanguage(_) => "Subtitle language",
+            _ => "Edit",
+        }
+    }
 }
 
 /// Native file dialogs (faked in tests).
@@ -312,9 +493,11 @@ pub struct AppState {
     pub ffmpeg_checking: bool,
     ffmpeg_check: Option<Receiver<Result<FfmpegInfo, String>>>,
     pub settings: Settings,
-    settings_path: Option<PathBuf>,
-    /// The Settings window is open.
-    pub settings_open: bool,
+    pub(crate) settings_path: Option<PathBuf>,
+    /// The floating windows (Settings, effect popups, clip details, shortcuts).
+    pub popups: Popups,
+    /// "Play this line" stops playback here.
+    stop_at: Option<Micros>,
     /// What "Use recommended settings" changed (shown in the Settings window).
     pub settings_summary: Vec<String>,
     /// What background work may use ("How hard videolore works").
@@ -515,7 +698,8 @@ impl AppState {
             ffmpeg_check: None,
             settings,
             settings_path: None,
-            settings_open: false,
+            popups: Popups::default(),
+            stop_at: None,
             settings_summary: Vec::new(),
             budget,
             detect: test_machine,
@@ -886,6 +1070,19 @@ impl AppState {
                 settings::availability(&self.fingerprint())[q.index()].is_none()
             }
             Command::RemoveDesktopIntegration => self.desktop_integrated,
+            Command::OpenInstance(i) => self.instance_start(*i).is_some(),
+            Command::SetFade { left, right, .. } => self.boundary_of(*left, *right).is_some(),
+            Command::RemoveAllFades => !tl.fades.is_empty(),
+            Command::PlayLine(id) => {
+                has_ff
+                    && self
+                        .project
+                        .subtitles
+                        .project(tl)
+                        .iter()
+                        .any(|l| l.line == *id)
+            }
+            Command::ClearRecent => !self.settings.recent.is_empty(),
             _ => true,
         }
     }
@@ -935,6 +1132,7 @@ impl AppState {
     }
 
     fn dispatch_inner(&mut self, cmd: Command, now: Instant) -> Result<(), String> {
+        let label = cmd.undo_name();
         match cmd {
             Command::NewProject => self.guarded(PendingAction::New, now),
             Command::PickOpenProject => self.guarded(PendingAction::Open(None), now),
@@ -981,7 +1179,9 @@ impl AppState {
                     .usable(id)
                     .cloned()
                     .ok_or("select a file that is ready in the media list first")?;
-                self.edit(now, |e| e.timeline.append(&m).map(|_| ()).map_err(err))
+                self.edit(now, label, |e| {
+                    e.timeline.append(&m).map(|_| ()).map_err(err)
+                })
             }
             Command::SelectClip(id) => {
                 self.selected_clip = id;
@@ -990,7 +1190,9 @@ impl AppState {
             Command::Split => {
                 let min = self.frame_len();
                 let at = self.playhead;
-                self.edit(now, |e| e.timeline.split(at, min).map(|_| ()).map_err(err))
+                self.edit(now, label, |e| {
+                    e.timeline.split(at, min).map(|_| ()).map_err(err)
+                })
             }
             Command::Copy => {
                 let id = self
@@ -1005,7 +1207,9 @@ impl AppState {
                     .target_clip()
                     .ok_or(EditError::NothingSelected.to_string())?;
                 let clip = self.project.timeline.get(id).copied();
-                self.edit(now, |e| e.timeline.remove(id).map(|_| ()).map_err(err))?;
+                self.edit(now, label, |e| {
+                    e.timeline.remove(id).map(|_| ()).map_err(err)
+                })?;
                 if cmd == Command::Cut {
                     self.clipboard = clip;
                 }
@@ -1022,7 +1226,7 @@ impl AppState {
                 let min = self.frame_len();
                 let at = self.playhead;
                 let mut new_id = None;
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     new_id = Some(e.timeline.insert_at(&clip, at, min).map_err(err)?);
                     Ok(())
                 })?;
@@ -1033,7 +1237,7 @@ impl AppState {
                 let id = self
                     .target_clip()
                     .ok_or(EditError::NothingSelected.to_string())?;
-                self.edit(now, |e| e.timeline.merge(id).map_err(err))
+                self.edit(now, label, |e| e.timeline.merge(id).map_err(err))
             }
             Command::SetTrim {
                 clip,
@@ -1047,14 +1251,14 @@ impl AppState {
                     .ok_or(EditError::NoSuchClip.to_string())?;
                 let dur = self.duration_of(c.media)?;
                 let min = self.frame_len();
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     e.timeline
                         .trim(clip, src_in, src_out, dur, min)
                         .map_err(err)
                 })
             }
             Command::MoveClip { clip, to } => {
-                self.edit(now, |e| e.timeline.move_to(clip, to).map_err(err))
+                self.edit(now, label, |e| e.timeline.move_to(clip, to).map_err(err))
             }
             Command::MoveLeft | Command::MoveRight => {
                 let id = self
@@ -1071,10 +1275,13 @@ impl AppState {
                     i + 1
                 };
                 self.selected_clip = Some(id);
-                self.edit(now, |e| e.timeline.move_to(id, to).map_err(err))
+                self.edit(now, label, |e| e.timeline.move_to(id, to).map_err(err))
             }
             Command::ToggleFade(b) => {
-                self.edit(now, |e| e.timeline.toggle_fade(b).map(|_| ()).map_err(err))
+                let label = fade_label(self.project.timeline.has_fade(b));
+                self.edit(now, label, |e| {
+                    e.timeline.toggle_fade(b).map(|_| ()).map_err(err)
+                })
             }
             Command::ToggleFadeAtPlayhead => {
                 let (b, _) = self
@@ -1082,7 +1289,10 @@ impl AppState {
                     .timeline
                     .nearest_boundary(self.playhead)
                     .ok_or(EditError::NoSuchBoundary.to_string())?;
-                self.edit(now, |e| e.timeline.toggle_fade(b).map(|_| ()).map_err(err))
+                let label = fade_label(self.project.timeline.has_fade(b));
+                self.edit(now, label, |e| {
+                    e.timeline.toggle_fade(b).map(|_| ()).map_err(err)
+                })
             }
             Command::PlaceMusic(id) => {
                 let m = self
@@ -1091,7 +1301,7 @@ impl AppState {
                     .ok_or("select an audio file that is ready in the media list first")?;
                 let (at, min) = (self.playhead, self.frame_len());
                 let mut placed = None;
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     placed = Some(e.music.place(&m, at, min).map_err(err)?);
                     Ok(())
                 })?;
@@ -1103,7 +1313,7 @@ impl AppState {
                 Ok(())
             }
             Command::MoveMusic { clip, start } => {
-                self.edit(now, |e| e.music.move_to(clip, start).map_err(err))
+                self.edit(now, label, |e| e.music.move_to(clip, start).map_err(err))
             }
             Command::TrimMusic {
                 clip,
@@ -1113,17 +1323,19 @@ impl AppState {
                 let c = self.project.music.get(clip).ok_or("no such music clip")?;
                 let dur = self.duration_of(c.media)?;
                 let min = self.frame_len();
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     e.music.trim(clip, src_in, src_out, dur, min).map_err(err)
                 })
             }
             Command::SplitMusic => {
                 let (at, min) = (self.playhead, self.frame_len());
-                self.edit(now, |e| e.music.split(at, min).map(|_| ()).map_err(err))
+                self.edit(now, label, |e| {
+                    e.music.split(at, min).map(|_| ()).map_err(err)
+                })
             }
             Command::DeleteMusic => {
                 let id = self.selected_music.ok_or("select a music clip first")?;
-                self.edit(now, |e| e.music.remove(id).map(|_| ()).map_err(err))?;
+                self.edit(now, label, |e| e.music.remove(id).map(|_| ()).map_err(err))?;
                 self.selected_music = None;
                 Ok(())
             }
@@ -1133,7 +1345,7 @@ impl AppState {
                 if mix == self.project.mix {
                     return Ok(());
                 }
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     e.mix = mix;
                     Ok(())
                 })
@@ -1212,7 +1424,7 @@ impl AppState {
             Command::AddSubtitle => {
                 let (at, min) = (self.playhead, self.frame_len());
                 let mut added = None;
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     added = Some(
                         e.subtitles
                             .add_at(&e.timeline, at, "New subtitle", min)
@@ -1224,7 +1436,7 @@ impl AppState {
                 Ok(())
             }
             Command::DeleteSubtitle(id) => {
-                self.edit(now, |e| e.subtitles.delete(id).map_err(err))?;
+                self.edit(now, label, |e| e.subtitles.delete(id).map_err(err))?;
                 if self.selected_line == Some(id) {
                     self.selected_line = None;
                 }
@@ -1239,7 +1451,7 @@ impl AppState {
                 if cur.text == crate::subtitles::clean_text(&text) {
                     return Ok(());
                 }
-                self.edit(now, |e| e.subtitles.set_text(id, &text).map_err(err))
+                self.edit(now, label, |e| e.subtitles.set_text(id, &text).map_err(err))
             }
             Command::RetimeSubtitle {
                 line,
@@ -1248,7 +1460,7 @@ impl AppState {
                 end,
             } => {
                 let min = self.frame_len();
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     e.subtitles
                         .retime(line, &e.timeline, clip, start, end, min)
                         .map_err(err)
@@ -1262,7 +1474,7 @@ impl AppState {
                 if p == self.project.subtitles.preset {
                     return Ok(());
                 }
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     e.subtitles.preset = p;
                     Ok(())
                 })
@@ -1278,21 +1490,15 @@ impl AppState {
                 {
                     return Err(format!("'{l}' is not a language code"));
                 }
-                self.edit(now, |e| {
+                self.edit(now, label, |e| {
                     e.subtitles.language_overridden = lang.is_some();
                     e.subtitles.language = lang;
                     Ok(())
                 })
             }
-            Command::OpenSettings => {
-                self.settings_open = true;
-                self.settings_summary.clear();
-                self.refresh_speech_files_size();
-                Ok(())
-            }
+            Command::OpenSettings => self.dispatch_inner(Command::OpenPopup(Popup::Settings), now),
             Command::CloseSettings => {
-                self.settings_open = false;
-                Ok(())
+                self.dispatch_inner(Command::ClosePopup(Popup::Settings), now)
             }
             Command::SetPreviewQuality(q) => {
                 self.settings.preview_quality = q;
@@ -1394,6 +1600,7 @@ impl AppState {
                 Ok(())
             }
             Command::PlayPause => {
+                self.stop_at = None;
                 if self.preview.is_playing() {
                     self.preview.pause(now);
                     self.playhead = self.preview.position(now);
@@ -1469,7 +1676,298 @@ impl AppState {
                 self.notice = None;
                 Ok(())
             }
+            Command::OpenPopup(p) => {
+                if p == Popup::Settings {
+                    self.settings_summary.clear();
+                    self.refresh_speech_files_size();
+                }
+                self.popups.show(p);
+                Ok(())
+            }
+            Command::ClosePopup(p) => {
+                self.popups.close(p);
+                Ok(())
+            }
+            Command::OpenInstance(i) => {
+                let t = self
+                    .instance_start(i)
+                    .ok_or("that fade or subtitle line no longer exists")?;
+                if let Instance::Line(id, _) = i {
+                    self.selected_line = Some(id);
+                }
+                self.popups.instance = Some(i);
+                self.popups.chooser = None;
+                self.popups.show(Popup::Instance);
+                self.seek(t, now);
+                Ok(())
+            }
+            Command::ChooseInstance(list) => {
+                self.popups.chooser = (!list.is_empty()).then_some(list);
+                Ok(())
+            }
+            Command::SetFade { left, right, on } => {
+                let b = self
+                    .boundary_of(left, right)
+                    .ok_or(EditError::NoSuchBoundary.to_string())?;
+                if self.project.timeline.has_fade(b) == on {
+                    return Ok(());
+                }
+                self.edit(now, label, |e| {
+                    e.timeline.toggle_fade(b).map(|_| ()).map_err(err)
+                })
+            }
+            Command::RemoveAllFades => {
+                if self.project.timeline.fades.is_empty() {
+                    return Ok(());
+                }
+                self.edit(now, label, |e| {
+                    e.timeline.fades.clear();
+                    Ok(())
+                })
+            }
+            Command::PlayLine(id) => {
+                let line = self
+                    .project
+                    .subtitles
+                    .project(&self.project.timeline)
+                    .into_iter()
+                    .find(|l| l.line == id)
+                    .ok_or("no such subtitle line")?;
+                if self.preview.is_playing() {
+                    self.preview.pause(now);
+                }
+                self.selected_line = Some(id);
+                self.seek(line.start, now);
+                self.preview.play(&self.project, self.playhead, now)?;
+                self.stop_at = Some(line.end);
+                Ok(())
+            }
+            Command::ZoomBy(f) => {
+                if f.is_finite() && f > 0.0 {
+                    self.zoom = (self.zoom * f).max(0.0);
+                }
+                Ok(())
+            }
+            Command::ZoomFit => {
+                self.zoom = 0.0;
+                Ok(())
+            }
+            Command::SetLayout(l) => {
+                if !l.is_valid() {
+                    return Err("those section sizes are not valid".into());
+                }
+                self.settings.layout = Some(l);
+                self.save_settings()
+            }
+            Command::ResetLayout => {
+                self.settings.layout = None;
+                self.save_settings()
+            }
+            Command::OpenRecent(p) => {
+                if !p.is_file() {
+                    self.settings.recent.retain(|x| *x != p);
+                    self.save_settings()?;
+                    self.notice = Some(format!(
+                        "The project \"{}\" could not be found ({}). It was removed from the \
+                         recent projects.",
+                        media::display_name(&p),
+                        media::sanitize_for_display(&p.to_string_lossy())
+                    ));
+                    return Ok(());
+                }
+                self.guarded(PendingAction::Open(Some(p)), now)
+            }
+            Command::ClearRecent => {
+                self.settings.recent.clear();
+                self.save_settings()
+            }
+            Command::DropFiles(paths) => {
+                if self.modal.is_some() || self.notice.is_some() {
+                    self.status = "Close the open dialog before dropping files".into();
+                    return Ok(());
+                }
+                match drop_plan(paths) {
+                    DropPlan::Nothing => Ok(()),
+                    DropPlan::Import(files) => self.import(files),
+                    DropPlan::Open(p, ignored) => {
+                        let r = self.guarded(PendingAction::Open(Some(p)), now);
+                        if ignored > 0 && r.is_ok() {
+                            self.status = format!(
+                                "Only the first dropped project is opened; {ignored} other \
+                                 file(s) ignored"
+                            );
+                        }
+                        r
+                    }
+                }
+            }
         }
+    }
+
+    /// Index of the boundary between `left` and `right`, when they are adjacent.
+    pub fn boundary_of(&self, left: ClipId, right: ClipId) -> Option<usize> {
+        self.project
+            .timeline
+            .clips
+            .windows(2)
+            .position(|w| w[0].id == left && w[1].id == right)
+    }
+
+    /// Where a fade or line starts on the timeline (`None` when it no longer exists).
+    pub fn instance_start(&self, i: Instance) -> Option<Micros> {
+        let tl = &self.project.timeline;
+        match i {
+            Instance::Fade(l, r) => {
+                let b = self.boundary_of(l, r).filter(|b| tl.has_fade(*b))?;
+                Some(tl.start_of(b + 1))
+            }
+            Instance::Line(id, clip) => self
+                .project
+                .subtitles
+                .project(tl)
+                .into_iter()
+                .find(|x| x.line == id && x.clip == clip)
+                .map(|x| x.start),
+        }
+    }
+
+    /// "Undo Split", or "Undo" when there is nothing to undo.
+    pub fn undo_text(&self) -> String {
+        match self.history.undo_label() {
+            Some(l) => format!("Undo {l}"),
+            None => "Undo".into(),
+        }
+    }
+
+    /// "Redo Split", or "Redo" when there is nothing to redo.
+    pub fn redo_text(&self) -> String {
+        match self.history.redo_label() {
+            Some(l) => format!("Redo {l}"),
+            None => "Redo".into(),
+        }
+    }
+
+    /// Remembers a project in the recent list (saved when it changed).
+    fn remember_recent(&mut self, path: &Path) {
+        let abs = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+        if settings::push_recent(&mut self.settings.recent, &abs) {
+            let _ = self.save_settings();
+        }
+    }
+
+    /// Background work for the status bar, with progress and the command that stops it.
+    pub fn background_jobs(&self) -> Vec<Job> {
+        let mut jobs = Vec::new();
+        let analysing = self
+            .project
+            .media
+            .iter()
+            .filter(|m| m.status == MediaStatus::Analysing)
+            .count();
+        if analysing > 0 {
+            jobs.push(Job {
+                label: format!("Analysing {analysing} file(s)"),
+                progress: None,
+                cancel: None,
+            });
+        }
+        let copies: Vec<f32> = self
+            .project
+            .media
+            .iter()
+            .filter_map(|m| match m.proxy {
+                ProxyState::Queued => Some(0.0),
+                ProxyState::Generating(p) => Some(f32::from(p.min(100)) / 100.0),
+                _ => None,
+            })
+            .collect();
+        if !copies.is_empty() {
+            jobs.push(Job {
+                label: format!("Preview copies: {}", copies.len()),
+                progress: Some(copies.iter().sum::<f32>() / copies.len() as f32),
+                cancel: None,
+            });
+        }
+        if let Some(p) = self.model_progress {
+            jobs.push(Job {
+                label: "Downloading the speech recognition file".into(),
+                progress: Some(p),
+                cancel: Some(Command::CancelSubtitles),
+            });
+        }
+        if let Some(p) = self.stt_progress {
+            jobs.push(Job {
+                label: "Generating subtitles".into(),
+                progress: Some(p),
+                cancel: Some(Command::CancelSubtitles),
+            });
+        }
+        if self.is_exporting() {
+            let s = &self.export_status;
+            let mode = match s.stream_copy {
+                Some(true) => "Exporting (fast, no re-encoding)",
+                Some(false) => "Exporting (re-encoding)",
+                None => "Exporting (preparing)",
+            };
+            jobs.push(Job {
+                label: mode.into(),
+                progress: Some(s.progress),
+                cancel: Some(Command::CancelExport),
+            });
+        }
+        jobs
+    }
+
+    /// Why a command cannot run now (shown on greyed-out controls); `None` when it can.
+    pub fn disabled_reason(&self, cmd: &Command) -> Option<&'static str> {
+        if self.is_enabled(cmd) {
+            return None;
+        }
+        let tl = &self.project.timeline;
+        let no_ffmpeg = self.ffmpeg.is_err();
+        Some(match cmd {
+            Command::Undo => "Nothing to undo",
+            Command::Redo => "Nothing to redo",
+            Command::Split | Command::AddSubtitle => "Move the playhead over a clip first",
+            Command::Cut | Command::Copy | Command::Delete => "Select a clip first",
+            Command::Merge if self.target_clip().is_none() => "Select a clip first",
+            Command::Merge => "Only two parts of the same clip, next to each other, can be merged",
+            Command::MoveLeft | Command::MoveRight if self.target_clip().is_none() => {
+                "Select a clip first"
+            }
+            Command::MoveLeft => "Already the first clip",
+            Command::MoveRight => "Already the last clip",
+            Command::Paste => "Copy or cut a clip first",
+            Command::ToggleFadeAtPlayhead => "Fades need at least two clips",
+            Command::RemoveAllFades => "There are no fades",
+            Command::Append(_) => "Select a video that is ready in the media list first",
+            Command::PlaceMusic(_) => "Select an audio file that is ready in the media list first",
+            Command::SplitMusic => "Move the playhead over a music clip first",
+            Command::DeleteMusic => "Select a music clip first",
+            Command::CancelExport => "No export is running",
+            Command::CancelSubtitles => "Subtitles are not being generated",
+            Command::ClearRecent => "The list is empty",
+            _ if no_ffmpeg => "ffmpeg is not ready",
+            Command::PickExport | Command::Export(_) if self.is_exporting() => {
+                "An export is already running"
+            }
+            Command::GenerateSubtitles if !stt::available() => {
+                "Subtitle generation is not available in this build"
+            }
+            Command::GenerateSubtitles if self.is_generating() => {
+                "Subtitles are already being generated"
+            }
+            Command::PickExport
+            | Command::Export(_)
+            | Command::GenerateSubtitles
+            | Command::PlayPause
+            | Command::PlayLine(_)
+                if tl.clips.is_empty() =>
+            {
+                "Add clips to the timeline first"
+            }
+            _ => "Not available right now",
+        })
     }
 
     fn duration_of(&self, id: MediaId) -> Result<Micros, String> {
@@ -1511,6 +2009,7 @@ impl AppState {
 
     fn save_to(&mut self, path: PathBuf) -> Result<(), String> {
         project::save(&self.project, &path).map_err(|e| e.to_string())?;
+        self.remember_recent(&path);
         self.project_path = Some(path);
         self.saved = self.project.doc();
         self.status = "Project saved".into();
@@ -1519,6 +2018,7 @@ impl AppState {
 
     fn open_now(&mut self, path: PathBuf, now: Instant) -> Result<(), String> {
         let (p, missing) = project::load(&path).map_err(|e| e.to_string())?;
+        self.remember_recent(&path);
         self.load_project(p, Some(path), now);
         if !missing.is_empty() {
             self.notice = Some(format!(
@@ -1563,6 +2063,10 @@ impl AppState {
         self.clipboard = None;
         self.frame = None;
         self.zoom = 0.0;
+        self.stop_at = None;
+        self.popups.instance = None;
+        self.popups.chooser = None;
+        self.popups.close(Popup::Instance);
         self.close_allowed = false;
         let ids: Vec<MediaId> = self.project.media.iter().map(|m| m.id).collect();
         for id in ids {
@@ -1778,12 +2282,13 @@ impl AppState {
     fn edit(
         &mut self,
         now: Instant,
+        label: &'static str,
         f: impl FnOnce(&mut Edit) -> Result<(), String>,
     ) -> Result<(), String> {
         let before = self.project.edit();
         let mut e = before.clone();
         f(&mut e)?;
-        self.history.record(before);
+        self.history.record(before, label);
         self.replace_edit(e, now);
         Ok(())
     }
@@ -1883,6 +2388,15 @@ impl AppState {
         }
         if self.preview.is_playing() {
             self.playhead = self.preview.position(now);
+            if let Some(end) = self.stop_at
+                && self.playhead >= end
+            {
+                // "Play this line" reached the end of the line
+                self.stop_at = None;
+                self.preview.pause(now);
+                self.seek(end, now);
+                self.refresh_still(now);
+            }
         } else if self.preview.position(now) != self.playhead
             && self.preview.position(now) == self.project.timeline.duration()
         {
@@ -2004,7 +2518,7 @@ impl AppState {
                     self.stt = None;
                     self.stt_progress = None;
                     let n = lines.len();
-                    let _ = self.edit(now, |e| {
+                    let _ = self.edit(now, "Generate subtitles", |e| {
                         e.subtitles.replace_all(lines, language);
                         Ok(())
                     });
@@ -2099,6 +2613,11 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+/// Undo name of toggling a fade that is (`true`) or is not there.
+fn fade_label(present: bool) -> &'static str {
+    if present { "Remove fade" } else { "Add fade" }
+}
+
 fn preview_config(
     ffmpeg: &Result<FfmpegInfo, String>,
     sched: &Arc<Scheduler>,
@@ -2118,3 +2637,5 @@ mod hw_tests;
 mod settings_tests;
 #[cfg(test)]
 pub(crate) mod tests;
+#[cfg(test)]
+mod ux_tests;

@@ -32,6 +32,8 @@ Exact versions are in `Cargo.toml` and `Cargo.lock`, which are the source of tru
 
 **0.4.0.** Hardware export adds no crate. The hardware encoders and the VMAF quality measurement used for manual checks are already in the bundled `ffmpeg` builds; graphics drivers and their libraries (libva, the NVIDIA and Intel runtimes) come from the user's system and are not bundled. See [hardware export](architecture-hardware-export.md).
 
+**1.1.0.** The new interface adds no crate. It uses features already in egui 0.37 (menu bar, popups, windows, scroll areas, shortcut display, and the accessibility tree for the interface tests). Drag and drop comes from eframe through winit 0.30, which does not report dropped files in native Linux Wayland sessions. Docking libraries (`egui_dock`, `egui_tiles`) and native menus (`muda`) were considered and not chosen. The `egui_kittest` test library (0.37) is kept as a fallback for the interface tests, not added. See [user interface](architecture-ui.md).
+
 Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDLA-Permissive-2.0). Both are listed in the notices and allowed by the CI licence check.
 
 ## Bundled with the installers (not Rust)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! The Settings window (opened from the command bar) and the message banner.
+//! The Settings window (Edit > Settings…, Ctrl/Cmd+,) and the message banner.
 //!
 //! The main section uses only plain words (see [`crate::settings::main_texts`]); technical
 //! details (ffmpeg, speech engine files, processor, cores) are in the collapsed
@@ -13,8 +13,8 @@ use crate::hwenc::Codec;
 use crate::settings::{
     self, ADVANCED_TITLE, CLEAR_PREVIEW_COPIES, CLOSE, CUSTOM_STATUS, EFFORT_TITLE, EXPORT_TITLE,
     Effort, ExportChoice, NO_HARDWARE_NOTE, PREVIEW_COPIES, PREVIEW_TITLE, PreviewQuality,
-    RECOMMENDED_STATUS, REMOVE_SPEECH_FILES, SETTINGS_TITLE, SLOWER_NOTE, SPEECH_FILES,
-    SUBTITLE_TITLE, SubtitleQuality, USE_RECOMMENDED,
+    RECOMMENDED_STATUS, REMOVE_SPEECH_FILES, SLOWER_NOTE, SPEECH_FILES, SUBTITLE_TITLE,
+    SubtitleQuality, USE_RECOMMENDED,
 };
 use eframe::egui::{self, Align2, Color32, Context, RichText, Ui};
 
@@ -287,34 +287,13 @@ fn advanced_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         });
 }
 
-/// The Settings window, when open.
-pub fn settings_window(ctx: &Context, app: &AppState, cmds: &mut Vec<Command>) {
-    if !app.settings_open {
-        return;
-    }
-    let mut open = true;
-    egui::Window::new(SETTINGS_TITLE)
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .default_width(460.0)
-        .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(ctx, |ui| {
-            let h = (ctx.content_rect().height() * 0.75).max(200.0);
-            egui::ScrollArea::vertical()
-                .id_salt("settings-scroll")
-                .max_height(h)
-                .show(ui, |ui| {
-                    main_section(ui, app, cmds);
-                    ui.separator();
-                    advanced_section(ui, app, cmds);
-                    ui.separator();
-                    if ui.button(CLOSE).clicked() {
-                        cmds.push(Command::CloseSettings);
-                    }
-                });
-        });
-    if !open {
+/// The content of the Settings window (a popup, see [`super::popups`]).
+pub fn settings_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+    main_section(ui, app, cmds);
+    ui.separator();
+    advanced_section(ui, app, cmds);
+    ui.separator();
+    if ui.button(CLOSE).clicked() {
         cmds.push(Command::CloseSettings);
     }
 }

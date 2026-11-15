@@ -3,7 +3,9 @@
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
 ## State
-- Target version 0.4.0. Next free ID: REQ-066. Never reuse IDs. Quality goals use QG-NN (next QG-06), no covers: tests.
+- Target version 1.1.0. Next free ID: REQ-082. Never reuse IDs. Quality goals use QG-NN (next QG-06), no covers: tests.
+- impl in 1.1.0: ALL 001-081. Nothing planned. 024+025 reworded, 066-081 new (UI/UX restructuring), all marked implemented (PE implements in parallel, must add `// covers:` per REQ).
+- 1.1.0 docs: new sub-doc docs/business-ui.md holds 024, 025, 066-081 (+ features, key decisions, impact list, known limitations, OOS). 024/025 MOVED out of business-editing.md (left a pointer paragraph, no REQ pattern). Index lists business-ui.md.
 - impl in 0.4.0: ALL 001-065. Nothing planned.
 - 0.4.0 = hardware export (055 reworded planned->impl, 060-065 new, QG-05) + Andrea's confirmation of 0.3.0 defaults (2026-11-14). Docs: 055, 060-065 in business-export.md "### Faster export (0.4.0)" + "## Known limitations (0.4.0)"; QG-05 in business-performance.md Quality goals; perf doc REQ-055 line replaced by cross-ref (no "(planned)" pattern left).
 - impl in 0.3.0: 001-054, 056-059. planned: 055 (hw export encoding).
@@ -12,7 +14,8 @@
 - Sub-doc business-performance.md (0.3.0): 045-059 + QG-01..04.
 - History: 0.1.3 impl 001-013, 021-025; 014-020 planned. 0.2.0 = "resolve all 0.1.3 known limitations" + projects save/open/dirty + bundled ffmpeg + perf/proxies + installers + music + subtitles.
 - Human docs split (0.2.0): docs/business.md = index (purpose, users, constraints, global decisions, global out of scope, limitations summary, links). Sub-docs:
-  - business-editing.md: 001-013, 024-029, 032-035, 038, 039 (media, projects, timeline, preview, layout, responsiveness, proxies, memory)
+  - business-editing.md: 001-013, 026-029, 032-035, 038, 039 (media, projects, timeline, preview, responsiveness, proxies, memory). 024/025 moved to business-ui.md in 1.1.0.
+  - business-ui.md (1.1.0): 024, 025, 066-081.
   - business-export.md: 021-023, 036, 037
   - business-music.md: 019, 020, 043
   - business-subtitles.md: 014-018, 044
@@ -47,8 +50,8 @@
 - 021 export w/ progress; cancel -> no partial file.
 - 022 auto output format: all identical -> same; else lowest by pixels, then fps, then bitrate; letterbox/pillarbox, never stretch.
 - 023 (reworded 0.2.0) stream copy iff all clips identical format AND no effects (fades, subtitles, music) AND every cut on keyframe; else single re-encode pass, frame-accurate. Architect: video volume != 100% or muted also forces re-encode.
-- 024 fixed 5-panel layout: top 60% (media 30% | preview 70%); middle 30% (timeline 70% | effects 30%); bottom 10% command bar incl. zoom. 0.2.0: music lane + subtitle list fit inside existing panels, proportions unchanged.
-- 025 all ops reachable from command bar/panels; shortcuts split, cut, copy, paste, undo, redo, play/pause. 0.2.0 command bar adds Save, Save As, Clear proxy cache, Generate subtitles, About/notices (+ Quit Ctrl/Cmd+Q). 0.3.0 adds Settings (Clear proxy cache kept in bar; also "Clear preview copies" in Settings).
+- 024 (REWORDED 1.1.0) menu bar / toolbar / content / status bar; content default top row 2/3 h (Media 30 | Preview 70), bottom 1/3 (Timeline 70 | Effects 30); title headers; Timeline header = zoom slider + Fit; defaults at first start + Reset layout. AC no saved layout, 800x500/1280x800/2560x1440 ±1 px, no overlap, full coverage. (Was until 1.0: fixed 5-panel 60/30/10 with command bar.)
+- 025 (REWORDED 1.1.0) every op reachable from menus; common ones also toolbar/sections/context menus; shortcuts per 071. (Was: command bar/panels + 7 shortcuts; test HELP.len()==10 changes.)
 - 026 Save writes current file; Save As asks path; Save on never-saved = Save As. AC: Save As a.vlproj, edit, Save -> updated, no dialog.
 - 027 title = project name + unsaved marker; save clears; undo back to saved state clears.
 - 028 New/Open/close window/quit when dirty -> Save/Discard/Cancel. Save then continue (failed save or cancelled Save As stops); Discard continues; Cancel unchanged. No prompt when clean.
@@ -111,13 +114,40 @@ Andrea answers 2026-11-14: S1 Best quality default everywhere, Faster opt-in, up
 - Impact applied in docs: 046 text note (4th choice, Advanced hw status), 047 text note (resets Export, clears memory, rechecks). 045/048/049/057 covered by 060/065 wording, texts not changed.
 - QG-04 no Node 20 / ubuntu-latest warnings; runners pinned (ubuntu-24.04, macos-15, windows-2025); Linux packages run on Ubuntu LTS + Fedora.
 
+### 1.1.0 UI/UX restructuring (doc: business-ui.md)
+Request (Andrea): resizable sections by dragging edges; Effects section = vertical list, click -> config popup; each effect instance marked on timeline, click marker -> instance settings; menus for settings + common actions; everything visible, scrollbars where needed; PM free to add common UI elements.
+User answer: drag&drop on Linux Wayland (winit 0.30 never emits DroppedFile) -> ship where supported (Win, macOS, Linux X11); Wayland = known limitation (README + roadmap), Import/Open remain. All PM ambiguities MINOR, defaults accepted.
+- 066 (M) 3 splitters Media|Preview, Timeline|Effects, rows; resize cursor; live; only 2 neighbours change; mins Media/Effects w 160, Preview/Timeline w 240, rows h 100; window resize keeps proportions; bars fixed content height. AC ±100 px, clamp, ±1 px after window resize, ≤200 ms/frame dragging under export+STT (056).
+- 067 (M) layout = program setting (C3), restored at start; View > Reset layout -> 024; saved layout not fitting -> mins win (applied at draw only, stored fractions unchanged); missing/damaged -> default, other settings kept, no notice; opening project never changes layout.
+- 068 (M) 800x500 any section at min: every control/text visible or scroll-reachable (sections, effect popups, clip popup, Settings, dialogs, shortcuts window); scrollbars only on overflow; Preview keeps controls+seek, picture shrinks; Timeline vertical scroll; long names "…" + tooltip. AC UI audit 50 media, 200 lines, long name.
+- 069 (M) menus File/Edit/Playback/Effects/View/Help, item list in human doc; shortcut text; greyed == is_enabled; long menus scroll.
+- 070 (M) toolbar replaces command bar: 12 cmds (Import, Add to timeline, Add music, Split, Cut, Copy, Paste, Delete, Undo, Redo, Play/Pause, Export|Cancel); overflow "»" menu. AC 800 px all 12 triggerable.
+- 071 (M) shortcuts: existing kept + New N, Open O, Save as Shift+S, Import I, Export E, Delete/Backspace, Left/Right frame, Home/End, Ctrl+=/-/0 zoom, F1 shortcuts window, Esc closes topmost popup. Never while typing or modal. Single table drives menus/tooltips/shortcuts window. AC per binding; window lists exactly bound set.
+- 072 (S) tooltips on toolbar, markers, add-fade handle, borders, icon controls (what + shortcut); disabled reasons at least Split, Merge, Paste, Undo, Redo, Export, Generate subtitles, Add music.
+- 073 (M) status bar: left status msg; middle jobs w/ progress (imports count, proxies, model download, STT + Cancel, export + Cancel); right "Output: …" (moved from effects panel). AC export progress + Cancel == 021.
+- 074 (S) "Undo <action>"/"Redo <action>" in Edit menu + tooltips. AC after Split -> "Undo Split"; after undo -> "Redo Split".
+- 075 (M) Effects section list: Fade through black, Subtitles, Volume; name, 1-line desc, count ("3 fades", "42 lines", Volume levels); click -> popup; scrolls. Clip details, music clip, export, shortcut list removed from section.
+- 076 (M) effect popups: in-app floating, non-modal, one per type, movable, close + Esc; changes immediate, in preview, 1 undo step each. Fades popup (explanation, add nearest playhead, list -> instance, Remove all = 1 undo step); Subtitles popup (style, lang, Generate/Cancel + progress + model dl progress, add line at playhead, lines list -> instance; 014-018, 044, 052-054 unchanged); Volume popup (020 unchanged, 1 undo per slider release).
+- 077 (M) markers per fade + subtitle line, differ by shape/colour; tooltip type/time/text start; click: select, seek start, highlight, open instance popup (fade: two clips, time, Remove; line: text, start/end ±0.1 s, Delete, Play this line). Boundary w/o fade -> "Add fade" handle. Fade marker click OPENS popup (no direct removal any more). Overlap -> chooser. Follow ripple + zoom. AC 5 items (±1 px at 3 zooms, remove+undo, line edit undo, cut removes markers, chooser).
+- 078 (M) Clip details popup: double-click clip (video/music), Edit menu, context menu. Video: source, in/out/len, trim ±1 frame / at playhead, fade in/out, Merge. Music: start/end trim, Move to playhead, Split, Delete. Non-modal, Esc, follows selection. AC == 009/019 results.
+- 079 (S) context menus: video clip (Split here, Cut, Copy, Paste after, Delete, Merge with next, Add/remove fade before/after, Clip details); music clip (Split, Delete, Move to playhead, Clip details); marker (Open settings, Remove/Delete); empty timeline (Paste, Add subtitle line here); media items unchanged; greyed per is_enabled.
+- 080 (M) Open recent ≤10, most recent first, file name + path tooltip, Clear list; through 028 prompt; missing -> message + removed; program setting only. Architect: absolute UTF-8 paths ≤1024 bytes, no control chars, dedupe; non-UTF-8 never added. AC 12 opened -> 10 in order; damaged list -> reset, no crash (057).
+- 081 (S) drag&drop Win/macOS/Linux X11 ONLY (Wayland not: winit 0.30). Media -> import (002, 032 rules); .vlproj -> open after 028 prompt; any project in drop -> first project wins, rest ignored + status msg; ignored while modal open (Architect). Empty media list "Import media… or drop files here". AC 3 videos + 1 unsupported -> 3 imported + 1 rejection; project w/ unsaved -> prompt.
+- MINOR defaults accepted: 1 only existing effects; 2 Volume listed w/o marker (whole project); 3 clip settings in Clip details popup; 4 popups non-modal; 5 command bar -> toolbar + status bar, zoom in Timeline header; 6 Settings… in Edit, Ctrl/Cmd+, kept; 7 layout persisted + Reset; 8 mins per Architect (160/240/100); 9 fade marker click opens popup, separate Add-fade handle; 10 overlap chooser; 11 recent = 10; 12 recent projects brought INTO scope (was OOS since 0.2.0); 13 mixed drop first project wins; 14 new settings fields optional, 1.0 settings open without notice (settings VERSION stays 2, additive lenient); 15 version 1.1.0 (named by Andrea).
+- Impact applied in docs: 011 (fade click opens popup; removal via popup/context menu) + 012 (zoom slider in Timeline header + View menu) notes in business-editing.md; 046 "opened from Edit menu", 056 (+ border drags, open popups), 057 (+ layout/recent corpus) notes in business-performance.md; perf key decision "five-panel layout unchanged" -> "does not change the window layout". 009/019/016/044/020/021/028/031 impacts listed only in business-ui.md "Impact on existing features" (their REQ texts are UI-location-free, unchanged). Project format unchanged (029).
+- Known limitations 1.1.0: Wayland no drag&drop; popup positions session-only; window size/position not remembered; macOS menu inside window (D14). 1.0 builds drop layout/recent fields on save (accepted).
+- Product risk: egui API churn; text fields vs global shortcuts (guarded by tests).
+
 ## Constraints / decisions
 - C1 REVERSED in 0.2.0: ffmpeg bundled in every installer (was: user-installed >= 4.4). Reason: user-friendliness (Andrea). GPL builds (x264/x265) needed for H.264/HEVC; source offered per release (third-party source archive + written offer). Licence compliance not lawyer-reviewed (assumption).
 - C2 offline: only network = consented one-time download of the speech model(s) the user chooses (each w/ own consent; 32/190/574 MB, MIT; fixed https URLs, SHA-256 checked). No telemetry, no update checks.
 - C3 (0.3.0) settings are program-level, never in project; no project schema change in 0.3.0.
 - D1 fade fixed length.
 - D2 output format automatic (no export settings dialog).
-- D3 layout fixed.
+- D3 layout fixed. REVERSED 1.1.0 for RESIZING only (Andrea request): sections resizable by dragging, remembered, Reset layout; moving/docking/hiding/detaching still OOS.
+- D29 (1.1.0) all commands in menus driven by one action table (menus, toolbar, tooltips, shortcuts window = actual bindings). Effects configured in non-modal popups from Effects list or timeline markers. Fade marker click opens popup (no accidental removal).
+- D30 (1.1.0) layout + recent list = program settings (C3), never project; project format unchanged.
+- D31 (1.1.0) drag&drop shipped where supported (Win, macOS, Linux X11); Wayland limitation documented (Andrea).
 - D4 stream copy only when frame-accurate; correctness > speed.
 - D5 (0.2.0) installers unsigned; signing deferred not rejected. README first-launch steps.
 - D6 (0.2.0) Linux ships AppImage + tar.gz (Andrea).
@@ -189,4 +219,5 @@ Andrea answers 2026-11-14: S1 Best quality default everywhere, Faster opt-in, up
 - Removed from OOS in 0.2.0: bundled ffmpeg.
 - Removed from OOS in 0.3.0: "choosing the speech model" (replaced by 3 quality levels; arbitrary/third-party models still OOS).
 - 0.3.0 additions: detection/benchmark in installers; long benchmarks; online machine DBs; telemetry; arbitrary/third-party speech models; translation; GPU for preview/effects (export encoding in scope since 0.4.0); per-project performance settings; raw technical values in main Settings section. Still OOS: code signing, Intel Mac, ARM Win/Linux, auto-updates.
+- 1.1.0: REMOVED from OOS: recent-projects list (now 080), resizable panels (066). Editing OOS now "Dockable, movable or hideable panels"; index OOS "Autosave, crash recovery, automatic updates". ADDED (business-ui.md): move/dock/hide/collapse/detach sections, saved layouts/workspaces, resizing bars; customisable toolbar, rebindable shortcuts; new effect types (titles/overlays, speed, colour, other transitions, fade from/to black at start/end), per-fade length (D1); dragging markers / clip edges; native macOS menu bar (D14); themes, text size, translation; autosave/crash recovery; project format change.
 - 0.4.0 additions (in business-export.md): hw for proxies/preview/effects/subtitles/decoding; hw AV1/VP9; choosing card/vendor, per-vendor quality sliders, any technical export setting (D2); AMF on Linux; bundling/installing GPU drivers; visible fallback message; Faster as default; battery-aware behaviour. In business-performance.md: slow fallback speech engine for pre-AVX2 CPUs.

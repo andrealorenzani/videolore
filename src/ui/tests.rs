@@ -6,7 +6,7 @@
 use super::settings as settings_ui;
 use super::*;
 use crate::app::tests::{FakeDialogs, files, import, settle, state};
-use crate::app::{Modal, PendingAction};
+use crate::app::{Modal, PendingAction, Popup};
 use crate::media::{MediaStatus, ProxyState};
 use crate::preview::Frame;
 use eframe::egui::{
@@ -344,8 +344,8 @@ fn zoom_starts_at_fit_and_follows_the_slider() {
     run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
     let fit = app.zoom;
     assert!(fit > 0.0);
-    // fit: the whole 10 s timeline fits in the panel width
-    assert!(fit * 10.0 <= 1280.0 * layout::TIMELINE_WIDTH);
+    // fit: the whole 10 s timeline fits in the section width
+    assert!(fit * 10.0 <= cache.sections.unwrap().timeline.width());
     let frame_level = zoom::PX_PER_FRAME_MAX * app.fps().as_f64() as f32;
     app.dispatch(Command::SetZoom(1e6), Instant::now()).unwrap();
     run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
@@ -366,30 +366,21 @@ fn clicking_the_timeline_and_the_music_lane() {
     app.dispatch(Command::SelectMusic(None), Instant::now())
         .unwrap();
     run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
-    let r = layout::panels(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 800.0)));
-    // the video track is in the upper part of the timeline panel
-    let video_y = r.timeline.min.y + r.timeline.height() * 0.35;
-    click_at(
-        &ctx,
-        &mut app,
-        &mut cache,
-        pos2(r.timeline.min.x + 60.0, video_y),
-    );
+    let g = cache.timeline.unwrap();
+    // the video track is in the upper part of the timeline section
+    let video_y = g.video.center().y;
+    click_at(&ctx, &mut app, &mut cache, pos2(g.x0 + 60.0, video_y));
     assert_eq!(app.selected_clip, Some(app.project.timeline.clips[0].id));
     assert!(app.playhead > Micros::ZERO);
-    // the music track is below it, in the same panel
-    let music_y = r.timeline.min.y + r.timeline.height() * 0.75;
-    click_at(
-        &ctx,
-        &mut app,
-        &mut cache,
-        pos2(r.timeline.min.x + 80.0, music_y),
-    );
+    // the music track is below it, in the same section
+    let music_y = g.music.center().y;
+    assert!(music_y > video_y);
+    click_at(&ctx, &mut app, &mut cache, pos2(g.x0 + 80.0, music_y));
     let m = app.project.music.clips[0].id;
     assert_eq!(app.selected_music, Some(m));
     // drag the music clip to the right
-    let from = pos2(r.timeline.min.x + 80.0, music_y);
-    let to = pos2(r.timeline.min.x + 200.0, music_y);
+    let from = pos2(g.x0 + 80.0, music_y);
+    let to = pos2(g.x0 + 200.0, music_y);
     let btn = |pos, pressed| Event::PointerButton {
         pos,
         button: PointerButton::Primary,
@@ -432,16 +423,21 @@ fn clicking_the_timeline_and_the_music_lane() {
         vec![Event::PointerGone],
     );
     assert!(app.project.music.get(m).unwrap().start > Micros::ZERO);
-    // the effects panel shows the selected music clip
+    // the clip details popup shows the selected music clip
     app.dispatch(Command::SelectMusic(Some(m)), Instant::now())
         .unwrap();
+    app.dispatch(Command::OpenPopup(Popup::ClipDetails), Instant::now())
+        .unwrap();
+    run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
     run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
 }
 
-// covers: REQ-020, REQ-016
+// covers: REQ-020, REQ-016, REQ-076
 #[test]
-fn volume_and_subtitle_editing_from_the_panel() {
+fn volume_and_subtitle_editing_from_the_popups() {
     let (_d, mut app) = loaded();
+    app.dispatch(Command::OpenPopup(Popup::Volume), Instant::now())
+        .unwrap();
     let ctx = Context::default();
     // a volume being dragged is not an undo step until released
     let mut cache = UiCache {
@@ -462,6 +458,12 @@ fn volume_and_subtitle_editing_from_the_panel() {
         .unwrap();
     app.dispatch(Command::AddSubtitle, Instant::now()).unwrap();
     let id = app.selected_line.unwrap();
+    let clip = app.project.timeline.clips[0].id;
+    app.dispatch(
+        Command::OpenInstance(crate::app::Instance::Line(id, clip)),
+        Instant::now(),
+    )
+    .unwrap();
     run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
     assert!(
         cache.line_edit.is_none(),
@@ -549,7 +551,7 @@ fn settings_window_shows_the_three_choices_in_plain_words() {
         &mut cache,
         vec![key(Key::Comma, Modifiers::COMMAND)],
     );
-    assert!(app.settings_open);
+    assert!(app.popups.is_open(Popup::Settings));
     let mut text = String::new();
     for _ in 0..10 {
         text = painted_text(&ctx, &mut app, &mut cache, vec![]);
@@ -611,7 +613,7 @@ fn settings_window_offers_the_export_choice() {
     let (_d, mut app) = loaded();
     let ctx = Context::default();
     let mut cache = UiCache::default();
-    app.settings_open = true;
+    app.popups.show(Popup::Settings);
     for _ in 0..3 {
         painted_text(&ctx, &mut app, &mut cache, vec![]);
     }
@@ -902,7 +904,7 @@ fn stays_responsive_while_exporting_and_transcribing() {
     let ctx = Context::default();
     let mut cache = UiCache::default();
     for _ in 0..3 {
-        app.settings_open = true;
+        app.popups.show(Popup::Settings);
         run(&ctx, &mut app, &mut cache, 1280.0, 800.0, vec![]);
     }
     // speech recognition keeping every core busy
@@ -931,7 +933,7 @@ fn stays_responsive_while_exporting_and_transcribing() {
         .unwrap();
     assert!(app.is_exporting());
     let mut times = Vec::new();
-    let timeline = layout::panels(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 800.0))).timeline;
+    let timeline = cache.timeline.unwrap().video;
     let mut worst = std::time::Duration::ZERO;
     for i in 0..30 {
         let before_playing = app.preview.is_playing();
@@ -940,7 +942,7 @@ fn stays_responsive_while_exporting_and_transcribing() {
             0 => (vec![key(Key::Space, Modifiers::NONE)], 0),
             1 => {
                 let x = if (i / 3) % 2 == 0 { 120.0 } else { 520.0 };
-                let p = pos2(timeline.min.x + x, timeline.min.y + 60.0);
+                let p = pos2(timeline.min.x + x, timeline.center().y);
                 (
                     vec![
                         Event::PointerMoved(p),
@@ -963,7 +965,7 @@ fn stays_responsive_while_exporting_and_transcribing() {
             _ => (vec![key(Key::Comma, Modifiers::COMMAND)], 2),
         };
         // the Settings window opened by the previous round would cover the timeline
-        app.settings_open = false;
+        app.popups.close(Popup::Settings);
         let t = Instant::now();
         frame(&ctx, &mut app, &mut cache, input(1280.0, 800.0, events));
         let took = t.elapsed();
@@ -975,7 +977,7 @@ fn stays_responsive_while_exporting_and_transcribing() {
                 app.playhead != before_head || app.preview.is_playing(),
                 "frame {i}"
             ),
-            _ => assert!(app.settings_open, "frame {i}"),
+            _ => assert!(app.popups.is_open(Popup::Settings), "frame {i}"),
         }
     }
     assert!(
@@ -992,4 +994,123 @@ fn stays_responsive_while_exporting_and_transcribing() {
     app.dispatch(Command::CancelSubtitles, Instant::now())
         .unwrap();
     app.wait_export(Instant::now());
+}
+
+// covers: REQ-056, REQ-066, REQ-073, REQ-021
+#[test]
+fn borders_and_popups_stay_responsive_and_export_cancels_from_the_status_bar() {
+    use super::ux_tests::Harness;
+    use crate::settings::{Effort, SubtitleQuality};
+    let dir = tempfile::tempdir().unwrap();
+    let f = files(dir.path());
+    let fake = SlowExport {
+        inner: crate::app::tests::runner().holding_streams(),
+        secs: 5.0,
+        hardware: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    };
+    let mut app = AppState::with_ffmpeg(
+        Ok(crate::app::tests::info()),
+        Arc::new(fake),
+        Box::new(FakeDialogs::default()),
+        Box::new(crate::preview::NullSink),
+    );
+    let now = Instant::now();
+    import(&mut app, f);
+    for i in [0, 1] {
+        app.dispatch(Command::Append(Some(app.project.media[i].id)), now)
+            .unwrap();
+    }
+    app.dispatch(Command::SetEffort(Effort::Maximum), now)
+        .unwrap();
+    for p in [Popup::Fades, Popup::Subtitles, Popup::Volume] {
+        app.dispatch(Command::OpenPopup(p), now).unwrap();
+    }
+    // the first frames build the font atlas (not what is measured here)
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    h.idle(3);
+    let store = crate::stt::tests::store_for(dir.path(), b"m");
+    std::fs::create_dir_all(&store.dir).unwrap();
+    std::fs::write(
+        store.path(SubtitleQuality::Fast),
+        crate::stt::tests::level_body(b"m", 0),
+    )
+    .unwrap();
+    h.app.model_store = Some(store);
+    h.app.settings.subtitle_quality = SubtitleQuality::Fast;
+    h.app.transcriber =
+        Arc::new(|_, _| Ok(Box::new(BusyTranscriber) as Box<dyn crate::stt::Transcriber>));
+    if crate::stt::available() {
+        h.app.dispatch(Command::GenerateSubtitles, now).unwrap();
+    }
+    let out = dir.path().join("busy.mp4");
+    h.app.dispatch(Command::Export(out.clone()), now).unwrap();
+    assert!(h.app.is_exporting());
+    // drag the Timeline | Effects border for 30 frames, timing each one
+    let from = h.cache.sections.unwrap().splitters[1].1.center();
+    let btn = |pos, pressed| Event::PointerButton {
+        pos,
+        button: PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    };
+    let mut worst = Duration::ZERO;
+    let mut times = Vec::new();
+    for i in 0..30 {
+        let p = from - vec2(4.0 * i as f32, 0.0);
+        let events = match i {
+            0 => vec![Event::PointerMoved(p)],
+            1 => vec![btn(p, true)],
+            29 => vec![btn(p, false)],
+            _ => vec![Event::PointerMoved(p)],
+        };
+        let t = Instant::now();
+        h.frame(events);
+        let took = t.elapsed();
+        times.push(took.as_millis());
+        worst = worst.max(took);
+        if (3..29).contains(&i) {
+            assert!(h.cache.layout_drag.is_some(), "frame {i}");
+        }
+    }
+    assert!(
+        worst <= Duration::from_millis(200),
+        "slowest frame {worst:?} ({times:?} ms)"
+    );
+    h.idle(1);
+    assert!(h.app.settings.layout.is_some(), "the drag was applied");
+    assert!(
+        h.app.is_exporting(),
+        "the export was still running meanwhile"
+    );
+    // the status bar shows the export with its progress and Cancel
+    let bar_top = h.size.y - 30.0;
+    assert!(
+        h.nodes
+            .iter()
+            .any(|n| n.label.starts_with("Exporting") && n.rect.min.y > bar_top),
+        "{:#?}",
+        h.labels()
+    );
+    let cancel = h
+        .nodes
+        .iter()
+        .filter(|n| n.label == "Cancel" && n.rect.min.y > bar_top)
+        .max_by(|a, b| a.rect.min.x.total_cmp(&b.rect.min.x))
+        .cloned()
+        .expect("Cancel in the status bar");
+    h.click(cancel.rect.center());
+    h.app.wait_export(Instant::now());
+    assert!(!h.app.is_exporting());
+    assert_eq!(h.app.status, "Export cancelled");
+    // REQ-021: nothing is left behind
+    let left: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains("busy"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+    h.app
+        .dispatch(Command::CancelSubtitles, Instant::now())
+        .unwrap();
 }

@@ -177,13 +177,17 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
         Some(Modal::About) => {
             let text = cache
                 .about
-                .get_or_insert_with(|| crate::notices::about_text(app.ffmpeg.as_ref().ok()));
+                .get_or_insert_with(|| crate::notices::about_text(app.ffmpeg.as_ref().ok()))
+                .clone();
+            let mut container = None;
             egui::Modal::new(egui::Id::unique("about")).show(ctx, |ui| {
                 ui.heading("About videolore");
                 let h = (ctx.content_rect().height() * 0.6).max(100.0);
-                egui::ScrollArea::vertical().max_height(h).show(ui, |ui| {
+                let area = egui::ScrollArea::vertical().max_height(h);
+                let out = area.show(ui, |ui| {
                     ui.monospace(text.as_str());
                 });
+                container = Some((out.inner_rect, out.state.clamped_offset(), out.content_size));
                 ui.horizontal(|ui| {
                     if ui.button("Close").clicked() {
                         cmds.push(Command::CloseModal);
@@ -194,6 +198,9 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                     }
                 });
             });
+            if let Some((viewport, offset, size)) = container {
+                super::record(cache, viewport, offset, size);
+            }
         }
     }
 }

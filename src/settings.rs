@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Andrea Lorenzani
 
 //! Program settings (never stored in projects): the four plain-language choices, the
-//! ffmpeg override and the machine they were recommended for.
+//! ffmpeg override and the machine they were recommended for, plus the window layout and
+//! the recent projects (1.1, optional fields: 1.0 files load unchanged).
 //!
 //! Everything here is pure except [`load_file`] and [`save`]:
 //! * [`startup`] decides, from the settings file's bytes and the detected machine, which
@@ -129,6 +130,92 @@ fn lenient_hardware_off<'de, D: serde::Deserializer<'de>>(
     Ok(out)
 }
 
+/// Section sizes of the window, as shares (REQ-066, REQ-067): `top` = top row of the
+/// content height, `media` = Media of the top row's width, `timeline` = Timeline of the
+/// bottom row's width. Only values strictly between 0 and 1 are valid.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SavedLayout {
+    pub top: f32,
+    pub media: f32,
+    pub timeline: f32,
+}
+
+impl SavedLayout {
+    /// The REQ-024 layout: top row 2/3 (Media 30% | Preview 70%), bottom row 1/3
+    /// (Timeline 70% | Effects 30%).
+    pub const DEFAULT: SavedLayout = SavedLayout {
+        top: 2.0 / 3.0,
+        media: 0.30,
+        timeline: 0.70,
+    };
+
+    /// Every share is a finite number strictly between 0 and 1.
+    pub fn is_valid(&self) -> bool {
+        [self.top, self.media, self.timeline]
+            .iter()
+            .all(|v| v.is_finite() && *v > 0.0 && *v < 1.0)
+    }
+}
+
+impl Default for SavedLayout {
+    fn default() -> Self {
+        SavedLayout::DEFAULT
+    }
+}
+
+/// Most recent projects remembered (REQ-080).
+pub const MAX_RECENT: usize = 10;
+/// Longest remembered project path, in bytes.
+pub const MAX_RECENT_PATH: usize = 1024;
+
+/// Reads `layout` leniently: anything not understood or out of range is the default
+/// layout (`None`); the rest of the file stays valid.
+fn lenient_layout<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<SavedLayout>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value::<SavedLayout>(v)
+        .ok()
+        .filter(SavedLayout::is_valid))
+}
+
+/// A path that may be remembered: UTF-8 (anything else could not be saved), absolute, at
+/// most [`MAX_RECENT_PATH`] bytes, without control characters.
+pub fn valid_recent(p: &Path) -> bool {
+    p.to_str().is_some_and(|s| {
+        s.len() <= MAX_RECENT_PATH && !s.chars().any(char::is_control) && p.is_absolute()
+    })
+}
+
+/// Reads `recent` leniently: entries that are not valid paths are dropped one by one,
+/// duplicates removed, at most [`MAX_RECENT`] kept.
+fn lenient_recent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<PathBuf>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    let mut out: Vec<PathBuf> = Vec::new();
+    for item in v.as_array().map(Vec::as_slice).unwrap_or_default() {
+        if out.len() == MAX_RECENT {
+            break;
+        }
+        if let Some(s) = item.as_str() {
+            let p = PathBuf::from(s);
+            if valid_recent(&p) && !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Puts `path` first in the recent projects (removing an older entry of it, keeping at
+/// most [`MAX_RECENT`]). Returns whether the list changed. Invalid paths are ignored.
+pub fn push_recent(list: &mut Vec<PathBuf>, path: &Path) -> bool {
+    if !valid_recent(path) || list.first().is_some_and(|p| p == path) {
+        return false;
+    }
+    list.retain(|p| p != path);
+    list.insert(0, path.to_path_buf());
+    list.truncate(MAX_RECENT);
+    true
+}
+
 impl PreviewQuality {
     pub const ALL: [PreviewQuality; 3] = [
         PreviewQuality::Automatic,
@@ -244,6 +331,16 @@ pub struct Settings {
     /// Hardware methods turned off after a problem on this computer.
     #[serde(default, deserialize_with = "lenient_hardware_off")]
     pub hardware_off: Vec<HardwareOff>,
+    /// Section sizes (1.1); `None` = the default layout.
+    #[serde(
+        default,
+        deserialize_with = "lenient_layout",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub layout: Option<SavedLayout>,
+    /// Recently opened or saved projects, most recent first (1.1).
+    #[serde(default, deserialize_with = "lenient_recent")]
+    pub recent: Vec<PathBuf>,
 }
 
 impl Default for Settings {
@@ -265,6 +362,8 @@ impl Settings {
             machine: fp,
             export: choices.export,
             hardware_off: Vec::new(),
+            layout: None,
+            recent: Vec::new(),
         }
     }
 

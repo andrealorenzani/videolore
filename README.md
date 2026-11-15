@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.0.0-blue)
+![version](https://img.shields.io/badge/version-1.1.0-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-96.3%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-96.1%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -61,29 +61,38 @@ cargo build --release --locked
 ```
 
 ## Usage
-Start videolore from the menu, the Applications folder, the AppImage or the extracted folder. The window has five panels: the media list (import files here) and the preview at the top, the timeline with the effects and settings panel in the middle, and a bar with the zoom slider at the bottom. Actions are also in the toolbar at the top.
+Start videolore from the menu, the Applications folder, the AppImage or the extracted folder. The window has a menu bar (File, Edit, Playback, Effects, View, Help) and a toolbar at the top, four sections in the middle (Media and Preview on top, Timeline and Effects below) and a status bar at the bottom, which shows the latest message and the progress of background work, with Cancel where it applies. Drag the borders between the sections to resize them; View > Reset layout restores the default. Every action is in the menus with its shortcut, and a greyed-out action says why in a tooltip. Press F1 for the list of shortcuts.
 
-1. **Import** video or audio files into the media list. Each file shows "analysing" while it is read, then its name and duration; unreadable files are rejected with a message. Importing never blocks the window.
-2. **Build the clip** by appending media to the timeline, then split, cut, copy, paste, merge, trim or move the pieces.
-3. **Add fades** between two clips to get a fade through black on video and audio.
-4. **Add music**: place audio files on the music track below the video. Music can be moved, trimmed, split and deleted. Each of the video audio and the music has its own volume and mute. Music does not move when you edit the video, and it ends with a fade-out where the video ends.
-5. **Add subtitles**: choose **Generate subtitles**. The first time you use a subtitle quality level, you are asked to approve the download of its speech model (32 MB for Fast, 190 MB for Balanced, 574 MB for Most accurate), or you can provide the model file yourself. Choose the level in Settings. Recognition runs on your computer in the background, the language is detected automatically, and you can edit, re-word and re-time every line. Choose a style: Classic, Box or Word highlight. Subtitles are visible in the preview and burned into the exported video.
+1. **Import** video or audio files with File > Import media… (Ctrl/Cmd+I), or drop them onto the window (Windows, macOS and Linux with X11). Each file shows "analysing" while it is read, then its name and duration; unreadable files are rejected with a message. Importing never blocks the window.
+2. **Build the clip** by appending media to the timeline, then split, cut, copy, paste, merge, trim or move the pieces. Double-click a clip to open its Clip details, or right-click it for its menu.
+3. **Add fades** between two clips to get a fade through black on video and audio: use the "Add fade" handle at a clip boundary, or Effects > Fades. Each fade has a marker on the timeline; click it to change or remove that fade.
+4. **Add music**: place audio files on the music track below the video. Music can be moved, trimmed, split and deleted. The volume and mute of the video audio and of the music are set in the Volume window (Effects > Volume). Music does not move when you edit the video, and it ends with a fade-out where the video ends.
+5. **Add subtitles**: choose **Generate subtitles** in the Subtitles window (Effects > Subtitles). The first time you use a subtitle quality level, you are asked to approve the download of its speech model (32 MB for Fast, 190 MB for Balanced, 574 MB for Most accurate), or you can provide the model file yourself. Choose the level in Settings. Recognition runs on your computer in the background, the language is detected automatically, and you can edit and re-word every line, and re-time it, from its marker on the timeline. Choose a style: Classic, Box or Word highlight. Subtitles are visible in the preview and burned into the exported video.
 6. **Preview** the result with play, pause and seek from the playhead. Very large sources get a smaller preview copy, made in the background; the export always uses your original files. **Preview quality** in Settings chooses whether lighter preview copies are made, and the copies can be cleared there.
-7. **Save** the project (**Save** or **Save As**, Ctrl/Cmd+S) and reopen it later with **Open**. A `•` in the window title means unsaved changes. New, Open, closing the window and Quit ask whether to **Save**, **Discard** or **Cancel**. Projects are `.vlproj` files: double-click one to open it in videolore.
-8. **Export** to one file, with progress; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades, music, subtitles or volume changes and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched. HEVC files play on Apple devices. With **Export: Faster** in Settings, a re-encoded H.264 or HEVC video is made by your computer's video hardware when it can; every such file is checked, and if the hardware is missing or does not produce a correct file, the normal method is used automatically. The default, **Best quality**, always uses the normal method.
-9. **Settings** (Ctrl/Cmd+, or the **Settings** button): choose **Preview quality**, **Subtitle quality**, **How hard videolore works** and **Export** (Faster or Best quality), each explained in one line. The first start picks recommended choices for your computer; **Use recommended settings** sets them again, and the speech files you downloaded can be removed there to free disk space. The **Advanced** section holds the ffmpeg you may want to use instead of the bundled one.
+7. **Save** the project (**Save** or **Save as**, Ctrl/Cmd+S or Ctrl/Cmd+Shift+S) and reopen it later with **Open**, or from File > Open recent, which lists the last 10 projects. A `•` in the window title means unsaved changes. New, Open, closing the window and Quit ask whether to **Save**, **Discard** or **Cancel**. Projects are `.vlproj` files: double-click one to open it in videolore.
+8. **Export** to one file (File > Export…, the toolbar, or Ctrl/Cmd+E), with progress in the status bar; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades, music, subtitles or volume changes and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched. HEVC files play on Apple devices. With **Export: Faster** in Settings, a re-encoded H.264 or HEVC video is made by your computer's video hardware when it can; every such file is checked, and if the hardware is missing or does not produce a correct file, the normal method is used automatically. The default, **Best quality**, always uses the normal method.
+9. **Settings** (Edit > Settings…, or Ctrl/Cmd+,): choose **Preview quality**, **Subtitle quality**, **How hard videolore works** and **Export** (Faster or Best quality), each explained in one line. The first start picks recommended choices for your computer; **Use recommended settings** sets them again, and the speech files you downloaded can be removed there to free disk space. The **Advanced** section holds the ffmpeg you may want to use instead of the bundled one.
 
 The About screen lists every bundled third-party component with its version, licence and where to get its source code.
 
 | Action | Shortcut |
 |---|---|
+| New project | Ctrl/Cmd + N |
+| Open | Ctrl/Cmd + O |
+| Save / Save as | Ctrl/Cmd + S / Ctrl/Cmd + Shift + S |
+| Import media | Ctrl/Cmd + I |
+| Export | Ctrl/Cmd + E |
 | Play / pause | Space |
+| Previous / next frame | Left / Right |
+| Go to start / end | Home / End |
 | Split at playhead | Ctrl/Cmd + B |
+| Delete | Delete or Backspace |
 | Cut / copy / paste | Ctrl/Cmd + X / C / V |
 | Undo | Ctrl/Cmd + Z |
 | Redo | Ctrl/Cmd + Shift + Z, or Ctrl/Cmd + Y |
-| Save | Ctrl/Cmd + S |
+| Zoom in / out / fit project | Ctrl/Cmd + = / Ctrl/Cmd + - / Ctrl/Cmd + 0 |
 | Settings | Ctrl/Cmd + , |
+| Keyboard shortcuts | F1 |
 | Quit | Ctrl/Cmd + Q |
 
 ### Known limitations
@@ -100,7 +109,11 @@ The About screen lists every bundled third-party component with its version, lic
 - On computers with more than one graphics card, NVIDIA is always preferred; the card cannot be chosen.
 - Subtitles in scripts other than Latin, Greek and Cyrillic (for example Chinese, Japanese, Arabic or Hindi) may look different on each computer or show empty boxes, and cannot be read in the subtitle editor.
 - Speech is recognised in pieces of about two minutes; a word cut at a boundary can be lost.
-- On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the Hide and Minimize menu items are not available.
+- Drag and drop does not work in Linux Wayland sessions; use File > Import media… and File > Open… there.
+- Ctrl/Cmd+V pastes clips only when the system clipboard holds text. Paste in the Edit menu and the toolbar always works.
+- Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
+- The window size and position are not remembered, and popups keep their place only until videolore is closed.
+- On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the menu bar is inside the window, not at the top of the screen, and the Hide and Minimize menu items are not available.
 - Projects saved by this version cannot be opened by versions 0.1.x.
 - Removing a file from the media list also drops the undo history when an undo step refers to it.
 - Cleared preview copies are made again only after reopening the project or changing Preview quality. Under Automatic, a 1280x720 source never gets a preview copy.
@@ -109,9 +122,9 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **1.1.0** — The window is reorganised: a menu bar and a toolbar with every action (greyed out with the reason when it is not available), a status bar with progress and Cancel, resizable sections, an Effects list whose fades and subtitle lines are markers on the timeline, a Clip details window, Open recent, drag and drop of media and projects, more keyboard shortcuts and F1 for their list.
 - **0.4.3** — The macOS and Windows installers build correctly again. The 0.4.2 release has only the Linux installers.
 - **0.4.2** — Faster export finds the computer's video hardware reliably, even on a busy computer: a slow hardware test gets a second, longer try, and an uncertain check is repeated in the background.
-- **0.4.0** — Export: Faster or Best quality in Settings. Faster uses your computer's video hardware (NVIDIA, Intel, AMD, Apple) when it can, and every file made that way is checked, with an automatic redo by the normal method on any problem; Best quality stays the default and is unchanged. Linux drivers that only offer constant-quality encoding are supported, and older system libva versions are skipped without a crash.
 
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
@@ -123,13 +136,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani read the installer job's errors, one by one, and did not look away,\
-and set the file association to the spelling the packager expects, editor in lower case,\
-and renamed the install key so the Windows setup speaks the language its tool knows,\
-and gave the packager configuration its missing name, so it no longer stops with a folder error,\
-and made every path absolute, so the tool finds the icons and the notices wherever it runs,\
-and taught the script to say plainly when a DLL or an installer is missing, instead of failing in silence,\
-and wrote a test that checks both configurations against the real rules, so the mistakes cannot return unseen,\
-and tried the packager on a Linux machine with the real tool, building the deb and app formats from both files,\
-and gave the macOS disk image up to five tries, so one busy moment does not end the build,\
-thank you, Andrea, for fixing the installers patiently, step by step, and for keeping every Linux package running all along.
+Andrea Lorenzani drew the window again, from the top down, and gave it a menu bar where every action has its place,\
+and a toolbar whose twelve most used buttons stay within reach, even when the window is narrow,\
+and a status bar that tells the truth about each long task, with a Cancel button at hand,\
+and borders that bend to the hand, so every section grows or shrinks with a single drag,\
+and markers on the timeline for every fade and every subtitle line, where one click opens its own settings,\
+and an Effects list whose popups float beside the work, so editing and playback never stop,\
+and recent projects, dropped files and a list of shortcuts waiting behind the F1 key,\
+and scrollbars wherever a section, a popup or a small screen would hide something,\
+and undo steps that name what they undo, so no step is a mystery,\
+thank you, Andrea, for listening to every small friction and turning it into a window that is simple to use.

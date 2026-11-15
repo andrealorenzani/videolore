@@ -109,7 +109,7 @@ fn choices_apply_at_once_and_are_program_settings() {
     app.dispatch(Command::SaveProjectAs(proj.clone()), now)
         .unwrap();
     app.dispatch(Command::OpenSettings, now).unwrap();
-    assert!(app.settings_open);
+    assert!(app.popups.is_open(Popup::Settings));
     assert!(app.is_recommended());
     // How hard videolore works: applied without restart
     assert_eq!(app.scheduler().cap(), 3);
@@ -138,7 +138,7 @@ fn choices_apply_at_once_and_are_program_settings() {
         assert!(!text.contains(word), "{word} in the project file");
     }
     app.dispatch(Command::CloseSettings, now).unwrap();
-    assert!(!app.settings_open);
+    assert!(!app.popups.is_open(Popup::Settings));
     // greyed-out choices cannot be picked, with a plain reason
     app.machine = Machine::simulated(8, 4, 3 * GIB);
     assert!(!app.is_enabled(&Command::SetSubtitleQuality(SubtitleQuality::MostAccurate)));

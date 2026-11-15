@@ -13,7 +13,7 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `music` | The music track (`MusicTrack`): audio clips at their own times, never overlapping; `Mix` (volume 0–100 % and mute for video sound and music, gain = (p/100)²) |
 | `subtitles` | Subtitle lines stored in *source* time per file; `project()` maps them onto the timeline (cut removes, copy duplicates, trim hides, split keeps); edits; the three styles |
 | `ass` | Writes the ASS subtitle file: styles, text size `min(0.055·H, 0.09·W)`, word highlight with `\k` tags, escaping of `{ } \` |
-| `history` | Undo/redo by snapshots of `Edit` (timeline + music + subtitles + volumes), up to 100 steps |
+| `history` | Undo/redo by snapshots of `Edit` (timeline + music + subtitles + volumes), up to 100 steps, each with the name of its action ("Undo Split") |
 | `project` | `.vlproj` file (JSON, `schema_version` 2; version 1 files are migrated on load, newer ones refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
 | `format` | Same-format check, lowest-quality output choice, codec to encoder mapping with H.264/AAC/MP4 fallback |
 | `render` | Export plan (stream copy or one re-encode), filter graphs (clips grouped by source, music bed and mix, subtitle burn-in), `hvc1` tag, export argv (normal method or a hardware method), preview argv, `FrameKey` |
@@ -25,14 +25,14 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `preview` | Preview player: still frames on demand (debounced, latest only) and playback (RGBA video + PCM audio from two ffmpeg processes), wall-clock master with audio correction |
 | `proxy` | Small preview copies of big sources: the machine rule, the cache (keys, size, clear) and the generation job |
 | `machine` | Detection of the running machine (`Machine`: logical/physical cores, memory, OS, architecture, CPU features) and its `Fingerprint` stored with the settings |
-| `settings` | Program settings file (format 2): the four plain choices (Export added in 0.4), ffmpeg override, machine fingerprint, hardware methods turned off after a problem; start-up decision (`startup`), recommendation, "How hard" budget table, availability of subtitle levels, change summary, plain texts of the Settings window |
+| `settings` | Program settings file (format 2): the four plain choices (Export added in 0.4), ffmpeg override, machine fingerprint, hardware methods turned off after a problem, section sizes and recent projects (1.1); start-up decision (`startup`), recommendation, "How hard" budget table, availability of subtitle levels, change summary, plain texts of the Settings window |
 | `scratch` | Private work folders of background jobs (0700, locked while in use), private partial files (0600), crash cleanup at the next start |
 | `stt` | Subtitle generation: audio extraction, 120 s chunks, language detection/override, cancel, word timings to lines; the table of the three speech files (`builtin_models`), the store (size + SHA-256, per level), download and local-file install, disk use and removal; whisper.cpp and the HTTPS downloader behind the `stt` feature |
 | `notices` | Bundled components with version, licence and source; the About text |
 | `packaging` | Pinned ffmpeg builds and tools (`packaging/*.lock`) and release asset names |
 | `desktop` | Linux menu entry / icon / `.vlproj` type for the AppImage and tar.gz; macOS Apple Event handler for double-clicked projects; queue of projects to open |
 | `app` | `AppState`, the single command dispatcher (`Command`, `AppState::dispatch`), background results in `tick()` |
-| `ui` | Panels (`layout`), media list (`media`), timeline with music lane (`timeline`), effects panel (`effects`), the Settings window and message banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`) |
+| `ui` | The window (see [code-ui.md](code-ui.md)): action table (`actions`), menu bar (`menu`), toolbar (`toolbar`), status bar (`status`), resizable sections (`layout`), media list (`media`), timeline with marker lane and music track (`timeline`, `markers`), Effects section and effect popups (`effects`), floating windows (`popups`), Settings body and banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`) |
 | `dialogs` | Native file dialogs (rfd) |
 
 ## Main patterns

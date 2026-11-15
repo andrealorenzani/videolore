@@ -7,7 +7,7 @@ use super::button;
 use crate::app::{AppState, Command};
 use crate::media::{MediaItem, MediaStatus, ProxyState};
 use crate::time::timecode;
-use eframe::egui::{self, Button, Color32, Ui};
+use eframe::egui::{Button, Color32, Label, RichText, Ui};
 
 /// The line under a file name: what the file is, or why it cannot be used.
 pub fn status_line(m: &MediaItem) -> String {
@@ -30,50 +30,62 @@ pub fn status_line(m: &MediaItem) -> String {
     base + &proxy
 }
 
+/// Shown when the media list is empty.
+pub const EMPTY_HINT: &str = "Import media… or drop files here";
+
+/// The list (the section header is drawn by the caller). Names longer than the section
+/// are shortened with "…" and shown in full in the tooltip.
 pub fn media_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
-    ui.horizontal(|ui| {
-        ui.strong("Media");
-        button(ui, app, "Import…", Command::PickImport, cmds);
-        button(ui, app, "Add to timeline", Command::Append(None), cmds);
-        button(ui, app, "Add music", Command::PlaceMusic(None), cmds);
-    });
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        for m in &app.project.media {
-            let line = status_line(m);
-            let label = format!("{}\n{line}", m.name);
-            let r = if matches!(m.status, MediaStatus::Rejected(_)) || m.missing {
-                ui.add(egui::Label::new(
-                    egui::RichText::new(label).color(Color32::LIGHT_RED),
-                ))
-                .interact(egui::Sense::click())
+    if app.project.media.is_empty() {
+        ui.weak(EMPTY_HINT);
+        button(ui, app, "Import media…", Command::PickImport, cmds);
+        return;
+    }
+    let w = ui.available_width();
+    for m in &app.project.media {
+        let line = status_line(m);
+        let bad = matches!(m.status, MediaStatus::Rejected(_)) || m.missing;
+        let name = if bad {
+            RichText::new(&m.name).color(Color32::LIGHT_RED)
+        } else {
+            RichText::new(&m.name)
+        };
+        let selected = app.selected_media == Some(m.id);
+        let r = ui
+            .scope(|ui| {
+                ui.set_max_width(w);
+                ui.add(Button::selectable(selected, name).truncate())
+            })
+            .inner;
+        ui.add(Label::new(RichText::new(&line).small()).truncate());
+        let r = r.on_hover_text(format!(
+            "{}\n{line}\nDouble-click to add it; right-click for more",
+            m.name
+        ));
+        if r.clicked() {
+            cmds.push(Command::SelectMedia(Some(m.id)));
+        }
+        if r.double_clicked() {
+            cmds.push(if m.has_video() {
+                Command::Append(Some(m.id))
             } else {
-                ui.selectable_label(app.selected_media == Some(m.id), label)
-            };
-            if r.clicked() {
-                cmds.push(Command::SelectMedia(Some(m.id)));
-            }
-            if r.double_clicked() {
-                cmds.push(if m.has_video() {
-                    Command::Append(Some(m.id))
-                } else {
-                    Command::PlaceMusic(Some(m.id))
-                });
-            }
-            r.context_menu(|ui| {
-                for (label, cmd) in [
-                    ("Add to timeline", Command::Append(Some(m.id))),
-                    ("Add to music track", Command::PlaceMusic(Some(m.id))),
-                    ("Remove from list", Command::RemoveMedia(m.id)),
-                ] {
-                    if ui
-                        .add_enabled(app.is_enabled(&cmd), Button::new(label))
-                        .clicked()
-                    {
-                        cmds.push(cmd);
-                        ui.close();
-                    }
-                }
+                Command::PlaceMusic(Some(m.id))
             });
         }
-    });
+        r.context_menu(|ui| {
+            for (label, cmd) in [
+                ("Add to timeline", Command::Append(Some(m.id))),
+                ("Add to music track", Command::PlaceMusic(Some(m.id))),
+                ("Remove from list", Command::RemoveMedia(m.id)),
+            ] {
+                if ui
+                    .add_enabled(app.is_enabled(&cmd), Button::new(label))
+                    .clicked()
+                {
+                    cmds.push(cmd);
+                    ui.close();
+                }
+            }
+        });
+    }
 }

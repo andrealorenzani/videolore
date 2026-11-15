@@ -10,6 +10,7 @@ This page covers building and running; the details are in the sub-documents:
 | Document | Contents |
 |---|---|
 | [code-modules.md](code-modules.md) | Module map, main patterns, background jobs, conventions |
+| [code-ui.md](code-ui.md) | The window: menus, toolbar, resizable sections, shortcuts, popups, timeline markers, status bar, recent projects, drag and drop |
 | [code-testing.md](code-testing.md) | Unit, UI and integration tests, coverage, CI jobs |
 | [code-packaging.md](code-packaging.md) | Installers, bundled ffmpeg, notices, release assets, manual checklist per OS, known limitations |
 | [code-hardware.md](code-hardware.md) | "Export: Faster": video hardware methods and arguments, the hardware check, the output check and redo, failure memory, QG-05 checklist and results |
