@@ -104,7 +104,8 @@ docs/                     human docs (business, architecture, code, changelog, r
 releases/<version> - <name>/  release snapshots: docs/, sources.zip, RELEASE_NOTES.md (never edited)
 scripts/                  version, coverage, release helpers
 README.md, LICENSE        written by the Documenter
-.github/workflows/        CI: checks + executables
+.github/workflows/        CI: checks + executables; pages.yml publishes github_page/
+github_page/             the project page (one static index.html), published by pages.yml
 ```
 
 ## Workflow manifest
@@ -122,7 +123,7 @@ Used by `/clone-workflow`.
 | `.github/workflows/build.yml` | copy verbatim (binary name is read from `Cargo.toml`) |
 | `ai-docs/business.md`, `ai-docs/architecture.md`, `ai-docs/code.md`, `ai-docs/notes.md` | create empty template |
 | `docs/business.md`, `docs/architecture.md`, `docs/code.md`, `docs/changelog.md`, `docs/roadmap.md`, `releases/.gitkeep` | create empty template |
-| `docs/<area>-*.md` sub-documents, `src/`, `Cargo.*`, `target/`, `README.md`, `releases/<version> - <name>/`, `.git/` (and the `origin` remote) | never copy |
+| `docs/<area>-*.md` sub-documents, `github_page/`, `.github/workflows/pages.yml` (project page), `src/`, `Cargo.*`, `target/`, `README.md`, `releases/<version> - <name>/`, `.git/` (and the `origin` remote) | never copy |
 
 ## Workflow history
 - 2026-11-13 — First draft: 4 agents (Product Manager, Architect, Principal Engineer, Documenter), 3 commands (`/add-feature`, `/change-workflow`, `/clone-workflow`), rules in `AGENTS.md`.
@@ -134,3 +135,4 @@ Used by `/clone-workflow`.
 - 2026-11-14 — v0.1.6: tests run only by the Principal Engineer after coding, in a fix-and-rerun loop until green; it reports line and feature coverage; no other agent or command runs tests (`/release` uses a Principal Engineer VERIFY run; badge via `scripts/coverage.sh --badge`).
 - 2026-11-14 — v0.4.1: `/release` releases the current version into `releases/<version> - <name>/` (docs, `sources.zip`, `RELEASE_NOTES.md`), cleans the changelog, tags and pushes, then moves to the next major and pushes; `release/` renamed `releases/`; `docs/roadmap.md` fed by every agent's `## Future work`; README shows the last 3 versions.
 - 2026-11-15 — v1.2.1: token economy: `scripts/docs-check.sh` replaces the Documenter's full read of `docs/` at each development (prose read of changed files, full read on release); quiet test output for the Principal Engineer; rule 12 in `AGENTS.md`; agent merge rejected and notes compaction recorded in the roadmap.
+- 2026-11-15 — v1.2.2–1.2.3: project page in `github_page/` (static, no build) and its deployment by `.github/workflows/pages.yml` to GitHub Pages; the page is a project file, not part of the copied workflow.

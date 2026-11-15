@@ -2,6 +2,13 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.2.3 — 2026-11-15 22:01 +0000
+
+Workflow only: the project page is published on GitHub Pages.
+
+### Workflow
+- **GitHub Pages deployment** with `.github/workflows/pages.yml`: on every push to `main` that changes `github_page/`, the page is published with the official Pages actions, pinned to commit SHAs like the other workflows. It can also be started by hand. The first run enables Pages for the repository.
+
 ## 1.2.2 — 2026-11-15 21:59 +0000
 
 A project page for the GitHub repository: the brief, the story of the project as a timeline of every version, and the copyright and licence.
