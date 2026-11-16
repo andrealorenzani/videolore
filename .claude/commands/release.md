@@ -20,7 +20,7 @@ You are the orchestrator. The version released is the **current** version (`scri
 The snapshot directory is `releases/<V> - <name>` (e.g. `releases/0.4.1 - MVP`). Use `$ARGUMENTS` as the name if given. If it is empty or in doubt, ask the user with AskUserQuestion, proposing 2-3 short names derived from the changelog highlights (e.g. "MVP", "Hardware export"). The name: 1-60 characters, letters, digits, spaces, `.` `_` `+` `-` (checked by `scripts/collect-release.sh`).
 
 ## 2. Final docs for the release (`documenter`)
-Call the `documenter` agent with `RELEASE <V> "<name>"`, the line coverage from the VERIFY report and any future work collected (see `/add-feature`). It does **not** change the version. It adds a short `### Release <V> — <name>` summary at the top of the current `## <V>` entry of `docs/changelog.md` (highlights of everything since the previous release), refreshes `docs/roadmap.md`, updates the README (coverage badge, Latest changes = last 3 versions, new poem) and checks consistency. It does not reset the changelog and does not touch `releases/`.
+Call the `documenter` agent with `RELEASE <V> "<name>"`, the line coverage from the VERIFY report and any future work collected (see `/add-feature`). It does **not** change the version. It adds a short `### Release <V> — <name>` summary at the top of the current `## <V>` entry of `docs/changelog.md` (highlights of everything since the previous release), refreshes `docs/roadmap.md`, updates the README (coverage badge, Latest changes = last 3 versions; the poem is rewritten only if `<V>` is a major version `X.0.0`), compacts every `docs/` file (not `ai-docs/`, not the changelog) removing only useless data, and checks consistency. It does not reset the changelog and does not touch `releases/`.
 
 ## 3. Snapshot
 `scripts/collect-release.sh <V> "<name>"` creates `releases/<V> - <name>/` with:
@@ -53,7 +53,7 @@ No changes since <V> (release "<name>", notes in `releases/<V> - <name>/RELEASE_
    ## <N> — <date '+%Y-%m-%d %H:%M %z'>
    - Version <N> opened after release <V> "<name>". No user-facing changes yet.
    ```
-   The README "Latest changes" does not list it (no user-facing change); only the version badge changes, so no new poem is needed.
+   The README "Latest changes" does not list it (no user-facing change); only the version badge changes, so the poem is not touched.
 3. `scripts/version.sh check && scripts/release-guard.sh`, `git add -A`, `git commit -m "Start version <N>"`, `git push origin main`, and watch that CI run too.
 
 ## 7. Report

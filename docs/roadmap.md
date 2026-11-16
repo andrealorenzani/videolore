@@ -107,7 +107,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Other systems** — builds exist for Windows and Linux on x86-64 and for macOS on Apple Silicon only; Intel Macs and ARM Windows or Linux are not built. (source: 0.4.0, scope decision)
 
 ## Workflow
-- **Compact the private notes** — the architecture notes (131 KB), code notes (52 KB) and business notes (48 KB) are read in full on almost every planning or coding step, about 58k tokens per full read of all three. Each owner keeps the decisions, IDs and open points and drops the repetition, aiming at about half the size, in its own development. (source: 1.2.1, token estimate)
+- **Convert the private notes to indexes** — the three long notes (architecture 131 KB, code 52 KB, business 48 KB) must become short indexes of the human docs (one line per paragraph with its line range), with the detail moved to sub-documents. Each owner does it in its next development; until then the full notes are read. (source: 1.2.5, workflow rule 3)
 
 ## Not planned
 - **Slower speech engine for old processors** — dropped on 2026-11-14: processors without AVX2 get a clear message and subtitle lines can still be added by hand.

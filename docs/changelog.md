@@ -2,6 +2,17 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.2.5 — 2026-11-16 22:40 +0000
+
+Workflow only: no change to the program or to what the app does.
+
+### Workflow
+- **Notes are indexes**: each `ai-docs/` file starts with an index of every paragraph of the human docs its owner manages (`- <file> § <heading> — L<start>-<end> (<n> lines)`), so an agent finds a paragraph with `grep` and reads only its lines. Detail that only an AI needs goes in `ai-docs/<area>-<topic>.md`, indexed from the main file. The current long notes are converted by their owners in their next development (roadmap).
+- **Feature pipeline by files**: the product-manager and the architect write their plans into the notes and docs and return only their `[SEVERE]` questions; the principal-engineer returns its results. The command relays only the user's answers, file paths and counts, not the agents' reports.
+- **Documenter after each part**: the documenter runs after the business, architecture and code parts, and updates the docs only. The version is bumped once per development. It may write any `docs/` file and the README, with no owner guardrail; it never edits another agent's notes.
+- **README poem**: rewritten only when a new major version is released; other README changes keep it.
+- **Docs compaction**: on each release the documenter reads and compacts every `docs/` file, removing only useless data. Done once now: the workflow doc was rewritten, the business UI doc lost repeated text, and the roadmap workflow item was updated. The other docs were checked for repeated lines (four found, kept as summaries) and will be read in full at the next release.
+
 ## 1.2.4 — 2026-11-15 22:02 +0000
 
 Workflow only: the project page can be published.

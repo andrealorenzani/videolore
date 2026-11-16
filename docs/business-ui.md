@@ -2,9 +2,7 @@
 
 Back to the [index](business.md).
 
-Since 1.1.0 the window is reorganised: resizable sections, a menu bar, a toolbar, a status bar, an Effects section with one popup per effect, and markers on the timeline for every fade and subtitle line. Nothing changes in how projects are saved: the markers show data the project already contains.
-
-Since 1.2.0 every effect can be applied either to one video clip (drag it from the Effects list onto the clip, or right-click the clip) or to the whole video (double-click it in the Effects list), and the timeline ruler shows seconds, minutes or hours depending on how much of the timeline is visible. The project file format changes in 1.2.0 to store the new settings (see [Editing](business-editing.md), REQ-094).
+Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, status bar, one popup per effect, markers on the timeline). Since 1.2.0 an effect applies to one video clip or to the whole video, and the ruler switches unit with the visible range. In 1.1.0 nothing changes in how projects are saved: the markers show data the project already contains. The project format changed in 1.2.0 (see [Editing](business-editing.md), REQ-094).
 
 ## Features
 - **Window**: from top to bottom, a menu bar, a toolbar, the four sections (Media, Preview, Timeline, Effects) and a status bar. Each section has a title header.
@@ -78,8 +76,6 @@ Since 1.2.0 every effect can be applied either to one video clip (drag it from t
 - Effect and clip popups do not block the editor, so the user can keep playing and editing while one is open.
 - Clicking a fade marker opens its settings instead of removing it, so a fade is never removed by accident; a separate "Add fade" handle adds one.
 - Only the existing effects are listed (Fade through black, Subtitles, Volume). The whole-video Volume has no timeline marker; since 1.2.0 a clip with its own volume (not 100% or muted) has one.
-- (1.2.0) Effects are applied by drag and drop or the right-click menu (one clip) and by double-click (whole video); a single click still only opens the popup, so nothing changes by accident. Effects apply only to video clips; drops elsewhere are ignored.
-- (1.2.0) The ruler switches unit based on the right edge of the visible part, so the labels never change while the visible range stays the same.
 - The command bar of 0.x is replaced by the toolbar and the status bar; the zoom slider moves to the Timeline header.
 - Settings… is in the Edit menu, and Ctrl/Cmd+, still opens it.
 - When a drop contains several projects, the first one wins and the other files are ignored, with a message.
