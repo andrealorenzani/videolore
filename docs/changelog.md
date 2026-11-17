@@ -2,6 +2,11 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.2.7 — 2026-11-17 18:55 +0000
+
+### Workflow
+- Agent models: Product Manager, Architect and Documenter run on Haiku; the Principal Engineer runs on Opus when the session model is Opus, otherwise on Sonnet (new rule 13 in the workflow rules).
+
 ## 1.2.6 — 2026-11-16 23:30 +0000
 
 Boxes on the picture and 360 video: every movable object on the picture gets a visible box that moves and resizes, a group of Align and Reset commands is added to the toolbar, and 360° videos can be looked around in and exported as a flat video that follows a camera path set by the user.

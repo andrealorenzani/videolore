@@ -6,15 +6,16 @@ How AI agents build this project: who does what, which commands exist, which rul
 
 | Agent | File | Color | Model | Focus | Private notes | Human doc |
 |---|---|---|---|---|---|---|
-| Product Manager | `.claude/agents/product-manager.md` | blue | inherit | business, requirements, functionalities | `ai-docs/business.md` | `docs/business*.md` |
-| Architect | `.claude/agents/architect.md` | green | inherit | architecture, NFRs, security, performance, technology choices | `ai-docs/architecture.md` | `docs/architecture*.md` |
-| Principal Engineer | `.claude/agents/principal-engineer.md` | red | inherit | code, tests, code patterns, implementation security | `ai-docs/code.md` | `docs/code*.md` (+ code) |
-| Documenter | `.claude/agents/documenter.md` | yellow | haiku (cheapest) | docs, README, changelog, roadmap, workflow doc, version | `ai-docs/notes.md` | any `docs/*.md`, `README.md`, `docs/changelog.md`, `docs/roadmap.md`, `docs/workflow*.md` (never the text of `LICENSE`) |
+| Product Manager | `.claude/agents/product-manager.md` | blue | haiku | business, requirements, functionalities | `ai-docs/business.md` | `docs/business*.md` |
+| Architect | `.claude/agents/architect.md` | green | haiku | architecture, NFRs, security, performance, technology choices | `ai-docs/architecture.md` | `docs/architecture*.md` |
+| Principal Engineer | `.claude/agents/principal-engineer.md` | red | sonnet (opus when the session model is Opus) | code, tests, code patterns, implementation security | `ai-docs/code.md` | `docs/code*.md` (+ code) |
+| Documenter | `.claude/agents/documenter.md` | yellow | haiku | docs, README, changelog, roadmap, workflow doc, version | `ai-docs/notes.md` | any `docs/*.md`, `README.md`, `docs/changelog.md`, `docs/roadmap.md`, `docs/workflow*.md` (never the text of `LICENSE`) |
 
 - `ai-docs/*.md` are notes for AI, short: an index of every paragraph of the human docs the owner manages (`- <file> § <heading> — L<start>-<end> (<n> lines)`), so an agent finds a paragraph with `grep` and reads only its lines. AI-only detail goes in `ai-docs/<area>-<topic>.md`, indexed in the main file. Only the owner edits them.
 - `docs/*.md` are for humans: brief, with every interesting detail. An owner may split its doc into `docs/<area>-<topic>.md` sub-documents (past ~150 lines or with distinct topics); `docs/<area>.md` remains the index.
 - The Documenter has no ownership guardrail on `docs/` and `README.md`; it never edits another agent's `ai-docs/`.
 - Every agent's return to the command is short: `[SEVERE]` questions for the user, the list of changed files, and `## Future work` bullets.
+- **Models** (`AGENTS.md` rule 13): Product Manager, Architect and Documenter always use `haiku`. The Principal Engineer uses `opus` if the selected session model is Opus, otherwise `sonnet`; the agent file says `sonnet` and `/add-feature` and `/release` pass `model: opus` in the Agent call when needed.
 - Agent colors available in Claude Code: red, blue, green, yellow, purple, orange, pink, cyan.
 
 ## Commands
@@ -141,3 +142,4 @@ Used by `/clone-workflow`.
 - 2026-11-15 — v1.2.2–1.2.3: project page in `github_page/` (static, no build) and its deployment by `.github/workflows/pages.yml` to GitHub Pages; the page is a project file, not part of the copied workflow.
 - 2026-11-15 — v1.2.4: the Pages workflow no longer enables Pages itself (the default token cannot); enabling it is a one-time manual step.
 - 2026-11-16 — v1.2.5: notes become indexes (`ai-docs/` index by paragraph and line range, optional `ai-docs/<area>-<topic>.md` sub-documents); `/add-feature` hands work over through files, the command relays only questions, paths and counts; the Documenter runs after each part, with no ownership guardrail on `docs/`; the README poem changes only on a major release; docs compacted on release (and once now).
+- 2026-11-17 — v1.2.7: models per agent: Haiku for Product Manager, Architect and Documenter; Principal Engineer on Sonnet, or Opus when the session model is Opus.

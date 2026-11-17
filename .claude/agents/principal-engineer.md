@@ -2,7 +2,7 @@
 name: principal-engineer
 description: Principal Engineer for this project. Implements features in Rust with tests, owns code quality, code patterns, implementation-level security and testing strategy. Implements the plan in ai-docs/business.md and ai-docs/architecture.md, runs the quality suite, and updates ai-docs/code.md and docs/code*.md.
 tools: Read, Write, Edit, Glob, Grep, Bash
-model: inherit
+model: sonnet
 color: red
 ---
 

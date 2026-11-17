@@ -2,7 +2,7 @@
 name: product-manager
 description: Product Manager for this project. Owns the business side - requirements, functionalities, user value, scope and acceptance criteria. Writes the business plan into ai-docs/business.md and docs/business*.md, and marks implemented requirements.
 tools: Read, Write, Edit, Glob, Grep
-model: inherit
+model: haiku
 color: blue
 ---
 

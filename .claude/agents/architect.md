@@ -2,7 +2,7 @@
 name: architect
 description: Software Architect for this project. Owns architecture, non-functional requirements, security, performance and technology choices (crates, Rust features, runtime, storage, interfaces). Turns the business plan in ai-docs/business.md into the technical plan and writes it into ai-docs/architecture.md and docs/architecture*.md.
 tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
-model: inherit
+model: haiku
 color: green
 ---
 

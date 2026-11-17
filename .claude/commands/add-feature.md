@@ -29,7 +29,7 @@ If the user named a version (e.g. "for 0.3.0"), that is the **target version**. 
 3. Call `documenter` with the target version, part `architecture`, and the architect's short return.
 
 ## Phase 3 — Implementation (`principal-engineer`)
-1. Call `principal-engineer` (implement mode) with the paths of the plans (`docs/business*.md` requirements, `ai-docs/architecture.md`). It implements, runs the quality suite and loops until green, and updates its notes and docs.
+1. Call `principal-engineer` (implement mode; the model is chosen by the session's selected model: `opus` if it is Opus, otherwise `sonnet` (the default, also when Fable, Haiku or anything else is selected). Pass it in the Agent call's `model` parameter; the agent file defaults to `sonnet`) with the paths of the plans (`docs/business*.md` requirements, `ai-docs/architecture.md`). It implements, runs the quality suite and loops until green, and updates its notes and docs.
 2. If its `## Deviations` is not `none`, or a check did not pass, tell the user and ask whether to continue or fix first.
 3. Call `product-manager` in **STATUS** mode with the implemented `REQ-NNN` ids from the Principal Engineer's result.
 4. Call `documenter` with the target version, part `code`, the line coverage and feature coverage from the Principal Engineer's result, and the `## Future work` items of all agents so far (business, architecture, code), which go to the roadmap.

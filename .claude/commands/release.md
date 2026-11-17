@@ -14,7 +14,7 @@ You are the orchestrator. The version released is the **current** version (`scri
 2. `git fetch origin` and `main` is not behind `origin/main`. If it is, stop.
 3. `scripts/version.sh check` passes (static check, no tests). Let `V = scripts/version.sh get`.
 4. No `releases/<V> - */` directory and no tag `v<V>` exist (`git tag -l v<V>`, `git ls-remote --tags origin v<V>`). If one does, stop.
-5. Quality gates: call the `principal-engineer` in **VERIFY mode** — it runs the full test suite without changing anything and reports results, line coverage and feature coverage. You never run tests yourself. If anything fails, stop and report (suggest `/add-feature` or a fix).
+5. Quality gates: call the `principal-engineer` in **VERIFY mode** (the model is chosen by the session's selected model: `opus` if it is Opus, otherwise `sonnet` (the default, also when Fable, Haiku or anything else is selected). Pass it in the Agent call's `model` parameter; the agent file defaults to `sonnet`) — it runs the full test suite without changing anything and reports results, line coverage and feature coverage. You never run tests yourself. If anything fails, stop and report (suggest `/add-feature` or a fix).
 
 ## 1. Release name
 The snapshot directory is `releases/<V> - <name>` (e.g. `releases/0.4.1 - MVP`). Use `$ARGUMENTS` as the name if given. If it is empty or in doubt, ask the user with AskUserQuestion, proposing 2-3 short names derived from the changelog highlights (e.g. "MVP", "Hardware export"). The name: 1-60 characters, letters, digits, spaces, `.` `_` `+` `-` (checked by `scripts/collect-release.sh`).

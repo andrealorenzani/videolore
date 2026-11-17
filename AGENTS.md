@@ -10,10 +10,10 @@ The full description of the workflow lives in `docs/workflow.md`; read it before
 ## Agents and the documents they own
 | Agent | Color | Private notes (AI-only, owner only) | Human-readable doc |
 |---|---|---|---|
-| `product-manager` | blue | `ai-docs/business.md` | `docs/business*.md` |
-| `architect` | green | `ai-docs/architecture.md` | `docs/architecture*.md` |
-| `principal-engineer` | red | `ai-docs/code.md` | `docs/code*.md` + the code in `src/`, `tests/`, `Cargo.toml` (except `version`), `.github/workflows/` |
-| `documenter` | yellow, cheapest model (haiku) | `ai-docs/notes.md` | any `docs/*.md` (no owner guardrail), `README.md`, `docs/changelog.md`, `docs/roadmap.md`, `docs/workflow*.md`, the version (via `scripts/version.sh`); never `LICENSE` text, never another agent's `ai-docs/` |
+| `product-manager` | blue, haiku | `ai-docs/business.md` | `docs/business*.md` |
+| `architect` | green, haiku | `ai-docs/architecture.md` | `docs/architecture*.md` |
+| `principal-engineer` | red, sonnet or opus (rule 13) | `ai-docs/code.md` | `docs/code*.md` + the code in `src/`, `tests/`, `Cargo.toml` (except `version`), `.github/workflows/` |
+| `documenter` | yellow, haiku | `ai-docs/notes.md` | any `docs/*.md` (no owner guardrail), `README.md`, `docs/changelog.md`, `docs/roadmap.md`, `docs/workflow*.md`, the version (via `scripts/version.sh`); never `LICENSE` text, never another agent's `ai-docs/` |
 
 ## Rules (MUST)
 1. **The `documenter` runs at the end of every part of a development** (every feature, fix, refactor, dependency change or workflow change): after the product-manager, after the architect, after the principal-engineer. Each call only updates documentation (changelog, roadmap, README, `docs/`, notes index). A development is not finished until the documenter has run after its last change.
@@ -35,6 +35,7 @@ The full description of the workflow lives in `docs/workflow.md`; read it before
 10. **Licence notice**: `LICENSE` holds the unmodified GPL-3.0 text. The copyright holder (Andrea Lorenzani) appears in the README licence section and in a header at the top of every Rust source file: `// SPDX-License-Identifier: GPL-3.0-only` and `// Copyright (C) <year> Andrea Lorenzani`.
 11. **CI**: `.github/workflows/build.yml` checks fmt/clippy/test, coverage ≥85%, feature coverage 100%, version consistency and frozen release docs, then builds release executables (Linux, macOS, Windows) on every push to `main`; pushing a `v*` tag creates the GitHub release with the executables and the release log. Keep it green.
 12. **Token economy**: agents read only what their task needs: the `ai-docs` index first, then the paragraphs they grep for. Every development the Documenter runs `scripts/docs-check.sh` (links, sub-document indexes, forbidden AI/agent terms, changelog headers, README latest changes and poem), which covers all of `docs/` mechanically, and fixes what it reports; it reads in full only the files the development changed (`git diff --name-only`) and the indexes they belong to. On `/release` the Documenter reads and compacts every `docs/` file (not `ai-docs/`): it removes only useless data (repeated sentences, stale process notes, empty filler) and keeps every fact and every exact paragraph that a grep may need. Notes in `ai-docs/` are compacted by their owner only, never by another agent.
+13. **Models**: `product-manager`, `architect` and `documenter` always run on `haiku`. The `principal-engineer` runs on `opus` when the session's selected model is Opus, otherwise on `sonnet` (default). The agent files fix `haiku`/`sonnet`; the commands (`/add-feature`, `/release`) pass `model: opus` in the Agent call for the Principal Engineer when the selected model is Opus.
 
 ## Commands
 - `/add-feature <description>` — feature pipeline: product-manager → architect → principal-engineer, the documenter after each part; the command only relays user questions and file paths.
