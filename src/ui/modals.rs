@@ -8,7 +8,6 @@ use super::UiCache;
 use crate::app::{
     AppState, Command, ConsentChoice, Modal, PendingAction, SourceChoice, UnsavedChoice,
 };
-use crate::render::ExportMode;
 use crate::settings::SubtitleQuality;
 use crate::stt::{self, ModelSpec};
 use eframe::egui::{self, Context};
@@ -91,13 +90,6 @@ pub fn source_use_label(can_match: bool) -> &'static str {
          will be spread evenly)"
     }
 }
-
-/// Question Export asks for a project with 360° clips (REQ-103).
-pub const EXPORT_KIND_TITLE: &str = "Which video do you want to make?";
-pub const EXPORT_KIND_TEXT: &str = "A 360 video keeps the whole sphere: the viewer chooses where \
-    to look. The flat camera view is a normal video of what the camera shows in the preview.";
-pub const EXPORT_360: &str = "360 video";
-pub const EXPORT_FLAT: &str = "Flat camera view";
 
 pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
     if app.modal != Some(Modal::About) {
@@ -262,22 +254,9 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                 });
             });
         }
-        Some(Modal::ExportKind) => {
-            egui::Modal::new(egui::Id::unique("export-kind")).show(ctx, |ui| {
-                ui.heading(EXPORT_KIND_TITLE);
-                ui.label(EXPORT_KIND_TEXT);
-                ui.horizontal(|ui| {
-                    if ui.button(EXPORT_360).clicked() {
-                        cmds.push(Command::ChooseExportMode(ExportMode::Sphere360));
-                    }
-                    if ui.button(EXPORT_FLAT).clicked() {
-                        cmds.push(Command::ChooseExportMode(ExportMode::FlatCamera));
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cmds.push(Command::CloseModal);
-                    }
-                });
-            });
+        Some(Modal::Export(c)) => super::export_dialog::export_dialog(ctx, app, c, cmds),
+        Some(Modal::ConfirmOverwrite(c)) => {
+            super::export_dialog::overwrite_dialog(ctx, app, c, cmds)
         }
         Some(Modal::About) => {
             let text = cache

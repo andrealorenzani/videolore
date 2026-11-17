@@ -8,7 +8,7 @@
 //! events that burn the text in, used by the preview and the export alike.
 
 use crate::ass;
-use crate::subtitles::{MAX_TEXT, POS_MAX, Pos, SIZE_MAX, SIZE_MIN, SIZE_NORMAL};
+use crate::subtitles::{MAX_TEXT, POS_MAX, Pos, SIZE_NORMAL};
 use crate::time::Micros;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,15 @@ pub const EFFECT_DEFAULT: Micros = Micros(500_000);
 /// Longest time to live a file may claim (a day): the video length is only a limit when
 /// editing, because a video may be cut shorter after the text was placed.
 pub const MAX_TTL: Micros = Micros(86_400_000_000);
+/// Narrowest and widest box of a text, in thousandths of the picture width (REQ-116).
+pub const WIDTH_MIN: u16 = 100;
+pub const WIDTH_MAX: u16 = 1000;
+/// Width of a new text (80% of the picture width).
+pub const DEFAULT_WIDTH: u16 = 800;
+/// Height of every text box, in thousandths of the picture height (20%).
+pub const BOX_HEIGHT: u32 = 200;
+/// Smallest best-fit text height, in thousandths of the picture height (2%).
+pub const MIN_FIT: u32 = 20;
 /// Limits of the ASS events of one item and of a project.
 pub const MAX_EVENTS_ITEM: usize = 2000;
 pub const MAX_EVENTS_TOTAL: usize = 20_000;
@@ -101,18 +110,23 @@ impl TextEffects {
 pub struct Anchor360 {
     pub yaw_cd: i32,
     pub pitch_cd: i32,
-    /// Height of the text at 100%, as an angle.
-    pub size_cd: u32,
-    /// Width the text wraps at, as an angle.
-    pub wrap_cd: u32,
+    /// Height as an angle. For a text item: the height of its box. For a subtitle line:
+    /// the height of its text at 100% (the line's own size is a factor of it). Files of
+    /// 1.3.0 and before call it `size_cd`.
+    #[serde(alias = "size_cd")]
+    pub height_cd: u32,
+    /// Width the text wraps at (the width of the box), as an angle. Files of 1.3.0 and
+    /// before call it `wrap_cd`.
+    #[serde(alias = "wrap_cd")]
+    pub width_cd: u32,
 }
 
 impl Anchor360 {
     pub fn is_valid(&self) -> bool {
         self.yaw_cd.abs() <= 18_000
             && self.pitch_cd.abs() <= 9_000
-            && (1..=17_000).contains(&self.size_cd)
-            && (1..=36_000).contains(&self.wrap_cd)
+            && (1..=18_000).contains(&self.height_cd)
+            && (1..=36_000).contains(&self.width_cd)
     }
 }
 
@@ -134,8 +148,9 @@ pub struct TextItem {
     pub font: String,
     /// Centre of the text box (flat picture).
     pub place: Pos,
-    /// Thousandths of the default size, `SIZE_MIN..=SIZE_MAX`.
-    pub size: u16,
+    /// Width of the box in thousandths of the picture width, `WIDTH_MIN..=WIDTH_MAX`
+    /// (1.4.0). The text size is the best fit of that box ([`fit_px`]).
+    pub width: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<Anchor360>,
 }
@@ -179,7 +194,7 @@ impl TextItem {
             colour: [255, 255, 255],
             font: String::new(),
             place: DEFAULT_PLACE,
-            size: SIZE_NORMAL,
+            width: DEFAULT_WIDTH,
             anchor: None,
         }
     }
@@ -211,8 +226,8 @@ impl TextItem {
         if !valid_font(&self.font) {
             return Err("text item with an invalid font name".into());
         }
-        if !self.place.is_valid() || !(SIZE_MIN..=SIZE_MAX).contains(&self.size) {
-            return Err("text item with an invalid place or size".into());
+        if !self.place.is_valid() || !(WIDTH_MIN..=WIDTH_MAX).contains(&self.width) {
+            return Err("text item with an invalid place or width".into());
         }
         if self.anchor.is_some_and(|a| !a.is_valid()) {
             return Err("text item with an invalid 360 anchor".into());
@@ -419,19 +434,106 @@ pub fn font_px(height: u32, size: u16) -> u32 {
         .max(6)
 }
 
-/// Rough size (pixels) of the box of an item, used where nothing is measured (the slide
-/// distance of the export): characters are taken as 0.6 of the font size wide, and long
-/// lines wrap at the margins of the subtitle style.
-pub fn estimate_box(item: &TextItem, width: u32, height: u32) -> (f64, f64) {
-    let px = f64::from(font_px(height, item.size));
-    let max_w = f64::from(width) - 2.0 * f64::from(ass::margin_lr(width));
-    let mut w: f64 = 0.0;
-    let mut rows = 0.0;
-    for l in item.text.split('\n') {
-        let lw = l.chars().count() as f64 * px * 0.6;
-        rows += (lw / max_w.max(1.0)).ceil().max(1.0);
-        w = w.max(lw.min(max_w));
+/// The box of a text on a flat `width` x `height` picture, in pixels: its width and the
+/// fixed height (REQ-116).
+pub fn box_px(item: &TextItem, width: u32, height: u32) -> (f64, f64) {
+    (
+        f64::from(width) * f64::from(item.width) / 1000.0,
+        f64::from(height) * f64::from(BOX_HEIGHT) / 1000.0,
+    )
+}
+
+/// The rows `text` takes at font height `px` when it wraps at `wrap` pixels: characters
+/// are taken as 0.6 of the font height wide.
+fn rows_at(text: &str, px: f64, wrap: f64) -> f64 {
+    text.split('\n')
+        .map(|l| {
+            (l.chars().count() as f64 * px * 0.6 / wrap.max(1.0))
+                .ceil()
+                .max(1.0)
+        })
+        .sum()
+}
+
+/// The **best fit** (REQ-116): the largest font height in pixels at which `text`, wrapped
+/// at `box_w`, fits inside `box_h` (rows of 1.2 times the font height), never more than one
+/// line filling the box, never below `min_px`. Pure: preview and export call it with the
+/// same geometry, so they agree.
+pub fn fit_in(text: &str, box_w: f64, box_h: f64, min_px: f64) -> f64 {
+    let fits = |px: f64| rows_at(text, px, box_w) * px * 1.2 <= box_h;
+    let hi = box_h / 1.2;
+    if hi <= min_px || fits(hi) {
+        return hi.max(min_px);
     }
+    if !fits(min_px) {
+        return min_px;
+    }
+    let (mut lo, mut hi) = (min_px, hi);
+    for _ in 0..40 {
+        let mid = (lo + hi) / 2.0;
+        if fits(mid) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+/// Font size in pixels of a flat text on a `width` x `height` picture: its best fit.
+pub fn fit_px(item: &TextItem, width: u32, height: u32) -> u32 {
+    let (bw, bh) = box_px(item, width, height);
+    let min = f64::from(height) * f64::from(MIN_FIT) / 1000.0;
+    (fit_in(&item.text, bw, bh, min).floor() as u32).max(6)
+}
+
+/// The box width that makes a text made in 1.3.0 (with the size `old_size`, thousandths
+/// of the default) look as before (ADR-088): the narrowest width whose best fit is at
+/// least the old font height, else the widest. Measured on a 1920x1080 picture.
+pub fn legacy_width(text: &str, old_size: u16) -> u16 {
+    let want = font_px(1080, old_size);
+    let mut item = TextItem::new(TextId(0), text.to_string(), Micros::ZERO);
+    let (mut lo, mut hi) = (WIDTH_MIN, WIDTH_MAX);
+    item.width = hi;
+    if fit_px(&item, 1920, 1080) < want {
+        return WIDTH_MAX;
+    }
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        item.width = mid;
+        if fit_px(&item, 1920, 1080) >= want {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    hi
+}
+
+/// The box height (hundredths of a degree) of a text fixed to the sphere made in 1.3.0
+/// with the angles `size_cd` (height of a line at 100%), `wrap_cd` and the size `old_size`:
+/// the rows it took (ADR-088), clamped to the range of an anchor.
+pub fn legacy_anchor_height(text: &str, size_cd: u32, wrap_cd: u32, old_size: u16) -> u32 {
+    let (w, h) = (3840.0, 1920.0);
+    let px =
+        f64::from(size_cd) / 100.0 * (h / 180.0) * f64::from(old_size) / f64::from(SIZE_NORMAL);
+    let wrap = (f64::from(wrap_cd) / 100.0 * w / 360.0).clamp(8.0, w);
+    let rows = rows_at(text, px.max(4.0), wrap);
+    let cd = rows * f64::from(size_cd) * f64::from(old_size) / f64::from(SIZE_NORMAL) * 1.2;
+    (cd.round() as u32).clamp(1, 18_000)
+}
+
+/// Rough size (pixels) of the text of an item, used where nothing is measured (the slide
+/// distance of the export): characters are taken as 0.6 of the font size wide, and long
+/// lines wrap at the width of the box.
+pub fn estimate_box(item: &TextItem, width: u32, height: u32) -> (f64, f64) {
+    let px = f64::from(fit_px(item, width, height));
+    let max_w = box_px(item, width, height).0;
+    let mut w: f64 = 0.0;
+    for l in item.text.split('\n') {
+        w = w.max((l.chars().count() as f64 * px * 0.6).min(max_w));
+    }
+    let rows = rows_at(&item.text, px, max_w);
     let pad = ass::outline(px as u32);
     (w + 2.0 * pad, rows * px * 1.2 + 2.0 * pad)
 }
@@ -614,10 +716,13 @@ pub fn flat_events_in(
         h,
         cx: f64::from(item.place.x.min(POS_MAX)) * w / f64::from(POS_MAX),
         cy: f64::from(item.place.y.min(POS_MAX)) * h / f64::from(POS_MAX),
-        px: font_px(height, item.size),
+        px: fit_px(item, width, height),
         bw: box_wh.0,
         bh: box_wh.1,
-        margins: None,
+        margins: {
+            let m = ((w - box_px(item, width, height).0) / 2.0).max(0.0).round() as u32;
+            Some((m, m))
+        },
     };
     events_with(item, &lay, video_end, windows)
 }
@@ -642,16 +747,37 @@ pub fn equirect_events(
     video_end: Micros,
     windows: Option<&[Window]>,
 ) -> Vec<AssEvent> {
+    equirect_events_px(item, w, h, None, video_end, windows)
+}
+
+/// The font height of a subtitle line fixed to the sphere: its angle `height_cd` at 100%
+/// times the line's own `size` (thousandths), on an equirectangular picture `h` high.
+pub fn line_equirect_px(a: &Anchor360, h: u32, size: u16) -> u32 {
+    let deg_px = f64::from(h) / 180.0;
+    ((f64::from(a.height_cd) / 100.0 * deg_px * f64::from(size) / f64::from(SIZE_NORMAL)).round()
+        as u32)
+        .max(4)
+}
+
+/// [`equirect_events`] with an own font height `px` (subtitle lines); `None`: the best fit
+/// of the item's box (REQ-116).
+pub fn equirect_events_px(
+    item: &TextItem,
+    w: u32,
+    h: u32,
+    px: Option<u32>,
+    video_end: Micros,
+    windows: Option<&[Window]>,
+) -> Vec<AssEvent> {
     let Some(a) = item.anchor else {
         return Vec::new();
     };
     let (cx, cy) = equirect_point(&a, w, h);
-    let deg_px = f64::from(h) / 180.0;
-    let px = ((f64::from(a.size_cd) / 100.0 * deg_px * f64::from(item.size)
-        / f64::from(SIZE_NORMAL))
-    .round() as u32)
-        .max(4);
-    let wrap = (f64::from(a.wrap_cd) / 100.0 * f64::from(w) / 360.0).clamp(8.0, f64::from(w));
+    let wrap = (f64::from(a.width_cd) / 100.0 * f64::from(w) / 360.0).clamp(8.0, f64::from(w));
+    let px = px.unwrap_or_else(|| {
+        let box_h = f64::from(a.height_cd) / 100.0 * f64::from(h) / 180.0;
+        (fit_in(&item.text, wrap, box_h, 4.0).floor() as u32).max(4)
+    });
     let margin = ((f64::from(w) - wrap) / 2.0).max(0.0).round() as u32;
     // the estimate of the box, with the equirect font and wrap
     let chars = item
@@ -661,8 +787,7 @@ pub fn equirect_events(
         .max()
         .unwrap_or(1) as f64;
     let bw = (chars * f64::from(px) * 0.6).min(wrap);
-    let rows = item.text.split('\n').count() as f64;
-    let bh = rows * f64::from(px) * 1.2;
+    let bh = rows_at(&item.text, f64::from(px), wrap) * f64::from(px) * 1.2;
     let lay = Layout {
         w: f64::from(w),
         h: f64::from(h),
@@ -895,11 +1020,11 @@ mod tests {
         i.text = "{\\evil}".into();
         i.colour = [0x11, 0x22, 0x33];
         i.font = "DejaVu Sans".into();
-        i.size = 2000;
+        i.width = 1000;
         let ev = &events(&i, 1920, 1080, estimate_box(&i, 1920, 1080), secs(100.0))[0];
         assert!(ev.tags.contains("\\1c&H332211&"));
         assert!(ev.tags.contains("\\fnDejaVu Sans"));
-        assert!(ev.tags.contains("\\fs108"));
+        assert!(ev.tags.contains(&format!("\\fs{}", fit_px(&i, 1920, 1080))));
         assert!(!ev.text.contains('{') && !ev.text.contains('\\'));
         assert_eq!(font_px(1080, SIZE_NORMAL), 54);
         let (w, h) = estimate_box(&item(), 1920, 1080);
@@ -923,39 +1048,39 @@ mod tests {
             Box::new(|i| i.font = "x".repeat(101)),
             Box::new(|i| i.text = "".into()),
             Box::new(|i| i.text = "a\u{7}".into()),
-            Box::new(|i| i.size = 249),
-            Box::new(|i| i.size = 4001),
+            Box::new(|i| i.width = 99),
+            Box::new(|i| i.width = 1001),
             Box::new(|i| i.place = Pos { x: 10_001, y: 0 }),
             Box::new(|i| {
                 i.anchor = Some(Anchor360 {
                     yaw_cd: 18_001,
                     pitch_cd: 0,
-                    size_cd: 100,
-                    wrap_cd: 100,
+                    height_cd: 100,
+                    width_cd: 100,
                 })
             }),
             Box::new(|i| {
                 i.anchor = Some(Anchor360 {
                     yaw_cd: 0,
                     pitch_cd: 9_001,
-                    size_cd: 100,
-                    wrap_cd: 100,
+                    height_cd: 100,
+                    width_cd: 100,
                 })
             }),
             Box::new(|i| {
                 i.anchor = Some(Anchor360 {
                     yaw_cd: 0,
                     pitch_cd: 0,
-                    size_cd: 0,
-                    wrap_cd: 100,
+                    height_cd: 0,
+                    width_cd: 100,
                 })
             }),
             Box::new(|i| {
                 i.anchor = Some(Anchor360 {
                     yaw_cd: 0,
                     pitch_cd: 0,
-                    size_cd: 17_001,
-                    wrap_cd: 100,
+                    height_cd: 18_001,
+                    width_cd: 100,
                 })
             }),
             Box::new(|i| {
@@ -1033,11 +1158,99 @@ mod tests {
         i.anchor = Some(Anchor360 {
             yaw_cd: 3000,
             pitch_cd: 1000,
-            size_cd: 500,
-            wrap_cd: 6000,
+            height_cd: 500,
+            width_cd: 6000,
         });
         let j = serde_json::to_string(&i).unwrap();
         let back: TextItem = serde_json::from_str(&j).unwrap();
         assert_eq!(back, i);
+    }
+
+    // covers: REQ-116
+    #[test]
+    fn best_fit_follows_the_width_and_the_amount_of_text() {
+        let mut i = item();
+        i.text = "The quick brown fox jumps over the lazy dog and keeps running far away".into();
+        let at = |i: &TextItem, w: u16| {
+            let mut j = i.clone();
+            j.width = w;
+            fit_px(&j, 1920, 1080)
+        };
+        // monotone in the width: a wider box never gives a smaller text
+        let mut last = 0;
+        for w in (WIDTH_MIN..=WIDTH_MAX).step_by(50) {
+            let f = at(&i, w);
+            assert!(f >= last, "width {w}: {f} < {last}");
+            last = f;
+        }
+        assert!(at(&i, 1000) > at(&i, 200), "widening makes the text larger");
+        // lines three times longer give a smaller text in a box of the same width
+        let mut long = i.clone();
+        long.text = long.text.repeat(3);
+        assert!(at(&long, 500) < at(&i, 500));
+        // more lines make a smaller text
+        let mut two = item();
+        two.text = "one\ntwo".into();
+        let mut four = item();
+        four.text = "one\ntwo\nthree\nfour".into();
+        assert!(at(&four, 800) < at(&two, 800));
+        // never above one line filling the box (20% of the height / 1.2)
+        let mut short = item();
+        short.text = "Hi".into();
+        assert!(at(&short, 1000) <= (1080.0_f64 * 0.2 / 1.2) as u32);
+        // never below 2% of the height: text that does not fit runs past the box
+        let mut huge = item();
+        huge.text = "word ".repeat(2000);
+        assert_eq!(at(&huge, 100), (1080.0_f64 * 0.02) as u32);
+        // the same item gives the same size in every call: preview and export agree
+        assert_eq!(fit_px(&i, 1920, 1080), fit_px(&i, 1920, 1080));
+        // 200 items fit quickly
+        let t = std::time::Instant::now();
+        for _ in 0..200 {
+            std::hint::black_box(fit_px(&i, 1920, 1080));
+        }
+        assert!(t.elapsed() < std::time::Duration::from_millis(200));
+    }
+
+    // covers: REQ-111, REQ-116
+    #[test]
+    fn the_box_and_the_events_use_the_width() {
+        let mut i = item();
+        i.width = 500;
+        let (bw, bh) = box_px(&i, 1920, 1080);
+        assert_eq!((bw, bh), (960.0, 216.0));
+        let ev = &events(&i, 1920, 1080, estimate_box(&i, 1920, 1080), secs(100.0))[0];
+        // the text wraps at the box width: margins leave 960 px
+        assert_eq!(ev.margins, Some((480, 480)));
+        // an event of the 360 anchor uses the fit of its angle box
+        i.anchor = Some(Anchor360 {
+            yaw_cd: 0,
+            pitch_cd: 0,
+            height_cd: 2000,
+            width_cd: 6000,
+        });
+        let ev = equirect_events(&i, 3840, 1920, secs(100.0), None);
+        assert!(!ev.is_empty());
+        assert!(ev[0].tags.contains("\\fs"));
+    }
+
+    // covers: REQ-123
+    #[test]
+    fn a_text_of_1_3_0_gets_the_width_that_keeps_its_look() {
+        // one short line: the old size fits a narrow box
+        let narrow = legacy_width("Hi", SIZE_NORMAL);
+        assert!(narrow < 400, "{narrow}");
+        let mut i = TextItem::new(TextId(1), "Hi".into(), Micros::ZERO);
+        i.width = narrow;
+        assert!(fit_px(&i, 1920, 1080) >= font_px(1080, SIZE_NORMAL));
+        i.width = narrow - 1;
+        assert!(narrow == WIDTH_MIN || fit_px(&i, 1920, 1080) < font_px(1080, SIZE_NORMAL));
+        // a text too big for the box gets the widest box and shrinks to fit
+        assert_eq!(legacy_width(&"word ".repeat(300), 4000), WIDTH_MAX);
+        // a text fixed to the sphere: more rows make a taller box, in range
+        let one = legacy_anchor_height("one line", 500, 6000, 1000);
+        let many = legacy_anchor_height(&"words ".repeat(40), 500, 6000, 1000);
+        assert!(many > one && (1..=18_000).contains(&many));
+        assert_eq!(legacy_anchor_height("x", 1, 1, 250), 1);
     }
 }

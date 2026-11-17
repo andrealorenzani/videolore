@@ -360,46 +360,30 @@ fn povs_can_be_edited_removed_and_are_limited() {
     assert!(e.contains("at most 200"), "{e}");
 }
 
-// covers: REQ-100
+// covers: REQ-100, REQ-123
 #[test]
-fn the_360_switch_wins_over_the_file_and_marks_the_project_changed() {
+fn only_the_file_makes_a_clip_360_and_an_old_switch_is_dropped_on_open() {
     let dir = tempfile::tempdir().unwrap();
-    let mut app = sphere_app(dir.path());
-    let now = Instant::now();
+    let app = sphere_app(dir.path());
     let m = a(&app);
     let b = app.project.media[1].id;
-    let undo = app.history.undo_len();
     assert!(app.project.media(m).unwrap().format.is_360());
-    // the file says 360; the user says no
-    app.dispatch(Command::Set360(m, Some(false)), now).unwrap();
-    assert!(app.sphere_at_playhead().is_none());
-    assert!(app.dirty, "the choice is saved with the project");
-    assert_eq!(app.history.undo_len(), undo, "but it is not an undo step");
-    // a flat file turned on
-    app.dispatch(Command::Set360(b, Some(true)), now).unwrap();
-    app.seek(s(6), now);
-    assert!(app.sphere_at_playhead().is_some());
-    // back to what the file says
-    app.dispatch(Command::Set360(b, None), now).unwrap();
-    assert!(app.sphere_at_playhead().is_none());
-    // the same value again: no change
-    app.dispatch(Command::Set360(b, None), now).unwrap();
-    // unknown media and audio files
-    assert!(
-        app.dispatch(Command::Set360(MediaId(99), None), now)
-            .is_err()
-    );
-    let song = app.project.media[2].id;
-    assert!(
-        app.dispatch(Command::Set360(song, Some(true)), now)
-            .is_err()
-    );
-    // survives a save and a reopen
+    assert!(!app.project.media(b).unwrap().format.is_360());
+    // saved by 1.4.0: no switch is written
     let file = dir.path().join("p.vlproj");
     crate::project::save(&app.project, &file).unwrap();
-    let (q, _) = crate::project::load(&file).unwrap();
-    assert_eq!(q.media[0].format.treat_as_360, Some(false));
-    assert!(!q.media[0].format.is_360());
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("treat_as_360"));
+    // a project of 1.3.0 with the switch on a flat file and off a 360 file: both ignored
+    let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    v["schema_version"] = 5.into();
+    v["media"][0]["format"]["treat_as_360"] = false.into();
+    v["media"][1]["format"]["treat_as_360"] = true.into();
+    let old = dir.path().join("old.vlproj");
+    std::fs::write(&old, serde_json::to_string(&v).unwrap()).unwrap();
+    let (q, _) = crate::project::load(&old).unwrap();
+    assert!(q.media[0].format.is_360(), "the file says 360");
+    assert!(!q.media[1].format.is_360(), "the file says flat");
 }
 
 // covers: REQ-100

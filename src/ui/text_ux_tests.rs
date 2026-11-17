@@ -7,8 +7,8 @@
 
 use super::ux_tests::Harness;
 use super::*;
-use crate::app::Popup;
 use crate::app::tests::{FakeDialogs, files, import, state};
+use crate::app::{Modal, Popup};
 use crate::text::{TextId, TextItem};
 use eframe::egui::accesskit::Role;
 use eframe::egui::{Color32, Pos2, Rect, pos2, vec2};
@@ -205,7 +205,7 @@ fn ctrl_or_shift_click_on_text_bars_selects_several_without_opening_a_popup() {
 
 // covers: REQ-106
 #[test]
-fn the_context_group_is_shown_only_with_a_line_selected_and_not_for_a_text() {
+fn the_context_group_is_shown_with_a_line_or_a_text_selected() {
     let (_d, mut app) = loaded();
     let now = Instant::now();
     let on_bar = |h: &Harness, label: &str| {
@@ -217,11 +217,15 @@ fn the_context_group_is_shown_only_with_a_line_selected_and_not_for_a_text() {
     let t = text_at(&mut app, "T", 1);
     app.dispatch(Command::ClosePopup(Popup::Text), now).unwrap();
     let mut h = Harness::new(app, 1600.0, 800.0);
-    // nothing selected on a flat clip, or only a text: no group at all
+    // nothing selected on a flat clip: no group at all
     h.app.selection.clear();
     h.idle(2);
     assert!(group.iter().all(|l| !on_bar(&h, l)), "{:#?}", h.labels());
+    // a text item selected: the three commands (REQ-115)
     h.app.dispatch(Command::SelectText(t), now).unwrap();
+    h.idle(2);
+    assert!(group.iter().all(|l| on_bar(&h, l)), "{:#?}", h.labels());
+    h.app.dispatch(Command::ClearSelection, now).unwrap();
     h.idle(2);
     assert!(group.iter().all(|l| !on_bar(&h, l)));
     // a subtitle line selected: the three commands
@@ -291,24 +295,34 @@ fn a_text_box_is_dragged_in_the_preview_in_one_undo_step() {
     let t = h.app.project.texts.get(id).unwrap();
     assert!(t.place.x < 3000 && t.place.y < 3000, "{:?}", t.place);
     assert_eq!(h.app.history.undo_len(), n + 1);
-    // the box never leaves the picture
+    // past the edge: the centre stops on the picture (the box may be partly outside)
     h.drag(at(pic, 0.2, 0.2), at(pic, -5.0, -5.0));
     let t = h.app.project.texts.get(id).unwrap();
-    assert!(t.place.x > 0 && t.place.y > 0, "{:?}", t.place);
-    // a corner enlarges it, one step; the limits hold
-    let size = h.app.project.texts.get(id).unwrap().size;
-    let hs = corner_handles(&mut h);
-    assert_eq!(hs.len(), 4, "four corner handles");
-    let br = hs
-        .iter()
-        .max_by(|a, b| (a.center().x + a.center().y).total_cmp(&(b.center().x + b.center().y)))
-        .unwrap()
-        .center();
-    h.drag(br, br + vec2(300.0, 200.0));
-    let bigger = h.app.project.texts.get(id).unwrap().size;
-    assert!(bigger > size && bigger <= 4000, "{size} -> {bigger}");
+    assert_eq!((t.place.x, t.place.y), (0, 0), "{:?}", t.place);
     h.key(Key::Z, Modifiers::COMMAND);
-    assert_eq!(h.app.project.texts.get(id).unwrap().size, size);
+    h.drag(at(pic, 0.2, 0.2), at(pic, 0.5, 0.5));
+    // one handle on the right edge changes the width only, in one undo step
+    let hs = corner_handles(&mut h);
+    assert_eq!(
+        hs.len(),
+        1,
+        "a handle on the right edge, none on the corners"
+    );
+    let handle = hs[0].center();
+    let before = h.app.project.texts.get(id).unwrap().clone();
+    let n = h.app.history.undo_len();
+    h.drag(handle, handle - vec2(150.0, 0.0));
+    let t = h.app.project.texts.get(id).unwrap();
+    assert!(t.width < before.width, "{} -> {}", before.width, t.width);
+    assert_eq!((t.place, t.anchor), (before.place, before.anchor));
+    assert_eq!(h.app.history.undo_len(), n + 1);
+    // dragged far to the left it stops at 10 % of the picture width
+    let handle = corner_handles(&mut h)[0].center();
+    h.drag(handle, handle - vec2(5000.0, 0.0));
+    assert_eq!(h.app.project.texts.get(id).unwrap().width, 100);
+    h.key(Key::Z, Modifiers::COMMAND);
+    h.key(Key::Z, Modifiers::COMMAND);
+    assert_eq!(h.app.project.texts.get(id).unwrap().width, before.width);
 }
 
 fn corner_handles(h: &mut Harness) -> Vec<Rect> {
@@ -350,7 +364,6 @@ fn shift_click_on_boxes_selects_several_a_drag_keeps_them_and_an_empty_click_cle
         Command::SetTextBoxes {
             ids: vec![b],
             place: crate::subtitles::Pos { x: 5000, y: 3000 },
-            size: 1000,
         },
         now,
     )
@@ -394,37 +407,62 @@ fn shift_click_on_boxes_selects_several_a_drag_keeps_them_and_an_empty_click_cle
     assert!(h.app.selection.is_empty());
 }
 
-// covers: REQ-103
+// covers: REQ-118, REQ-122, REQ-103
 #[test]
-fn export_of_a_project_with_a_360_clip_asks_which_video_to_make() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut app = state(FakeDialogs {
-        export: Some(dir.path().join("o.mp4")),
-        ..Default::default()
-    });
-    import(&mut app, files(dir.path()));
-    let now = Instant::now();
+fn ctrl_e_opens_the_export_dialog_with_its_fields_inside_a_small_window() {
+    use crate::ui::export_dialog as d;
+    let (_d, mut app) = loaded();
     app.project.media[0].format.spherical = Some(true);
-    for i in [0, 1] {
-        app.dispatch(Command::Append(Some(app.project.media[i].id)), now)
-            .unwrap();
+    app.project.media[1].format.spherical = Some(true);
+    let mut h = Harness::new(app, 800.0, 500.0);
+    h.key(Key::E, Modifiers::COMMAND);
+    h.idle(3);
+    assert!(matches!(h.app.modal, Some(Modal::Export(_))));
+    for label in [
+        d::TITLE,
+        d::FILE_LABEL,
+        d::FOLDER_BUTTON,
+        d::MODE_LABEL,
+        d::VIDEO_LABEL,
+        d::AUDIO_LABEL,
+        d::EXPORT_360,
+        d::EXPORT_FLAT,
+        d::EXPORT_BUTTON,
+        d::CANCEL,
+    ] {
+        let n = h
+            .find(label)
+            .unwrap_or_else(|| panic!("no \"{label}\" in {:#?}", h.labels()));
+        assert!(
+            h.screen().contains_rect(n.rect),
+            "\"{label}\" is outside the window: {:?}",
+            n.rect
+        );
     }
-    let mut h = Harness::new(app, 1280.0, 800.0);
-    h.click_label("Export…");
-    assert!(h.has(modals::EXPORT_360) && h.has(modals::EXPORT_FLAT) && h.has("Cancel"));
-    assert!(h.has(modals::EXPORT_KIND_TITLE));
-    // the mix of 360 and flat clips: "360 video" is refused with a message
-    h.click_label(modals::EXPORT_360);
-    assert!(!h.app.is_exporting());
-    assert!(
-        h.app.notice.is_some() || h.app.status.contains("360"),
-        "{:?}",
-        h.app.status
-    );
-    h.app.notice = None;
-    h.click_label("Export…");
-    h.click_label(modals::EXPORT_FLAT);
-    // it started (and the fake ffmpeg already answered)
+    // the first choices are the project's: no saved project, so the folder may be empty
+    // and Export is refused with a reason on screen
+    let mut c = match &h.app.modal {
+        Some(Modal::Export(c)) => (**c).clone(),
+        _ => unreachable!(),
+    };
+    c.folder = std::path::PathBuf::from("/no/such/folder");
+    h.app.modal = Some(Modal::Export(Box::new(c)));
+    h.idle(2);
+    assert!(h.has("The folder does not exist"), "{:#?}", h.labels());
+    // Esc closes it without writing anything
+    h.key(Key::Escape, Modifiers::NONE);
+    assert!(h.app.modal.is_none() && !h.app.is_exporting());
+    // Cancel does the same
+    h.key(Key::E, Modifiers::COMMAND);
+    h.idle(3);
+    h.click_label(d::CANCEL);
     assert!(h.app.modal.is_none());
-    assert!(h.app.status.starts_with("Export"), "{:?}", h.app.status);
+    // a project without 360 clips has no 360 choice
+    let mut app = loaded().1;
+    app.project.media[0].format.spherical = Some(false);
+    let mut h = Harness::new(app, 800.0, 500.0);
+    h.key(Key::E, Modifiers::COMMAND);
+    h.idle(3);
+    assert!(!h.has(d::EXPORT_360));
+    assert!(h.has(d::SAME_AS_SOURCE));
 }

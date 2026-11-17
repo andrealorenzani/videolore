@@ -11,6 +11,8 @@
 //! checked ([`crate::outcheck`]) before it is published; any problem silently redoes the
 //! export with the normal method, whose commands are exactly those of 0.3.0.
 
+pub mod choice;
+
 use crate::ass;
 use crate::ffmpeg::{
     CmdOutput, FfVersion, Process, ProgressEvent, Runner, is_keyframe, parse_progress_line,
@@ -132,6 +134,10 @@ pub struct ExportJob {
     pub check_timeout: Duration,
     /// What to make of a project with 360° clips (REQ-103).
     pub mode: render::ExportMode,
+    /// The video preset and audio format chosen in the Export dialog (REQ-120, REQ-121).
+    pub format: crate::format::FormatChoice,
+    /// Only the sound of the timeline is exported (REQ-119).
+    pub audio_only: bool,
 }
 
 /// `<dir>/.<name>.videolore-partial`.
@@ -227,17 +233,23 @@ pub fn start(job: ExportJob, runner: Arc<dyn Runner>) -> ExportHandle {
 /// Builds the plan, probing keyframes (cached per source) only when stream copy is possible.
 pub fn plan(job: &ExportJob, runner: &dyn Runner) -> Result<Plan, ExportError> {
     let mut cache: HashMap<MediaId, Vec<Micros>> = HashMap::new();
-    let plan = render::plan_export_mode(&job.project, &job.encoders, job.mode, |m, t| {
-        let kf = cache
-            .entry(m.id)
-            .or_insert_with(|| probe_keyframes(runner, &job.ffprobe, &m.path).unwrap_or_default());
-        let half_frame = m
-            .format
-            .fps
-            .map(|f| Micros(f.frame_duration().0 / 2))
-            .unwrap_or(Micros(1000));
-        is_keyframe(kf, t, half_frame)
-    })?;
+    let plan = render::plan_export_choice(
+        &job.project,
+        &job.encoders,
+        job.mode,
+        &job.format,
+        |m, t| {
+            let kf = cache.entry(m.id).or_insert_with(|| {
+                probe_keyframes(runner, &job.ffprobe, &m.path).unwrap_or_default()
+            });
+            let half_frame = m
+                .format
+                .fps
+                .map(|f| Micros(f.frame_duration().0 / 2))
+                .unwrap_or(Micros(1000));
+            is_keyframe(kf, t, half_frame)
+        },
+    )?;
     Ok(plan)
 }
 
@@ -265,6 +277,9 @@ pub fn run(
     cancel: &AtomicBool,
     tx: &Sender<ExportEvent>,
 ) -> Result<(PathBuf, ExportMethod), ExportError> {
+    if job.audio_only {
+        return run_audio(job, runner, cancel, tx);
+    }
     let output = validate_output(&job.project, &job.output)?;
     let partial = partial_path(&output);
     let plan = plan(job, runner)?;
@@ -331,6 +346,48 @@ pub fn run(
             .and_then(|()| std::fs::rename(&partial, &output))
         {
             Ok(()) => Ok((output, method)),
+            Err(e) => {
+                let _ = std::fs::remove_file(&partial);
+                Err(ExportError::Io(e.to_string()))
+            }
+        },
+        Err(e) => {
+            let _ = std::fs::remove_file(&partial);
+            Err(e)
+        }
+    }
+}
+
+/// "Only audio" (REQ-119): the sound of the whole timeline written to the output through
+/// the same partial-file rule as a video.
+fn run_audio(
+    job: &ExportJob,
+    runner: &dyn Runner,
+    cancel: &AtomicBool,
+    tx: &Sender<ExportEvent>,
+) -> Result<(PathBuf, ExportMethod), ExportError> {
+    let output = validate_output(&job.project, &job.output)?;
+    let partial = partial_path(&output);
+    let plan = render::plan_audio_only(&job.project, &job.encoders, job.format.audio)?;
+    let _ = tx.send(ExportEvent::Started { stream_copy: false });
+    let io = |e: std::io::Error| ExportError::Io(e.to_string());
+    let work = crate::scratch::Work::new(&job.work_root).map_err(io)?;
+    let list = work.path().join("list.ffconcat");
+    let script = work.path().join("graph.txt");
+    let paths = ExportPaths {
+        output: &partial,
+        concat_list: &list,
+        graph_script: &script,
+    };
+    let args = render::audio_export_args(&plan, &paths, job.version, job.threads).map_err(io)?;
+    work.register(&partial).map_err(io)?;
+    drop(crate::scratch::create_private_file(&partial).map_err(io)?);
+    let result = execute(job, runner, &args, work.path(), cancel, tx);
+    match result {
+        Ok(()) => match crate::scratch::publish(&partial)
+            .and_then(|()| std::fs::rename(&partial, &output))
+        {
+            Ok(()) => Ok((output, ExportMethod::Software)),
             Err(e) => {
                 let _ = std::fs::remove_file(&partial);
                 Err(ExportError::Io(e.to_string()))
@@ -855,6 +912,8 @@ pub(crate) mod tests {
             stall_timeout: STALL_TIMEOUT,
             check_timeout: CHECK_TIMEOUT,
             mode: Default::default(),
+            format: Default::default(),
+            audio_only: false,
         }
     }
 

@@ -13,6 +13,7 @@ This page covers building and running; the details are in the sub-documents:
 | [code-effects.md](code-effects.md) | Effects on a clip or the whole video, clip volume, fades at the video's edges, the video's own subtitles and word matching, subtitle positions, SRT export, timeline ruler, project format 3 (all since 1.2.0) |
 | [code-360.md](code-360.md) | Boxes and corner handles, text size, align and reset, 360° video: camera maths, how the camera reaches ffmpeg, spike results, preview copies, project format 4 (all since 1.2.6) |
 | [code-text.md](code-text.md) | Text items and their effects, one selection for lines and texts, the Context Menu group, texts fixed to the 360° sphere, the "360 video" export and its spherical marker, project format 5 (all since 1.3.0) |
+| [code-export.md](code-export.md) | The Export dialog (names, formats, presets, only audio, session memory), Clean audio, text boxes with best-fit size, project format 6 (all since 1.4.0) |
 | [code-ui.md](code-ui.md) | The window: menus, toolbar, resizable sections, shortcuts, popups, timeline markers, status bar, recent projects, drag and drop |
 | [code-testing.md](code-testing.md) | Unit, UI and integration tests, coverage, CI jobs |
 | [code-packaging.md](code-packaging.md) | Installers, bundled ffmpeg, notices, release assets, manual checklist per OS, known limitations |

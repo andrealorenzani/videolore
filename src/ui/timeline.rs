@@ -602,6 +602,16 @@ fn marker_lane(
                 let c = pos2(m.x + 5.0, mid);
                 painter.circle(c, 4.0, Color32::from_rgb(60, 140, 200), outline);
             }
+            MarkerKind::CleanAudio => {
+                let c = pos2(m.x + 5.0, mid);
+                painter.rect(
+                    Rect::from_center_size(c, vec2(8.0, 8.0)),
+                    1.0,
+                    Color32::from_rgb(70, 170, 110),
+                    outline,
+                    StrokeKind::Inside,
+                );
+            }
             MarkerKind::Fade | MarkerKind::EdgeFade => {
                 let d = 6.0;
                 painter.add(Shape::convex_polygon(
@@ -749,6 +759,13 @@ fn marker_lane(
                             clip,
                             volume: 100,
                             muted: false,
+                        },
+                    ),
+                    Instance::CleanAudio(clip) => (
+                        "Remove",
+                        Command::SetCleanAudio {
+                            target: crate::app::Target::Clip(clip),
+                            on: false,
                         },
                     ),
                     Instance::Pov(media, t) => ("Remove", Command::RemovePov { media, t }),

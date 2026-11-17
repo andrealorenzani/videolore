@@ -30,11 +30,11 @@ pub struct BoxResize {
 pub struct TextBoxDrag {
     /// Every text that moves with the grabbed one.
     pub ids: Vec<crate::text::TextId>,
-    /// `Some` when a corner is dragged, else the whole box moves.
-    pub corner: Option<Corner>,
-    /// The box and the size at the start (frame pixels, thousandths).
+    /// True when the right-edge handle is dragged (the width changes), else the whole box
+    /// moves.
+    pub edge: bool,
+    /// The box at the start (frame pixels).
     pub rect: Rect,
-    pub size: u16,
     /// Pointer minus box centre at the start.
     pub grab: egui::Vec2,
     pub frame: (u32, u32),
@@ -96,6 +96,7 @@ pub fn items(app: &AppState, ui: &Ui, frame: (u32, u32)) -> Vec<BoxItem> {
                 .get(id)
                 .and_then(|l| l.size)
                 .unwrap_or(SIZE_NORMAL),
+            width_only: false,
         })
         .collect();
     v.extend(
@@ -110,7 +111,8 @@ pub fn items(app: &AppState, ui: &Ui, frame: (u32, u32)) -> Vec<BoxItem> {
         .map(|(id, rect)| BoxItem {
             id: ObjectId::Text(id),
             rect,
-            size: shown.texts.get(id).map_or(SIZE_NORMAL, |t| t.size),
+            size: SIZE_NORMAL,
+            width_only: true,
         }),
     );
     v
@@ -166,7 +168,12 @@ pub fn interact(
                 Stroke::new(if selected { 2.0 } else { 1.0 }, color),
                 StrokeKind::Outside,
             );
-            for h in boxes::handle_rects(s, HANDLE_SIDE) {
+            let handles: Vec<Rect> = if b.width_only {
+                vec![boxes::edge_handle_rect(s, HANDLE_SIDE)]
+            } else {
+                boxes::handle_rects(s, HANDLE_SIDE).to_vec()
+            };
+            for h in handles {
                 ui.painter().rect_filled(h, 1.0, Color32::WHITE);
                 ui.painter().rect_stroke(
                     h,
@@ -239,12 +246,8 @@ pub fn interact(
                                     crate::selection::ObjRef::Line(_) => None,
                                 })
                                 .collect(),
-                            corner: match h {
-                                Hit::Corner(c) => Some(c),
-                                Hit::Body => None,
-                            },
+                            edge: h == Hit::Edge,
                             rect: b.rect,
-                            size: b.size,
                             grab: f - b.rect.center(),
                             frame,
                             cam: app
@@ -256,6 +259,7 @@ pub fn interact(
                         });
                     }
                     ObjectId::Line(line) => match h {
+                        Hit::Edge => {}
                         Hit::Corner(corner) => {
                             cache.box_resize = Some(BoxResize {
                                 line,
@@ -273,6 +277,7 @@ pub fn interact(
                                 grab: f - b.rect.center(),
                                 size: b.rect.size(),
                                 frame,
+                                whole_box: sphere,
                             });
                         }
                     },
@@ -480,15 +485,16 @@ fn text_box_drag(
         return;
     };
     let pointer = placement::to_frame(p, picture, d.frame);
-    let (rect, size) = match d.corner {
-        Some(c) => {
-            let out = boxes::resize(d.rect, d.size, c, pointer, d.frame);
-            (out.rect, out.size)
-        }
-        None => {
-            let c = placement::clamp_centre(pointer - d.grab, d.rect.size(), d.frame);
-            (Rect::from_center_size(c, d.rect.size()), d.size)
-        }
+    let (rect, width) = if d.edge {
+        let (r, w) = boxes::resize_width(d.rect, pointer, d.frame);
+        (r, Some(w))
+    } else {
+        let c = if d.cam.is_some() {
+            placement::clamp_centre(pointer - d.grab, d.rect.size(), d.frame)
+        } else {
+            placement::clamp_to_picture(pointer - d.grab, d.frame)
+        };
+        (Rect::from_center_size(c, d.rect.size()), None)
     };
     ui.painter().rect_stroke(
         placement::to_screen(rect, picture, d.frame),
@@ -496,15 +502,26 @@ fn text_box_drag(
         Stroke::new(2.0, Color32::YELLOW),
         StrokeKind::Outside,
     );
-    ui.ctx().set_cursor_icon(match d.corner {
-        Some(c) => boxes::cursor(Hit::Corner(c), true),
-        None => CursorIcon::Grabbing,
+    ui.ctx().set_cursor_icon(if d.edge {
+        CursorIcon::ResizeHorizontal
+    } else {
+        CursorIcon::Grabbing
     });
     if resp.drag_stopped() {
         cache.text_box_drag = None;
-        match d.cam {
+        match (d.cam, width) {
+            (Some(cam), Some(_)) => {
+                // a text fixed to the sphere: the width is an angle
+                let focal = (f64::from(d.frame.0) / 2.0) / (cam.fov_deg().to_radians() / 2.0).tan();
+                let per_deg = focal * std::f64::consts::PI / 180.0;
+                cmds.push(Command::ResizeTextAnchorWidth {
+                    ids: d.ids,
+                    width_cd: (f64::from(rect.width()) / per_deg * 100.0).round() as u32,
+                });
+            }
+            (None, Some(width)) => cmds.push(Command::ResizeTextWidth { ids: d.ids, width }),
             // a text fixed to the sphere goes to the point of the sphere under the box
-            Some(cam) if d.corner.is_none() => {
+            (Some(cam), None) => {
                 let c = rect.center();
                 let (yaw, pitch) = crate::camera::unproject(
                     cam,
@@ -519,10 +536,9 @@ fn text_box_drag(
                     pitch_cd: (pitch * 100.0).round() as i32,
                 });
             }
-            _ => cmds.push(Command::SetTextBoxes {
+            (None, None) => cmds.push(Command::SetTextBoxes {
                 ids: d.ids,
                 place: boxes::centre_pos(rect, d.frame),
-                size,
             }),
         }
     }

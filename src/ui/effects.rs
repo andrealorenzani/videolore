@@ -60,7 +60,7 @@ pub const EFFECT_TOOLTIP: &str =
     "Drag onto a clip to apply it to that clip; double-click to apply it to the whole video";
 
 /// The rows of the Effects section: the effect and its name (nothing else is shown).
-pub fn rows() -> [(EffectKind, &'static str); 3] {
+pub fn rows() -> [(EffectKind, &'static str); 4] {
     EffectKind::ALL.map(|e| (e, e.name()))
 }
 
@@ -456,6 +456,83 @@ pub fn clip_volume_body(
         },
         cmds,
     );
+}
+
+/// What Clean audio says in its popups.
+pub const CLEAN_AUDIO_TEXT: &str = "Reduces background noise in the video's sound, such as \
+wind, music or people chatting, while the speech stays. It is not perfect and has no \
+strength setting. It works in the preview and in the export, before the clip's own volume; \
+the music track is not changed.";
+
+/// The popup of Clean audio on one clip (REQ-114): what it does, and Remove.
+pub fn clean_audio_clip_body(
+    ui: &mut Ui,
+    app: &AppState,
+    clip: crate::timeline::ClipId,
+    cmds: &mut Vec<Command>,
+) {
+    let Some(c) = app.project.timeline.get(clip) else {
+        ui.label("This clip no longer exists.");
+        return;
+    };
+    if let Some(name) = app.clip_name(clip) {
+        ui.add(egui::Label::new(format!("Clip: {name}")).truncate());
+    }
+    ui.weak(CLEAN_AUDIO_TEXT);
+    if c.clean_audio {
+        button(
+            ui,
+            app,
+            "Remove",
+            Command::SetCleanAudio {
+                target: Target::Clip(clip),
+                on: false,
+            },
+            cmds,
+        );
+    } else {
+        ui.label("Clean audio is off for this clip.");
+        button(
+            ui,
+            app,
+            "Apply",
+            Command::SetCleanAudio {
+                target: Target::Clip(clip),
+                on: true,
+            },
+            cmds,
+        );
+    }
+}
+
+/// The Clean audio popup of the whole video: how many clips have it, apply and remove.
+pub fn clean_audio_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+    let clips = &app.project.timeline.clips;
+    let on = clips.iter().filter(|c| c.clean_audio).count();
+    ui.weak(CLEAN_AUDIO_TEXT);
+    ui.label(format!("{on} of {} clips have Clean audio.", clips.len()));
+    ui.horizontal_wrapped(|ui| {
+        button(
+            ui,
+            app,
+            "Apply to whole video",
+            Command::SetCleanAudio {
+                target: Target::WholeVideo,
+                on: true,
+            },
+            cmds,
+        );
+        button(
+            ui,
+            app,
+            "Remove from whole video",
+            Command::SetCleanAudio {
+                target: Target::WholeVideo,
+                on: false,
+            },
+            cmds,
+        );
+    });
 }
 
 /// The popup of the fade at the very start or end of the video.

@@ -3,21 +3,28 @@
 Back to the [index](business.md).
 
 ## Features
-- Automatic output format, with no settings dialog.
+- Automatic output format by default. Since 1.4.0 an Export dialog chooses what to export (full video, only audio or only subtitles), the file location and name, the video format and the audio format; each format has "Same as source" as its reset (see [Export dialog](#export-dialog-140)).
 - As fast as possible: no re-encoding when it is not needed.
 - Progress and cancel; a cancelled export leaves no partial file.
 - Music and subtitles are included in the exported file (subtitles are burned into the picture).
 - HEVC files play on Apple devices.
 - (1.2.0) Subtitles can also be saved as a separate `.srt` file with File > Export subtitles (.srt)… (REQ-088, see [Subtitles](business-subtitles.md)).
-- (1.3.0) Text items are burned into the picture like subtitles (REQ-111); a project with a text item is re-encoded. For a project with 360 clips, Export asks whether to make a 360 video that keeps the whole sphere or the flat camera view of 1.2.6 (REQ-103, see [Boxes on the picture and 360 video](business-picture.md)). This question is the only exception to the automatic output format, and it appears only for such projects.
+- (1.3.0) Text items are burned into the picture like subtitles (REQ-111); a project with a text item is re-encoded. Since 1.4.0 the Export dialog offers, for a project whose clips are all 360, a 360 video that keeps the whole sphere or the flat camera view of 1.2.6 (REQ-103, REQ-122, see [Boxes on the picture and 360 video](business-picture.md)).
 - (0.4.0) **Faster export** with the computer's video hardware (NVIDIA, Intel, AMD, Apple), chosen in Settings. If the hardware is missing or fails, the normal method is used automatically and the result is always a correct file.
 
 ## Requirements
 - REQ-021 (implemented): Export shows progress and can be cancelled; a cancelled export leaves no partial file.
-- REQ-022 (implemented): The output format is chosen automatically: if all clips share the same format it is kept; otherwise the lowest by pixel count, then frame rate, then bitrate is used, with letterboxing and never stretching.
-- REQ-023 (implemented): Export does as little processing as possible: stream copy (no re-encode) when all clips share an identical format, there are no effects (fades between clips or at the start or end of the video, subtitles, text items, music, video sound level other than 100% or muted, a clip volume other than 100% or a muted clip) and every cut starts on a keyframe; otherwise a single re-encode pass, always frame-accurate.
+- REQ-022 (implemented): The output format is chosen automatically unless the Export dialog chooses one (REQ-120, REQ-121): if all clips share the same format it is kept; otherwise the lowest by pixel count, then frame rate, then bitrate is used, with letterboxing and never stretching.
+- REQ-023 (implemented): Export does as little processing as possible: stream copy (no re-encode) when all clips share an identical format, there are no effects (fades between clips or at the start or end of the video, subtitles, text items, music, video sound level other than 100% or muted, a clip volume other than 100% or a muted clip) and every cut starts on a keyframe, and the Export dialog keeps "Same as source" for both video and audio (REQ-120, REQ-121) with no clip having Clean audio (REQ-114); otherwise a single re-encode pass, always frame-accurate.
 - REQ-036 (implemented): Exported HEVC video in MP4 or MOV carries the Apple-compatible tag (hvc1), both with stream copy and with re-encode.
 - REQ-037 (implemented): A timeline of 200 segments cut from one source exports successfully and frame-accurately.
+
+### Export dialog (1.4.0)
+- REQ-118 (implemented): **Export** (File > Export…, the Export toolbar button and Ctrl/Cmd+E) opens a dialog instead of exporting at once. Its **export file** field holds the location and the file name, with a small "..." button that opens a folder chooser. The first time, the name is the project's name in the project's folder; if the project has no folder yet, the folder of the last export of the session, else the user's documents folder. The extension follows the chosen format (.mp4, .mov, .m4a, .mp3 or .srt) and is set automatically. The dialog has an **Export** button and Cancel. Export is disabled, with the reason shown, when the name is empty or invalid or the folder does not exist or cannot be written. If the file exists, a confirmation asks before it is replaced. The choices are kept for the session only; they are not saved in the project or in Settings. Acceptance: Ctrl/Cmd+E and File > Export… open the dialog; "..." changes the folder; a missing folder disables Export with its reason; an existing file asks first; Cancel writes nothing; a second opening in the same session shows the last choices.
+- REQ-119 (implemented): The dialog's **mode** is **Full video** (the export of REQ-021 to REQ-023 with the chosen formats), **Only audio** (the sound of the whole timeline as one audio file: video sound, music, volumes and Clean audio, in the audio format of REQ-121; no video fields) or **Only subtitles (.srt)** (the file of REQ-088). Fields that do not apply to the mode are greyed out with a reason; Only subtitles is greyed out with "No subtitles on the timeline" when there are none. File > Export subtitles (.srt)… keeps working. Acceptance: Only audio of a 10 s timeline with music gives a 10 s audio file that contains the music at its volume; Only subtitles gives the same text as File > Export subtitles (.srt)…; without subtitles the mode shows its reason.
+- REQ-120 (implemented): **Video format** (Full video only) is a dropdown whose entries read like "1920x1080 25fps, libx264, .mp4". Its first entry, **Same as source**, is the automatic result of REQ-022, with stream copy when REQ-023 allows it. The other entries are a fixed list of 12 presets (resolution, frame rate, H.264 or HEVC, MP4 or MOV); a preset is offered only when the bundled ffmpeg has its encoder. A preset is always re-encoded and can use the hardware export (REQ-055). A 360 video (REQ-122, REQ-103) keeps the sphere's own size and ignores the preset. A small reset button sets "Same as source". Pictures keep letterboxing and are never stretched (REQ-022); HEVC in MP4 or MOV carries hvc1 (REQ-036). Acceptance: the entries read as in the example; choosing 1280x720 25fps libx264 .mp4 gives a file of that size, frame rate and codec; reset returns "Same as source"; with "Same as source", identical clips and no effects, nothing is re-encoded.
+- REQ-121 (implemented): **Audio format** (Full video and Only audio) is a dropdown with **Same as source** (today's automatic audio: the encoder of the source's audio codec, AAC by default; stream copy when REQ-023 allows; Only audio writes an .m4a file), **aac** (.m4a) and **mp3** (offered only when the bundled ffmpeg has its encoder). A small reset button sets "Same as source". A chosen audio format always re-encodes the audio. Acceptance: the aac file decodes with the timeline length; reset returns "Same as source"; mp3, when offered, gives an .mp3 file.
+- REQ-122 (implemented): The **360 choice** of the dialog (Full video only) appears only for a project whose video clips are all 360 clips: **360 video** or **Flat camera view** (REQ-103). A project without 360 clips and a project that mixes 360 and flat clips show no 360 choice; a mixed project exports as a flat camera view, without a message. Acceptance: an all-360 project shows the choice; a mixed project and a project without 360 clips do not; the mixed project exports flat.
 
 ### Faster export (0.4.0)
 - REQ-055 (implemented): Hardware export with silent fallback. When Export is "Faster" and the export needs re-encoding to H.264 or HEVC, videolore uses the working video hardware found by the background check (REQ-061): NVIDIA (Windows, Linux), Intel Quick Sync (Windows, Linux), AMD (Windows; on Linux AMD and Intel are also reached through VA-API) and Apple VideoToolbox (macOS). If there is no working hardware, or the hardware run ends with an error, crashes, makes no progress for 30 seconds, or fails the output check (REQ-063), the export is automatically redone with the normal method, with no error message; the user always gets a correct file. Acceptance (automated, simulated hardware, for each vendor): missing hardware, error exit, crash, stall and bad output each end with a finished file in the same format as Best quality and with the correct number of frames; no error is shown; no temporary file remains (REQ-059). Cancelling during the hardware run, the check or the redo leaves no partial file (REQ-021) and never starts a redo. With Export = Best quality the hardware is never used.
@@ -31,7 +38,7 @@ Back to the [index](business.md).
 The real-hardware check of this feature is the quality goal QG-05, in [Settings, performance and safety](business-performance.md#quality-goals).
 
 ## Key decisions
-- Output format is automatic: there is no export settings dialog.
+- (1.4.0) Output format is automatic by default ("Same as source"). The Export dialog (REQ-118 to REQ-122) lets the user choose the video and audio format, the mode and the location; this replaces the earlier decision of no export dialog. The choices are not a set of technical settings: only fixed presets and "Same as source".
 - Stream copy is used only when the result is guaranteed frame-accurate; correctness comes before speed.
 - Changing the video audio volume (or muting it) also requires re-encoding, like music and subtitles.
 - H.264 and HEVC export are available with the bundled ffmpeg; output formats are the same as in 0.1.3.
@@ -59,13 +66,18 @@ The real-hardware check of this feature is the quality goal QG-05, in [Settings,
 - **Faster is not always faster.** Measured on Linux with Intel integrated graphics (Iris Plus G7, 0.4.0): Faster ranged from 14% quicker to 41% slower than Best quality, because the hardware export plus the output check is not quicker than the normal method on that graphics. Size and quality targets were met. Speed on other computers is still to be measured (the estimate for dedicated graphics cards is 20–45% less time at 1080p, assumption).
 - A driver fault that freezes the whole computer cannot be prevented by videolore.
 
+## Known limitations (1.4.0)
+- The format choices are a fixed list of presets; resolutions, frame rates, bitrates or codecs outside the list cannot be chosen.
+- The Export dialog remembers its choices for the session only; they are not stored in the project.
+- A 360 video ignores the video format presets: it keeps the sphere's own size.
+
 ## Out of scope
-- Export settings dialog.
+- (1.4.0) Remembering export choices in the project or in Settings; custom resolutions, frame rates, bitrates, quality values or encoder options.
 - Separate subtitle files (SRT/VTT) or switchable subtitles; subtitles are always burned in.
 - Direct upload to social networks.
 - (0.4.0) Video hardware for preview copies, preview playback, effects, subtitles or decoding; preview copies stay on the normal method.
 - (0.4.0) Hardware AV1 or VP9 encoding (those formats always use the normal method).
-- (0.4.0) Choosing a specific graphics card or vendor; per-vendor quality sliders; any technical export setting.
+- (0.4.0) Choosing a specific graphics card or vendor; per-vendor quality sliders; any technical export setting beyond the presets of the Export dialog.
 - (0.4.0) AMD hardware through AMD's own interface on Linux (AMD on Linux goes through VA-API); Intel Macs; ARM Windows and Linux.
 - (0.4.0) Bundling or installing graphics drivers.
 - (0.4.0) A visible message when the fallback was used (shown only in Advanced).

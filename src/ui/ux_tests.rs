@@ -307,9 +307,10 @@ fn menus_list_every_item_with_shortcut_and_availability() {
     // the menu items name the undo step and run their command
     let nodes = open_menu(&mut h, "Edit");
     assert!(find_in(&nodes, "Undo Add fade").is_some());
-    let n = find_in(&nodes, "Settings…").unwrap().clone();
+    // (a menu taller than 400 px scrolls: the items below are reached with the wheel)
+    let n = find_in(&nodes, "Clip details…").unwrap().clone();
     h.click(n.rect.center());
-    assert!(h.app.popups.is_open(Popup::Settings));
+    assert!(h.app.popups.is_open(Popup::ClipDetails));
     let nodes = open_menu(&mut h, "Help");
     let n = find_in(&nodes, "Keyboard shortcuts").unwrap().clone();
     h.click(n.rect.center());
@@ -857,7 +858,7 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
     let mut h = Harness::new(app, 1280.0, 800.0);
     let rows: Vec<_> = effects::rows().into_iter().collect();
     let names: Vec<&str> = rows.iter().map(|r| r.1).collect();
-    assert_eq!(names, ["Fade IN/OUT", "Subtitles", "Volume"]);
+    assert_eq!(names, ["Fade IN/OUT", "Subtitles", "Volume", "Clean audio"]);
     for (effect, name) in rows {
         // the row shows only the name, with the tooltip explaining how to apply it
         let n = h.find(name).unwrap_or_else(|| panic!("{name}"));
@@ -871,7 +872,9 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
     assert!(h.has("Remove all fades"));
     assert!(h.has("Add line at playhead"));
     assert!(h.has("00:00:01.000  New subtitle"), "{:#?}", h.labels());
-    // the fade list opens that fade (Volume and Subtitles closed: they cover it)
+    assert!(h.has("Apply to whole video"), "{:#?}", h.labels());
+    // the fade list opens that fade (Volume, Clean audio and Subtitles closed: they cover it)
+    h.key(Key::Escape, Modifiers::NONE);
     h.key(Key::Escape, Modifiers::NONE);
     h.key(Key::Escape, Modifiers::NONE);
     assert_eq!(h.app.popups.open, vec![Popup::Fades]);
@@ -1193,11 +1196,11 @@ fn a_subtitle_dragged_in_the_preview_moves_and_stays_inside_the_picture() {
     // the line is at the style's place: centred, just above the bottom margin
     let grab = pos2(pic.center().x, pic.min.y + pic.height() * 0.91);
     let n = h.app.history.undo_len();
-    // (b) dragged far past the top-left corner: it stops with the box inside the picture
+    // (b) dragged far past the top-left corner: its centre stops on the corner (REQ-117)
     h.drag(grab, pic.min - vec2(300.0, 300.0));
     let p = h.app.project.subtitles.get(id).unwrap().position;
     let p = p.unwrap_or_else(|| panic!("the line did not move: {:?}", h.app.status));
-    assert!(p.x > 0 && p.x < 3000 && p.y > 0 && p.y < 1500, "{p:?}");
+    assert_eq!((p.x, p.y), (0, 0), "{p:?}");
     assert_eq!(h.app.history.undo_len(), n + 1, "one undo step per drag");
     assert!(h.app.drag_pos.is_none());
     // (e) the other line did not move
@@ -1312,4 +1315,38 @@ fn lines_are_selected_with_ctrl_click_and_shift_drag_on_the_timeline() {
     h.click(empty);
     assert!(h.app.selection.is_empty());
     settle(&mut h.app);
+}
+
+// covers: REQ-114, REQ-075
+#[test]
+fn the_clean_audio_popup_explains_the_effect_and_removes_it() {
+    let (_d, mut app) = loaded();
+    let now = Instant::now();
+    let clip = app.project.timeline.clips[0].id;
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: crate::app::EffectKind::CleanAudio,
+            target: crate::app::Target::Clip(clip),
+        },
+        now,
+    )
+    .unwrap();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    h.idle(2);
+    assert!(h.has("Reduces background noise"), "{:#?}", h.labels());
+    h.click_label("Remove");
+    assert!(!h.app.project.timeline.clips[0].clean_audio);
+    assert_eq!(h.app.undo_text(), "Undo Remove clean audio");
+    // the whole-video popup: apply and remove for every clip
+    h.app
+        .dispatch(Command::OpenPopup(Popup::CleanAudio), now)
+        .unwrap();
+    h.idle(2);
+    assert!(h.has("0 of 2 clips have Clean audio."), "{:#?}", h.labels());
+    h.click_label("Apply to whole video");
+    assert!(h.app.project.timeline.clips.iter().all(|c| c.clean_audio));
+    h.idle(2);
+    assert!(h.has("2 of 2 clips have Clean audio."));
+    h.click_label("Remove from whole video");
+    assert!(!h.app.project.timeline.any_clean_audio());
 }

@@ -39,16 +39,13 @@ pub struct MediaFormat {
     /// stereo (1.2.6). `None`: not checked yet (media imported before 1.2.6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spherical: Option<bool>,
-    /// The user's choice "Treat as 360° video" for this source; wins over `spherical`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub treat_as_360: Option<bool>,
 }
 
 impl MediaFormat {
-    /// True when the source is shown through the 360 camera: the user's choice, else
-    /// what the file says, else no. Only video can be 360.
+    /// True when the source is shown through the 360 camera: only what the file says
+    /// (1.4.0 has no switch). Only video can be 360.
     pub fn is_360(&self) -> bool {
-        self.vcodec.is_some() && self.treat_as_360.or(self.spherical).unwrap_or(false)
+        self.vcodec.is_some() && self.spherical.unwrap_or(false)
     }
 }
 
@@ -867,20 +864,21 @@ pub(crate) mod tests {
 
     // covers: REQ-100
     #[test]
-    fn the_users_switch_wins_over_the_file() {
-        let mut f = probe_with("");
+    fn only_the_file_decides_and_a_legacy_switch_is_ignored() {
+        let f = probe_with("");
         assert!(!f.is_360());
-        f.treat_as_360 = Some(true);
-        assert!(f.is_360());
-        let mut g = probe_with(
+        let g = probe_with(
             r#"{"side_data_type": "Spherical Mapping", "projection": "equirectangular"}"#,
         );
         assert!(g.is_360());
-        g.treat_as_360 = Some(false);
-        assert!(!g.is_360());
+        // a 1.3.0 file with the switch is read, the switch is dropped
+        let mut v = serde_json::to_value(&f).unwrap();
+        v["treat_as_360"] = true.into();
+        let old: MediaFormat = serde_json::from_value(v).unwrap();
+        assert!(!old.is_360());
         // audio can never be 360
         let a = MediaFormat {
-            treat_as_360: Some(true),
+            spherical: Some(true),
             ..MediaFormat::default()
         };
         assert!(!a.is_360());

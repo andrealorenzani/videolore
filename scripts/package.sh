@@ -61,10 +61,10 @@ smoke_test() {
     local enc filters
     enc=$("$ff" -hide_banner -encoders)
     filters=$("$ff" -hide_banner -filters)
-    for e in libx264 libx265 libvpx-vp9 libopus $(hw_encoders "$target"); do
+    for e in libx264 libx265 libvpx-vp9 libopus libmp3lame $(hw_encoders "$target"); do
         grep -qw "$e" <<<"$enc" || { echo "bundled ffmpeg lacks encoder $e" >&2; exit 1; }
     done
-    for f in subtitles amix alimiter psnr; do
+    for f in subtitles amix alimiter psnr afftdn; do
         grep -qw "$f" <<<"$filters" || { echo "bundled ffmpeg lacks filter $f" >&2; exit 1; }
     done
     echo "smoke test passed: $ff"

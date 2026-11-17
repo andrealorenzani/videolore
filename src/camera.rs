@@ -356,8 +356,18 @@ pub fn anchor_at(cam: Camera, w: u32, h: u32) -> crate::text::Anchor360 {
     crate::text::Anchor360 {
         yaw_cd: cam.yaw_cd,
         pitch_cd: cam.pitch_cd,
-        size_cd: ((vfov * 100.0 * 0.05).round() as u32).clamp(1, 17_000),
-        wrap_cd: ((cam.fov_deg() * 100.0 * 0.6).round() as u32).clamp(1, 36_000),
+        height_cd: ((vfov * 100.0 * 0.05).round() as u32).clamp(1, 17_000),
+        width_cd: ((cam.fov_deg() * 100.0 * 0.6).round() as u32).clamp(1, 36_000),
+    }
+}
+
+/// The anchor of a text item added now (REQ-111, REQ-116): like [`anchor_at`] but with a
+/// box 20% of the view's height tall, as the flat box is 20% of the picture's height.
+pub fn text_anchor_at(cam: Camera, w: u32, h: u32) -> crate::text::Anchor360 {
+    let vfov = vertical_fov_deg(cam.fov_deg(), w, h);
+    crate::text::Anchor360 {
+        height_cd: ((vfov * 100.0 * 0.2).round() as u32).clamp(1, 18_000),
+        ..anchor_at(cam, w, h)
     }
 }
 
@@ -519,8 +529,8 @@ mod tests {
         let a = anchor_at(Camera::new(3000, 1000, 9000), 1600, 900);
         assert_eq!((a.yaw_cd, a.pitch_cd), (3000, 1000));
         // 90 degrees wide: 60% = 54 degrees wrap; the view is about 58.7 degrees high: 5%
-        assert_eq!(a.wrap_cd, 5400);
-        assert!((a.size_cd as i64 - 293).abs() <= 2, "{}", a.size_cd);
+        assert_eq!(a.width_cd, 5400);
+        assert!((a.height_cd as i64 - 293).abs() <= 2, "{}", a.height_cd);
         assert!(a.is_valid());
     }
     fn pov(t_s: i64, yaw: i32) -> Pov {

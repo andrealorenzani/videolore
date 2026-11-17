@@ -38,6 +38,9 @@ pub struct Clip {
     /// The clip's own sound is muted (1.2.0; absent = not muted).
     #[serde(default)]
     pub muted: bool,
+    /// Background noise of the clip's own sound is reduced (1.4.0, REQ-114; absent = off).
+    #[serde(default)]
+    pub clean_audio: bool,
 }
 
 impl Clip {
@@ -50,6 +53,7 @@ impl Clip {
             src_out,
             volume: FULL_VOLUME,
             muted: false,
+            clean_audio: false,
         }
     }
 
@@ -102,6 +106,9 @@ pub enum EditError {
 
 /// Why two clips cannot be merged although they are parts of the same file.
 pub const DIFFERENT_VOLUMES: &str = "The clips have different volumes";
+
+/// Why two clips cannot be merged: one has Clean audio and the other has not.
+pub const DIFFERENT_CLEAN_AUDIO: &str = "The clips have different clean audio settings";
 
 /// The video track.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -307,7 +314,13 @@ impl Timeline {
         }
         let i = self.index_of(id)?;
         let (a, b) = (&self.clips[i], &self.clips[i + 1]);
-        ((a.volume, a.muted) != (b.volume, b.muted)).then_some(DIFFERENT_VOLUMES)
+        if (a.volume, a.muted) != (b.volume, b.muted) {
+            Some(DIFFERENT_VOLUMES)
+        } else if a.clean_audio != b.clean_audio {
+            Some(DIFFERENT_CLEAN_AUDIO)
+        } else {
+            None
+        }
     }
 
     /// Merges clip `id` with the next one (see [`Self::can_merge`]).
@@ -446,6 +459,25 @@ impl Timeline {
         self.clips[i].volume = volume.min(FULL_VOLUME);
         self.clips[i].muted = muted;
         Ok(())
+    }
+
+    /// Switches Clean audio on or off for the clips `ids` (REQ-114).
+    pub fn set_clean_audio(&mut self, ids: &[ClipId], on: bool) -> Result<(), EditError> {
+        if ids.is_empty() {
+            return Err(EditError::NothingSelected);
+        }
+        if ids.iter().any(|i| self.get(*i).is_none()) {
+            return Err(EditError::NoSuchClip);
+        }
+        for c in self.clips.iter_mut().filter(|c| ids.contains(&c.id)) {
+            c.clean_audio = on;
+        }
+        Ok(())
+    }
+
+    /// True when any clip has Clean audio.
+    pub fn any_clean_audio(&self) -> bool {
+        self.clips.iter().any(|c| c.clean_audio)
     }
 
     /// Boundary closest to `t` (index and time), if any.
@@ -773,6 +805,41 @@ pub(crate) mod tests {
         );
         t.set_clip_volume(right, 50, true).unwrap();
         t.merge(a).unwrap();
+    }
+
+    // covers: REQ-114
+    #[test]
+    fn clean_audio_follows_split_copy_and_move_and_blocks_merge() {
+        let mut t = track();
+        let a = t.clips[0].id;
+        assert!(!t.any_clean_audio());
+        assert_eq!(
+            t.set_clean_audio(&[], true),
+            Err(EditError::NothingSelected)
+        );
+        assert_eq!(
+            t.set_clean_audio(&[ClipId(77)], true),
+            Err(EditError::NoSuchClip)
+        );
+        t.set_clean_audio(&[a], true).unwrap();
+        assert!(t.any_clean_audio());
+        let right = t.split(s(2), F).unwrap();
+        assert!(t.clips[0].clean_audio && t.get(right).unwrap().clean_audio);
+        assert!(t.can_merge(a));
+        let r = *t.get(right).unwrap();
+        let id = t.insert_at(&r, t.duration(), F).unwrap();
+        assert!(t.get(id).unwrap().clean_audio);
+        t.move_to(id, 0).unwrap();
+        assert!(t.clips[0].clean_audio);
+        t.set_clean_audio(&[right], false).unwrap();
+        assert!(!t.can_merge(a));
+        assert_eq!(t.merge_block_reason(a), Some(DIFFERENT_CLEAN_AUDIO));
+        assert_eq!(t.merge(a), Err(EditError::NotMergeable));
+        t.set_clean_audio(&[right], true).unwrap();
+        t.merge(a).unwrap();
+        // old files have it off
+        let c: Clip = serde_json::from_str(r#"{"id":1,"media":2,"src_in":0,"src_out":5}"#).unwrap();
+        assert!(!c.clean_audio);
     }
 
     // covers: REQ-094

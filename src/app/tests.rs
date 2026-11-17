@@ -20,6 +20,8 @@ pub struct FakeDialogs {
     pub export: Option<PathBuf>,
     pub ffmpeg: Option<PathBuf>,
     pub model: Option<PathBuf>,
+    /// The folder "..." in the Export dialog chooses.
+    pub folder: Option<PathBuf>,
     /// Where "Export subtitles" saves, and the name it proposed.
     pub srt: Option<PathBuf>,
     pub srt_name: Arc<std::sync::Mutex<String>>,
@@ -43,6 +45,9 @@ impl Dialogs for FakeDialogs {
     }
     fn pick_ffmpeg(&mut self) -> Option<PathBuf> {
         self.ffmpeg.clone()
+    }
+    fn pick_folder(&mut self, _start: &Path) -> Option<PathBuf> {
+        self.folder.clone()
     }
     fn pick_model_file(&mut self) -> Option<PathBuf> {
         self.model.clone()
@@ -1013,6 +1018,14 @@ fn export_through_commands() {
     // refuse to overwrite a source
     assert!(app.dispatch(Command::Export(f[0].clone()), now).is_err());
     app.dispatch(Command::PickExport, now).unwrap();
+    let Some(Modal::Export(c)) = app.modal.clone() else {
+        panic!("Export opens the dialog");
+    };
+    let mut c = *c;
+    c.folder = dir.path().to_path_buf();
+    c.name = "out".into();
+    app.dispatch(Command::StartExport(Box::new(c)), now)
+        .unwrap();
     assert!(app.is_exporting());
     assert!(app.is_enabled(&Command::CancelExport));
     assert!(app.dispatch(Command::Export(out.clone()), now).is_err());

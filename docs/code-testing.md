@@ -126,6 +126,13 @@ See [code-360.md](code-360.md) (section "Tests and fixtures"). Real-ffmpeg tests
 with the 1.2.5 code). The four responsiveness gates in `src/ui/tests.rs` run one at a time
 (`one_gate_at_a_time`) because each keeps every core busy.
 
+### 1.4.0 tests
+
+See [code-export.md](code-export.md) (section "Tests"). `tests/ffmpeg_integration/v14.rs` makes its
+own fixtures (a pink-noise and speech-like clip); the Clean audio gate compares the export with
+and without the effect through the same encoding pass, because a mono source that becomes stereo
+lowers the measured level by itself.
+
 ### 1.3.0 tests
 
 See [code-text.md](code-text.md) (section "Tests"). Real-ffmpeg tests are in

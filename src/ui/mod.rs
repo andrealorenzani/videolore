@@ -11,6 +11,7 @@
 pub mod actions;
 pub mod boxes;
 pub mod effects;
+pub mod export_dialog;
 pub mod keymap;
 pub mod layout;
 pub mod markers;

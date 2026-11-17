@@ -354,19 +354,18 @@ fn pov_markers_follow_the_clip_and_hide_outside_the_kept_part() {
         Some(Micros(2_000_000))
     );
     // a POV of a normal clip is not shown
-    app.project.media[0].format.treat_as_360 = Some(false);
+    app.project.media[0].format.spherical = Some(false);
     assert!(all(&app).is_empty());
 }
 
 // covers: REQ-100
 #[test]
-fn clip_details_has_the_360_switch_and_the_media_list_the_tag() {
+fn clip_details_shows_the_360_tag_without_a_switch_and_the_media_list_the_tag() {
     let (_d, mut app) = sphere_app();
-    let m = app.project.media[0].id;
     let c = app.project.timeline.clips[0].id;
     app.selected_clip = Some(c);
     app.popups.show(Popup::ClipDetails);
-    let mut h = Harness::new(app, 1280.0, 900.0);
+    let h = Harness::new(app, 1280.0, 900.0);
     assert!(
         h.nodes
             .iter()
@@ -375,21 +374,9 @@ fn clip_details_has_the_360_switch_and_the_media_list_the_tag() {
         "{:#?}",
         h.labels()
     );
-    let sw = h.find("Treat as 360° video").expect("the switch");
-    h.click(sw.rect.center());
-    assert_eq!(
-        h.app.project.media(m).unwrap().format.treat_as_360,
-        Some(false)
-    );
-    assert!(h.app.sphere_at_playhead().is_none());
-    h.click_label("Treat as 360° video");
-    assert_eq!(
-        h.app.project.media(m).unwrap().format.treat_as_360,
-        Some(true)
-    );
-    assert!(h.app.dirty, "saved with the project");
-    // the picture is a camera view again; the look-around works
-    assert!(h.app.sphere_at_playhead().is_some());
+    // information only: no switch to turn it off or on
+    assert!(h.has("360° video"), "{:#?}", h.labels());
+    assert!(!h.has("Treat as 360° video"), "{:#?}", h.labels());
 }
 
 // covers: REQ-098, REQ-099, REQ-070, REQ-072

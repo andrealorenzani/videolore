@@ -68,6 +68,13 @@ There are no secrets, accounts or telemetry.
 - The 360 marker is written into the export's own MP4 or MOV file, never into a source file. Only the small movie box is read into memory, under a size limit; every size and offset is checked, and the code does not panic on any input. The rest of the file is copied unchanged.
 - The marker is a fixed XML text written by `videolore`; nothing from the project or the media file reaches it.
 
+## Export dialog and clean audio (1.4.0)
+- The export file name and folder are typed or chosen by the user: the name is checked (no path separators, control characters, reserved Windows names, length limit; extension from a fixed table), the folder must be an existing directory, and the target is built from the validated name only.
+- A target that is a media file of the project or the project file is refused (data-loss guard). An existing file is replaced only after confirmation; the output is written beside the target and renamed when complete.
+- No user text reaches `ffmpeg`: presets, codecs and the clean audio values are constants; MP3 is offered only when the bundled `ffmpeg` lists its encoder.
+- The dialog's choices are kept in memory for the session only; nothing is written to disk or sent over the network.
+- Text widths and 360 anchor sizes are range-checked on load like the other values of the project.
+
 ## Unsafe code
 Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in two reviewed places: the cancel callback passed to whisper.cpp and the macOS "open document" handler.
 

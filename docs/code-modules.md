@@ -23,6 +23,7 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `render` | Export plan (stream copy or one re-encode), filter graphs (clips grouped by source, music bed and mix, subtitle burn-in), `hvc1` tag, export argv (normal method or a hardware method), preview argv, `FrameKey` |
 | `ffmpeg` | Locating binaries (setting, environment, bundled, `PATH`), version/filter/encoder checks, `Runner` trait (real processes or test fake), progress and keyframe parsers |
 | `jobs` | The process scheduler: a cap of 3–6 ffmpeg/ffprobe processes (changeable while running), priorities, preemption, cancellation; `Limited` runner; small worker `Pool` |
+| `export/choice` | The Export dialog's choices and rules: file name, target, clashes, reasons, what to start (see [code-export.md](code-export.md)) |
 | `export` | Export worker thread: progress, cancel, subtitle files in a private working folder, partial file and rename; with Export = Faster the hardware attempt, its output check and the silent redo with the normal method (`ExportMethod`) |
 | `hwenc` | Video hardware: candidates per system (NVIDIA, Intel Quick Sync, AMD, VA-API, VideoToolbox) in a fixed order, their encoder arguments, the background hardware check |
 | `outcheck` | Output check of a hardware file: ffprobe metadata rules, strict decode, frame-by-frame comparison of 3 samples with the normal method's graph (`psnr`) |

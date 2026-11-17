@@ -9,13 +9,13 @@ Part of [Code](code.md). Design: [architecture-360.md](architecture-360.md) and
 |---|---|---|
 | Camera maths | `src/camera.rs` | Pure. `Camera` (yaw, pitch, zoom in hundredths of a degree), `Pov`, `CameraPaths`, `at()` interpolation, drag and wheel mapping, `filter()` and `command_lines()` |
 | 360 in the render | `src/render.rs` | A 360 `Segment` has `sphere: Some(path)`; `build_graph` writes `fps, sendcmd, v360, setsar` instead of scale/pad; `Graph.command_files` are written next to the ASS file (`write_command_files`) |
-| Recognising 360 | `src/media.rs` | `MediaFormat.spherical` (from ffprobe's side data) and `treat_as_360` (the user's switch); `is_360()` combines them |
+| Recognising 360 | `src/media.rs` | `MediaFormat.spherical` (from ffprobe's side data); `is_360()` reads only it (the 1.2.6 switch `treat_as_360` was removed in 1.4.0) |
 | Preview copies | `src/proxy.rs` | 360 rule: `SPHERE_COPY_ABOVE` (4096 wide), `SPHERE_COPY` (4096x2048), `sphere_too_large()` (over 16384x8192) |
 | App state and commands | `src/app/sphere.rs` | `AppState.live` (window state), `effective_camera`, Set POV and its edits, `Set360`, resize / align / reset |
 | Boxes (pure) | `src/ui/boxes.rs` | Handle hit-testing, cursors, proportional resize, align |
 | Preview interaction | `src/ui/picture.rs` | Boxes and handles drawing, drag to move, corner resize, camera drag, wheel and pinch, right-click menu |
 | Text size | `src/subtitles.rs`, `src/ass.rs`, `src/ui/placement.rs` | `Line.size` in thousandths (250..4000), `\fs`+`\bord` tags, boxes measured at the line's size |
-| Project file | `src/project.rs` | Schema 4: `camera` section, `size` of lines, `spherical` / `treat_as_360` of media |
+| Project file | `src/project.rs` | Schema 4: `camera` section, `size` of lines, `spherical` of media (and, until 1.4.0, `treat_as_360`) |
 | Setting | `src/settings.rs` | `show_boxes` (optional field, file stays version 2, lenient reading) |
 
 ## How the camera reaches ffmpeg
@@ -59,8 +59,8 @@ Part of [Code](code.md). Design: [architecture-360.md](architecture-360.md) and
 - **Size of the 360 preview copy:** 4096x2048 for a source wider than 4096 pixels (an 8K sphere);
   a source up to 4096 wide is read as it is; a normal video still gets the 960x540 copy. The
   "1280 pixels" in the first plan was only the width the normal rule would have given and is not used.
-  The 360 copy has its own cache key (`proxy::cache_key_kind`), so the switch "Treat as 360°" never
-  reuses the wrong file; changing the switch drops the current copy and makes the right one.
+  The 360 copy has its own cache key (`proxy::cache_key_kind`), so a 360 and a flat copy of the same
+  source never mix; the kind comes from the file (the "Treat as 360°" switch is removed since 1.4.0).
   "Preview quality: Original" never uses a copy; the "too large" gate (over 16384x8192) applies to
   the preview only, `RenderError::SphereTooLarge`.
 - **Camera still latency:** the targets (400 ms from a 4K source, 700 ms from the 8K copy) are

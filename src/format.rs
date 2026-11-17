@@ -136,6 +136,193 @@ pub fn encode_settings(format: &MediaFormat, encoders: &BTreeSet<String>) -> Enc
     }
 }
 
+/// Codec of a video preset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PresetCodec {
+    H264,
+    Hevc,
+}
+
+/// One entry of the video format list of the Export dialog (REQ-120): a size, a frame
+/// rate, a codec and a container, fixed in the program.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VideoPreset {
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub codec: PresetCodec,
+    /// `true`: `.mov`, else `.mp4`.
+    pub mov: bool,
+}
+
+const fn preset(width: u32, height: u32, fps: u32, codec: PresetCodec, mov: bool) -> VideoPreset {
+    VideoPreset {
+        width,
+        height,
+        fps,
+        codec,
+        mov,
+    }
+}
+
+/// The video presets (ADR-083). Always re-encoded; H.264 and HEVC, so the hardware export
+/// applies.
+pub const VIDEO_PRESETS: [VideoPreset; 12] = [
+    preset(1920, 1080, 25, PresetCodec::H264, false),
+    preset(1920, 1080, 30, PresetCodec::H264, false),
+    preset(1920, 1080, 60, PresetCodec::H264, false),
+    preset(1920, 1080, 25, PresetCodec::H264, true),
+    preset(1920, 1080, 25, PresetCodec::Hevc, false),
+    preset(1920, 1080, 30, PresetCodec::Hevc, false),
+    preset(1280, 720, 25, PresetCodec::H264, false),
+    preset(1280, 720, 30, PresetCodec::H264, false),
+    preset(1280, 720, 25, PresetCodec::Hevc, false),
+    preset(854, 480, 25, PresetCodec::H264, false),
+    preset(3840, 2160, 25, PresetCodec::Hevc, false),
+    preset(3840, 2160, 30, PresetCodec::Hevc, true),
+];
+
+impl VideoPreset {
+    /// The encoder this preset needs.
+    pub fn encoder(&self) -> &'static str {
+        match self.codec {
+            PresetCodec::H264 => "libx264",
+            PresetCodec::Hevc => "libx265",
+        }
+    }
+
+    /// The file extension, without the dot.
+    pub fn extension(&self) -> &'static str {
+        if self.mov { "mov" } else { "mp4" }
+    }
+
+    /// How the dropdown shows it: `1920x1080 25fps, libx264, .mp4`.
+    pub fn label(&self) -> String {
+        format!(
+            "{}x{} {}fps, {}, .{}",
+            self.width,
+            self.height,
+            self.fps,
+            self.encoder(),
+            self.extension()
+        )
+    }
+
+    /// The format the settings are made from.
+    fn format(&self) -> MediaFormat {
+        MediaFormat {
+            container: if self.mov { "mov" } else { "mp4" }.into(),
+            vcodec: Some(
+                match self.codec {
+                    PresetCodec::H264 => "h264",
+                    PresetCodec::Hevc => "hevc",
+                }
+                .into(),
+            ),
+            width: self.width,
+            height: self.height,
+            fps: Fps::new(self.fps, 1),
+            ..Default::default()
+        }
+    }
+}
+
+/// The presets the installed encoders can make, as indexes of [`VIDEO_PRESETS`].
+pub fn available_presets(encoders: &BTreeSet<String>) -> Vec<usize> {
+    VIDEO_PRESETS
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| encoders.contains(p.encoder()))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// The encoder settings of preset `index`; `None` when the index is unknown or the encoder
+/// is missing.
+pub fn preset_settings(index: usize, encoders: &BTreeSet<String>) -> Option<EncodeSettings> {
+    let p = VIDEO_PRESETS.get(index)?;
+    encoders.contains(p.encoder()).then(|| {
+        let mut s = encode_settings(&p.format(), encoders);
+        s.video_bitrate = None;
+        s.audio_bitrate = None;
+        s
+    })
+}
+
+/// The audio format of an export (REQ-121).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AudioChoice {
+    /// What the automatic choice makes today.
+    #[default]
+    Same,
+    Aac,
+    Mp3,
+}
+
+impl AudioChoice {
+    pub fn label(self) -> &'static str {
+        match self {
+            AudioChoice::Same => "Same as source",
+            AudioChoice::Aac => "aac",
+            AudioChoice::Mp3 => "mp3",
+        }
+    }
+
+    /// The encoder, `None` for [`AudioChoice::Same`].
+    pub fn encoder(self) -> Option<&'static str> {
+        match self {
+            AudioChoice::Same => None,
+            AudioChoice::Aac => Some("aac"),
+            AudioChoice::Mp3 => Some("libmp3lame"),
+        }
+    }
+
+    /// True when the installed encoders can make it.
+    pub fn available(self, encoders: &BTreeSet<String>) -> bool {
+        self.encoder().is_none_or(|e| encoders.contains(e))
+    }
+}
+
+/// The format choices of the Export dialog that change the encoding (REQ-120, REQ-121).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FormatChoice {
+    /// A preset of [`VIDEO_PRESETS`]; `None`: same as source.
+    pub video: Option<usize>,
+    pub audio: AudioChoice,
+}
+
+impl FormatChoice {
+    /// True when nothing is chosen: the automatic format, stream copy where possible.
+    pub fn is_automatic(&self) -> bool {
+        self.video.is_none() && self.audio == AudioChoice::Same
+    }
+}
+
+/// The settings of an audio-only file (REQ-119, REQ-121): AAC in `.m4a` (also the choice
+/// "Same as source") or MP3; `None` when the encoder is missing.
+pub fn audio_only_settings(
+    choice: AudioChoice,
+    encoders: &BTreeSet<String>,
+) -> Option<EncodeSettings> {
+    let (encoder, muxer, ext) = match choice {
+        AudioChoice::Mp3 => ("libmp3lame", "mp3", "mp3"),
+        AudioChoice::Aac | AudioChoice::Same => ("aac", "mp4", "m4a"),
+    };
+    encoders.contains(encoder).then(|| EncodeSettings {
+        muxer: muxer.into(),
+        extension: ext.into(),
+        vencoder: String::new(),
+        vextra: Vec::new(),
+        aencoder: encoder.into(),
+        video_bitrate: None,
+        audio_bitrate: Some(192_000),
+        width: 2,
+        height: 2,
+        fps: Fps { num: 1, den: 1 },
+        faststart: false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +374,65 @@ mod tests {
         first.container = "mov".into();
         assert_eq!(choose_output(&[&first, &sd25_low]).unwrap(), first);
         assert_eq!(choose_output(&[]), None);
+    }
+
+    // covers: REQ-120
+    #[test]
+    fn presets_read_like_the_example_and_make_their_settings() {
+        let all = enc(&["libx264", "libx265", "aac", "libmp3lame"]);
+        assert_eq!(VIDEO_PRESETS.len(), 12);
+        let p = VIDEO_PRESETS[6];
+        assert_eq!(p.label(), "1280x720 25fps, libx264, .mp4");
+        let s = preset_settings(6, &all).unwrap();
+        assert_eq!(
+            (
+                s.width,
+                s.height,
+                s.fps,
+                s.vencoder.as_str(),
+                s.muxer.as_str()
+            ),
+            (1280, 720, Fps { num: 25, den: 1 }, "libx264", "mp4")
+        );
+        assert_eq!(s.video_bitrate, None);
+        let mov = preset_settings(3, &all).unwrap();
+        assert_eq!((mov.muxer.as_str(), mov.extension.as_str()), ("mov", "mov"));
+        let hevc = preset_settings(11, &all).unwrap();
+        assert_eq!(hevc.vencoder, "libx265");
+        assert_eq!((hevc.width, hevc.height), (3840, 2160));
+        // every preset has a distinct label and an encoder
+        let labels: BTreeSet<String> = VIDEO_PRESETS.iter().map(VideoPreset::label).collect();
+        assert_eq!(labels.len(), VIDEO_PRESETS.len());
+        // presets whose encoder is missing are not offered
+        assert_eq!(available_presets(&all).len(), 12);
+        let no265 = enc(&["libx264", "aac"]);
+        assert_eq!(available_presets(&no265).len(), 7);
+        assert_eq!(preset_settings(11, &no265), None);
+        assert_eq!(preset_settings(99, &all), None);
+    }
+
+    // covers: REQ-121
+    #[test]
+    fn audio_choices_need_their_encoder() {
+        let all = enc(&["aac", "libmp3lame"]);
+        let no_mp3 = enc(&["aac"]);
+        assert!(AudioChoice::Same.available(&no_mp3));
+        assert!(AudioChoice::Aac.available(&no_mp3));
+        assert!(AudioChoice::Mp3.available(&all) && !AudioChoice::Mp3.available(&no_mp3));
+        assert_eq!(AudioChoice::Same.label(), "Same as source");
+        assert!(FormatChoice::default().is_automatic());
+        assert!(
+            !FormatChoice {
+                audio: AudioChoice::Aac,
+                ..Default::default()
+            }
+            .is_automatic()
+        );
+        let m = audio_only_settings(AudioChoice::Mp3, &all).unwrap();
+        assert_eq!((m.muxer.as_str(), m.extension.as_str()), ("mp3", "mp3"));
+        let a = audio_only_settings(AudioChoice::Same, &all).unwrap();
+        assert_eq!((a.aencoder.as_str(), a.extension.as_str()), ("aac", "m4a"));
+        assert_eq!(audio_only_settings(AudioChoice::Mp3, &no_mp3), None);
     }
 
     #[test]

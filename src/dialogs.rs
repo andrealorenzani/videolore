@@ -48,6 +48,10 @@ impl Dialogs for NativeDialogs {
         rfd::FileDialog::new().pick_file()
     }
 
+    fn pick_folder(&mut self, start: &std::path::Path) -> Option<PathBuf> {
+        rfd::FileDialog::new().set_directory(start).pick_folder()
+    }
+
     fn pick_model_file(&mut self) -> Option<PathBuf> {
         rfd::FileDialog::new()
             .add_filter("Speech model", &["bin"])

@@ -26,6 +26,9 @@ pub struct Drag {
     pub size: Vec2,
     /// Output frame size.
     pub frame: (u32, u32),
+    /// The whole box must stay inside the picture (a 360 view); else only its centre
+    /// must (REQ-117).
+    pub whole_box: bool,
 }
 
 /// The text of a line that is on screen at `at`: the whole line, or for the
@@ -103,27 +106,29 @@ pub fn boxes(
         .collect()
 }
 
-/// The box of a text item (frame pixels): its laid-out text and padding, centred on its
-/// place.
-pub fn text_box(item: &crate::text::TextItem, frame: (u32, u32), text_size: Vec2) -> Rect {
-    let font = crate::text::font_px(frame.1, item.size);
-    let pad = ass::outline(font) as f32;
-    let size = text_size + vec2(2.0 * pad, 2.0 * pad);
+/// The box of a text item (frame pixels): the box of its width and the fixed height
+/// (REQ-116), centred on its place. It is the box the export lays the text out in, so what
+/// is grabbed is what is exported.
+pub fn text_box(item: &crate::text::TextItem, frame: (u32, u32)) -> Rect {
+    let (bw, bh) = crate::text::box_px(item, frame.0, frame.1);
     let (fx, fy) = item.place.fraction();
     Rect::from_center_size(
         pos2(
             (fx * f64::from(frame.0)) as f32,
             (fy * f64::from(frame.1)) as f32,
         ),
-        size,
+        vec2(bw as f32, bh as f32),
     )
 }
 
-/// The box of a text fixed to the sphere, seen by the camera `cam` on a picture of `frame`
-/// pixels (REQ-112): at the projected point, with the text as big as the scene around it.
-/// `None` while the point is behind the camera or the box is outside the picture.
+/// The box of a text or subtitle line fixed to the sphere, seen by the camera `cam` on a
+/// picture of `frame` pixels (REQ-112): at the projected point, as big as the scene around
+/// it. A text (`line_size` is `None`) fills its box of angles; a subtitle line (with its
+/// own `line_size`, thousandths) is as big as its measured text. `None` while the point is
+/// behind the camera or the box is outside the picture.
 pub fn anchored_box(
     item: &crate::text::TextItem,
+    line_size: Option<u16>,
     cam: crate::camera::Camera,
     frame: (u32, u32),
     measure: &mut dyn FnMut(&str, f32, f32) -> Vec2,
@@ -138,11 +143,21 @@ pub fn anchored_box(
     )?;
     let focal = (f64::from(frame.0) / 2.0) / (cam.fov_deg().to_radians() / 2.0).tan();
     let per_deg = focal * std::f64::consts::PI / 180.0;
-    let font = (f64::from(a.size_cd) / 100.0 * per_deg * f64::from(item.size) / 1000.0).max(4.0);
-    let wrap = (f64::from(a.wrap_cd) / 100.0 * per_deg).max(8.0);
-    let text = measure(&item.text, font as f32, wrap as f32);
-    let pad = ass::outline(font.round() as u32) as f32;
-    let rect = Rect::from_center_size(pos2(x as f32, y as f32), text + vec2(2.0 * pad, 2.0 * pad));
+    let wrap = (f64::from(a.width_cd) / 100.0 * per_deg).max(8.0);
+    let size = match line_size {
+        Some(size) => {
+            let font =
+                (f64::from(a.height_cd) / 100.0 * per_deg * f64::from(size) / 1000.0).max(4.0);
+            let text = measure(&item.text, font as f32, wrap as f32);
+            let pad = ass::outline(font.round() as u32) as f32;
+            text + vec2(2.0 * pad, 2.0 * pad)
+        }
+        None => vec2(
+            wrap as f32,
+            (f64::from(a.height_cd) / 100.0 * per_deg).max(4.0) as f32,
+        ),
+    };
+    let rect = Rect::from_center_size(pos2(x as f32, y as f32), size);
     rect.intersects(Rect::from_min_size(
         pos2(0.0, 0.0),
         vec2(frame.0 as f32, frame.1 as f32),
@@ -161,18 +176,13 @@ pub fn text_boxes(
     cam: Option<crate::camera::Camera>,
     measure: &mut dyn FnMut(&str, f32, f32) -> Vec2,
 ) -> Vec<(crate::text::TextId, Rect)> {
-    let wrap = (frame.0 as f32 - 2.0 * ass::margin_lr(frame.0) as f32).max(1.0);
     project
         .texts
         .shown_at(at)
         .into_iter()
         .filter_map(|t| match (t.anchor, cam) {
-            (Some(_), Some(c)) => anchored_box(t, c, frame, measure).map(|r| (t.id, r)),
-            _ => {
-                let font = crate::text::font_px(frame.1, t.size);
-                let size = measure(&t.text, font as f32, wrap);
-                Some((t.id, text_box(t, frame, size)))
-            }
+            (Some(_), Some(c)) => anchored_box(t, None, c, frame, measure).map(|r| (t.id, r)),
+            _ => Some((t.id, text_box(t, frame))),
         })
         .collect()
 }
@@ -193,9 +203,9 @@ pub fn anchored_line_boxes(
         .filter(|l| l.anchor.is_some() && !l.text.trim().is_empty())
         .map(|l| {
             let mut t = crate::text::TextItem::new(crate::text::TextId(0), l.text.clone(), l.start);
-            t.size = l.size.unwrap_or(crate::subtitles::SIZE_NORMAL);
             t.anchor = l.anchor;
-            (l.line, anchored_box(&t, cam, frame, measure))
+            let size = l.size.unwrap_or(crate::subtitles::SIZE_NORMAL);
+            (l.line, anchored_box(&t, Some(size), cam, frame, measure))
         })
         .collect()
 }
@@ -221,6 +231,19 @@ pub fn clamp_centre(c: Pos2, size: Vec2, frame: (u32, u32)) -> Pos2 {
     pos2(axis(c.x, size.x / 2.0, w), axis(c.y, size.y / 2.0, h))
 }
 
+/// Keeps a box centre on the picture (REQ-117): the box may go partly past an edge, its
+/// centre may not.
+pub fn clamp_to_picture(c: Pos2, frame: (u32, u32)) -> Pos2 {
+    let axis = |v: f32, max: u32| {
+        if v.is_finite() {
+            v.clamp(0.0, max as f32)
+        } else {
+            max as f32 / 2.0
+        }
+    };
+    pos2(axis(c.x, frame.0), axis(c.y, frame.1))
+}
+
 /// A frame point as a stored position.
 pub fn to_pos(c: Pos2, frame: (u32, u32)) -> Pos {
     let f = |v: f32, max: u32| {
@@ -239,7 +262,11 @@ pub fn to_pos(c: Pos2, frame: (u32, u32)) -> Pos {
 /// Where the dragged line goes for a pointer at frame point `pointer`: the box keeps its
 /// grab offset and stays inside the picture.
 pub fn drag_to(d: &Drag, pointer: Pos2) -> Pos {
-    let c = clamp_centre(pointer - d.grab, d.size, d.frame);
+    let c = if d.whole_box {
+        clamp_centre(pointer - d.grab, d.size, d.frame)
+    } else {
+        clamp_to_picture(pointer - d.grab, d.frame)
+    };
     to_pos(c, d.frame)
 }
 
@@ -340,15 +367,43 @@ mod tests {
         assert_eq!(visible_text(l, Preset::Classic, Micros(0)), l.text);
     }
 
+    // covers: REQ-089, REQ-117
+    #[test]
+    fn a_dragged_box_may_go_partly_past_an_edge_but_its_centre_stays_on_the_picture() {
+        let mut d = Drag {
+            line: LineId(1),
+            ids: vec![LineId(1)],
+            grab: vec2(10.0, 0.0),
+            size: vec2(200.0, 40.0),
+            frame: (1000, 500),
+            whole_box: false,
+        };
+        // the centre stops on the edge itself
+        assert_eq!(drag_to(&d, pos2(-500.0, 250.0)), Pos { x: 0, y: 5000 });
+        assert_eq!(drag_to(&d, pos2(5000.0, 250.0)), Pos { x: 10_000, y: 5000 });
+        assert_eq!(drag_to(&d, pos2(500.0, -50.0)).y, 0);
+        assert_eq!(drag_to(&d, pos2(500.0, 900.0)).y, 10_000);
+        // a box 30 % of its width outside the left edge: allowed
+        assert_eq!(drag_to(&d, pos2(40.0, 250.0)).x, 300);
+        assert_eq!(
+            clamp_to_picture(pos2(f32::NAN, 1.0), (1000, 500)),
+            pos2(500.0, 1.0)
+        );
+        // on a 360 view the whole box stays in
+        d.whole_box = true;
+        assert_eq!(drag_to(&d, pos2(-500.0, 250.0)), Pos { x: 1000, y: 5000 });
+    }
+
     // covers: REQ-089
     #[test]
-    fn a_dragged_box_stays_inside_the_picture() {
+    fn a_dragged_whole_box_stays_inside_the_picture() {
         let d = Drag {
             line: LineId(1),
             ids: vec![LineId(1)],
             grab: vec2(10.0, 0.0),
             size: vec2(200.0, 40.0),
             frame: (1000, 500),
+            whole_box: true,
         };
         // past each edge: stops with the box touching it
         assert_eq!(drag_to(&d, pos2(-500.0, 250.0)), Pos { x: 1000, y: 5000 });

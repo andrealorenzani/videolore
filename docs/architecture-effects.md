@@ -3,10 +3,10 @@
 Part of [Architecture](architecture.md). Since 1.2.0 (requirements REQ-082..084, REQ-011, REQ-020 and REQ-023 reworded, see [business](business.md)). Subtitles, the third effect, are described in [subtitles](architecture-subtitles.md) and [subtitle tracks](architecture-subtitle-tracks.md).
 
 ## Applying an effect
-- Each effect (Fade through black, Subtitles, Volume) can be applied **to one video clip** or **to the whole video**. Every way of doing it produces the same single command ("apply this effect to this target"), so the result is identical whichever way is used:
+- Each effect (Fade through black, Subtitles, Volume, and Clean audio since 1.4.0) can be applied **to one video clip** or **to the whole video**. Every way of doing it produces the same single command ("apply this effect to this target"), so the result is identical whichever way is used:
   - dragging the effect from the Effects list onto a video clip;
   - right-clicking a clip, Effects ▸ <effect>;
-  - Effects menu ▸ Apply to selected clip ▸ / Apply to whole video ▸;
+  - Effects menu ▸ Apply to selected clip ▸ / Apply to whole video ▸ (since 1.4.0 the Effects menu lists only effects; item commands such as Align or Reset are in the Edit menu);
   - double-clicking the effect in the Effects list (whole video).
 - A single click on an effect still opens its popup. Applying opens the popup of the fade, volume or subtitles that was created or changed; the popup title says "— whole video" or "— <clip name>".
 - **Drag and drop inside the window** uses egui's built-in drag-and-drop support (no new crate). Over a video clip the clip is highlighted and the pointer shows that a drop is possible; anywhere else (music track, empty space) the pointer shows "not allowed" and dropping does nothing. This works on every system, including Linux Wayland, because it does not involve the operating system (the Wayland limitation concerns files dropped from outside, see [user interface](architecture-ui.md#drag-and-drop)).
@@ -28,11 +28,21 @@ Part of [Architecture](architecture.md). Since 1.2.0 (requirements REQ-082..084,
 - A clip that is not at 100% or is muted shows a marker at its start; clicking it opens that clip's volume popup. The level and mute are also in Clip details.
 - **In the export command:** a clip with a level other than 100% gets a `volume` filter in its own audio chain, before its fades. Clips at 100% get nothing, so projects that do not use clip volume produce exactly the same `ffmpeg` command as 1.1 (checked by a test against a saved 1.1 command).
 
+## Clean audio (1.4.0)
+- Clean audio is the fourth effect (REQ-114): it reduces background noise (wind, music, people talking) in the video's own sound and keeps the speech. It has no strength setting: a clip has it on or off. Applied to one clip, or to the whole video (every video clip), like Volume.
+- **Engine:** the FFmpeg filter `afftdn` (spectral noise reduction, part of the core FFmpeg filters, so it is in every bundled build; no model file). Its three values are constants in one function of the audio code, tuned once against the acceptance gate. Alternatives rejected: `anlmdn` (much heavier on the processor), `arnndn` (needs a downloaded model file), `agate` and `highpass` (do not remove noise under speech).
+- **Where:** in the clip's own audio chain, before the clip volume and the fades. The music track is not changed. Preview and export use the same chain.
+- **Popup:** explains the effect and offers Remove. A clip with it shows a marker at its start (as the clip volume does).
+- **Edit rules:** split keeps it on both halves; copy, paste and moving keep it; Merge needs the same setting on both clips ("The clips have different clean audio settings"). Applying and removing are one undo step each.
+- **Export:** any clip with Clean audio forces a re-encode (REQ-023). Without it the export command is unchanged.
+- **Acceptance (planned, measured on a committed test clip of speech with added noise):** noise-only parts at least 6 dB quieter; speech parts within 3 dB of the original (assumptions, see the plan).
+
 ## When the export must re-encode
-In addition to the earlier rules (see [media pipeline](architecture-media-pipeline.md#export)), a start or end fade, or any clip whose level is not 100% or which is muted, rules out stream copy.
+In addition to the earlier rules (see [media pipeline](architecture-media-pipeline.md#export)), a start or end fade, any clip whose level is not 100% or which is muted, and (since 1.4.0) any clip with Clean audio, rules out stream copy. The Export dialog's explicit formats (see [export dialog](architecture-export-dialog.md)) also force a re-encode.
 
 ## Tests
 - Timeline rules: fades on clip 2 of 3 (two boundaries, no start or end fade), on clip 1 (start fade plus one boundary), whole video (start and end; still at the edges after cutting the first clip), fade length on short clips, removal; clip volume through split, copy, reorder and merge.
 - Export command: `volume=0.250000` for a clip at 50%, equivalence of clip and video levels, muted clip silent, re-encode forced.
 - With real `ffmpeg`: first and last frame black with a whole-video fade; a muted clip is silent in the export while the others are not.
 - Interface: dropping an effect on clip 2 gives the same result as the right-click menu; dropping on the music track changes nothing; one undo restores.
+- (1.4.0) Clean audio: flag through split, copy, paste and merge; the filter sits before the clip volume in the command; no filter and identical command without it; a clip with it is re-encoded; real `ffmpeg` gate on the test clip (noise −6 dB, speech ±3 dB).

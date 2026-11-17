@@ -1,5 +1,8 @@
 # Code — text items, selection and 360° in 1.3.0
 
+> Changed in 1.4.0: `TextItem.size` became `width` with a best-fit size, the schema is 6 and the
+> 360 export question moved into the Export dialog. See [code-export.md](code-export.md).
+
 What 1.3.0 added, as built: text items with effects, one selection for lines and texts, the
 Context Menu group, texts fixed to the 360° sphere, the "360 video" export and the spherical
 marker. The requirements are in [Text](business-text.md) and [Boxes on the picture and 360

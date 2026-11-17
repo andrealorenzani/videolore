@@ -10,7 +10,7 @@ Part of [Architecture](architecture.md). Built in 1.2.6 (requirements REQ-100..1
 ## Recognising a 360 video
 - `ffprobe` already prints the stream's spherical information. A video is 360 when it says equirectangular projection, with no cropped bounds and no stereo layout. Only these fixed values are read; no text from the file is shown or used.
 - The result is stored with the media information (not recognised yet for media imported earlier: they are checked again in the background when the project opens, like the subtitle tracks of 1.2.0, without marking the project as changed).
-- The user's switch "Treat as 360° video" in Clip details is stored per source in the project; it wins over the detection. The 360° tag and the camera view use the combined result. Changing the switch is not an undo step (like importing) but marks the project as changed.
+- Until 1.3.0 the user's switch "Treat as 360° video" in Clip details was stored per source in the project and won over the detection. **Since 1.4.0 there is no switch**: a source is 360 exactly when its file says so (REQ-100). The switch of 1.3.0 projects is dropped when they open (a flat clip stays flat; a 360-tagged clip with the switch off becomes 360). The 360° tag and the camera view use the detection only.
 - The initial orientation written in the file is ignored: "front" is the middle of the picture.
 
 ## Camera and POVs
@@ -44,7 +44,7 @@ Part of [Architecture](architecture.md). Built in 1.2.6 (requirements REQ-100..1
 - Checked and resolved by the spike: `v360` accepts run-time changes of yaw, pitch and zoom (`d_fov`); positive yaw looks right, positive pitch looks up, in degrees. The cost per command is the export-speed limit above.
 - Remaining: `reset_rot` and command behaviour were measured only on `ffmpeg` 6.1.1, not on the bundled 9.x; the real-`ffmpeg` picture tests guard sign, unit and timing conventions on whatever version runs them.
 - Camera stills from large sources may feel slow while dragging; possibly an instant in-process view (roadmap).
-- Spherical information is read only from what `ffprobe` reports; some cameras write none (the switch covers it).
+- Spherical information is read only from what `ffprobe` reports; some cameras write none. Until 1.3.0 the switch covered them; since 1.4.0 such a file stays flat (documented product risk, roadmap: a choice at import).
 
 ## Anchored text and subtitles (1.3.0)
 - A text item or a subtitle line added at the playhead on a 360 clip gets an **anchor**: the point of the sphere at the centre of the view at that moment, in hundredths of a degree (yaw, pitch), plus its world size (the default text height is 5% of the view's vertical field of view at add time, stored in degrees; wrap width 60% of the horizontal field, assumption). The anchor is stored in the project; the flat place is kept too and is used on flat clips.
@@ -55,11 +55,12 @@ Part of [Architecture](architecture.md). Built in 1.2.6 (requirements REQ-100..1
 - **Automatic subtitle lines** on a 360 clip have no anchor: they keep the view-fixed place of 1.2.x (drawn after the projection in the camera views).
 - **Slide in** of an anchored text moves in the plane of the sphere picture (its direction is that of the frame), not across the view, because a moving position per frame would need a second renderer.
 - **Built differently from the plan:** an anchored subtitle line is drawn as plain white text, without its preset style (no box, no word highlight).
+- **1.4.0:** an anchored text has a box of width 10–360° and a height of 20% of the view's vertical field at the time it was added; its size is the best fit in the equirectangular frame (see [text](architecture-text.md#box-best-fit-and-place-140)). Anchors store the width and height in hundredths of a degree.
 
 ## Export as 360 video (1.3.0)
-- Only for a project with 360 clips, Export asks **360 video** or **Flat camera view** each time (REQ-103); the answer is not saved. Projects without 360 clips do not ask.
+- Only for a project with 360 clips, Export asks **360 video** or **Flat camera view** each time (REQ-103); the answer is not saved. Projects without 360 clips do not ask. **Since 1.4.0** the question is a choice in the Export dialog, shown only when all video clips are 360 clips; a mixed project is exported flat without a message (see [export dialog](architecture-export-dialog.md#360-choice)).
 - **360 video** keeps the whole sphere: the graph has no `v360` and no camera commands; every segment is equirectangular at the 360 clips' own size (the automatic format rule with lowest pixel count). Anchored items are at their anchors; automatic subtitle lines are at their preset place in the frame (decided by Andrea: the lower third of the frame, about 30 degrees below the front). The output carries the Spherical Video V1 marker so players show a sphere. ffmpeg 6.1.1 drops the source's spherical information when it re-encodes (measured), so `videolore` writes the marker itself into MP4 and MOV files: only the small movie box is rewritten, and the rest of the file is copied unchanged (module `spherical`). MKV and WebM 360 exports carry no marker, so players show them as flat video.
-- A project mixing 360 and flat clips is refused for a 360 video with a message; nothing is exported.
+- A project mixing 360 and flat clips is refused for a 360 video with a message; nothing is exported. (1.4.0: such a project offers no 360 choice and is exported as a flat camera view, silently.)
 - The live camera and the camera path are not applied. Export speed has no target (accepted: slow).
 - The output check (REQ-063) and "Export: Faster" apply as for any re-encode.
 

@@ -32,10 +32,10 @@ pub const EFFECT_GROUP: usize = TOOLBAR.len();
 /// The Context Menu (REQ-106): the commands that act on what is selected or under the
 /// playhead. Empty (so the group is not drawn at all) when there is nothing to act on:
 /// Align and Reset with a subtitle line selected, Set POV and Reset with the playhead
-/// over a 360 clip. A selected text item shows nothing (1.3.0).
+/// over a 360 clip. A selected text item shows Align and Reset like a line (1.4.0).
 pub fn context_group(app: &AppState) -> Vec<ActionId> {
     context_group_of(
-        app.selection.has_lines(),
+        !app.selection.is_empty(),
         app.sphere_at_playhead().is_some(),
     )
 }

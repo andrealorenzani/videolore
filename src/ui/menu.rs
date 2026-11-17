@@ -26,12 +26,14 @@ pub const APPLY_TO_CLIP: &[ActionId] = &[
     ActionId::ApplyClipFade,
     ActionId::ApplyClipSubtitles,
     ActionId::ApplyClipVolume,
+    ActionId::ApplyClipCleanAudio,
 ];
 /// Effects > Apply to whole video ▸
 pub const APPLY_TO_VIDEO: &[ActionId] = &[
     ActionId::ApplyWholeFade,
     ActionId::ApplyWholeSubtitles,
     ActionId::ApplyWholeVolume,
+    ActionId::ApplyWholeCleanAudio,
 ];
 
 /// The menus and their items, in order.
@@ -76,6 +78,14 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(AddMusic),
                 A(ClipDetails),
                 S,
+                A(ToggleFadeAtPlayhead),
+                A(GenerateSubtitles),
+                A(AddSubtitleLine),
+                S,
+                A(AlignHorizontal),
+                A(AlignVertical),
+                A(ResetObjects),
+                S,
                 A(Settings),
             ],
         ),
@@ -97,20 +107,11 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(Fades),
                 A(Subtitles),
                 A(Volume),
+                A(CleanAudio),
+                A(AddText),
                 S,
                 Submenu("Apply to selected clip", APPLY_TO_CLIP),
                 Submenu("Apply to whole video", APPLY_TO_VIDEO),
-                S,
-                A(ToggleFadeAtPlayhead),
-                A(GenerateSubtitles),
-                A(AddSubtitleLine),
-                A(AddText),
-                S,
-                A(AlignHorizontal),
-                A(AlignVertical),
-                A(ResetObjects),
-                S,
-                A(SetPov),
             ],
         ),
         (
@@ -211,4 +212,49 @@ pub fn menu_bar(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
             });
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn items_of(menu: &str) -> Vec<Item> {
+        menus()
+            .into_iter()
+            .find(|m| m.0 == menu)
+            .unwrap_or_else(|| panic!("no {menu} menu"))
+            .1
+    }
+
+    // covers: REQ-069, REQ-075
+    #[test]
+    fn the_effects_menu_holds_the_effects_and_the_commands_on_objects_are_in_edit() {
+        use ActionId::*;
+        let effects = items_of("Effects");
+        for id in [Fades, Subtitles, Volume, CleanAudio, AddText] {
+            assert!(effects.contains(&Item::Action(id)), "{id:?}");
+        }
+        assert!(effects.contains(&Item::Submenu("Apply to selected clip", APPLY_TO_CLIP)));
+        assert!(effects.contains(&Item::Submenu("Apply to whole video", APPLY_TO_VIDEO)));
+        // Clean audio can be applied to a clip and to the whole video
+        assert!(APPLY_TO_CLIP.contains(&ApplyClipCleanAudio));
+        assert!(APPLY_TO_VIDEO.contains(&ApplyWholeCleanAudio));
+        // the commands that act on an object are not among the effects any more
+        for id in [
+            ToggleFadeAtPlayhead,
+            GenerateSubtitles,
+            AddSubtitleLine,
+            AlignHorizontal,
+            AlignVertical,
+            ResetObjects,
+        ] {
+            assert!(!effects.contains(&Item::Action(id)), "{id:?} in Effects");
+            assert!(
+                items_of("Edit").contains(&Item::Action(id)),
+                "{id:?} not in Edit"
+            );
+        }
+        // the Export dialog is opened from File > Export…
+        assert!(items_of("File").contains(&Item::Action(Export)));
+    }
 }

@@ -36,7 +36,7 @@ impl AppState {
         }
         let text = text::clean_text(&draft.text).ok_or(TYPE_SOME_TEXT)?;
         let start = self.playhead;
-        let anchor = self.text_anchor_at_playhead();
+        let anchor = self.text_anchor_at_playhead(true);
         let mut added = None;
         let ttl = self.clamp_ttl(draft.ttl);
         self.edit(now, "Add text", |e| {
@@ -100,26 +100,83 @@ impl AppState {
         Ok(())
     }
 
-    /// A box dragged or resized in the preview: place and size of every item in `ids`.
+    /// A box dragged in the preview: the place of every item in `ids` (a text fixed to the
+    /// sphere keeps its flat place for flat clips). The centre may be anywhere on the
+    /// picture (REQ-117).
     pub(super) fn set_text_boxes(
         &mut self,
         ids: Vec<TextId>,
         place: Pos,
-        size: u16,
         now: Instant,
     ) -> Result<(), String> {
         if ids.is_empty() || !place.is_valid() {
             return Err(SELECT_A_TEXT.into());
         }
-        let size = size.clamp(crate::subtitles::SIZE_MIN, crate::subtitles::SIZE_MAX);
         self.edit(now, "Move text", |e| {
             for id in &ids {
                 let mut item = e.texts.get(*id).ok_or("no such text")?.clone();
-                // a text fixed to the sphere keeps its flat place for flat clips
                 if item.anchor.is_none() {
                     item.place = place;
                 }
-                item.size = size;
+                e.texts.replace(item).map_err(terr)?;
+            }
+            Ok(())
+        })
+    }
+
+    /// The right edge of a box dragged in the preview: the width of every item in `ids`,
+    /// between 10% and 100% of the picture (REQ-116). One undo step.
+    pub(super) fn resize_text_width(
+        &mut self,
+        ids: Vec<TextId>,
+        width: u16,
+        now: Instant,
+    ) -> Result<(), String> {
+        if ids.is_empty() || ids.iter().any(|i| self.project.texts.get(*i).is_none()) {
+            return Err(SELECT_A_TEXT.into());
+        }
+        let width = width.clamp(text::WIDTH_MIN, text::WIDTH_MAX);
+        if ids
+            .iter()
+            .all(|i| self.project.texts.get(*i).is_some_and(|t| t.width == width))
+        {
+            return Ok(());
+        }
+        self.edit(now, "Resize text", |e| {
+            for id in &ids {
+                let mut item = e.texts.get(*id).ok_or("no such text")?.clone();
+                item.width = width;
+                e.texts.replace(item).map_err(terr)?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Like [`Self::resize_text_width`] for texts fixed to the sphere: their width is an
+    /// angle (10 to 360 degrees).
+    pub(super) fn resize_text_anchor_width(
+        &mut self,
+        ids: Vec<TextId>,
+        width_cd: u32,
+        now: Instant,
+    ) -> Result<(), String> {
+        if ids.is_empty()
+            || ids.iter().any(|i| {
+                self.project
+                    .texts
+                    .get(*i)
+                    .is_none_or(|t| t.anchor.is_none())
+            })
+        {
+            return Err("select a text fixed to the 360 picture first".into());
+        }
+        let width_cd = width_cd.clamp(1000, 36_000);
+        self.edit(now, "Resize text", |e| {
+            for id in &ids {
+                let mut item = e.texts.get(*id).ok_or("no such text")?.clone();
+                if let Some(a) = item.anchor.as_mut() {
+                    a.width_cd = width_cd;
+                }
                 e.texts.replace(item).map_err(terr)?;
             }
             Ok(())
@@ -208,10 +265,15 @@ impl AppState {
         Ok(())
     }
 
-    /// Where a text added now is fixed on the sphere when the playhead is on a 360 clip.
-    pub fn text_anchor_at_playhead(&self) -> Option<crate::text::Anchor360> {
+    /// Where a text (`text`) or subtitle line added now is fixed on the sphere when the
+    /// playhead is on a 360 clip: the point the camera looks at.
+    pub fn text_anchor_at_playhead(&self, text: bool) -> Option<crate::text::Anchor360> {
         let cam = self.camera_at_playhead()?;
         let (w, h) = self.output_size()?;
-        Some(crate::camera::anchor_at(cam, w, h))
+        Some(if text {
+            crate::camera::text_anchor_at(cam, w, h)
+        } else {
+            crate::camera::anchor_at(cam, w, h)
+        })
     }
 }

@@ -13,6 +13,8 @@ use crate::time::{Micros, timecode};
 
 /// How close (in pixels) the pointer must be to a marker to hit it.
 pub const HIT_TOLERANCE: f32 = 4.0;
+/// Pixels between the volume marker and the Clean audio marker of a clip.
+pub const CLEAN_OFFSET: f32 = 12.0;
 /// Characters of a line's text shown in its tooltip.
 const TOOLTIP_TEXT: usize = 40;
 
@@ -24,6 +26,8 @@ pub enum MarkerKind {
     Line,
     /// A clip whose own sound is not at 100 % (or is muted).
     ClipVolume,
+    /// A clip with Clean audio (REQ-114).
+    CleanAudio,
     /// A boundary without a fade: clicking adds one.
     AddFade,
     /// A point of view of a 360 clip.
@@ -140,6 +144,17 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
                     "Volume of \"{}\": {level}. Click for its settings.",
                     name(i)
                 ),
+            });
+        }
+        if c.clean_audio {
+            // beside the volume marker, so both stay clickable
+            let x = x_of(start) + CLEAN_OFFSET;
+            out.push(Marker {
+                kind: MarkerKind::CleanAudio,
+                instance: Instance::CleanAudio(c.id),
+                x,
+                x_end: x,
+                tooltip: format!("Clean audio on \"{}\". Click for its settings.", name(i)),
             });
         }
         start = start + c.len();
@@ -330,6 +345,32 @@ mod tests {
         assert!(visible.len() < wide.len());
         assert!(visible.iter().all(|m| m.x - HIT_TOLERANCE <= 50.0));
         assert_eq!(short(&"a".repeat(50)).chars().count(), TOOLTIP_TEXT + 1);
+    }
+
+    // covers: REQ-114, REQ-077
+    #[test]
+    fn a_clip_with_clean_audio_has_a_marker_beside_its_volume_marker() {
+        let mut p = project();
+        let first = p.timeline.clips[0].id;
+        assert!(
+            layout(&p, 10.0, 0.0, ALL)
+                .iter()
+                .all(|m| m.kind != MarkerKind::CleanAudio)
+        );
+        p.timeline.set_clean_audio(&[first], true).unwrap();
+        p.timeline.set_clip_volume(first, 40, false).unwrap();
+        let m = layout(&p, 10.0, 0.0, ALL);
+        let c = m
+            .iter()
+            .find(|m| m.kind == MarkerKind::CleanAudio)
+            .expect("a marker at the start of the clip");
+        assert_eq!(c.instance, Instance::CleanAudio(first));
+        let v = m.iter().find(|m| m.kind == MarkerKind::ClipVolume).unwrap();
+        assert!(
+            (c.x - v.x - CLEAN_OFFSET).abs() < 0.01,
+            "both can be clicked"
+        );
+        assert!(c.tooltip.contains("Clean audio"));
     }
 
     // covers: REQ-077, REQ-083, REQ-084, REQ-090

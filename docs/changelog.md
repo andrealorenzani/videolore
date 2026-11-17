@@ -2,6 +2,35 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.4.0 — 2026-11-17 21:16 +0000
+
+Export choices, Clean audio, text boxes that fit their text, and items that can be dragged past the picture edges (REQ-114 to REQ-123; REQ-022, REQ-023, REQ-069, REQ-075, REQ-089, REQ-097, REQ-100, REQ-103, REQ-106 and REQ-111 reworded). Projects saved by this version need version 1.4.0 or later.
+
+### Added
+- **Export dialog**: File > Export…, the toolbar button and Ctrl/Cmd+E open a dialog with the export file (folder, name, extension set by the format), a mode (Full video, Only audio, Only subtitles (.srt)), a video format (Same as source, or one of 12 presets: H.264 or HEVC, MP4 or MOV, several resolutions and frame rates), an audio format (Same as source, aac, or mp3 when the bundled ffmpeg can encode it), and, for a project whose video clips are all 360, the choice between a 360 video and a flat camera view.
+- **Clean audio**: an on/off effect of the video's sound, on one clip or on the whole video, in the Effects list. It reduces background noise such as wind, music or people chatting, in the preview and in the export. It does not change the music track.
+- **Text boxes that fit the text**: a text item's box changes width only, from its right edge; its text size follows the box (best fit) and the text wraps inside it.
+- **Dragging past the picture edges**: text items and subtitle lines can be dragged partly outside the picture; the centre of the box stays on the picture, so the box can always be grabbed again.
+- **Context Menu for text items**: Align horizontally, Align vertically and Reset work on a selected text item, as on subtitle lines.
+
+### Changed
+- The "Treat as 360° video" switch of Clip details is removed: a clip is 360 only when its file carries spherical information. A 360 switch set in a 1.3.0 project is dropped when the project opens.
+- Text items of 1.3.0 projects are migrated: their text size becomes the best fit of their box, so large multi-line texts may shrink when the project opens.
+- Projects are saved in format 6. Projects from 1.3.0 and earlier open with the same result, with the two changes above; projects saved by 1.4.0 cannot be opened by 1.3.0 or earlier.
+- The Effects menu lists only effects; commands that act on subtitles, fades or picture items are in the Edit menu.
+- The output format stays automatic by default ("Same as source"); the Export dialog only changes it when a format is chosen.
+
+### Quality
+- Line coverage 95.8%; 103 of 103 implemented requirements have tests (REQ-114 to REQ-123 added).
+
+### Known limitations
+- Clean audio has one fixed strength: it reduces noise but does not remove it completely. Quiet speech (about -32 dB) can lose up to about 2.5 dB, and its cost on weak computers is not measured.
+- The best-fit text size is an estimate: a text can fill about 85% to 115% of its box. Short texts become large and long ones small; a 1.3.0 text that does not fit its box may shrink when opened.
+- A text or subtitle line dragged past an edge of the picture is cut in the preview and in the export.
+- The Export dialog remembers its choices for the session only, not in the project or in Settings; the formats are a fixed list of presets.
+- A 360 video ignores the video format presets and keeps the sphere's own size.
+- A video without spherical information is always flat, since the 360 switch is removed.
+
 ## 1.3.0 — 2026-11-17 19:08 +0000
 
 Text items, one selection for the preview and the timeline, and 360 video export: titles and captions on the picture, texts and subtitle lines that stay at their point of a 360° sphere, and a 360 video that keeps the whole sphere.

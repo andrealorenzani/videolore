@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! 360 video in the app (REQ-100..102): the live view you drag, Set POV and its edits, the
-//! "Treat as 360° video" switch, and the boxes' resize, align and reset commands
+//! 360 video in the app (REQ-100..102): the live view you drag, Set POV and its edits, and
+//! the boxes' resize, align and reset commands (lines and text items, REQ-115)
 //! (REQ-097..099) which share the "select something on the picture" rules.
 
 use super::*;
@@ -241,40 +241,6 @@ impl AppState {
         })
     }
 
-    /// "Treat as 360° video": the user's choice for a source (`None`: what the file says).
-    /// Not an undo step (like importing), but the project becomes "unsaved".
-    pub(super) fn set_360(
-        &mut self,
-        media: MediaId,
-        choice: Option<bool>,
-        now: Instant,
-    ) -> Result<(), String> {
-        let m = self
-            .project
-            .media
-            .iter_mut()
-            .find(|m| m.id == media)
-            .ok_or("no such media")?;
-        if !m.has_video() {
-            return Err("only video can be a 360° video".into());
-        }
-        if m.format.treat_as_360 == choice {
-            return Ok(());
-        }
-        let was = m.format.is_360();
-        m.format.treat_as_360 = choice;
-        let now_360 = m.format.is_360();
-        if was != now_360 {
-            self.live.remove(&media);
-            self.redo_proxy(media);
-            self.preview.forget_frame();
-            let t = self.playhead;
-            self.seek(t, now);
-        }
-        self.refresh_dirty();
-        Ok(())
-    }
-
     /// Drops the preview copy of a source and makes the one its kind needs now.
     pub(super) fn redo_proxy(&mut self, id: MediaId) {
         self.cancel_proxy(id);
@@ -349,7 +315,8 @@ impl AppState {
     /// already centred horizontally; vertically it gets the middle of the picture.
     pub(super) fn align_selected(&mut self, axis: Axis, now: Instant) -> Result<(), String> {
         let ids = self.selected_lines();
-        if ids.is_empty() {
+        let tids = self.selected_texts();
+        if ids.is_empty() && tids.is_empty() {
             return Err(SELECT_ON_PICTURE.into());
         }
         let new_pos = |p: Option<Pos>| match (axis, p) {
@@ -361,11 +328,20 @@ impl AppState {
             }),
             (Axis::Vertical, Some(p)) => Some(boxes::align_v(p)),
         };
+        let text_pos = |p: Pos| match axis {
+            Axis::Horizontal => boxes::align_h(p),
+            Axis::Vertical => boxes::align_v(p),
+        };
         let subs = &self.project.subtitles;
-        if ids.iter().all(|id| {
+        let texts = &self.project.texts;
+        let lines_same = ids.iter().all(|id| {
             subs.get(*id)
                 .is_none_or(|l| new_pos(l.position) == l.position)
-        }) {
+        });
+        let texts_same = tids
+            .iter()
+            .all(|id| texts.get(*id).is_none_or(|t| text_pos(t.place) == t.place));
+        if lines_same && texts_same {
             return Ok(());
         }
         let label = match axis {
@@ -376,6 +352,9 @@ impl AppState {
             for l in e.subtitles.lines.iter_mut().filter(|l| ids.contains(&l.id)) {
                 l.position = new_pos(l.position);
             }
+            for t in e.texts.items.iter_mut().filter(|t| tids.contains(&t.id)) {
+                t.place = text_pos(t.place);
+            }
             Ok(())
         })
     }
@@ -385,6 +364,16 @@ impl AppState {
         self.project
             .subtitles
             .any_moved_or_sized(&self.selected_lines())
+            || self.selected_texts_changed()
+    }
+
+    /// True when a selected text item is not at the default place and width (REQ-115).
+    fn selected_texts_changed(&self) -> bool {
+        self.selected_texts().iter().any(|id| {
+            self.project.texts.get(*id).is_some_and(|t| {
+                t.place != crate::text::DEFAULT_PLACE || t.width != crate::text::DEFAULT_WIDTH
+            })
+        })
     }
 
     /// True when the 360 clip at the playhead is looked at differently from the default.
@@ -400,15 +389,18 @@ impl AppState {
     /// Reset applies to the camera: no line is selected and the 360 clip at the playhead
     /// is looked at differently from the default.
     pub fn reset_applies_to_camera(&self) -> bool {
-        self.selected_lines().is_empty() && self.camera_is_moved()
+        self.selected_lines().is_empty()
+            && self.selected_texts().is_empty()
+            && self.camera_is_moved()
     }
 
     /// Reset: selected lines back to the style's place and 100%; with no line selected,
     /// the live camera of the 360 clip at the playhead back to front, level, 90°.
     pub(super) fn reset_objects(&mut self, now: Instant) -> Result<(), String> {
         let ids = self.selected_lines();
-        if !ids.is_empty() {
-            return self.reset_lines(ids, now);
+        let tids = self.selected_texts();
+        if !ids.is_empty() || !tids.is_empty() {
+            return self.reset_selection(ids, tids, now);
         }
         let Some((m, _)) = self.sphere_at_playhead() else {
             return Err(SELECT_ON_PICTURE.into());
@@ -425,6 +417,33 @@ impl AppState {
         );
         self.camera_changed(now);
         Ok(())
+    }
+
+    /// Lines back to the style's place and size and texts to the default place and width,
+    /// in one undo step (nothing to do when they already are).
+    fn reset_selection(
+        &mut self,
+        ids: Vec<LineId>,
+        tids: Vec<crate::text::TextId>,
+        now: Instant,
+    ) -> Result<(), String> {
+        self.drag_pos = None;
+        self.resize_drag = None;
+        let lines = self.project.subtitles.any_moved_or_sized(&ids);
+        if !lines && !self.selected_texts_changed() {
+            self.refresh_still(now);
+            return Ok(());
+        }
+        self.edit(now, "Reset", |e| {
+            if lines {
+                e.subtitles.reset(&ids).map_err(err)?;
+            }
+            for t in e.texts.items.iter_mut().filter(|t| tids.contains(&t.id)) {
+                t.place = crate::text::DEFAULT_PLACE;
+                t.width = crate::text::DEFAULT_WIDTH;
+            }
+            Ok(())
+        })
     }
 
     /// Lines back to the style's place and size (one undo step; nothing to do when they

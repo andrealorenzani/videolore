@@ -36,6 +36,7 @@ pub const REQUIRED_FILTERS: &[&str] = &[
     "volume",
     "split",
     "asplit",
+    "afftdn",
 ];
 
 /// Filter needed only to burn subtitles in (libass). Checked when an export needs it.

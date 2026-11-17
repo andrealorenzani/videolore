@@ -39,6 +39,13 @@ pub const SAMPLE_RATE: u32 = 48_000;
 /// cheaper than decoding the gap).
 pub const MAX_RUN_GAP: Micros = Micros(30_000_000);
 
+/// The Clean audio filter (REQ-114, ADR-080): FFT noise reduction of 25 dB with a fixed
+/// noise floor of -20 dB and a residual floor of -60 dB. The noise tracking of the filter
+/// (`tn=1`) is not used: its result changed by 4 dB with the very start of the stream, the
+/// fixed floor is the same every time. One place for the constants, tuned on the fixture of
+/// the integration test (noise-only parts 9 dB lower, speech within 0.2 dB).
+pub const CLEAN_AUDIO: &str = "afftdn=nr=25:nf=-20:tn=0:rf=-60";
+
 const AFORMAT: &str = "aformat=sample_fmts=fltp:channel_layouts=stereo";
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -51,6 +58,8 @@ pub enum RenderError {
     UnknownMedia,
     #[error("This 360° video is too large to show here. It is still exported.")]
     SphereTooLarge,
+    #[error("This ffmpeg cannot make the chosen format")]
+    NoEncoder,
     #[error(
         "A 360 video needs every clip to be a 360° video. Choose the flat camera view instead."
     )]
@@ -101,6 +110,8 @@ pub struct Segment {
     pub fade_out: Micros,
     /// Linear gain of the clip's own sound (1.0 = unchanged).
     pub gain: f64,
+    /// Clean audio is on for this clip (REQ-114): applied before the gain and the fades.
+    pub clean: bool,
     /// The fade-out is the one at the very end of the video: its last frame is black.
     pub to_black: bool,
     /// A 360 source (1.2.6): the points of view of its camera path (source time). Empty:
@@ -150,6 +161,7 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 fade_in,
                 fade_out,
                 gain: crate::music::clip_gain(c),
+                clean: c.clean_audio,
                 to_black: tl.end_fade && i + 1 == tl.clips.len() && !tl.has_fade(i),
                 sphere: m
                     .format
@@ -181,19 +193,23 @@ fn anchored_doc(
     from: Micros,
 ) -> Option<String> {
     let (w, h) = (m.format.width.max(2), m.format.height.max(1));
-    let events: Vec<crate::text::AssEvent> = anchored_line_items(project, m, start, end)
-        .iter()
-        .chain(project.texts.items.iter())
-        .flat_map(|t| {
-            crate::text::equirect_events(
-                t,
-                w,
-                h,
-                project.timeline.duration(),
-                Some(&[(start, end)]),
-            )
-        })
-        .collect();
+    let win = [(start, end)];
+    let end_all = project.timeline.duration();
+    let mut events: Vec<crate::text::AssEvent> = Vec::new();
+    for (t, size) in anchored_line_items(project, m, start, end) {
+        let px = t.anchor.map(|a| crate::text::line_equirect_px(&a, h, size));
+        events.extend(crate::text::equirect_events_px(
+            &t,
+            w,
+            h,
+            px,
+            end_all,
+            Some(&win),
+        ));
+    }
+    for t in &project.texts.items {
+        events.extend(crate::text::equirect_events(t, w, h, end_all, Some(&win)));
+    }
     let shift = start.max(from);
     events
         .iter()
@@ -211,13 +227,14 @@ fn line_on_sphere(project: &Project, l: &crate::subtitles::ShownLine) -> bool {
 }
 
 /// The anchored subtitle lines shown on the 360 clip of `m` between `start` and `end`, as
-/// texts (white, the line's size) so that they are drawn like texts fixed to the sphere.
+/// texts (white) with the line's size (thousandths) so that they are drawn like texts fixed
+/// to the sphere.
 fn anchored_line_items(
     project: &Project,
     m: &MediaItem,
     start: Micros,
     end: Micros,
-) -> Vec<crate::text::TextItem> {
+) -> Vec<(crate::text::TextItem, u16)> {
     project
         .subtitles
         .project(&project.timeline)
@@ -236,9 +253,8 @@ fn anchored_line_items(
                 l.start,
             );
             t.ttl = (l.end - l.start).max(crate::text::MIN_TTL);
-            t.size = l.size.unwrap_or(crate::subtitles::SIZE_NORMAL);
             t.anchor = l.anchor;
-            t
+            (t, l.size.unwrap_or(crate::subtitles::SIZE_NORMAL))
         })
         .collect()
 }
@@ -644,6 +660,10 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     o = s.skip.ff()
                 )
             };
+            if s.clean && s.has_audio {
+                c.push(',');
+                c.push_str(CLEAN_AUDIO);
+            }
             if s.gain != 1.0 {
                 c.push_str(&format!(",volume={:.6}", s.gain));
             }
@@ -861,6 +881,25 @@ pub fn plan_export_mode(
     project: &Project,
     encoders: &std::collections::BTreeSet<String>,
     mode: ExportMode,
+    is_keyframe: impl FnMut(&MediaItem, Micros) -> bool,
+) -> Result<Plan, RenderError> {
+    plan_export_choice(
+        project,
+        encoders,
+        mode,
+        &format::FormatChoice::default(),
+        is_keyframe,
+    )
+}
+
+/// [`plan_export_mode`] with the format choices of the Export dialog (REQ-120, REQ-121).
+/// A video preset replaces the automatic format (not for a 360 video, which keeps its
+/// own size); any chosen format, and any clip with Clean audio, forces a re-encode.
+pub fn plan_export_choice(
+    project: &Project,
+    encoders: &std::collections::BTreeSet<String>,
+    mode: ExportMode,
+    choice: &format::FormatChoice,
     mut is_keyframe: impl FnMut(&MediaItem, Micros) -> bool,
 ) -> Result<Plan, RenderError> {
     let sphere = mode == ExportMode::Sphere360;
@@ -887,11 +926,24 @@ pub fn plan_export_mode(
         .collect();
     let formats: Vec<&MediaFormat> = owned.iter().collect();
     let chosen = format::choose_output(&formats).ok_or(RenderError::Empty)?;
-    let settings = format::encode_settings(&chosen, encoders);
+    let mut settings = format::encode_settings(&chosen, encoders);
+    let preset = choice.video.filter(|_| !sphere);
+    if let Some(i) = preset {
+        settings = format::preset_settings(i, encoders).ok_or(RenderError::NoEncoder)?;
+    }
+    if let Some(enc) = choice.audio.encoder() {
+        if !encoders.contains(enc) {
+            return Err(RenderError::NoEncoder);
+        }
+        settings.aencoder = enc.into();
+    }
     let geometry = Geometry::of(&settings);
     let subtitles = subtitles_doc(project, &geometry, Micros::ZERO);
     let bed = music_bed(project, Micros::ZERO)?;
     let no_effects = !project.timeline.has_any_fade()
+        && preset.is_none()
+        && choice.audio == format::AudioChoice::Same
+        && !project.timeline.any_clean_audio()
         && project.timeline.clips.iter().all(|c| !c.has_volume())
         && bed.is_none()
         && subtitles.is_none()
@@ -940,6 +992,73 @@ pub fn plan_export_mode(
         settings,
         subtitles,
     })
+}
+
+/// An export of the sound only (REQ-119): the audio graph of the whole timeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioPlan {
+    pub graph: Graph,
+    pub settings: EncodeSettings,
+}
+
+/// The plan of "Only audio": video sound (with volumes and Clean audio) and music of the
+/// whole timeline, in the audio format `audio` (`Same` makes AAC).
+pub fn plan_audio_only(
+    project: &Project,
+    encoders: &std::collections::BTreeSet<String>,
+    audio: format::AudioChoice,
+) -> Result<AudioPlan, RenderError> {
+    let settings = format::audio_only_settings(audio, encoders).ok_or(RenderError::NoEncoder)?;
+    let segs = segments(project, Micros::ZERO, Source::Export)?;
+    let bed = music_bed(project, Micros::ZERO)?;
+    let graph = build_graph(
+        &segs,
+        bed.as_ref(),
+        &GraphSpec {
+            video: false,
+            audio: true,
+            pix_fmt: "yuv420p",
+            geometry: Geometry::of(&settings),
+            subtitles: false,
+            mix: project.mix,
+        },
+    );
+    Ok(AudioPlan { graph, settings })
+}
+
+/// The ffmpeg argv of an audio-only export (no video is decoded or written).
+pub fn audio_export_args(
+    plan: &AudioPlan,
+    paths: &ExportPaths<'_>,
+    version: FfVersion,
+    threads: Option<u32>,
+) -> io::Result<Vec<OsString>> {
+    let s = &plan.settings;
+    let mut a = head();
+    match threads {
+        Some(t) => {
+            a.extend(argv(["-filter_complex_threads".to_string(), t.to_string()]));
+            a.extend(threaded_inputs(input_args(&plan.graph.inputs), t));
+        }
+        None => a.extend(input_args(&plan.graph.inputs)),
+    }
+    a.extend(filter_graph_args(
+        &plan.graph.graph,
+        version,
+        paths.graph_script,
+    )?);
+    a.extend(argv(["-map", "[outa]", "-vn", "-c:a", &s.aencoder]));
+    if let Some(br) = s.audio_bitrate {
+        a.extend(argv(["-b:a".to_string(), br.to_string()]));
+    }
+    a.extend(argv(["-ar".to_string(), SAMPLE_RATE.to_string()]));
+    if let Some(t) = threads {
+        a.extend(argv(["-threads".to_string(), t.to_string()]));
+    }
+    a.extend(argv(["-f", s.muxer.as_str()]));
+    a.extend(argv(["-progress", "pipe:1", "-nostats"]));
+    a.push(file_arg(paths.output));
+    Ok(a)
 }
 
 /// Paths the export argv refers to.
@@ -1848,7 +1967,7 @@ pub(crate) mod tests {
         assert!(doc.contains("Style: Text,"));
         // 2 s .. 5 s, placed at 10% / 10% of 1280x720
         assert!(
-            doc.contains("Dialogue: 1,0:00:02.00,0:00:04.00,Text,,0,0,0,,{"),
+            doc.contains("Dialogue: 1,0:00:02.00,0:00:04.00,Text,,128,128,0,,{"),
             "{doc}"
         );
         assert!(doc.contains("\\pos(128,72)"));
@@ -1979,6 +2098,246 @@ pub(crate) mod tests {
         }
     }
 
+    // covers: REQ-114, REQ-023
+    #[test]
+    fn clean_audio_is_applied_before_the_volume_and_the_fades_and_forces_a_reencode() {
+        let mut p = project(&[(4, 640, 360, 25), (4, 640, 360, 25)]);
+        let (a, b) = (p.timeline.clips[0].id, p.timeline.clips[1].id);
+        let plain = plan_export(&p, &enc(), |_, _| true).unwrap();
+        assert!(matches!(plain, Plan::StreamCopy { .. }));
+        // without it the sound chain is unchanged
+        let g = build_graph(
+            &segments(&p, Micros::ZERO, Source::Export).unwrap(),
+            None,
+            &spec(true, true),
+        )
+        .graph;
+        assert!(!g.contains("afftdn"));
+        // (d) a clip with it forces a re-encode
+        p.timeline.set_clean_audio(&[a], true).unwrap();
+        p.timeline.set_clip_volume(a, 50, false).unwrap();
+        p.timeline.toggle_fade(0).unwrap();
+        let Plan::Reencode { graph, .. } = plan_export(&p, &enc(), |_, _| true).unwrap() else {
+            panic!("clean audio must re-encode")
+        };
+        let parts: Vec<&str> = graph.graph.split(';').collect();
+        let a0 = parts.iter().find(|x| x.ends_with("[a0]")).unwrap();
+        let a1 = parts.iter().find(|x| x.ends_with("[a1]")).unwrap();
+        // before the clip's own volume and the fades
+        let clean = a0.find(CLEAN_AUDIO).expect(a0);
+        assert!(clean < a0.find("volume=").unwrap() && clean < a0.find("afade").unwrap());
+        assert!(!a1.contains("afftdn"), "other clips untouched: {a1}");
+        // the whole video: every clip
+        p.timeline.set_clean_audio(&[a, b], true).unwrap();
+        let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
+        assert!(segs.iter().all(|s| s.clean));
+        assert_eq!(
+            build_graph(&segs, None, &spec(true, true))
+                .graph
+                .matches("afftdn")
+                .count(),
+            2
+        );
+        // the preview uses the same chain
+        let dir = tempfile::tempdir().unwrap();
+        let a = preview_audio_args(
+            &p,
+            Micros::ZERO,
+            44_100,
+            2,
+            FfVersion::Dev,
+            &dir.path().join("g"),
+            Source::Export,
+        )
+        .unwrap();
+        assert!(strs(&a).iter().any(|x| x.contains(CLEAN_AUDIO)));
+        // the music bed is not touched by it
+        let mut m = p.clone();
+        let song = song(9, 10);
+        m.add_media(song.clone());
+        m.music.place(&song, Micros::ZERO, Micros(1)).unwrap();
+        let g = build_graph(
+            &segments(&m, Micros::ZERO, Source::Export).unwrap(),
+            music_bed(&m, Micros::ZERO).unwrap().as_ref(),
+            &spec(true, true),
+        )
+        .graph;
+        let bed = g.split(';').find(|x| x.ends_with("[mb]")).unwrap();
+        assert!(!bed.contains("afftdn"));
+        // a clip without sound has nothing to clean
+        let mut silent = p.clone();
+        silent.media[0].format.acodec = None;
+        silent.media[0].format.channels = None;
+        let segs = segments(&silent, Micros::ZERO, Source::Export).unwrap();
+        let g = build_graph(&segs, None, &spec(true, true)).graph;
+        assert_eq!(g.matches("afftdn").count(), usize::from(segs[1].has_audio));
+    }
+
+    // covers: REQ-120, REQ-121, REQ-023
+    #[test]
+    fn a_chosen_video_or_audio_format_is_always_reencoded_with_its_settings() {
+        use crate::format::{AudioChoice, FormatChoice};
+        let p = project(&[(4, 1280, 720, 30)]);
+        let all: std::collections::BTreeSet<String> = ["libx264", "libx265", "aac", "libmp3lame"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let plan = |c: FormatChoice, e: &std::collections::BTreeSet<String>| {
+            plan_export_choice(&p, e, ExportMode::Automatic, &c, |_, _| true)
+        };
+        // "Same as source" for both: stream copy where it is allowed
+        assert!(matches!(
+            plan(FormatChoice::default(), &all).unwrap(),
+            Plan::StreamCopy { .. }
+        ));
+        // 1280x720 25 fps libx264 .mp4: that size, rate and codec
+        let Plan::Reencode {
+            graph, settings, ..
+        } = plan(
+            FormatChoice {
+                video: Some(6),
+                audio: AudioChoice::Same,
+            },
+            &all,
+        )
+        .unwrap()
+        else {
+            panic!("a preset must re-encode")
+        };
+        assert_eq!((settings.width, settings.height), (1280, 720));
+        assert_eq!(settings.fps, Fps::new(25, 1).unwrap());
+        assert_eq!(settings.vencoder, "libx264");
+        assert!(
+            graph
+                .graph
+                .contains("scale=1280:720:force_original_aspect_ratio=decrease")
+        );
+        assert!(graph.graph.contains("fps=25"));
+        // HEVC in MP4 carries hvc1 (REQ-036) and the sizes of 4K are kept
+        let Plan::Reencode { settings, .. } = plan(
+            FormatChoice {
+                video: Some(10),
+                audio: AudioChoice::Same,
+            },
+            &all,
+        )
+        .unwrap() else {
+            unreachable!()
+        };
+        assert_eq!((settings.width, settings.height), (3840, 2160));
+        let hevc = Plan::Reencode {
+            graph: Box::new(build_graph(&[], None, &spec(true, true))),
+            settings,
+            subtitles: None,
+        };
+        assert!(args(&hevc).windows(2).any(|w| w == ["-tag:v", "hvc1"]));
+        // an audio format re-encodes even with the same video
+        let Plan::Reencode { settings, .. } = plan(
+            FormatChoice {
+                video: None,
+                audio: AudioChoice::Mp3,
+            },
+            &all,
+        )
+        .unwrap() else {
+            panic!("a chosen audio format must re-encode")
+        };
+        assert_eq!(settings.aencoder, "libmp3lame");
+        // missing encoders are refused, not replaced
+        let no_mp3 = enc();
+        assert_eq!(
+            plan(
+                FormatChoice {
+                    video: None,
+                    audio: AudioChoice::Mp3
+                },
+                &no_mp3
+            ),
+            Err(RenderError::NoEncoder)
+        );
+        let h264_only: std::collections::BTreeSet<String> =
+            ["libx264", "aac"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            plan(
+                FormatChoice {
+                    video: Some(10),
+                    audio: AudioChoice::Same
+                },
+                &h264_only
+            ),
+            Err(RenderError::NoEncoder)
+        );
+    }
+
+    // covers: REQ-119, REQ-121, REQ-114
+    #[test]
+    fn only_audio_makes_the_sound_of_the_whole_timeline_without_any_video() {
+        use crate::format::AudioChoice;
+        let mut p = project(&[(4, 1280, 720, 30), (3, 1280, 720, 30)]);
+        let first = p.timeline.clips[0].id;
+        p.timeline.set_clean_audio(&[first], true).unwrap();
+        let m = song(9, 10);
+        p.add_media(m.clone());
+        p.music.place(&m, s(1), Micros(1)).unwrap();
+        p.mix.music_volume = 50;
+        let all: std::collections::BTreeSet<String> = ["libx264", "aac", "libmp3lame"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let plan = plan_audio_only(&p, &all, AudioChoice::Same).unwrap();
+        assert_eq!(plan.settings.extension, "m4a");
+        // no picture is built: no video filter at all, the clean chain and the music are there
+        let g = &plan.graph.graph;
+        assert!(
+            !g.contains("scale=")
+                && !g.contains("[outv]")
+                && !g.contains("setsar")
+                && !g.contains(":v:0]")
+        );
+        assert!(g.contains(CLEAN_AUDIO) && g.contains("[mb]") && g.contains("[outa]"));
+        assert!(
+            g.contains("volume=0.250000"),
+            "the music volume applies: {g}"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let (out, list, script) = (
+            dir.path().join("o.m4a"),
+            dir.path().join("l"),
+            dir.path().join("g"),
+        );
+        let paths = ExportPaths {
+            output: &out,
+            concat_list: &list,
+            graph_script: &script,
+        };
+        let a = strs(&audio_export_args(&plan, &paths, FfVersion::Dev, Some(2)).unwrap());
+        assert!(a.windows(2).any(|w| w == ["-map", "[outa]"]));
+        assert!(a.contains(&"-vn".to_string()) && !a.contains(&"-c:v".to_string()));
+        assert!(a.windows(2).any(|w| w == ["-c:a", "aac"]));
+        assert!(a.windows(2).any(|w| w == ["-f", "mp4"]));
+        assert!(a.iter().any(|x| x == "-threads"));
+        assert!(a.last().unwrap().ends_with("o.m4a"));
+        // mp3 only when the encoder is there
+        let mp3 = plan_audio_only(&p, &all, AudioChoice::Mp3).unwrap();
+        assert_eq!(
+            (
+                mp3.settings.extension.as_str(),
+                mp3.settings.aencoder.as_str()
+            ),
+            ("mp3", "libmp3lame")
+        );
+        let a = strs(&audio_export_args(&mp3, &paths, FfVersion::Dev, None).unwrap());
+        assert!(a.windows(2).any(|w| w == ["-f", "mp3"]));
+        assert_eq!(
+            plan_audio_only(&p, &enc(), AudioChoice::Mp3),
+            Err(RenderError::NoEncoder)
+        );
+        assert_eq!(
+            plan_audio_only(&Project::default(), &all, AudioChoice::Aac),
+            Err(RenderError::Empty)
+        );
+    }
+
     // covers: REQ-084, REQ-020, REQ-023
     #[test]
     fn clip_volume_is_a_gain_on_that_clip_only() {
@@ -2102,8 +2461,8 @@ pub(crate) mod tests {
         t.anchor = Some(Anchor360 {
             yaw_cd: 3000,
             pitch_cd: 1000,
-            size_cd: 500,
-            wrap_cd: 6000,
+            height_cd: 500,
+            width_cd: 6000,
         });
         p.texts.add(t).unwrap();
         let plan = plan_export_mode(&p, &enc(), ExportMode::Sphere360, |_, _| true).unwrap();
@@ -2183,8 +2542,8 @@ pub(crate) mod tests {
         let anchor = Anchor360 {
             yaw_cd: 3000,
             pitch_cd: 0,
-            size_cd: 500,
-            wrap_cd: 6000,
+            height_cd: 500,
+            width_cd: 6000,
         };
         for id in [a, b] {
             p.subtitles
@@ -2231,8 +2590,8 @@ pub(crate) mod tests {
         t.anchor = Some(Anchor360 {
             yaw_cd: -17900,
             pitch_cd: 0,
-            size_cd: 500,
-            wrap_cd: 6000,
+            height_cd: 500,
+            width_cd: 6000,
         });
         p.texts.add(t).unwrap();
         let eg = Geometry {
@@ -2273,8 +2632,8 @@ pub(crate) mod tests {
         t.anchor = Some(Anchor360 {
             yaw_cd: 0,
             pitch_cd: 0,
-            size_cd: 500,
-            wrap_cd: 6000,
+            height_cd: 500,
+            width_cd: 6000,
         });
         q.texts.add(t).unwrap();
         assert!(
@@ -2312,8 +2671,8 @@ pub(crate) mod tests {
         );
         // the huge bit rate of the sphere is not given to the flat picture
         assert!(settings.video_bitrate.unwrap() < 10_000_000);
-        // the user's switch turns it off again
-        p.media[0].format.treat_as_360 = Some(false);
+        // without the file's spherical information it is flat again
+        p.media[0].format.spherical = Some(false);
         assert!(matches!(
             plan_export(&p, &enc(), |_, _| true).unwrap(),
             Plan::StreamCopy { .. }

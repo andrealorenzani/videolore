@@ -62,6 +62,7 @@ fn window(
                 Popup::Fades => effects::fades_body(ui, app, cmds),
                 Popup::Subtitles => effects::subtitles_body(ui, app, cache, cmds),
                 Popup::Volume => effects::volume_body(ui, app, cache, cmds),
+                Popup::CleanAudio => effects::clean_audio_body(ui, app, cmds),
                 Popup::ClipDetails => clip_details_body(ui, app, cache, cmds),
                 Popup::Instance => instance_body(ui, app, cache, cmds),
                 Popup::Shortcuts => shortcuts_body(ui),
@@ -92,6 +93,10 @@ pub fn instance_label(app: &AppState, i: Instance) -> String {
         Instance::FadeEnd => "Fade to black at the end".into(),
         Instance::ClipVolume(c) => format!(
             "Volume of {}",
+            app.clip_name(c).unwrap_or_else(|| "a clip".into())
+        ),
+        Instance::CleanAudio(c) => format!(
+            "Clean audio of {}",
             app.clip_name(c).unwrap_or_else(|| "a clip".into())
         ),
         Instance::Pov(m, t) => {
@@ -180,6 +185,7 @@ pub fn instance_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mu
         Some(Instance::FadeStart) => effects::edge_fade_body(ui, app, Edge::Start, cmds),
         Some(Instance::FadeEnd) => effects::edge_fade_body(ui, app, Edge::End, cmds),
         Some(Instance::ClipVolume(c)) => effects::clip_volume_body(ui, app, cache, c, cmds),
+        Some(Instance::CleanAudio(c)) => effects::clean_audio_clip_body(ui, app, c, cmds),
         Some(Instance::Pov(m, t)) => pov_instance(ui, app, cache, m, t, cmds),
     }
 }
@@ -466,16 +472,16 @@ fn clip_settings(
         timecode(c.src_out),
         timecode(c.len())
     ));
-    if let Some(m) = app.project.media(c.media).filter(|m| m.has_video()) {
-        // the user's choice wins over what the file says; it applies to the whole source
-        let mut on = m.format.is_360();
-        let r = ui.checkbox(&mut on, "Treat as 360° video").on_hover_text(
-            "Show this video through a camera you can turn (an equirectangular 2:1 \
-                 picture). Saved with the project; applies to every clip of this file.",
+    if app
+        .project
+        .media(c.media)
+        .is_some_and(|m| m.format.is_360())
+    {
+        // information only: a clip is 360 when its file says so (REQ-100)
+        ui.label("360° video").on_hover_text(
+            "This file carries 360° video information, so it is shown through a camera \
+             you can turn.",
         );
-        if r.changed() {
-            cmds.push(Command::Set360(c.media, Some(on)));
-        }
     }
     let frame = app.fps().frame_duration();
     let inside = app.playhead > start && app.playhead < start + c.len();

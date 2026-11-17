@@ -42,6 +42,7 @@ pub enum ActionId {
     Fades,
     Subtitles,
     Volume,
+    CleanAudio,
     ToggleFadeAtPlayhead,
     GenerateSubtitles,
     AddSubtitleLine,
@@ -49,9 +50,11 @@ pub enum ActionId {
     ApplyClipFade,
     ApplyClipSubtitles,
     ApplyClipVolume,
+    ApplyClipCleanAudio,
     ApplyWholeFade,
     ApplyWholeSubtitles,
     ApplyWholeVolume,
+    ApplyWholeCleanAudio,
     AlignHorizontal,
     AlignVertical,
     ResetObjects,
@@ -246,6 +249,12 @@ pub const ACTIONS: &[Action] = &[
     ),
     action!(Volume, "Volume…", [], "Video sound and music volume"),
     action!(
+        CleanAudio,
+        "Clean audio…",
+        [],
+        "Reduce the background noise of the video's sound"
+    ),
+    action!(
         ToggleFadeAtPlayhead,
         "Add/remove fade at playhead",
         [],
@@ -288,6 +297,12 @@ pub const ACTIONS: &[Action] = &[
         "Set the sound level of the selected clip"
     ),
     action!(
+        ApplyClipCleanAudio,
+        "Clean audio",
+        [],
+        "Reduce the background noise in the sound of the selected clip"
+    ),
+    action!(
         ApplyWholeFade,
         "Fade IN/OUT",
         [],
@@ -304,6 +319,12 @@ pub const ACTIONS: &[Action] = &[
         "Volume",
         [],
         "Set the sound levels of the whole video"
+    ),
+    action!(
+        ApplyWholeCleanAudio,
+        "Clean audio",
+        [],
+        "Reduce the background noise in the sound of the whole video"
     ),
     action!(
         AlignHorizontal,
@@ -430,6 +451,7 @@ impl ActionId {
             Fades => Command::OpenPopup(Popup::Fades),
             Subtitles => Command::OpenPopup(Popup::Subtitles),
             Volume => Command::OpenPopup(Popup::Volume),
+            CleanAudio => Command::OpenPopup(Popup::CleanAudio),
             ToggleFadeAtPlayhead => Command::ToggleFadeAtPlayhead,
             GenerateSubtitles => Command::GenerateSubtitles,
             AddSubtitleLine => Command::AddSubtitle,
@@ -437,9 +459,11 @@ impl ActionId {
             ApplyClipFade => apply(EffectKind::Fade, Target::Selected),
             ApplyClipSubtitles => apply(EffectKind::Subtitles, Target::Selected),
             ApplyClipVolume => apply(EffectKind::Volume, Target::Selected),
+            ApplyClipCleanAudio => apply(EffectKind::CleanAudio, Target::Selected),
             ApplyWholeFade => apply(EffectKind::Fade, Target::WholeVideo),
             ApplyWholeSubtitles => apply(EffectKind::Subtitles, Target::WholeVideo),
             ApplyWholeVolume => apply(EffectKind::Volume, Target::WholeVideo),
+            ApplyWholeCleanAudio => apply(EffectKind::CleanAudio, Target::WholeVideo),
             AlignHorizontal => Command::AlignSelected(Axis::Horizontal),
             AlignVertical => Command::AlignSelected(Axis::Vertical),
             ResetObjects => Command::ResetObjects,

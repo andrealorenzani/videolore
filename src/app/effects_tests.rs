@@ -1010,3 +1010,119 @@ fn subtitles_are_exported_as_srt_with_timeline_times() {
     other.dispatch(Command::PickExportSrt, now).unwrap();
     assert_eq!(other.srt_name(), "Untitled.srt");
 }
+
+// covers: REQ-114
+#[test]
+fn clean_audio_is_applied_to_a_clip_or_the_whole_video_in_one_undo_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = state(FakeDialogs::default());
+    three(&mut app, dir.path());
+    let now = Instant::now();
+    let c = ids(&app);
+    let on = |app: &AppState| -> Vec<bool> {
+        app.project
+            .timeline
+            .clips
+            .iter()
+            .map(|c| c.clean_audio)
+            .collect()
+    };
+    assert_eq!(on(&app), [false, false, false]);
+    // dropped on a clip: that clip, and its popup with Remove opens
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::CleanAudio,
+            target: Target::Clip(c[1]),
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(on(&app), [false, true, false]);
+    assert_eq!(app.popups.instance, Some(Instance::CleanAudio(c[1])));
+    assert!(app.popups.is_open(Popup::Instance));
+    assert_eq!(app.popup_title(Popup::Instance), "Clean audio — b.mp4");
+    assert_eq!(app.undo_text(), "Undo Clean audio");
+    // applying it again changes nothing and adds no undo step
+    let n = app.history.undo_len();
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::CleanAudio,
+            target: Target::Clip(c[1]),
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), n);
+    // whole video: every clip, one step, the popup of the whole video
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::CleanAudio,
+            target: Target::WholeVideo,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(on(&app), [true, true, true]);
+    assert!(app.popups.is_open(Popup::CleanAudio));
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(on(&app), [false, true, false], "one undo");
+    // Remove (the popup's button): one undo step, nothing to do when it is off
+    app.dispatch(
+        Command::SetCleanAudio {
+            target: Target::Clip(c[1]),
+            on: false,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(on(&app), [false, false, false]);
+    assert_eq!(app.undo_text(), "Undo Remove clean audio");
+    let n = app.history.undo_len();
+    app.dispatch(
+        Command::SetCleanAudio {
+            target: Target::WholeVideo,
+            on: false,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), n);
+    // the selected clip
+    app.dispatch(Command::SelectClip(Some(c[2])), now).unwrap();
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::CleanAudio,
+            target: Target::Selected,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(on(&app), [false, false, true]);
+    // it is saved with the project and a re-encode is needed
+    let file = dir.path().join("p.vlproj");
+    crate::project::save(&app.project, &file).unwrap();
+    assert_eq!(
+        crate::project::load(&file).unwrap().0.timeline,
+        app.project.timeline
+    );
+    // availability: no clip, no effect
+    let empty = state(FakeDialogs::default());
+    let cmd = Command::SetCleanAudio {
+        target: Target::WholeVideo,
+        on: true,
+    };
+    assert!(!empty.is_enabled(&cmd));
+    assert!(app.is_enabled(&cmd));
+    assert!(!empty.is_enabled(&Command::SetCleanAudio {
+        target: Target::Selected,
+        on: true
+    }));
+    assert!(
+        empty
+            .disabled_reason(&Command::SetCleanAudio {
+                target: Target::Selected,
+                on: true
+            })
+            .is_some()
+    );
+}

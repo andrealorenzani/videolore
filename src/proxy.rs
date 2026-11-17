@@ -782,7 +782,7 @@ mod tests {
         assert!(sphere_too_large(u32::MAX, u32::MAX));
         // a flat video of 8K keeps the normal rule
         let mut flat = sphere(7680, 3840);
-        flat.treat_as_360 = Some(false);
+        flat.spherical = Some(false);
         assert!(wants_proxy(&flat, PreviewQuality::Automatic, &m));
         // the copy is 4096 wide and 2:1, the key differs from the normal copy's
         let a = proxy_args(

@@ -13,12 +13,12 @@ Professional editors needing multitrack video, color grading or advanced effects
 
 ## Documents
 - [Editing](business-editing.md) — media list, projects (save, open, unsaved changes, compatibility with older project files), timeline editing, fades between clips and at the start and end of the video, preview, responsiveness, preview proxies and memory use.
-- [Window, menus and effects](business-ui.md) — window layout and resizable sections, menus, toolbar, keyboard shortcuts, tooltips, status bar, the Effects section and its popups, applying effects to a clip or to the whole video, markers on the timeline, the timeline ruler, clip details, right-click menus, recent projects, drag and drop.
-- [Export](business-export.md) — automatic output format, stream copy vs re-encode, progress and cancel, Apple-compatible HEVC, long timelines, faster export with the computer's video hardware (with automatic fallback and output check).
-- [Music and volume](business-music.md) — the music track, mixing and volumes, the volume of each video clip, how music behaves when the video is edited.
+- [Window, menus and effects](business-ui.md) — 1.4.0: the Effects menu lists only effects, the Effects list has "Clean audio". Window layout and resizable sections, menus, toolbar, keyboard shortcuts, tooltips, status bar, the Effects section and its popups, applying effects to a clip or to the whole video, markers on the timeline, the timeline ruler, clip details, right-click menus, recent projects, drag and drop.
+- [Export](business-export.md) — 1.4.0: the Export dialog (file location and name, full video, only audio or only subtitles, video and audio format with "Same as source", 360 choice); by default the output format is automatic; stream copy vs re-encode, progress and cancel, Apple-compatible HEVC, long timelines, faster export with the computer's video hardware (with automatic fallback and output check).
+- [Music and volume](business-music.md) — the music track, mixing and volumes, the volume of each video clip, how music behaves when the video is edited; 1.4.0: Clean audio, an effect that reduces background noise in the video's sound.
 - [Subtitles](business-subtitles.md) — automatic offline subtitles, the speech model download, editing, styles, how subtitles follow edits, subtitles for one clip, reusing the subtitles already in a video, `.srt` export, moving lines on screen and selecting several lines.
-- [Text](business-text.md) — 1.3.0: "Add Text" in the Effects list, multiline texts with the effects Fade IN, Fade OUT, Blink and Slide in, time to live on the timeline, colour, font installed on the computer, text on the picture and in the export.
-- [Boxes on the picture and 360 video](business-picture.md) — 1.2.6: visible boxes to move and enlarge what sits on the picture, effect commands (align horizontally, align vertically, reset) in the toolbar, 360° videos with look-around and points of view (POV) the camera moves between in a straight line. 1.3.0: the toolbar group becomes the Context Menu, Export of a 360 project asks for a 360 video or the flat camera view, text and subtitles on a 360 clip stay at their place in the sphere.
+- [Text](business-text.md) — 1.3.0: "Add Text" in the Effects list, multiline texts with the effects Fade IN, Fade OUT, Blink and Slide in, time to live on the timeline, colour, font installed on the computer, text on the picture and in the export. 1.4.0: the box changes its width only and the text size fits it; Align and Reset as for subtitle lines; text can be dragged past the picture edges.
+- [Boxes on the picture and 360 video](business-picture.md) — 1.2.6: visible boxes to move and enlarge what sits on the picture, effect commands (align horizontally, align vertically, reset) in the toolbar, 360° videos with look-around and points of view (POV) the camera moves between in a straight line. 1.3.0: the toolbar group becomes the Context Menu, Export of a 360 project asks for a 360 video or the flat camera view, text and subtitles on a 360 clip stay at their place in the sphere. 1.4.0: the "360°" switch is removed (a clip is 360 only from its file's information); the 360 choice is in the Export dialog.
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, third-party notices, first-launch steps.
 - [Settings, performance and safety](business-performance.md) — automatic setup at first start, the Settings window (preview quality, subtitle quality, how hard videolore works, export speed), more accurate speech models, older processors, responsiveness, safe handling of files and downloads, private temporary files, quality goals (including the real-hardware check of faster export).
 
@@ -28,7 +28,7 @@ Professional editors needing multitrack video, color grading or advanced effects
 - **Settings belong to the program, never to a project**, and the main part of Settings uses plain words only; technical details stay in a collapsed "Advanced" section.
 
 ## Key decisions (general)
-- Output format is automatic: there is no export settings dialog (since 1.3.0 one question is asked for projects with 360 clips, see below).
+- (1.4.0) Export has a dialog (file, mode, video and audio format, 360 choice). The output format stays automatic by default ("Same as source"); this reverses the earlier decision of no export dialog and of the per-export 360 question.
 - Stream copy is used only when the result is guaranteed frame-accurate; correctness comes before speed.
 - Fade length is fixed (not user-tunable) to keep the editor simple.
 - (1.1.0) Window sections can be resized by dragging their borders, and the sizes are remembered; sections still cannot be moved, docked or hidden. (Until 1.0 the layout was fixed.)
@@ -40,14 +40,22 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (1.2.0) When a video already contains subtitles, the user chooses between using their text (matched word by word to the speech) and recognising the speech; the video's text is never replaced.
 - (1.2.0) The project file format changes to store start and end fades, clip volumes and subtitle positions; older projects open with the same result.
 - (1.2.6) A 360° video is shown through a camera the user can turn; the export was a normal flat video that follows the camera path set with points of view. This is the only keyframe-like feature, limited to the camera of 360 clips.
-- (1.3.0) For a project with 360 clips, Export asks whether to make a 360 video (the whole sphere) or the flat camera view of 1.2.6. This is an explicit exception to the automatic output format, only for such projects.
+- (1.3.0) For a project with 360 clips, Export asked whether to make a 360 video (the whole sphere) or the flat camera view of 1.2.6. (1.4.0) This is now the 360 choice of the Export dialog, offered only when all video clips are 360 clips.
 - (1.3.0) Text items are a new kind of object on the picture, on their own timeline lane: they are not a video track, so multiple video tracks stay out of scope. The text effects Fade IN and Fade OUT have a set time; the video effect "Fade through black" is named "Fade IN/OUT" and keeps its fixed length.
 - (1.3.0) Text and subtitle lines added on a 360 clip are anchored to a point of the sphere and do not move when the camera turns.
+- (1.4.0) Clean audio is an on/off effect of the video's sound, not of the music, with no technical controls.
+- (1.4.0) Text and subtitle lines can be dragged past the picture edges; a text item's box changes its width only, and its text size fits the box.
+- (1.4.0) A clip is treated as 360 only from its file's own information; the manual "360°" switch is removed.
 - (0.4.0) Export can use the computer's video hardware (NVIDIA, Intel, AMD, Apple) when the user chooses "Export: Faster" in Settings. Best quality stays the default. Every hardware result is checked, and on any problem the export is silently redone with the normal method, so the user always gets a correct file.
 
 Topic-specific decisions are in each document.
 
-## Known limitations (1.2.0, 1.3.0)
+## Known limitations (1.2.0, 1.3.0, 1.4.0)
+- (1.4.0) Clean audio reduces background noise but does not remove it completely (about 9 dB less noise on the reference clip; quiet speech can lose up to about 2.5 dB; its cost on weak computers is not measured); it works on the video's sound, not on the music track.
+- (1.4.0) Text and subtitle lines dragged past an edge of the picture are cut in the preview and in the export.
+- (1.4.0) Short texts become large and long texts small, because the text size fits the box; the fit is an estimate, so a text can fill about 85% to 115% of its box; a text that does not fit even at the minimum size runs past its box. A large multi-line text of a 1.3.0 project can become smaller when opened.
+- (1.4.0) Export choices are kept for the session only; the video and audio formats are a fixed list of presets.
+- (1.4.0) A video without spherical information is always flat, since the "360°" switch is removed; a 360 switch set in a 1.3.0 project is dropped when the project is opened.
 - (1.3.0) Text uses the fonts installed on the computer, so the same text can look different on each computer. A project that mixes 360 and flat clips can only be exported as the flat camera view.
 - (1.3.0) Text items have no outline or background box; a text that does not fit its box runs past it; video edits do not move text items.
 - (1.3.0) The 360 export is slow (no speed is promised); subtitle lines generated automatically on a 360 clip follow the camera instead of a point of the sphere.
@@ -74,7 +82,7 @@ Topic-specific decisions are in each document.
 - Color grading, keyframe animation, transitions other than fade through black.
 - Accounts, cloud storage, sync, collaboration, direct upload to social networks.
 - Mobile versions.
-- Export settings dialog.
+- Technical export settings beyond the fixed presets of the Export dialog (1.4.0).
 - Autosave, crash recovery, automatic updates.
 - Code signing and notarisation (postponed).
 - Telemetry, online services for detecting the computer, performance settings per project.

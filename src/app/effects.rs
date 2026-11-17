@@ -78,6 +78,18 @@ impl AppState {
                 self.show_effect(Popup::Subtitles, shown);
                 self.create_subtitles(clip)
             }
+            EffectKind::CleanAudio => {
+                self.set_clean_audio(shown, true, now)?;
+                match clip {
+                    Some(id) => {
+                        self.selected_clip = Some(id);
+                        self.popups.instance = Some(Instance::CleanAudio(id));
+                        self.show_effect(Popup::Instance, shown);
+                    }
+                    None => self.show_effect(Popup::CleanAudio, shown),
+                }
+                Ok(())
+            }
         }
     }
 
@@ -92,6 +104,7 @@ impl AppState {
     pub fn popup_title(&self, p: Popup) -> String {
         let base = match (p, self.popups.instance) {
             (Popup::Instance, Some(Instance::ClipVolume(_))) => "Clip volume",
+            (Popup::Instance, Some(Instance::CleanAudio(_))) => "Clean audio",
             (Popup::Instance, Some(Instance::FadeStart)) => "Fade from black",
             (Popup::Instance, Some(Instance::FadeEnd)) => "Fade to black",
             (Popup::Instance, Some(Instance::Pov(..))) => "Point of view",
@@ -131,6 +144,35 @@ impl AppState {
         }
         self.edit(now, "Clip volume", |e| {
             e.timeline.set_clip_volume(clip, volume, muted).map_err(err)
+        })
+    }
+
+    /// Clean audio on or off for a clip or every clip (REQ-114): one undo step, nothing
+    /// when every clip concerned already has that setting.
+    pub(super) fn set_clean_audio(
+        &mut self,
+        target: Target,
+        on: bool,
+        now: Instant,
+    ) -> Result<(), String> {
+        let ids: Vec<ClipId> = match self.effect_clip(target)? {
+            Some(id) => vec![id],
+            None => self.project.timeline.clips.iter().map(|c| c.id).collect(),
+        };
+        let tl = &self.project.timeline;
+        if ids
+            .iter()
+            .all(|i| tl.get(*i).is_some_and(|c| c.clean_audio == on))
+        {
+            return Ok(());
+        }
+        let label = if on {
+            "Clean audio"
+        } else {
+            "Remove clean audio"
+        };
+        self.edit(now, label, |e| {
+            e.timeline.set_clean_audio(&ids, on).map_err(err)
         })
     }
 
@@ -212,6 +254,11 @@ impl AppState {
     /// The lines "Reset position" and a group drag act on.
     pub fn selected_lines(&self) -> Vec<LineId> {
         self.selection.lines()
+    }
+
+    /// The text items the Context Menu commands act on.
+    pub fn selected_texts(&self) -> Vec<crate::text::TextId> {
+        self.selection.texts()
     }
 
     /// The lines a drag of `id` moves: the selection when `id` is in it, else `id` alone.
@@ -355,5 +402,6 @@ fn effect_label(effect: EffectKind) -> &'static str {
         EffectKind::Fade => "Fade IN/OUT",
         EffectKind::Subtitles => "Create subtitles",
         EffectKind::Volume => "Volume",
+        EffectKind::CleanAudio => "Clean audio",
     }
 }

@@ -69,16 +69,24 @@ pub enum EffectKind {
     Fade,
     Subtitles,
     Volume,
+    /// Reduces the background noise of the video's sound (REQ-114).
+    CleanAudio,
 }
 
 impl EffectKind {
-    pub const ALL: [EffectKind; 3] = [EffectKind::Fade, EffectKind::Subtitles, EffectKind::Volume];
+    pub const ALL: [EffectKind; 4] = [
+        EffectKind::Fade,
+        EffectKind::Subtitles,
+        EffectKind::Volume,
+        EffectKind::CleanAudio,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             EffectKind::Fade => "Fade IN/OUT",
             EffectKind::Subtitles => "Subtitles",
             EffectKind::Volume => "Volume",
+            EffectKind::CleanAudio => "Clean audio",
         }
     }
 
@@ -88,6 +96,7 @@ impl EffectKind {
             EffectKind::Fade => Popup::Fades,
             EffectKind::Subtitles => Popup::Subtitles,
             EffectKind::Volume => Popup::Volume,
+            EffectKind::CleanAudio => Popup::CleanAudio,
         }
     }
 }
@@ -199,8 +208,10 @@ pub enum Modal {
     },
     /// Confirmation before removing the downloaded speech recognition files.
     ConfirmRemoveSpeechFiles,
-    /// Which video to make for a project with 360° clips: a 360 video or the flat camera view.
-    ExportKind,
+    /// The Export dialog (REQ-118): the choices being made.
+    Export(Box<export::choice::ExportChoice>),
+    /// The file of the export exists: asks before replacing it.
+    ConfirmOverwrite(Box<export::choice::ExportChoice>),
     About,
 }
 
@@ -211,6 +222,7 @@ pub enum Popup {
     Fades,
     Subtitles,
     Volume,
+    CleanAudio,
     ClipDetails,
     /// The settings of one fade or one subtitle line ([`Popups::instance`]).
     Instance,
@@ -220,11 +232,12 @@ pub enum Popup {
 }
 
 impl Popup {
-    pub const ALL: [Popup; 8] = [
+    pub const ALL: [Popup; 9] = [
         Popup::Settings,
         Popup::Fades,
         Popup::Subtitles,
         Popup::Volume,
+        Popup::CleanAudio,
         Popup::ClipDetails,
         Popup::Instance,
         Popup::Shortcuts,
@@ -237,6 +250,7 @@ impl Popup {
             Popup::Fades => "Fade IN/OUT",
             Popup::Subtitles => "Subtitles",
             Popup::Volume => "Volume",
+            Popup::CleanAudio => "Clean audio",
             Popup::ClipDetails => "Clip details",
             Popup::Instance => "Selected effect",
             Popup::Shortcuts => "Keyboard shortcuts",
@@ -258,6 +272,8 @@ pub enum Instance {
     FadeEnd,
     /// The sound level of one video clip.
     ClipVolume(ClipId),
+    /// Clean audio of one video clip.
+    CleanAudio(ClipId),
     /// A point of view of a 360 source, at this source time.
     Pov(MediaId, Micros),
 }
@@ -449,9 +465,16 @@ pub enum Command {
     Seek(Micros),
     StepFrames(i64),
     SetZoom(f32),
+    /// File > Export…: opens the Export dialog (REQ-118).
     PickExport,
-    /// The answer of the question Export asks for a project with 360° clips (REQ-103).
-    ChooseExportMode(render::ExportMode),
+    /// The dialog's choices changed.
+    SetExportChoice(Box<export::choice::ExportChoice>),
+    /// Export in the dialog: starts the export (asks before replacing a file).
+    StartExport(Box<export::choice::ExportChoice>),
+    /// Answer "Replace" of the overwrite question.
+    ConfirmOverwrite,
+    /// The "..." button of the dialog: choose the folder.
+    PickExportFolder,
     /// Exports to a file in a chosen way.
     ExportAs(PathBuf, render::ExportMode),
     Export(PathBuf),
@@ -497,6 +520,11 @@ pub enum Command {
         target: Target,
     },
     /// Sound level (0–100 %) and mute of one video clip.
+    /// Switches Clean audio on or off for a clip or the whole video (REQ-114).
+    SetCleanAudio {
+        target: Target,
+        on: bool,
+    },
     SetClipVolume {
         clip: ClipId,
         volume: u8,
@@ -521,11 +549,20 @@ pub enum Command {
     },
     /// Removes text items (REQ-110).
     DeleteTexts(Vec<crate::text::TextId>),
-    /// Moves and resizes the box of text items in the preview (REQ-111).
+    /// Moves the box of text items in the preview (REQ-111, REQ-117).
     SetTextBoxes {
         ids: Vec<crate::text::TextId>,
         place: Pos,
-        size: u16,
+    },
+    /// Sets the width of text boxes, thousandths of the picture width (REQ-116).
+    ResizeTextWidth {
+        ids: Vec<crate::text::TextId>,
+        width: u16,
+    },
+    /// Sets the width, as an angle, of text boxes fixed to the sphere (REQ-116).
+    ResizeTextAnchorWidth {
+        ids: Vec<crate::text::TextId>,
+        width_cd: u32,
     },
     /// Moves texts fixed to the sphere to another point of it (REQ-112).
     MoveTextAnchor {
@@ -585,8 +622,6 @@ pub enum Command {
         media: MediaId,
         t: Micros,
     },
-    /// "Treat as 360° video": the user's choice for a source (`None`: what the file says).
-    Set360(MediaId, Option<bool>),
     /// A corner drag finished: `ids` get `size` (thousandths), `line` its new centre.
     ResizeLines {
         ids: Vec<LineId>,
@@ -643,6 +678,9 @@ impl Command {
             Command::MoveText { .. }
             | Command::SetTextBoxes { .. }
             | Command::MoveTextAnchor { .. } => "Move text",
+            Command::ResizeTextWidth { .. } | Command::ResizeTextAnchorWidth { .. } => {
+                "Resize text"
+            }
             Command::MoveLineAnchor { .. } => "Move subtitle",
             Command::DeleteTexts(_) => "Delete text",
             Command::DeleteSubtitle(_) => "Delete subtitle line",
@@ -658,8 +696,14 @@ impl Command {
                 effect: EffectKind::Subtitles,
                 ..
             } => "Create subtitles",
+            Command::ApplyEffect {
+                effect: EffectKind::CleanAudio,
+                ..
+            } => "Clean audio",
             Command::ApplyEffect { .. } => "Volume",
             Command::SetClipVolume { .. } => "Clip volume",
+            Command::SetCleanAudio { on: true, .. } => "Clean audio",
+            Command::SetCleanAudio { on: false, .. } => "Remove clean audio",
             Command::SetEdgeFade { on: true, .. } => "Add fade",
             Command::SetEdgeFade { on: false, .. } => "Remove fade",
             Command::SetLinePositions { pos: Some(_), .. } => "Move subtitle",
@@ -684,6 +728,8 @@ pub trait Dialogs {
     fn pick_project_save(&mut self) -> Option<PathBuf>;
     fn pick_export(&mut self, extension: &str) -> Option<PathBuf>;
     fn pick_ffmpeg(&mut self) -> Option<PathBuf>;
+    /// A folder, starting at `start`.
+    fn pick_folder(&mut self, start: &Path) -> Option<PathBuf>;
     fn pick_model_file(&mut self) -> Option<PathBuf>;
     /// Where to save the subtitles (`.srt`), proposing `default_name`.
     fn pick_subtitles_save(&mut self, default_name: &str) -> Option<PathBuf>;
@@ -820,6 +866,10 @@ pub struct AppState {
     pub frame_serial: u64,
     export: Option<ExportHandle>,
     pub export_status: ExportStatus,
+    /// The choices of the Export dialog, kept for the session (REQ-118): never saved.
+    pub export_memory: Option<export::choice::ExportChoice>,
+    /// The folder of the last export of the session.
+    pub last_export_folder: Option<PathBuf>,
     /// Video hardware for "Export: Faster".
     pub hw: HwState,
     hw_probe: Option<RunningProbe>,
@@ -1025,6 +1075,8 @@ impl AppState {
             frame_serial: 0,
             export: None,
             export_status: ExportStatus::default(),
+            export_memory: None,
+            last_export_folder: None,
             hw: HwState::default(),
             hw_probe: None,
             hw_rechecked: false,
@@ -1354,10 +1406,17 @@ impl AppState {
                 clip_ok && (*effect != EffectKind::Subtitles || (has_ff && !self.is_generating()))
             }
             Command::SetClipVolume { clip, .. } => tl.get(*clip).is_some(),
+            Command::SetCleanAudio { target, .. } => match target {
+                Target::Selected => self.target_clip().is_some(),
+                Target::Clip(c) => tl.get(*c).is_some(),
+                Target::WholeVideo => !tl.clips.is_empty(),
+            },
             Command::SetEdgeFade { .. } => !tl.clips.is_empty(),
             Command::ResetPosition => self.selection_is_changed(),
             Command::ResetObjects => self.selection_is_changed() || self.reset_applies_to_camera(),
-            Command::AlignSelected(_) => !self.selected_lines().is_empty(),
+            Command::AlignSelected(_) => {
+                !self.selected_lines().is_empty() || !self.selected_texts().is_empty()
+            }
             Command::SetPov | Command::DragCamera { .. } | Command::ZoomCamera(_) => {
                 self.sphere_at_playhead().is_some()
             }
@@ -1775,7 +1834,7 @@ impl AppState {
                 let (at, min) = (self.playhead, self.frame_len());
                 let mut added = None;
                 // on a 360 clip the line is fixed to the point the camera looks at
-                let anchor = self.text_anchor_at_playhead();
+                let anchor = self.text_anchor_at_playhead(false);
                 self.edit(now, label, |e| {
                     let id = e
                         .subtitles
@@ -1984,23 +2043,33 @@ impl AppState {
                 Ok(())
             }
             Command::PickExport => {
-                // a project with 360 clips first asks which video to make (REQ-103)
-                if self.has_sphere_clip() {
-                    self.modal = Some(Modal::ExportKind);
-                    return Ok(());
-                }
-                self.pick_and_export(render::ExportMode::Automatic, now)
+                self.open_export_dialog();
+                Ok(())
             }
-            Command::ChooseExportMode(mode) => {
-                if self.modal != Some(Modal::ExportKind) {
-                    return Ok(());
+            Command::SetExportChoice(c) => {
+                if matches!(self.modal, Some(Modal::Export(_))) {
+                    self.modal = Some(Modal::Export(c));
                 }
-                self.modal = None;
-                if mode == render::ExportMode::Sphere360 && self.has_flat_clip() {
-                    return Err(render::RenderError::MixedSphere.to_string());
-                }
-                self.pick_and_export(mode, now)
+                Ok(())
             }
+            Command::PickExportFolder => {
+                if let Some(Modal::Export(c)) = &self.modal {
+                    let mut c = c.clone();
+                    if let Some(f) = self.dialogs.pick_folder(&c.folder) {
+                        c.folder = f;
+                        self.modal = Some(Modal::Export(c));
+                    }
+                }
+                Ok(())
+            }
+            Command::StartExport(c) => self.start_export_choice(*c, now),
+            Command::ConfirmOverwrite => match self.modal.take() {
+                Some(Modal::ConfirmOverwrite(c)) => self.run_export_choice(*c, now),
+                other => {
+                    self.modal = other;
+                    Ok(())
+                }
+            },
             Command::Export(path) => self.start_export(path, render::ExportMode::Automatic),
             Command::ExportAs(path, mode) => self.start_export(path, mode),
             Command::CancelExport => {
@@ -2034,6 +2103,9 @@ impl AppState {
                 Ok(())
             }
             Command::CloseModal => {
+                if let Some(Modal::Export(c) | Modal::ConfirmOverwrite(c)) = self.modal.take() {
+                    self.export_memory = Some(*c);
+                }
                 self.modal = None;
                 self.pending_create = None;
                 Ok(())
@@ -2160,14 +2232,17 @@ impl AppState {
                 volume,
                 muted,
             } => self.set_clip_volume(clip, volume, muted, now),
+            Command::SetCleanAudio { target, on } => self.set_clean_audio(target, on, now),
             Command::SetEdgeFade { edge, on } => self.set_edge_fade(edge, on, now),
             Command::ToggleLine(id) => self.toggle_line(id),
             Command::AddText(draft) => self.add_text(draft, now),
             Command::EditText(item) => self.edit_text(item, now),
             Command::MoveText { id, start, ttl } => self.move_text(id, start, ttl, now),
             Command::DeleteTexts(ids) => self.delete_texts(ids, now),
-            Command::SetTextBoxes { ids, place, size } => {
-                self.set_text_boxes(ids, place, size, now)
+            Command::SetTextBoxes { ids, place } => self.set_text_boxes(ids, place, now),
+            Command::ResizeTextWidth { ids, width } => self.resize_text_width(ids, width, now),
+            Command::ResizeTextAnchorWidth { ids, width_cd } => {
+                self.resize_text_anchor_width(ids, width_cd, now)
             }
             Command::MoveTextAnchor {
                 ids,
@@ -2220,7 +2295,6 @@ impl AppState {
             Command::SetPov => self.set_pov(now),
             Command::EditPov { media, old_t, pov } => self.edit_pov(media, old_t, pov, now),
             Command::RemovePov { media, t } => self.remove_pov(media, t, now),
-            Command::Set360(media, choice) => self.set_360(media, choice, now),
             Command::ToggleBoxes => self.toggle_boxes(),
             Command::DragLines(d) => {
                 self.drag_lines(d, now);
@@ -2290,7 +2364,9 @@ impl AppState {
                 let last = tl.clips.last().filter(|_| tl.end_fade)?;
                 Some(tl.duration() - last.fade_len())
             }
-            Instance::ClipVolume(c) => tl.index_of(c).map(|i| tl.start_of(i)),
+            Instance::ClipVolume(c) | Instance::CleanAudio(c) => {
+                tl.index_of(c).map(|i| tl.start_of(i))
+            }
             Instance::Pov(m, t) => self.pov_position(m, t),
         }
     }
@@ -2459,7 +2535,9 @@ impl AppState {
             Command::PickExportSrt | Command::ExportSrt(_) => effects::NO_SUBTITLES,
             Command::ResetPosition if self.selected_lines().is_empty() => effects::SELECT_A_LINE,
             Command::ResetPosition => sphere::ALREADY_ORIGINAL,
-            Command::ResetObjects if self.selected_lines().is_empty() => {
+            Command::ResetObjects
+                if self.selected_lines().is_empty() && self.selected_texts().is_empty() =>
+            {
                 if self.sphere_at_playhead().is_some() {
                     sphere::CAMERA_AT_FRONT
                 } else {
@@ -2472,6 +2550,10 @@ impl AppState {
                 sphere::NOT_A_360
             }
             Command::ApplyEffect {
+                target: Target::Selected,
+                ..
+            }
+            | Command::SetCleanAudio {
                 target: Target::Selected,
                 ..
             } if self.target_clip().is_none() => effects::SELECT_A_CLIP,
@@ -2755,15 +2837,102 @@ impl AppState {
         })
     }
 
-    fn pick_and_export(&mut self, mode: render::ExportMode, now: Instant) -> Result<(), String> {
-        let ext = self.export_extension();
-        match self.dialogs.pick_export(&ext) {
-            Some(p) => self.dispatch_inner(Command::ExportAs(p, mode), now),
-            None => Ok(()),
+    /// What the Export dialog needs to know about the project (REQ-118 to REQ-122).
+    pub fn export_context(&self) -> export::choice::Context {
+        let videos: Vec<bool> = self
+            .project
+            .timeline
+            .clips
+            .iter()
+            .map(|c| {
+                self.project
+                    .media(c.media)
+                    .is_some_and(|m| m.format.is_360())
+            })
+            .collect();
+        let mut media_files: Vec<PathBuf> =
+            self.project.media.iter().map(|m| m.path.clone()).collect();
+        media_files.sort();
+        media_files.dedup();
+        export::choice::Context {
+            has_clips: !videos.is_empty(),
+            has_subtitles: self.has_shown_subtitles(),
+            all_360: !videos.is_empty() && videos.iter().all(|v| *v),
+            encoders: self.encoders(),
+            auto_extension: self.export_extension(),
+            project_file: self.project_path.clone(),
+            media_files,
+        }
+    }
+
+    /// Opens the Export dialog with the choices of the session so far (REQ-118).
+    fn open_export_dialog(&mut self) {
+        let choice = match &self.export_memory {
+            Some(c) => c.clone(),
+            None => export::choice::defaults(
+                self.project_path.as_deref(),
+                self.last_export_folder.as_deref(),
+                directories::UserDirs::new()
+                    .and_then(|d| d.document_dir().map(Path::to_path_buf))
+                    .as_deref(),
+            ),
+        };
+        self.modal = Some(Modal::Export(Box::new(choice)));
+    }
+
+    /// "Export" pressed in the dialog: checks the choices, asks before replacing a file.
+    fn start_export_choice(
+        &mut self,
+        choice: export::choice::ExportChoice,
+        now: Instant,
+    ) -> Result<(), String> {
+        let ctx = self.export_context();
+        if let Some(why) = export::choice::blocked(&choice, &ctx) {
+            return Err(why);
+        }
+        if export::choice::target_path(&choice, &ctx).exists() {
+            self.modal = Some(Modal::ConfirmOverwrite(Box::new(choice)));
+            return Ok(());
+        }
+        self.run_export_choice(choice, now)
+    }
+
+    fn run_export_choice(
+        &mut self,
+        choice: export::choice::ExportChoice,
+        now: Instant,
+    ) -> Result<(), String> {
+        let ctx = self.export_context();
+        let path = export::choice::target_path(&choice, &ctx);
+        let request = export::choice::request(&choice, &ctx);
+        self.modal = None;
+        self.last_export_folder = Some(choice.folder.clone());
+        self.export_memory = Some(choice);
+        match request {
+            export::choice::Request::Srt => self.dispatch_inner(Command::ExportSrt(path), now),
+            export::choice::Request::Audio(audio) => self.start_export_with(
+                path,
+                render::ExportMode::Automatic,
+                crate::format::FormatChoice { video: None, audio },
+                true,
+            ),
+            export::choice::Request::Video { mode, format } => {
+                self.start_export_with(path, mode, format, false)
+            }
         }
     }
 
     fn start_export(&mut self, path: PathBuf, mode: render::ExportMode) -> Result<(), String> {
+        self.start_export_with(path, mode, Default::default(), false)
+    }
+
+    fn start_export_with(
+        &mut self,
+        path: PathBuf,
+        mode: render::ExportMode,
+        format: crate::format::FormatChoice,
+        audio_only: bool,
+    ) -> Result<(), String> {
         if self.is_exporting() {
             return Err("an export is already running".into());
         }
@@ -2786,6 +2955,8 @@ impl AppState {
             stall_timeout: self.stall_timeout,
             check_timeout: export::CHECK_TIMEOUT,
             mode,
+            format,
+            audio_only,
         };
         let runner: Arc<dyn Runner> = Arc::new(self.limited(Priority::Export));
         self.export = Some(export::start(job, runner));

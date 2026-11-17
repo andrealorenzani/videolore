@@ -23,7 +23,7 @@ use std::path::{Component, Path, PathBuf};
 /// Schema written by this version (5 since 1.3.0: text items and 360 anchors; 4 since 1.2.6: subtitle sizes, the 360° switch and
 /// the camera paths; 3 since 1.2.0: clip volumes, fades at the video's edges, subtitle
 /// positions, subtitle tracks of media).
-pub const SCHEMA_VERSION: u64 = 5;
+pub const SCHEMA_VERSION: u64 = 6;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 16 * 1024 * 1024;
@@ -283,6 +283,39 @@ fn invalid(msg: &str) -> ProjectError {
     ProjectError::Invalid(msg.to_string())
 }
 
+/// Takes the `size` of every text out of a project of schema 5 or older (a text of 1.4.0
+/// has a `width` instead) and gives each a placeholder width.
+fn take_legacy_text_sizes(value: &mut serde_json::Value) -> Result<Vec<u16>, ProjectError> {
+    let Some(items) = value.get_mut("texts").and_then(|t| t.as_array_mut()) else {
+        return Ok(Vec::new());
+    };
+    let mut sizes = Vec::with_capacity(items.len());
+    for t in items {
+        let Some(obj) = t.as_object_mut() else {
+            return Err(invalid("text item is not an object"));
+        };
+        let size = obj
+            .remove("size")
+            .and_then(|v| v.as_u64())
+            .and_then(|v| u16::try_from(v).ok())
+            .filter(|v| (subtitles::SIZE_MIN..=subtitles::SIZE_MAX).contains(v))
+            .ok_or_else(|| invalid("text item with an invalid place or size"))?;
+        obj.insert("width".into(), crate::text::DEFAULT_WIDTH.into());
+        sizes.push(size);
+    }
+    Ok(sizes)
+}
+
+/// Gives a text of 1.3.0 the width (and for a text fixed to the sphere the height) that
+/// keep its look (REQ-123, ADR-088).
+fn migrate_text(item: &mut crate::text::TextItem, old_size: u16) {
+    item.width = crate::text::legacy_width(&item.text, old_size);
+    if let Some(a) = item.anchor.as_mut() {
+        a.height_cd =
+            crate::text::legacy_anchor_height(&item.text, a.height_cd, a.width_cd, old_size);
+    }
+}
+
 /// Parses and validates project JSON. `dir` is the project's folder (for relative paths).
 /// Returns the project and the names of sources that could not be found.
 pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), ProjectError> {
@@ -298,8 +331,18 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
     if version < OLDEST_SCHEMA {
         return Err(ProjectError::UnsupportedSchema(version));
     }
-    let file: ProjectFile =
+    let mut value = value;
+    // texts of 1.3.0 and before have a size, not a width: read it aside (ADR-088)
+    let legacy_sizes = if version < 6 {
+        take_legacy_text_sizes(&mut value)?
+    } else {
+        Vec::new()
+    };
+    let mut file: ProjectFile =
         serde_json::from_value(value).map_err(|e| ProjectError::Invalid(e.to_string()))?;
+    for (item, size) in file.texts.iter_mut().zip(legacy_sizes) {
+        migrate_text(item, size);
+    }
 
     let mut ids = BTreeSet::new();
     let mut missing = Vec::new();
@@ -816,14 +859,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 5"));
+        assert!(text.contains("\"schema_version\": 6"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 6");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 7");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(6));
+        assert_eq!(e, ProjectError::TooNew(7));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -1001,8 +1044,8 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 5"));
-        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(5)));
+        assert!(text.contains("\"schema_version\": 6"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(6)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         assert_eq!(
             opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
@@ -1105,7 +1148,7 @@ pub(crate) mod tests {
     fn v4_sample(dir: &Path) -> Project {
         let mut p = open_v1(dir);
         p.media[0].format.spherical = Some(true);
-        p.media[0].format.treat_as_360 = Some(true);
+        p.media[0].format.spherical = Some(true);
         let m = p.media[0].id;
         p.camera
             .set(
@@ -1146,9 +1189,9 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 5"));
-        assert!(text.contains("\"camera\"") && text.contains("\"treat_as_360\""));
-        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(5)));
+        assert!(text.contains("\"schema_version\": 6"));
+        assert!(text.contains("\"camera\"") && !text.contains("\"treat_as_360\""));
+        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(6)));
         assert_eq!(load(&file).unwrap().0, q);
         // a project without points of view writes no camera section
         let plain = dir.path().join("plain.vlproj");
@@ -1197,12 +1240,12 @@ pub(crate) mod tests {
         let (p, _) = load_edit(&|v| v["camera"] = wild.clone()).unwrap();
         let c = p.camera.path(MediaId(1))[0].cam;
         assert!(c.is_in_range());
-        // wrong types in the media switches
+        // the switch of 1.3.0 is dropped whatever it holds (REQ-123)
         let r = load_edit(&|v| v["media"][0]["format"]["treat_as_360"] = "yes".into());
-        assert!(matches!(r, Err(ProjectError::Invalid(_))));
+        assert!(r.is_ok());
     }
 
-    // covers: REQ-113
+    // covers: REQ-113, REQ-123
     #[test]
     fn text_items_and_anchors_round_trip_and_hostile_values_are_refused() {
         use crate::text::{Anchor360, TextId, TextItem};
@@ -1213,16 +1256,16 @@ pub(crate) mod tests {
         t.anchor = Some(Anchor360 {
             yaw_cd: 3000,
             pitch_cd: 1000,
-            size_cd: 500,
-            wrap_cd: 6000,
+            height_cd: 500,
+            width_cd: 6000,
         });
         q.texts.add(t).unwrap();
         if let Some(l) = q.subtitles.lines.first_mut() {
             l.anchor = Some(Anchor360 {
                 yaw_cd: -100,
                 pitch_cd: 0,
-                size_cd: 300,
-                wrap_cd: 4000,
+                height_cd: 300,
+                width_cd: 4000,
             });
         }
         let file = dir.path().join("t.vlproj");
@@ -1231,9 +1274,9 @@ pub(crate) mod tests {
         assert!(text.contains("\"texts\"") && text.contains("\"anchor\""));
         assert_eq!(load(&file).unwrap().0, q);
         // 1.2.6 refuses it, untouched
-        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(5)));
+        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(6)));
         // a project of 1.2.6 has no texts
-        let old = text.replace("\"schema_version\": 5", "\"schema_version\": 4");
+        let old = text.replace("\"schema_version\": 6", "\"schema_version\": 4");
         let mut v: serde_json::Value = serde_json::from_str(&old).unwrap();
         v.as_object_mut().unwrap().remove("texts");
         let (p, _) = from_json(&v.to_string(), dir.path()).unwrap();
@@ -1253,14 +1296,15 @@ pub(crate) mod tests {
             Box::new(|t| t["effects"]["blink"] = 9_000_000.into()),
             Box::new(|t| t["text"] = "x".repeat(1001).into()),
             Box::new(|t| t["text"] = "".into()),
-            Box::new(|t| t["size"] = 5000.into()),
-            Box::new(|t| t["size"] = 1.into()),
+            Box::new(|t| t["width"] = 1001.into()),
+            Box::new(|t| t["width"] = 99.into()),
+            Box::new(|t| t["width"] = "wide".into()),
             Box::new(|t| t["font"] = "a{b".into()),
             Box::new(|t| t["colour"] = serde_json::json!([1, 2])),
             Box::new(|t| t["colour"] = serde_json::json!([1, 2, 300])),
             Box::new(|t| t["place"]["x"] = 20_000.into()),
             Box::new(|t| t["anchor"]["yaw_cd"] = 99_999.into()),
-            Box::new(|t| t["anchor"]["size_cd"] = 0.into()),
+            Box::new(|t| t["anchor"]["height_cd"] = 0.into()),
             Box::new(|t| t["effects"]["slide"] = serde_json::json!(["up", 500_000])),
         ];
         for (n, f) in cases.iter().enumerate() {
@@ -1280,10 +1324,10 @@ pub(crate) mod tests {
         v["subtitles"]["lines"][0]["anchor"]["pitch_cd"] = 99_999.into();
         assert!(from_json(&v.to_string(), dir.path()).is_err());
         // too new
-        let new = text.replace("\"schema_version\": 5", "\"schema_version\": 6");
+        let new = text.replace("\"schema_version\": 6", "\"schema_version\": 7");
         assert_eq!(
             from_json(&new, dir.path()).unwrap_err(),
-            ProjectError::TooNew(6)
+            ProjectError::TooNew(7)
         );
     }
 
@@ -1294,5 +1338,85 @@ pub(crate) mod tests {
             n if n > 4 => Err(ProjectError::TooNew(n)),
             _ => Ok(()),
         }
+    }
+
+    // covers: REQ-123
+    #[test]
+    fn a_project_of_1_3_0_opens_with_its_texts_migrated_and_1_4_0_data_round_trips() {
+        use crate::text::{Anchor360, TextId, TextItem};
+        let dir = tempfile::tempdir().unwrap();
+        let mut q = v4_sample(dir.path());
+        let id = q.texts.new_id();
+        q.texts
+            .add(TextItem::new(id, "Hello".into(), Micros(1_000_000)))
+            .unwrap();
+        let id2 = q.texts.new_id();
+        let mut pinned = TextItem::new(id2, "Pinned text on the sphere".into(), Micros(0));
+        pinned.anchor = Some(Anchor360 {
+            yaw_cd: 100,
+            pitch_cd: 0,
+            height_cd: 700,
+            width_cd: 5000,
+        });
+        q.texts.add(pinned).unwrap();
+        let first = q.timeline.clips[0].id;
+        q.timeline.set_clean_audio(&[first], true).unwrap();
+        let file = dir.path().join("v6.vlproj");
+        save(&q, &file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        // the new fields are always written, the old ones are gone
+        assert!(text.contains("\"clean_audio\": true") && text.contains("\"width\""));
+        let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert!(v["texts"][0].get("size").is_none() && !text.contains("size_cd"));
+        assert_eq!(load(&file).unwrap().0, q);
+        // the same project as 1.3.0 wrote it
+        v["schema_version"] = 5.into();
+        v["media"][0]["format"]["treat_as_360"] = false.into();
+        for c in v["timeline"]["clips"].as_array_mut().unwrap() {
+            c.as_object_mut().unwrap().remove("clean_audio");
+        }
+        for (i, size) in [(0, 2000), (1, 1000)] {
+            let t = v["texts"][i].as_object_mut().unwrap();
+            t.remove("width");
+            t.insert("size".into(), size.into());
+        }
+        let a = v["texts"][1]["anchor"].as_object_mut().unwrap();
+        a.remove("height_cd");
+        a.remove("width_cd");
+        a.insert("size_cd".into(), 500.into());
+        a.insert("wrap_cd".into(), 3000.into());
+        let (p, _) = from_json(&v.to_string(), dir.path()).unwrap();
+        assert!(!p.timeline.any_clean_audio());
+        // the big text of the old size gets the box that keeps its size
+        let (big, pinned) = (&p.texts.items[0], &p.texts.items[1]);
+        assert!((100..=1000).contains(&big.width));
+        assert_eq!(big.width, crate::text::legacy_width("Hello", 2000));
+        let a = pinned.anchor.unwrap();
+        assert_eq!(a.width_cd, 3000, "the wrap angle is the box width");
+        assert!(a.is_valid());
+        // and saving writes the new format
+        let out = dir.path().join("migrated.vlproj");
+        save(&p, &out).unwrap();
+        assert_eq!(load(&out).unwrap().0, p);
+        // an old text without a valid size is damaged
+        for bad in [
+            serde_json::json!(5000),
+            serde_json::json!("x"),
+            serde_json::json!(1),
+        ] {
+            let mut w = v.clone();
+            w["texts"][0]["size"] = bad;
+            assert!(matches!(
+                from_json(&w.to_string(), dir.path()),
+                Err(ProjectError::Invalid(_))
+            ));
+        }
+        let mut w = v.clone();
+        w["texts"][0].as_object_mut().unwrap().remove("size");
+        assert!(from_json(&w.to_string(), dir.path()).is_err());
+        let mut w = v.clone();
+        w["texts"][0] = 7.into();
+        assert!(from_json(&w.to_string(), dir.path()).is_err());
+        let _ = TextId(1);
     }
 }

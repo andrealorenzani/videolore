@@ -41,7 +41,7 @@ fn add_text(p: &mut Project, f: impl FnOnce(&mut TextItem)) -> TextId {
     let id = p.texts.new_id();
     let mut t = TextItem::new(id, "MMMMMM".into(), Micros::ZERO);
     t.place = Pos { x: 5000, y: 5000 };
-    t.size = 4000;
+    t.width = 1000;
     f(&mut t);
     p.texts.add(t).unwrap()
 }
@@ -162,7 +162,6 @@ fn a_text_slides_in_from_the_left_and_reaches_its_box() {
     let mut p = project_of(&env, &black(&env, 320, 180, 6));
     add_text(&mut p, |t| {
         t.ttl = Micros(4_000_000);
-        t.size = 1000;
         t.effects.slide = Some((SlideDir::Left, Micros(1_000_000)));
     });
     let (r, _) = env.export(&p, &env.dir.path().join("slide.mp4"));
@@ -193,20 +192,19 @@ fn sphere_black(env: &Env, secs: u32) -> PathBuf {
 
 fn sphere_project(env: &Env, secs: u32) -> Project {
     let mut p = project_of(env, &sphere_black(env, secs));
-    p.media[0].format.treat_as_360 = Some(true);
+    p.media[0].format.spherical = Some(true);
     p
 }
 
 fn pin(t: &mut TextItem, yaw: f64, pitch: f64) {
     t.colour = [255, 0, 0];
-    t.size = 1000;
     t.text = "MM".into();
     t.ttl = Micros(4_000_000);
     t.anchor = Some(Anchor360 {
         yaw_cd: (yaw * 100.0) as i32,
         pitch_cd: (pitch * 100.0) as i32,
-        size_cd: 600,
-        wrap_cd: 6000,
+        height_cd: 600,
+        width_cd: 6000,
     });
 }
 
@@ -305,7 +303,6 @@ fn a_text_across_the_seam_is_drawn_on_both_sides() {
     add_text(&mut p, |t| {
         pin(t, 179.5, 0.0);
         t.text = "MMMMMMMMMM".into();
-        t.size = 2000;
     });
     let out = env.dir.path().join("seam.mp4");
     let (tx, _rx) = std::sync::mpsc::channel();
@@ -349,8 +346,8 @@ fn a_subtitle_line_fixed_to_the_sphere_stays_while_the_camera_turns_and_in_a_360
         l.anchor = Some(Anchor360 {
             yaw_cd: 3000,
             pitch_cd: 500,
-            size_cd: 600,
-            wrap_cd: 6000,
+            height_cd: 600,
+            width_cd: 6000,
         });
     });
     // the line is white: look for white pixels
@@ -392,4 +389,85 @@ fn a_subtitle_line_fixed_to_the_sphere_stays_while_the_camera_turns_and_in_a_360
         (yaw - 30.0).abs() <= 1.0 && (pitch - 5.0).abs() <= 1.0,
         "{yaw} {pitch}"
     );
+}
+
+/// White pixels (green above 128) of an RGB frame: their count and bounding box
+/// (min x, max x, min y, max y).
+fn white_box(frame: &[u8], w: usize) -> Option<(usize, usize, usize, usize, usize)> {
+    let (mut n, mut x0, mut x1, mut y0, mut y1) = (0, usize::MAX, 0, usize::MAX, 0);
+    for (i, p) in frame.chunks(3).enumerate() {
+        if p[1] > 128 {
+            let (x, y) = (i % w, i / w);
+            n += 1;
+            (x0, x1, y0, y1) = (x0.min(x), x1.max(x), y0.min(y), y1.max(y));
+        }
+    }
+    (n > 10).then_some((n, x0, x1, y0, y1))
+}
+
+// covers: REQ-117, REQ-111
+#[test]
+fn a_text_dragged_past_the_edge_is_cut_at_the_edge_in_the_export() {
+    let Some(env) = setup() else { return };
+    if !can_burn(&env) {
+        return;
+    }
+    let mut p = project_of(&env, &black(&env, 320, 180, 3));
+    let inside = add_text(&mut p, |t| {
+        t.text = "MMMM".into();
+        t.width = 300;
+        t.ttl = Micros(2_500_000);
+        t.place = Pos { x: 5000, y: 3000 };
+    });
+    // the same text with its centre on the left edge: half of it is outside the picture
+    let out = add_text(&mut p, |t| {
+        t.text = "MMMM".into();
+        t.width = 300;
+        t.ttl = Micros(2_500_000);
+        t.place = Pos { x: 0, y: 7000 };
+    });
+    let (r, _) = env.export(&p, &env.dir.path().join("edge.mp4"));
+    let r = r.unwrap();
+    let f = env.frame_rgb(&r, 1.0);
+    let top: Vec<u8> = f[..320 * 3 * 90].to_vec();
+    let bottom: Vec<u8> = f[320 * 3 * 90..].to_vec();
+    let (whole, ..) = white_box(&top, 320).expect("the text inside");
+    let (cut, x0, ..) = white_box(&bottom, 320).expect("the half that is inside the picture");
+    assert!(x0 <= 6, "cut at the picture edge: {x0}");
+    let ratio = cut as f64 / whole as f64;
+    assert!(
+        (0.35..0.65).contains(&ratio),
+        "about half is drawn: {ratio}"
+    );
+    let _ = (inside, out);
+}
+
+// covers: REQ-116, REQ-111
+#[test]
+fn the_text_size_follows_the_box_width_in_the_export() {
+    let Some(env) = setup() else { return };
+    if !can_burn(&env) {
+        return;
+    }
+    let mut p = project_of(&env, &black(&env, 640, 360, 3));
+    let size_of = |p: &mut Project, width: u16| -> (usize, usize) {
+        p.texts.items.clear();
+        add_text(p, |t| {
+            t.text = "MMMM MMMM MMMM MMMM\nMMMM MMMM".into();
+            t.width = width;
+            t.ttl = Micros(2_500_000);
+            t.place = Pos { x: 5000, y: 5000 };
+        });
+        let out = env.dir.path().join(format!("w{width}.mp4"));
+        let (r, _) = env.export(p, &out);
+        let f = env.frame_rgb(&r.unwrap(), 1.0);
+        let (n, _, _, y0, y1) = white_box(&f, 640).expect("text");
+        (n, y1 - y0)
+    };
+    let (narrow, h_narrow) = size_of(&mut p, 350);
+    let (wide, _) = size_of(&mut p, 1000);
+    // widening the box makes the text larger (more of the picture is lit)
+    assert!(wide > narrow, "{narrow} -> {wide}");
+    // and the text stays in its box (20% of the height) while it fits
+    assert!(h_narrow <= 360 / 5 + 14, "{h_narrow}");
 }

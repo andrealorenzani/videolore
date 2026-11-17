@@ -16,6 +16,9 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Show the repeat in Settings → Advanced** — say "check inconclusive, repeating" while the automatic repeat runs. (source: 0.4.2, release verification of 0.4.1)
 - **Under extreme load the check can still find no hardware** — after its repeat, a very busy computer can still end with "no hardware", so Faster uses the normal method. (source: 0.4.2, known limitation)
 - **Hardware check of 360 video export with texts** — the 360 video export with anchored texts has not been run on real graphics hardware; check it with the QG-05 checklist in [code-hardware](code-hardware.md). (source: 1.3.0, check to do)
+- **Custom resolutions, frame rates and bitrates** — the Export dialog offers a fixed list of presets; let the user enter other resolutions, frame rates, bitrates, quality values or encoder options. (source: 1.4.0, out of scope of the 1.4.0 request)
+- **Codec names for non-experts** — the Export dialog's format entries show codec names and extensions such as libx264 and .mp4; a plain description may suit non-experts better. (source: 1.4.0, product risk)
+- **Export speed for 4K and HEVC presets** — re-encodes to 3840x2160 and to libx265 are slow, and no speed is promised; measure them and speed them up if they are too slow for users. (source: 1.4.0, known limitation)
 
 ## Effects
 - **More effect types** — per-clip speed and other effects beyond fades, volume, subtitles and text items. Each effect needs its own requirements. (source: 1.1.0, postponed from the 1.1.0 request)
@@ -24,6 +27,9 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Effects on music clips** — per-clip music volume and fades on music; today only the video clips take effects. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **One-sided boundary fades** — a fade only in or only out at a clip boundary, instead of a fade in both directions. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **Start and end fades follow the clip** — the fades from and to black stay at the edges of the video when clips move; let them follow the first or last clip. (source: 1.2.0, known limitation)
+- **Clean audio strength setting** — Clean audio is on or off per clip, with no amount control; add one if the fixed effect is too strong or too weak for some clips. Quiet speech (about -32 dB) can lose up to about 2.5 dB, so a gentler setting may suit it. (source: 1.4.0, out of scope of the 1.4.0 request; known limitation)
+- **Clean the music track** — Clean audio works on the video's sound only; cleaning the music track is not planned yet. (source: 1.4.0, out of scope of the 1.4.0 request)
+- **Speech enhancement** — voice isolation or speech enhancement beyond noise reduction. (source: 1.4.0, out of scope of the 1.4.0 request)
 
 ## 360 video
 - **Automatic subtitles keep their preset place in 360 video export** — in a 360 video export, automatic subtitle lines stay at the preset place (the lower third, about 30° below the front) and do not follow the view; let the user anchor them or choose the place. (source: 1.3.0, known limitation)
@@ -42,11 +48,14 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Preset box and word highlight for 360 subtitles** — a subtitle line placed on a 360 clip is plain white text; give it the preset box and the word highlight. (source: 1.3.0, known limitation)
 - **360 marker in other containers** — a 360 video export carries its 360 marker only in MP4 and MOV files; write it in Matroska and WebM too. (source: 1.3.0, known limitation)
 - **Spherical marker on the bundled ffmpeg** — the MP4 and MOV 360 marker writer was checked only with the system ffmpeg 6.1.1; the bundled ffmpeg 9.x path was not measured. Check the marker and the 360 export with the bundled 9.x build. (source: 1.3.0, check to do)
+- **360 files without spherical information** — since 1.4.0 a 360 video without spherical information stays flat, because the "Treat as 360° video" switch is removed; ask at import, or let the user mark the file as 360, so that such files can be looked around in again. (source: 1.4.0, known limitation)
+- **Video format presets for 360 video** — a 360 video export ignores the video format presets and keeps the sphere's own size; decide whether a 360 preset (resolution, codec) is needed or the sphere's size is enough. (source: 1.4.0, known limitation)
 
 ## Text
 - **Outline, shadow or background box for text** — a text has no outline or box today, so its readability depends on the colour and the picture behind it. (source: 1.3.0, known limitation)
-- **Text that grows its box** — a text that does not fit its box runs past it; grow the box, or warn. (source: 1.3.0, known limitation)
-- **Align and Reset for text items** — the Context Menu commands of subtitle lines (Align horizontally, Align vertically, Reset) for text items too. (source: 1.3.0, postponed from the 1.3.0 request)
+- **Text box height** — the box width is set by hand and the text size fits it, but the box height never changes by itself; a text that does not fit even at the minimum size runs past its box. Let the height change, or warn. (source: 1.3.0, known limitation; wording changed in 1.4.0)
+- **Show the new width while dragging a text box** — while the right-edge handle is dragged only a ghost outline shows the new width; show the width and the resulting text size live. (source: 1.4.0, known limitation)
+- **Best-fit text size for very short texts** — since 1.4.0 short texts become large and long ones small, because the size only fits the box; add a size limit or a default size. (source: 1.4.0, product risk)
 - **Rich text and saved text styles** — different bold, italic or colour per word, and reusable text styles. (source: 1.3.0, out of scope of the 1.3.0 request)
 - **Text in the .srt file** — decide whether text items are written to the subtitle file, or kept to the video only. (source: 1.3.0, open question)
 - **Font names across libraries** — check on Linux, macOS and Windows that the family names listed by the font scan are the names the subtitle renderer finds; a name that differs falls back silently to another font. The lookup of system fonts by the subtitle renderer is not tested on CI. (source: 1.3.0, check to do)
@@ -55,6 +64,8 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Longer text times** — a project file with a text whose time to live is above 24 hours is refused as damaged on opening; raise the limit if longer texts are needed. (source: 1.3.0, known limitation)
 - **Box of a blinking text** — the box of a text stays visible while Blink hides the text; hide it with the text, or keep it on purpose. (source: 1.3.0, known limitation)
 - **Preview box of texts with the installed font** — the preview measures a text's box with the bundled font, while the picture uses the installed one; measure it with the same font. (source: 1.3.0, known limitation)
+- **Measured best-fit text** — the best-fit size estimates each character as 0.6 em wide, so a text may fill 85–115% of its box; measure the glyph widths (a direct `ttf-parser` dependency) only if the fill is visibly off. (source: 1.4.0, estimate risk)
+- **Migrated text sizes** — text items made in 1.3.0 take the best-fit size of their box when a project opens in 1.4.0, so large multi-line texts shrink; offer the old size again only if users need it. (source: 1.4.0, known limitation)
 
 ## Subtitles
 - **Meet the accuracy target of reused subtitles** — the word timing of a video's own subtitles is approximate: 82% of the words were matched and the start error averaged 0.48 s, against a target of 90% and 0.3 s. Improve the word timing (DTW timestamps, sound-onset snapping, or a larger model), then re-enable the strict test `alignment_matches_real_speech`. (source: 1.2.0, known limitation, REQ-095)
@@ -63,7 +74,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Switchable subtitle track in MP4 and MKV export** — keep the subtitles as a track the player can switch off, instead of only burning them in. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **ASS export with positions** — write the moved lines with their places; the .srt file has no positions. (source: 1.2.0, known limitation)
 - **Text from picture-based tracks** — read DVD, Blu-ray (PGS) and DVB subtitle tracks with OCR; they are ignored today. (source: 1.2.0, out of scope of the 1.2.0 request)
-- **Keep moved lines inside the picture when the text grows** — a text edit after a drag can push a line past the edge in the export; keep it inside, or warn. (source: 1.2.0, known limitation)
+- **Keep moved lines inside the picture when the text grows** — since 1.4.0 a line can be dragged partly past an edge on purpose, and a text edit after a drag can push it further out in the export; keep the box inside when the text grows, or warn. (source: 1.2.0, known limitation; wording changed in 1.4.0)
 - **Keep moved lines apart** — two lines shown at the same time at the same place overlap; keep them apart, or warn. (source: 1.2.0, known limitation)
 - **Preview hit boxes for stacked lines** — lines without their own position that share a place can be hard to pick in the preview. (source: 1.2.0, known limitation)
 - **Measuring font for the preview** — the font used to measure the box has no CJK glyphs, so the box widths of such text are approximate. (source: 1.2.0, known limitation)
@@ -103,10 +114,12 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Better default popup positions** — popups open near the centre of the window and can cover the timeline; choose positions that leave the timeline visible. (source: 1.1.0, known limitation)
 - **Multi-selection lost** — a multi-selection was reported to disappear; it could not be reproduced in 1.3.0. Report a concrete way to trigger it if it persists. (source: 1.3.0, not reproduced)
 - **Ctrl/Cmd+V for clips** — the shortcut pastes clips only when the system clipboard holds text, because the windowing layer sends no paste event otherwise. The menu and toolbar Paste always work. (source: 1.1.0, known limitation)
+- **Group the Edit menu** — the Edit menu is long since the Effects menu holds only effects; group its commands into submenus. (source: 1.4.0, interface review)
 - **Drag and drop on Linux Wayland** — dropping files onto the window does not work in Wayland sessions, because the windowing library does not report dropped files there. Enable it when the library supports it. File > Import media… and File > Open… work there. (source: 1.1.0, known limitation)
 - **Discover Ctrl/Cmd+click and Shift+drag** — selecting several subtitle lines with these gestures is not shown anywhere on screen; add a hint or a menu entry. (source: 1.2.0, known limitation)
 - **Sub-second ruler labels** — the timeline ruler shows whole seconds only; at frame zoom show fractions of a second. (source: 1.2.0, known limitation)
 - **Autosave and crash recovery** — save the project automatically and offer to recover unsaved work after a crash. (source: 1.1.0, postponed from the 1.1.0 request)
+- **Items half outside the picture** — a text or a subtitle line dragged partly past the picture edge is cut in the preview and in the export; check that users notice the cut and can find the item again, and add a hint or a way back if not. (source: 1.4.0, product risk)
 
 ## Performance
 - **Faster test suite** — tests got 25% faster in 0.3.0 against a 30% goal; most of the remaining time is the two real speech-recognition tests. (source: 0.3.0, QG-03 result)
@@ -122,6 +135,8 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Cost of loading an installed font** — a font of about 20 MB may take noticeable time to load into the interface's font set; measure it and load on demand or in parts if it slows the window. (source: 1.3.0, check to do)
 - **Faster 360 video export** — the 360 video export of 1.3.0 is accepted as slow and no speed is promised; measure it on real 8K x 4K material and speed it up if it is too slow for users. (source: 1.3.0, decision: slow export accepted)
 - **Record 4K and 8K frame times** — the frame times of the preview and of the 360 view at 4K and 8K were not recorded for the 1.3.0 features; measure them against the 200 ms target of REQ-104. (source: 1.3.0, measurement to do)
+- **Lighter clean audio for the preview** — if the preview with Clean audio on a weak computer underruns or corrects its audio often, use lighter noise-reduction values in the preview only; the export keeps the tuned values. (source: 1.4.0, CPU budget risk)
+- **Measure Clean audio in the preview on weak computers** — the processor cost of Clean audio in the preview has not been measured on a weak computer; measure it, and use the lighter values above if it causes underruns. (source: 1.4.0, measurement to do)
 - **Measured quality goals** — the numbers of the quality goals (detection time, regressions, speed) are assumptions to confirm with measurements. (source: 0.3.0, assumption)
 
 ## Quality
@@ -136,6 +151,8 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Gated alignment test on CI's versions** — the real-speech test of reused subtitles has been run only on the development machine; confirm it with the ffmpeg and espeak versions CI uses. (source: 1.2.0, not verified locally)
 - **macOS and Windows builds of 1.2.0** — these were checked only by CI; confirm the builds and the subtitle export on real systems. (source: 1.2.0, not verified locally)
 - **Interface tests with a test harness** — the interface tests use a small helper on the window's accessibility tree; move them to `egui_kittest` if the helper grows. (source: 1.1.0, planned fallback)
+- **Golden argument tests for format 4 and 5 projects** — the export command lines of projects saved in format 4 and 5 are not compared with fixed expected arguments; add golden fixtures so that a change to the arguments shows at once. (source: 1.4.0, test gap found in the code part)
+- **Click the Export dialog's dropdowns in UI tests** — the interface tests set the dialog's dropdowns without opening them; add clicks so that the menus themselves are tested. (source: 1.4.0, test gap found in the code part)
 
 ## Packaging
 - **Run the installer job before each release** — a manual run, or on pull requests that touch `scripts/package.sh`, `packaging/` or `assets/icon/`; the 0.4.2 macOS and Windows failures were found only at release time. (source: 0.4.3, release of 0.4.2)
@@ -149,11 +166,13 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Old-processor check in CI** — run the tests under an emulated pre-AVX2 processor to prove the friendly message path. (source: 0.3.0, skipped item)
 - **Weekly security-advisory check** — a scheduled CI run of the dependency advisory check, not only on pushes. (source: 0.3.0, skipped item)
 - **Other systems** — builds exist for Windows and Linux on x86-64 and for macOS on Apple Silicon only; Intel Macs and ARM Windows or Linux are not built. (source: 0.4.0, scope decision)
+- **Bundled ffmpeg 9.x Clean audio and MP3 output** — the `afftdn` filter and the `libmp3lame` encoder are checked only by the CI smoke test, which checks that they exist; their output on the bundled ffmpeg 9.x build has not been checked by hand. (source: 1.4.0, check to do)
 
 ## Workflow
 - **Shorter internal documents** — the three long internal development documents (architecture about 145 KB, code about 61 KB, business about 51 KB) should become short indexes of the human documentation, one line per paragraph with its line range, with the detail moved to sub-documents. (source: 1.2.5, documentation size)
 
 ## Not planned
+- **Remembering export choices in the project or in Settings** — the Export dialog keeps its choices for the session only, by design in 1.4.0 (the choices are not stored in the project or in Settings); revisit only if users ask for it. Decided on 2026-11-17.
 - **Rewriting H.264, AAC and other codecs in Rust** — considered and rejected on 2026-11-16: ffmpeg's x264, x265 and AAC encoders are tuned with SIMD code, a rewrite would likely be slower and less correct, and it adds licence, patent and maintenance risk. Speed comes from hardware decoding and encoding instead.
 - **Slower speech engine for old processors** — dropped on 2026-11-14: processors without AVX2 get a clear message and subtitle lines can still be added by hand.
 - **Merge the business and architecture planning into one step** — saves one fresh start per feature, but the notes still dominate the cost and one owner would hold two private notes files, against the ownership rule. Decided on 2026-11-15.

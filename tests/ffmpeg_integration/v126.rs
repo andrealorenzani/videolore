@@ -6,7 +6,6 @@
 
 use super::*;
 use videolore::camera::{Camera, Pov};
-use videolore::media::MediaFormat;
 use videolore::render::Source;
 
 /// Longitude (degrees, 0 = middle of the picture) of the white line of the test sphere.
@@ -49,7 +48,7 @@ fn sphere_project(env: &Env, secs: u32) -> Project {
     let mut p = Project::default();
     let file = sphere_file(env, secs);
     let m = env.probe(&mut p, &file);
-    p.media[0].format.treat_as_360 = Some(true);
+    p.media[0].format.spherical = Some(true);
     p.timeline.append(&m).unwrap();
     p
 }
@@ -306,11 +305,8 @@ fn spherical_files_are_recognised() {
     let flat = env.probe(&mut p, &dir.join("flat-2to1.mp4"));
     assert_eq!(flat.format.spherical, Some(false));
     assert!(!flat.format.is_360());
-    let on = MediaFormat {
-        treat_as_360: Some(true),
-        ..flat.format
-    };
-    assert!(on.is_360());
+    // there is no switch: a flat file stays flat
+    assert!(!flat.format.is_360());
 }
 
 /// The burned-in text is as big as the preview's box says: a line at 200 % has twice
@@ -407,7 +403,7 @@ fn big_spheres_get_a_4096_copy_and_camera_stills_are_quick_enough() {
     let mut p = Project::default();
     let m = env.probe(&mut p, &big);
     assert_eq!((m.format.width, m.format.height), (7680, 3840));
-    p.media[0].format.treat_as_360 = Some(true);
+    p.media[0].format.spherical = Some(true);
     assert!(p.media[0].format.is_360());
     // the copy: 4096 x 2048, made with the proxy's own arguments
     let copy = env.dir.path().join("copy.mkv");
@@ -427,10 +423,10 @@ fn big_spheres_get_a_4096_copy_and_camera_stills_are_quick_enough() {
     for (name, file) in [("copy", copy), ("4K", four)] {
         let mut p = Project::default();
         env.probe(&mut p, &file);
-        p.media[0].format.treat_as_360 = Some(true);
+        p.media[0].format.spherical = Some(true);
         let m = p.media[0].id;
         let mut item = p.media[0].clone();
-        item.format.treat_as_360 = Some(true);
+        item.format.spherical = Some(true);
         p.timeline.append(&item).unwrap();
         p.camera.set(m, pov(0.0, 10.0, 90.0)).unwrap();
         let t = Instant::now();
