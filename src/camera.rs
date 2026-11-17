@@ -300,6 +300,67 @@ impl CameraPaths {
     }
 }
 
+/// Unit vectors (right, up, forward) of a view looking at `yaw`, `pitch` (degrees; positive
+/// yaw looks right, positive pitch up), in a frame where x is right, y up, z front.
+fn basis(yaw: f64, pitch: f64) -> ([f64; 3], [f64; 3], [f64; 3]) {
+    let (sy, cy) = yaw.to_radians().sin_cos();
+    let (sp, cp) = pitch.to_radians().sin_cos();
+    (
+        [cy, 0.0, -sy],
+        [-sp * sy, cp, -sp * cy],
+        [cp * sy, sp, cp * cy],
+    )
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// Where the point of the sphere at (`yaw_deg`, `pitch_deg`) is on the picture of `w` x
+/// `h` pixels a rectilinear camera `cam` makes (straight lines stay straight): pixel
+/// coordinates from the top left, or `None` when the point is behind the camera.
+pub fn project(cam: Camera, w: u32, h: u32, yaw_deg: f64, pitch_deg: f64) -> Option<(f64, f64)> {
+    let (r, u, f) = basis(cam.yaw_deg(), cam.pitch_deg());
+    let (_, _, v) = basis(yaw_deg, pitch_deg);
+    let depth = dot(v, f);
+    if depth <= 1e-6 {
+        return None;
+    }
+    let focal = (f64::from(w) / 2.0) / (cam.fov_deg().to_radians() / 2.0).tan();
+    Some((
+        f64::from(w) / 2.0 + focal * dot(v, r) / depth,
+        f64::from(h) / 2.0 - focal * dot(v, u) / depth,
+    ))
+}
+
+/// The point of the sphere (`yaw`, `pitch` in degrees, yaw in `(-180, 180]`) that the
+/// pixel (`x`, `y`) of the picture of `w` x `h` shows: the inverse of [`project`].
+pub fn unproject(cam: Camera, w: u32, h: u32, x: f64, y: f64) -> (f64, f64) {
+    let (r, u, f) = basis(cam.yaw_deg(), cam.pitch_deg());
+    let focal = (f64::from(w) / 2.0) / (cam.fov_deg().to_radians() / 2.0).tan();
+    let (dx, dy) = (x - f64::from(w) / 2.0, f64::from(h) / 2.0 - y);
+    let v: Vec<f64> = (0..3)
+        .map(|i| f[i] * focal + r[i] * dx + u[i] * dy)
+        .collect();
+    let n = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-12);
+    let yaw = v[0].atan2(v[2]).to_degrees();
+    let pitch = (v[1] / n).clamp(-1.0, 1.0).asin().to_degrees();
+    (if yaw <= -180.0 { 180.0 } else { yaw }, pitch)
+}
+
+/// The anchor of a text added now with the camera `cam` showing a `w` x `h` picture: the
+/// centre of the view; the text is 5% of the view's height tall at 100% and wraps at 60%
+/// of its width (assumptions of REQ-112).
+pub fn anchor_at(cam: Camera, w: u32, h: u32) -> crate::text::Anchor360 {
+    let vfov = vertical_fov_deg(cam.fov_deg(), w, h);
+    crate::text::Anchor360 {
+        yaw_cd: cam.yaw_cd,
+        pitch_cd: cam.pitch_cd,
+        size_cd: ((vfov * 100.0 * 0.05).round() as u32).clamp(1, 17_000),
+        wrap_cd: ((cam.fov_deg() * 100.0 * 0.6).round() as u32).clamp(1, 36_000),
+    }
+}
+
 /// Vertical field of view of a rectilinear view `h_fov` wide on a `w` x `h` picture.
 pub fn vertical_fov_deg(h_fov_deg: f64, w: u32, h: u32) -> f64 {
     let t = (h_fov_deg.to_radians() / 2.0).tan() * h as f64 / w.max(1) as f64;
@@ -388,6 +449,80 @@ pub fn command_lines(
 mod tests {
     use super::*;
 
+    // covers: REQ-112
+    #[test]
+    fn a_point_straight_ahead_is_at_the_centre_and_the_projection_inverts() {
+        let cam = Camera::new(3000, 1000, 9000);
+        let (x, y) = project(cam, 1600, 900, 30.0, 10.0).unwrap();
+        assert!(
+            (x - 800.0).abs() < 1e-6 && (y - 450.0).abs() < 1e-6,
+            "{x} {y}"
+        );
+        // 45 degrees to the right on the horizon of a 90 degrees camera: the right edge
+        let (x, y) = project(Camera::FRONT, 1600, 900, 45.0, 0.0).unwrap();
+        assert!((x - 1600.0).abs() < 1e-6 && (y - 450.0).abs() < 1e-6);
+        // up is up, left is left
+        let (_, y) = project(Camera::FRONT, 1600, 900, 0.0, 10.0).unwrap();
+        assert!(y < 450.0);
+        let (x, _) = project(Camera::FRONT, 1600, 900, -20.0, 0.0).unwrap();
+        assert!(x < 800.0);
+        // behind the camera
+        assert!(project(Camera::FRONT, 1600, 900, 180.0, 0.0).is_none());
+        assert!(project(Camera::FRONT, 1600, 900, 90.0, 0.0).is_none());
+        // inverse
+        for (yaw, pitch, px, py) in [(10.0, 5.0, 100.0, 80.0), (-170.0, -30.0, 1500.0, 800.0)] {
+            let cam = Camera::new((yaw * 100.0) as i64, (pitch * 100.0) as i64, 7000);
+            let (a, b) = unproject(cam, 1600, 900, px, py);
+            let (qx, qy) = project(cam, 1600, 900, a, b).unwrap();
+            assert!(
+                (qx - px).abs() < 1e-6 && (qy - py).abs() < 1e-6,
+                "{qx} {qy}"
+            );
+        }
+        let (yaw, pitch) = unproject(Camera::new(-18000, 0, 9000), 1600, 900, 800.0, 450.0);
+        assert_eq!((yaw.round(), pitch.round()), (180.0, 0.0));
+    }
+
+    // covers: REQ-112
+    #[test]
+    fn a_fixed_point_moves_left_when_the_camera_turns_right_and_returns() {
+        let (w, h) = (1600, 900);
+        let at = Camera::new(3000, 1000, 9000);
+        // the item added with the view at yaw 30, pitch 10
+        let (yaw, pitch) = (30.0, 10.0);
+        // after the camera turned 40 degrees to the right it is on the left of the centre,
+        // 40 degrees away measured on the horizontal plane (the angle seen from the centre)
+        let turned = Camera::new(7000, 1000, 9000);
+        let (x, y) = project(turned, w, h, yaw, pitch).unwrap();
+        assert!(x < 800.0);
+        let (back_yaw, back_pitch) = unproject(turned, w, h, x, y);
+        assert!((back_yaw - yaw).abs() < 0.01 && (back_pitch - pitch).abs() < 0.01);
+        let c = unproject(turned, w, h, 800.0, 450.0);
+        assert!((c.0 - 70.0).abs() < 0.01);
+        assert!(
+            ((yaw - c.0).abs() - 40.0).abs() <= 1.0,
+            "{} deg apart",
+            (yaw - c.0).abs()
+        );
+        // turning back puts it where it was
+        let (x0, y0) = project(at, w, h, yaw, pitch).unwrap();
+        assert!((x0 - 800.0).abs() < 1e-6 && (y0 - 450.0).abs() < 1e-6);
+        // zooming in makes it farther from the centre (bigger, like the scene)
+        let zoomed = Camera::new(7000, 1000, 5000);
+        let (xz, _) = project(zoomed, w, h, yaw, pitch).unwrap();
+        assert!(xz < x);
+    }
+
+    // covers: REQ-112
+    #[test]
+    fn the_anchor_of_a_new_item_is_the_view_centre_with_the_size_of_the_view() {
+        let a = anchor_at(Camera::new(3000, 1000, 9000), 1600, 900);
+        assert_eq!((a.yaw_cd, a.pitch_cd), (3000, 1000));
+        // 90 degrees wide: 60% = 54 degrees wrap; the view is about 58.7 degrees high: 5%
+        assert_eq!(a.wrap_cd, 5400);
+        assert!((a.size_cd as i64 - 293).abs() <= 2, "{}", a.size_cd);
+        assert!(a.is_valid());
+    }
     fn pov(t_s: i64, yaw: i32) -> Pov {
         Pov {
             t: Micros(t_s * 1_000_000),

@@ -16,10 +16,16 @@ Part of [Architecture](architecture.md). Built in 1.2.6 (REQ-096..099). The 360 
 - **Align horizontally / vertically:** each selected line's centre is set to the middle of the picture on that axis; the other coordinate and the size stay. One undo step. Greyed with "Select something on the picture first" when no line is selected.
 - **Reset:** with lines selected, clears position and size of each (back to the style's place, 100%); greyed with a reason when all are already original. With no line selected and a 360 clip at the playhead, it returns the live camera to front, level, default zoom and keeps the POVs (no undo: not part of the project). "Reset position" of 1.2 is the same command.
 - They are actions in the shared table: toolbar group (separated, after the existing actions, so on a narrow window they move first into the "»" menu), Effects menu, right-click menus of the preview and of a subtitle marker, tooltips and shortcuts (a test keeps shortcuts unique). Set POV is an action too (preview button, Playback and Effects menus, right-click menu).
-- The toolbar will have 15 commands (12 up to 1.2.5); at 800 pixels wide every one stays reachable.
+- The toolbar has 15 commands (12 up to 1.2.5); at 800 pixels wide every one stays reachable. Since 1.3.0 the Context Menu group (below) is shown in addition, only when it applies.
+
+## Context Menu and text boxes (1.3.0)
+- The Context Menu is a toolbar group shown only when it has something to act on (REQ-106): **Align horizontally, Align vertically, Reset** when a subtitle line is selected; **Set POV and Reset view** when the playhead is over a 360 clip (Set POV also with nothing selected). A selected text item shows no group. The rule is one pure function over the selection and the playhead. The commands stay the shared table actions, so the menus and shortcuts do not change.
+- Text items get the same box, corner handles and resize as subtitle lines (REQ-111); the box layer already takes any list of boxes. On a 360 clip the box of an anchored item is the projection of its sphere area into the view (see [360 video](architecture-360.md#anchored-text-and-subtitles-130)).
+- Align and Reset apply to subtitle lines only in 1.3.0; their greyed-out state is removed from the group (the menus keep their reasons).
 
 ## Tests
 - Pure: handle hit-testing, resize with the opposite corner fixed, limits (25%, 400%, picture edge), align, reset, group size.
+- Pure (1.3.0): the Context Menu rule table (nothing, line, 360 playhead, text only, both).
 - With `ffmpeg`: the burned text size and centre match the preview within 2% of the picture height; the output has no box.
 - Interface (headless): box drawn only when the option is on, corner drag changes size, one undo restores, greyed reasons, 800x500 reachability.
 - Setting: show-boxes survives save and reload; hostile settings values give the default.

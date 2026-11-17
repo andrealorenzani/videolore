@@ -11,6 +11,7 @@ Projects are JSON files (`.vlproj`) with a format version number.
 | 2 | 0.2.0 – 1.1.x | Music track, volume and mute of video audio and music, subtitles (language, style, lines with word timings). |
 | 3 | 1.2.0 | Fade from black at the start and to black at the end of the video, volume and mute of each video clip, the on-screen position of each subtitle line, and the text subtitle tracks found in each media file. |
 | 4 | 1.2.6 | 360 video: the "Treat as 360° video" choice and the recognised flag of each media file, and the POVs (camera path points) of each source; a size for each subtitle line. |
+| 5 | 1.3.0 | Text items (their text, times, effects, colour, font, box and size) and the 360 anchors of text items and subtitle lines. |
 
 - 0.3.0, 0.4.0 and 1.1.0 did not change the format (1.1.0 timeline markers are computed from the existing data; the layout and recent projects are program settings, never stored in a project).
 - **Opening older files:** version 1 and 2 files are converted in memory when opened and give exactly the same picture, sound and export as before: fades only where they were, every clip at 100% volume, every subtitle line in its style's usual place. Automated tests compare the export commands of a 0.1 and a 1.1 project before and after the change.
@@ -25,6 +26,7 @@ Projects are JSON files (`.vlproj`) with a format version number.
 - **New in version 3:** a clip volume above 100% or a subtitle position outside the picture is refused as a damaged project; references to unknown clips or lines are refused. Subtitle track descriptions (language, title) are only cached information that `ffprobe` can produce again, so bad values there are cleaned or shortened instead of refusing the project. A start or end fade on an empty timeline is ignored.
 - See [security](architecture-security.md#project-and-settings-files) for the hostile-file tests.
 
+- **New in version 5:** text items and anchors are validated as damaged data when out of range: a time to live under 0.1 s or over 24 hours (a value longer than the video is accepted; it is limited to the video length when the item is added, edited or moved), an effect time outside 0.1–5 s, colour not `#RRGGBB`, a font name outside the allowed characters or longer than 100, more than 2,000 blink events per item or 20,000 per project, anchors outside the sphere. Version 5 files are refused by 1.2.6 with its "newer version" message. Projects from 1.2.6 and earlier open unchanged.
 - **New in version 4:** more than 200 POVs for a source, POVs of an unknown media file, a negative or duplicate POV time or a line size outside 25–400% refuse the project as damaged; angles and zoom outside their limits are clamped (they are only view settings). POVs belong to the undo history and to the unsaved-changes comparison.
 
 ## Unsaved changes
@@ -34,4 +36,4 @@ Projects are JSON files (`.vlproj`) with a format version number.
 - Saving is atomic (temporary file, then rename).
 
 ## What is not in a project
-Program settings (layout, show boxes on the picture, recent projects, quality levels, the `ffmpeg` path), the selection of subtitle lines, the live 360 camera, and positions and sizes while a subtitle is being dragged. The undo history is not saved.
+Program settings (layout, show boxes on the picture, recent projects, quality levels, the `ffmpeg` path), the selection of subtitle lines and text items, the list of installed fonts, the export choice for 360 projects (360 video or flat camera view, asked each time), the live 360 camera, and positions and sizes while a subtitle is being dragged. The undo history is not saved.

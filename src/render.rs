@@ -51,6 +51,22 @@ pub enum RenderError {
     UnknownMedia,
     #[error("This 360° video is too large to show here. It is still exported.")]
     SphereTooLarge,
+    #[error(
+        "A 360 video needs every clip to be a 360° video. Choose the flat camera view instead."
+    )]
+    MixedSphere,
+}
+
+/// What Export makes of a project with 360° clips (REQ-103).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportMode {
+    /// The usual choice: a flat video (the camera view of 360° clips).
+    #[default]
+    Automatic,
+    /// A 360° video: the whole sphere, in equirectangular form.
+    Sphere360,
+    /// The flat camera view of 1.2.6 (the same as `Automatic`).
+    FlatCamera,
 }
 
 /// Who reads the files: the export always uses the originals; the preview may use proxies.
@@ -90,6 +106,9 @@ pub struct Segment {
     /// A 360 source (1.2.6): the points of view of its camera path (source time). Empty:
     /// the camera stays at the front. `None`: a normal clip.
     pub sphere: Option<Vec<Pov>>,
+    /// The ASS file of the texts fixed to the sphere that are on this 360 clip, drawn on
+    /// the equirectangular picture before the camera view is cut out (1.3.0).
+    pub anchored: Option<String>,
 }
 
 impl Segment {
@@ -136,6 +155,11 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                     .format
                     .is_360()
                     .then(|| project.camera.path(m.id).to_vec()),
+                anchored: m
+                    .format
+                    .is_360()
+                    .then(|| anchored_doc(project, m, start, end, from))
+                    .flatten(),
             });
         }
         start = end;
@@ -144,6 +168,100 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
         return Err(RenderError::Empty);
     }
     Ok(out)
+}
+
+/// The ASS file of the texts fixed to the sphere for the 360 clip of `m` that is on the
+/// timeline from `start` to `end` (rendered from `from` on): in the pixels of the source
+/// picture, local time 0 = the first rendered picture of the clip.
+fn anchored_doc(
+    project: &Project,
+    m: &MediaItem,
+    start: Micros,
+    end: Micros,
+    from: Micros,
+) -> Option<String> {
+    let (w, h) = (m.format.width.max(2), m.format.height.max(1));
+    let events: Vec<crate::text::AssEvent> = anchored_line_items(project, m, start, end)
+        .iter()
+        .chain(project.texts.items.iter())
+        .flat_map(|t| {
+            crate::text::equirect_events(
+                t,
+                w,
+                h,
+                project.timeline.duration(),
+                Some(&[(start, end)]),
+            )
+        })
+        .collect();
+    let shift = start.max(from);
+    events
+        .iter()
+        .any(|e| e.end > shift)
+        .then(|| ass::document_with_texts(&[], project.subtitles.preset, w, h, shift, &events))
+}
+
+/// True when the clip a line is shown in is a 360 clip.
+fn line_on_sphere(project: &Project, l: &crate::subtitles::ShownLine) -> bool {
+    project
+        .timeline
+        .get(l.clip)
+        .and_then(|c| project.media(c.media))
+        .is_some_and(|m| m.format.is_360())
+}
+
+/// The anchored subtitle lines shown on the 360 clip of `m` between `start` and `end`, as
+/// texts (white, the line's size) so that they are drawn like texts fixed to the sphere.
+fn anchored_line_items(
+    project: &Project,
+    m: &MediaItem,
+    start: Micros,
+    end: Micros,
+) -> Vec<crate::text::TextItem> {
+    project
+        .subtitles
+        .project(&project.timeline)
+        .into_iter()
+        .filter(|l| l.anchor.is_some() && l.start >= start && l.start < end)
+        .filter(|l| {
+            project
+                .timeline
+                .get(l.clip)
+                .is_some_and(|c| c.media == m.id)
+        })
+        .map(|l| {
+            let mut t = crate::text::TextItem::new(
+                crate::text::TextId(0),
+                crate::text::clean_text(&l.text).unwrap_or_else(|| " ".into()),
+                l.start,
+            );
+            t.ttl = (l.end - l.start).max(crate::text::MIN_TTL);
+            t.size = l.size.unwrap_or(crate::subtitles::SIZE_NORMAL);
+            t.anchor = l.anchor;
+            t
+        })
+        .collect()
+}
+
+/// The timeline times of the flat (not 360) clips when the video has 360 clips; `None`
+/// when it has none (texts fixed to the sphere are then shown at their flat place).
+fn flat_windows(project: &Project) -> Option<Vec<(Micros, Micros)>> {
+    let tl = &project.timeline;
+    let is_360 =
+        |c: &crate::timeline::Clip| project.media(c.media).is_some_and(|m| m.format.is_360());
+    if !tl.clips.iter().any(is_360) {
+        return None;
+    }
+    let mut v = Vec::new();
+    let mut start = Micros::ZERO;
+    for c in &tl.clips {
+        let end = start + c.len();
+        if !is_360(c) {
+            v.push((start, end));
+        }
+        start = end;
+    }
+    Some(v)
 }
 
 /// Media items of the timeline clips, in timeline order.
@@ -460,8 +578,17 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     command_files.push((name.clone(), cmds));
                     format!("sendcmd=f={name},")
                 };
+                // texts fixed to the sphere are drawn on the whole picture first
+                let anchored = match &s.anchored {
+                    Some(doc) => {
+                        let name = format!("anc{i}.ass");
+                        command_files.push((name.clone(), doc.clone()));
+                        format!("subtitles=f={name}:fontsdir={},", ass::FONTS_DIR)
+                    }
+                    None => String::new(),
+                };
                 format!(
-                    "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS,fps={f},{send}{v360},\
+                    "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS,fps={f},{anchored}{send}{v360},\
                      setsar=1,setpts=PTS+{o}/TB,format={pf}",
                     v360 = camera::filter(&id, cam, w, h),
                     o = s.skip.ff(),
@@ -469,10 +596,21 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     pf = spec.pix_fmt,
                 )
             } else {
+                // a 360 video keeps the equirectangular picture: texts fixed to the sphere are
+                // burned on it
+                let anchored = match &s.anchored {
+                    Some(doc) => {
+                        let name = format!("anc{i}.ass");
+                        command_files.push((name.clone(), doc.clone()));
+                        format!(",subtitles=f={name}:fontsdir={}", ass::FONTS_DIR)
+                    }
+                    None => String::new(),
+                };
                 format!(
                     "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB,\
                      scale={w}:{h}:force_original_aspect_ratio=decrease,\
-                     pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f},format={pf}",
+                     pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f}{anchored},\
+                     format={pf}",
                     o = s.skip.ff(),
                     f = g.fps.ff(),
                     pf = spec.pix_fmt,
@@ -673,16 +811,35 @@ fn hevc_in_mp4(codec: Option<&str>, muxer: &str) -> bool {
 
 /// The ASS document for the subtitles visible from `from` (export geometry), if any.
 pub fn subtitles_doc(project: &Project, g: &Geometry, from: Micros) -> Option<String> {
-    let lines = project.subtitles.project(&project.timeline);
-    if !lines.iter().any(|l| l.end > from) {
+    let mut lines = project.subtitles.project(&project.timeline);
+    // a line fixed to the sphere on a 360 clip is burned on the equirectangular picture
+    lines.retain(|l| !(l.anchor.is_some() && line_on_sphere(project, l)));
+    let windows = flat_windows(project);
+    let texts = crate::text::project_events(
+        &project.texts,
+        g.width,
+        g.height,
+        project.timeline.duration(),
+        windows.as_deref(),
+    );
+    // texts fixed to the sphere need libass (and the fonts folder) too
+    let anchored = windows.is_some()
+        && (project.texts.items.iter().any(|t| t.anchor.is_some())
+            || project
+                .subtitles
+                .project(&project.timeline)
+                .iter()
+                .any(|l| l.anchor.is_some() && line_on_sphere(project, l)));
+    if !lines.iter().any(|l| l.end > from) && !texts.iter().any(|e| e.end > from) && !anchored {
         return None;
     }
-    Some(ass::document(
+    Some(ass::document_with_texts(
         &lines,
         project.subtitles.preset,
         g.width,
         g.height,
         from,
+        &texts,
     ))
 }
 
@@ -692,11 +849,42 @@ pub fn subtitles_doc(project: &Project, g: &Geometry, from: Micros) -> Option<St
 pub fn plan_export(
     project: &Project,
     encoders: &std::collections::BTreeSet<String>,
+    is_keyframe: impl FnMut(&MediaItem, Micros) -> bool,
+) -> Result<Plan, RenderError> {
+    plan_export_mode(project, encoders, ExportMode::Automatic, is_keyframe)
+}
+
+/// [`plan_export`] for a chosen [`ExportMode`]. A 360 video keeps every clip as the whole
+/// sphere (no camera view, the output has the size of the 360 clips) and needs all clips
+/// to be 360°.
+pub fn plan_export_mode(
+    project: &Project,
+    encoders: &std::collections::BTreeSet<String>,
+    mode: ExportMode,
     mut is_keyframe: impl FnMut(&MediaItem, Micros) -> bool,
 ) -> Result<Plan, RenderError> {
-    let segs = segments(project, Micros::ZERO, Source::Export)?;
+    let sphere = mode == ExportMode::Sphere360;
+    let mut segs = segments(project, Micros::ZERO, Source::Export)?;
     let media = timeline_media(project)?;
-    let owned: Vec<MediaFormat> = media.iter().map(|m| effective_format(m)).collect();
+    if sphere {
+        if media.iter().any(|m| !m.format.is_360()) {
+            return Err(RenderError::MixedSphere);
+        }
+        // no camera: the picture stays equirectangular
+        for s in &mut segs {
+            s.sphere = None;
+        }
+    }
+    let owned: Vec<MediaFormat> = media
+        .iter()
+        .map(|m| {
+            if sphere {
+                m.format.clone()
+            } else {
+                effective_format(m)
+            }
+        })
+        .collect();
     let formats: Vec<&MediaFormat> = owned.iter().collect();
     let chosen = format::choose_output(&formats).ok_or(RenderError::Empty)?;
     let settings = format::encode_settings(&chosen, encoders);
@@ -708,7 +896,7 @@ pub fn plan_export(
         && bed.is_none()
         && subtitles.is_none()
         && project.mix.video_neutral()
-        && media.iter().all(|m| !m.format.is_360());
+        && (sphere || media.iter().all(|m| !m.format.is_360()));
     // A file name with a line break or other control character could add lines to the
     // concat list: such projects are always re-encoded (inputs are then plain arguments).
     let safe_names = segs.iter().all(|s| !has_control_chars(&s.path));
@@ -1101,6 +1289,10 @@ pub struct FrameKey {
     pub preset: Preset,
     /// The camera of a 360 clip at this position.
     pub camera: Option<Camera>,
+    /// Text items on screen, with the frame index since their start when they have effects.
+    pub texts: Vec<(crate::text::TextItem, i64)>,
+    /// Where the lines on screen are fixed on the sphere.
+    pub line_anchors: Vec<Option<crate::text::Anchor360>>,
 }
 
 /// The key of the picture at `at`, or `None` when there is no picture there.
@@ -1143,6 +1335,25 @@ pub fn frame_key(
         subtitles,
         preset,
         camera,
+        line_anchors: project
+            .subtitles
+            .shown_at(tl, at)
+            .into_iter()
+            .map(|l| l.anchor)
+            .collect(),
+        texts: project
+            .texts
+            .shown_at(at)
+            .into_iter()
+            .map(|t| {
+                let n = if t.effects.any() {
+                    export.fps.frame_index(at - t.start)
+                } else {
+                    0
+                };
+                (t.clone(), n)
+            })
+            .collect(),
     })
 }
 
@@ -1619,6 +1830,53 @@ pub(crate) mod tests {
         assert!(r.subtitles.unwrap().contains("0:00:03.00,0:00:05.00"));
     }
 
+    // covers: REQ-111, REQ-023
+    #[test]
+    fn a_text_item_forces_reencode_and_is_burned_in_with_the_subtitles() {
+        use crate::text::{TextId, TextItem};
+        let mut p = project(&[(4, 1280, 720, 30)]);
+        let id = p.texts.new_id();
+        let mut t = TextItem::new(id, "Title".into(), s(2));
+        t.place = crate::subtitles::Pos { x: 1000, y: 1000 };
+        p.texts.add(t).unwrap();
+        let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
+        let Plan::Reencode { graph, .. } = &plan else {
+            panic!("a text must force a re-encode")
+        };
+        assert!(graph.graph.contains("subtitles=f=subs.ass"));
+        let doc = plan.subtitles().unwrap();
+        assert!(doc.contains("Style: Text,"));
+        // 2 s .. 5 s, placed at 10% / 10% of 1280x720
+        assert!(
+            doc.contains("Dialogue: 1,0:00:02.00,0:00:04.00,Text,,0,0,0,,{"),
+            "{doc}"
+        );
+        assert!(doc.contains("\\pos(128,72)"));
+        // the part of the text after a start in the middle is shifted
+        let eg = output_geometry(&p, &enc()).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let sc = dir.path().join("g");
+        let r = still_args(&p, s(3), &eg, FfVersion::Dev, &sc, Source::Export).unwrap();
+        assert!(r.subtitles.unwrap().contains("0:00:00.00,0:00:01.00,Text"));
+        // not visible at 1 s of the preview... the doc from 4 s has no text left
+        let r = still_args(&p, s(1), &eg, FfVersion::Dev, &sc, Source::Export).unwrap();
+        assert!(r.subtitles.unwrap().contains("0:00:01.00"));
+        // the picture key knows about the text and about its effect frame
+        let k1 = frame_key(&p, s(1), Source::Export, &eg).unwrap();
+        let k3 = frame_key(&p, s(3), Source::Export, &eg).unwrap();
+        assert!(k1.texts.is_empty() && k3.texts.len() == 1);
+        let mut q = p.clone();
+        let mut edited = q.texts.get(TextId(1)).unwrap().clone();
+        edited.effects.fade_in = Some(Micros(500_000));
+        q.texts.replace(edited).unwrap();
+        let a = frame_key(&q, Micros(3_000_000), Source::Export, &eg).unwrap();
+        let b = frame_key(&q, Micros(3_100_000), Source::Export, &eg).unwrap();
+        assert_ne!(a, b);
+        assert_ne!(a, k3);
+        let c = frame_key(&p, Micros(3_100_000), Source::Export, &eg).unwrap();
+        assert_eq!(c.texts, k3.texts);
+    }
+
     // covers: REQ-034
     #[test]
     fn frame_key_changes_only_with_the_picture() {
@@ -1822,6 +2080,208 @@ pub(crate) mod tests {
         p.media[0].format.spherical = Some(true);
         p.media[0].format.bit_rate = Some(40_000_000);
         p
+    }
+
+    // covers: REQ-103
+    #[test]
+    fn a_360_video_keeps_the_sphere_and_refuses_a_mix_with_flat_clips() {
+        use crate::text::{Anchor360, TextId, TextItem};
+        let mut p = project(&[(2, 3840, 1920, 30), (2, 3840, 1920, 30)]);
+        p.media[0].format.spherical = Some(true);
+        p.media[1].format.spherical = Some(true);
+        // nothing to burn in, identical clips: the file can be copied as it is
+        assert!(matches!(
+            plan_export_mode(&p, &enc(), ExportMode::Sphere360, |_, _| true).unwrap(),
+            Plan::StreamCopy { .. }
+        ));
+        // a text fixed to the sphere at yaw 30 forces a re-encode: no camera in the graph,
+        // the equirect picture keeps the clips' size, the text is burned on every clip
+        let id = p.texts.new_id();
+        let mut t = TextItem::new(id, "North".into(), Micros::ZERO);
+        t.ttl = Micros(4_000_000);
+        t.anchor = Some(Anchor360 {
+            yaw_cd: 3000,
+            pitch_cd: 1000,
+            size_cd: 500,
+            wrap_cd: 6000,
+        });
+        p.texts.add(t).unwrap();
+        let plan = plan_export_mode(&p, &enc(), ExportMode::Sphere360, |_, _| true).unwrap();
+        let Plan::Reencode {
+            graph, settings, ..
+        } = &plan
+        else {
+            panic!("re-encoded")
+        };
+        assert_eq!((settings.width, settings.height), (3840, 1920));
+        assert!(!graph.graph.contains("v360") && !graph.graph.contains("sendcmd"));
+        assert!(
+            graph.graph.contains("subtitles=f=anc0.ass:fontsdir=fonts"),
+            "{}",
+            graph.graph
+        );
+        assert!(graph.graph.contains("subtitles=f=anc1.ass"));
+        let doc = &graph
+            .command_files
+            .iter()
+            .find(|(n, _)| n == "anc0.ass")
+            .unwrap()
+            .1;
+        // yaw 30 / pitch 10 on 3840x1920: x = (30/360 + 0.5) * 3840, y = (0.5 - 10/180) * 1920
+        assert!(doc.contains("\\pos(2240,853)"), "{doc}");
+        assert!(doc.contains("PlayResX: 3840\nPlayResY: 1920"));
+        // the flat file has nothing of it, but exists so that the fonts are written
+        assert!(!plan.subtitles().unwrap().contains("Dialogue"));
+        // the same project as a flat camera view: v360 per clip, the text burned before it
+        let Plan::Reencode { graph, .. } =
+            plan_export_mode(&p, &enc(), ExportMode::FlatCamera, |_, _| true).unwrap()
+        else {
+            panic!()
+        };
+        assert!(graph.graph.contains("subtitles=f=anc0.ass") && graph.graph.contains("v360@c0"));
+        let (a, b) = (
+            graph.graph.find("anc0.ass").unwrap(),
+            graph.graph.find("v360@c0").unwrap(),
+        );
+        assert!(a < b, "burned before the camera view is cut out");
+        // a flat clip in the mix: refused, not exported
+        let mut q = project(&[(2, 3840, 1920, 30), (2, 1280, 720, 30)]);
+        q.media[0].format.spherical = Some(true);
+        assert_eq!(
+            plan_export_mode(&q, &enc(), ExportMode::Sphere360, |_, _| true).unwrap_err(),
+            RenderError::MixedSphere
+        );
+        assert!(
+            RenderError::MixedSphere
+                .to_string()
+                .contains("Flat camera view")
+                || RenderError::MixedSphere
+                    .to_string()
+                    .contains("flat camera view")
+        );
+        let _ = TextId(0);
+    }
+
+    // covers: REQ-112, REQ-103
+    #[test]
+    fn a_line_fixed_to_the_sphere_is_burned_on_the_equirect_picture_and_not_on_the_flat_one() {
+        use crate::text::Anchor360;
+        let mut p = sphere_project();
+        let tl = p.timeline.clone();
+        let a = p
+            .subtitles
+            .add_at(&tl, Micros(1_000_000), "pinned", Micros(1))
+            .unwrap();
+        let b = p
+            .subtitles
+            .add_at(&tl, Micros(5_000_000), "flat clip", Micros(1))
+            .unwrap();
+        let c = p
+            .subtitles
+            .add_at(&tl, Micros(2_000_000), "automatic", Micros(1))
+            .unwrap();
+        let anchor = Anchor360 {
+            yaw_cd: 3000,
+            pitch_cd: 0,
+            size_cd: 500,
+            wrap_cd: 6000,
+        };
+        for id in [a, b] {
+            p.subtitles
+                .lines
+                .iter_mut()
+                .find(|l| l.id == id)
+                .unwrap()
+                .anchor = Some(anchor);
+        }
+        let _ = c;
+        let eg = Geometry {
+            width: 1280,
+            height: 720,
+            fps: crate::time::Fps::new(30, 1).unwrap(),
+        };
+        let flat = subtitles_doc(&p, &eg, Micros::ZERO).unwrap();
+        assert!(!flat.contains(",pinned"), "{flat}");
+        assert!(flat.contains(",automatic") && flat.contains(",flat clip"));
+        let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
+        let doc = segs[0].anchored.as_ref().unwrap();
+        assert!(doc.contains("pinned") && !doc.contains("automatic") && !doc.contains("flat clip"));
+        assert!(segs[1].anchored.is_none());
+        // 360 video: no camera, the line is burned on the sphere picture
+        let plan = plan_export_mode(&p, &enc(), ExportMode::FlatCamera, |_, _| true).unwrap();
+        let Plan::Reencode { graph, .. } = plan else {
+            panic!()
+        };
+        assert!(graph.graph.contains("subtitles=f=anc0.ass"));
+        // the picture key knows where lines are fixed
+        let eg2 = output_geometry(&p, &enc()).unwrap();
+        let k = frame_key(&p, Micros(1_500_000), Source::Export, &eg2).unwrap();
+        assert_eq!(k.line_anchors, [Some(anchor)]);
+    }
+
+    // covers: REQ-112
+    #[test]
+    fn a_text_fixed_to_the_sphere_is_shown_flat_only_on_flat_clips() {
+        use crate::text::{Anchor360, TextItem};
+        // a 360 clip (0-4 s) then a flat one (4-7 s); the text lives from 2 s to 6 s
+        let mut p = sphere_project();
+        let id = p.texts.new_id();
+        let mut t = TextItem::new(id, "Pin".into(), Micros(2_000_000));
+        t.ttl = Micros(4_000_000);
+        t.anchor = Some(Anchor360 {
+            yaw_cd: -17900,
+            pitch_cd: 0,
+            size_cd: 500,
+            wrap_cd: 6000,
+        });
+        p.texts.add(t).unwrap();
+        let eg = Geometry {
+            width: 1280,
+            height: 720,
+            fps: crate::time::Fps::new(30, 1).unwrap(),
+        };
+        let flat = subtitles_doc(&p, &eg, Micros::ZERO).unwrap();
+        // flat part: 4 s .. 6 s only
+        assert!(
+            flat.contains("Dialogue: 1,0:00:04.00,0:00:06.00,Text"),
+            "{flat}"
+        );
+        assert_eq!(flat.matches("Dialogue: 1").count(), 1);
+        // the 360 clip: its own file, 2 s .. 4 s, local time from the clip start; the text
+        // is near the left edge (yaw -179): drawn also at the right edge (the seam)
+        let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
+        let doc = segs[0].anchored.as_ref().unwrap();
+        assert!(
+            doc.contains("Dialogue: 1,0:00:02.00,0:00:04.00,Text"),
+            "{doc}"
+        );
+        assert_eq!(doc.matches("Dialogue: 1").count(), 2, "{doc}");
+        assert!(segs[1].anchored.is_none());
+        // a preview from 3 s: local time 0 is 3 s
+        let segs = segments(&p, Micros(3_000_000), Source::Export).unwrap();
+        assert!(
+            segs[0]
+                .anchored
+                .as_ref()
+                .unwrap()
+                .contains("Dialogue: 1,0:00:00.00,0:00:01.00,Text")
+        );
+        // without a 360 clip the text is at its flat place
+        let mut q = project(&[(4, 1280, 720, 30)]);
+        let id = q.texts.new_id();
+        let mut t = TextItem::new(id, "Flat".into(), Micros::ZERO);
+        t.anchor = Some(Anchor360 {
+            yaw_cd: 0,
+            pitch_cd: 0,
+            size_cd: 500,
+            wrap_cd: 6000,
+        });
+        q.texts.add(t).unwrap();
+        assert!(
+            subtitles_doc(&q, &eg, Micros::ZERO)
+                .unwrap()
+                .contains("Dialogue: 1")
+        );
     }
 
     // covers: REQ-103, REQ-023, REQ-022

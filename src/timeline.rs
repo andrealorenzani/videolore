@@ -368,7 +368,7 @@ impl Timeline {
         }
     }
 
-    /// Applies (`on`) or removes "Fade through black" on a clip: the fades at both of its
+    /// Applies (`on`) or removes "Fade IN/OUT" on a clip: the fades at both of its
     /// edges (the boundaries with its neighbours, the start fade when it is the first clip,
     /// the end fade when it is the last).
     pub fn set_clip_fades(&mut self, id: ClipId, on: bool) -> Result<(), EditError> {

@@ -104,6 +104,7 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(ToggleFadeAtPlayhead),
                 A(GenerateSubtitles),
                 A(AddSubtitleLine),
+                A(AddText),
                 S,
                 A(AlignHorizontal),
                 A(AlignVertical),

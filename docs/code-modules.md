@@ -15,9 +15,10 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `srt` | SubRip: writing the timeline's subtitles (`write`), lenient reading of a track converted by ffmpeg (`parse`, capped), tag removal (`strip_tags`) |
 | `align` | Matching the words of a subtitle track to recognised words (per-cue Needleman–Wunsch, close spellings, clamped times, even spread of words not found) |
 | `camera` | The virtual camera of 360° video (pure): `Camera`, `Pov`, `CameraPaths` (per source, source time), interpolation, drag/wheel mapping, the `v360` filter and `sendcmd` file text (see [code-360.md](code-360.md)) |
+| `text`, `selection`, `fonts`, `spherical` | Text items and their ASS events, the selection of lines and texts, installed fonts, the 360 marker of exported MP4 files (see [code-text.md](code-text.md)) |
 | `ass` | Writes the ASS subtitle file: styles, text size `min(0.055·H, 0.09·W)`, word highlight with `\k` tags, escaping of `{ } \` |
 | `history` | Undo/redo by snapshots of `Edit` (timeline + music + subtitles + volumes), up to 100 steps, each with the name of its action ("Undo Split") |
-| `project` | `.vlproj` file (JSON, `schema_version` 3 since 1.2.0; version 1 and 2 files load with defaults, newer ones are refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
+| `project` | `.vlproj` file (JSON, `schema_version` 5 since 1.3.0; older files load with defaults, newer ones are refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
 | `format` | Same-format check, lowest-quality output choice, codec to encoder mapping with H.264/AAC/MP4 fallback |
 | `render` | Export plan (stream copy or one re-encode), filter graphs (clips grouped by source, music bed and mix, subtitle burn-in), `hvc1` tag, export argv (normal method or a hardware method), preview argv, `FrameKey` |
 | `ffmpeg` | Locating binaries (setting, environment, bundled, `PATH`), version/filter/encoder checks, `Runner` trait (real processes or test fake), progress and keyframe parsers |

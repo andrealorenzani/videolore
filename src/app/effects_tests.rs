@@ -91,7 +91,7 @@ fn fade_on_a_clip_or_the_whole_video_is_one_undo_step() {
     let now = Instant::now();
     let c = ids(&app);
     let before = app.project.edit();
-    // (a) dropping on clip 2 = right-click > Effects > Fade through black on clip 2
+    // (a) dropping on clip 2 = right-click > Effects > Fade IN/OUT on clip 2
     app.dispatch(
         Command::ApplyEffect {
             effect: EffectKind::Fade,
@@ -104,8 +104,8 @@ fn fade_on_a_clip_or_the_whole_video_is_one_undo_step() {
     assert!(tl.has_fade(0) && tl.has_fade(1) && !tl.start_fade && !tl.end_fade);
     assert!(app.popups.is_open(Popup::Fades));
     assert_eq!(app.popups.target(Popup::Fades), Some(Target::Clip(c[1])));
-    assert_eq!(app.popup_title(Popup::Fades), "Fade through black — b.mp4");
-    assert_eq!(app.undo_text(), "Undo Fade through black");
+    assert_eq!(app.popup_title(Popup::Fades), "Fade IN/OUT — b.mp4");
+    assert_eq!(app.undo_text(), "Undo Fade IN/OUT");
     // applying it again changes nothing (no undo step)
     let n = app.history.undo_len();
     app.dispatch(
@@ -130,10 +130,7 @@ fn fade_on_a_clip_or_the_whole_video_is_one_undo_step() {
     .unwrap();
     assert!(app.project.timeline.start_fade && app.project.timeline.end_fade);
     assert!(app.project.timeline.fades.is_empty());
-    assert_eq!(
-        app.popup_title(Popup::Fades),
-        "Fade through black — whole video"
-    );
+    assert_eq!(app.popup_title(Popup::Fades), "Fade IN/OUT — whole video");
     // each edge fade has its own popup and is removed alone
     app.dispatch(Command::OpenInstance(Instance::FadeEnd), now)
         .unwrap();

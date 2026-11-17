@@ -73,7 +73,7 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
             (
                 MarkerKind::Fade,
                 format!(
-                    "Fade through black at {} — between \"{}\" and \"{}\". Click for its settings.",
+                    "Fade IN/OUT at {} — between \"{}\" and \"{}\". Click for its settings.",
                     timecode(at),
                     name(b),
                     name(b + 1)
@@ -258,7 +258,7 @@ mod tests {
                 assert!((mk.x_end - (x0 + l.end.as_secs_f64() as f32 * z)).abs() <= 1.0);
                 assert!(mk.tooltip.contains("Subtitle") && mk.tooltip.contains(&short(&l.text)));
             }
-            assert!(fade.tooltip.contains("Fade through black"));
+            assert!(fade.tooltip.contains("Fade IN/OUT"));
         }
     }
 

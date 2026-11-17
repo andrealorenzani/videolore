@@ -12,6 +12,7 @@ use crate::camera::CameraPaths;
 use crate::media::{MediaFormat, MediaId, MediaItem};
 use crate::music::{Mix, MusicTrack};
 use crate::subtitles::{self, Subtitles};
+use crate::text::{TextItem, Texts};
 use crate::time::Micros;
 use crate::timeline::Timeline;
 use serde::{Deserialize, Serialize};
@@ -19,10 +20,10 @@ use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-/// Schema written by this version (4 since 1.2.6: subtitle sizes, the 360° switch and
+/// Schema written by this version (5 since 1.3.0: text items and 360 anchors; 4 since 1.2.6: subtitle sizes, the 360° switch and
 /// the camera paths; 3 since 1.2.0: clip volumes, fades at the video's edges, subtitle
 /// positions, subtitle tracks of media).
-pub const SCHEMA_VERSION: u64 = 4;
+pub const SCHEMA_VERSION: u64 = 5;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 16 * 1024 * 1024;
@@ -37,6 +38,8 @@ pub struct Edit {
     pub mix: Mix,
     /// Points of view of the 360 sources (source time).
     pub camera: CameraPaths,
+    /// Text items on the timeline (1.3.0).
+    pub texts: Texts,
 }
 
 /// In-memory project.
@@ -48,6 +51,7 @@ pub struct Project {
     pub subtitles: Subtitles,
     pub mix: Mix,
     pub camera: CameraPaths,
+    pub texts: Texts,
     pub next_media_id: u64,
 }
 
@@ -86,6 +90,7 @@ impl Project {
             subtitles: self.subtitles.clone(),
             mix: self.mix,
             camera: self.camera.clone(),
+            texts: self.texts.clone(),
         }
     }
 
@@ -96,6 +101,7 @@ impl Project {
         self.subtitles = e.subtitles;
         self.mix = e.mix;
         self.camera = e.camera;
+        self.texts = e.texts;
     }
 
     /// What would be saved.
@@ -182,6 +188,9 @@ struct ProjectFile {
     // Added in schema 4; absent (= no points of view) before.
     #[serde(default, skip_serializing_if = "CameraPaths::is_empty")]
     camera: CameraPaths,
+    // Added in schema 5; absent (= no text items) before.
+    #[serde(default)]
+    texts: Vec<TextItem>,
 }
 
 /// Relative path from directory `from` to `to` (both absolute); `None` across roots.
@@ -231,6 +240,7 @@ pub fn to_json(project: &Project, path: &Path) -> Result<String, ProjectError> {
         mix: project.mix,
         subtitles: project.subtitles.clone(),
         camera: project.camera.clone(),
+        texts: project.texts.items.clone(),
     };
     serde_json::to_string_pretty(&file).map_err(|e| ProjectError::Invalid(e.to_string()))
 }
@@ -371,6 +381,11 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
     camera
         .validate(|m| media.iter().find(|x| x.id == m).map(|x| x.duration))
         .map_err(invalid)?;
+    let texts = Texts {
+        next_id: file.texts.iter().map(|t| t.id.0).max().unwrap_or(0),
+        items: file.texts,
+    };
+    texts.validate().map_err(|m| invalid(&m))?;
     let mix = file.mix;
     if mix.video_volume > 100 || mix.music_volume > 100 {
         return Err(invalid("volume above 100%"));
@@ -384,6 +399,7 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
         subtitles: subs,
         mix,
         camera,
+        texts,
         next_media_id: file.next_media_id.max(max_media),
     };
     project.timeline.next_clip_id = project.timeline.next_clip_id.max(max_clip);
@@ -444,6 +460,9 @@ fn validate_subtitles(subs: &mut Subtitles, media: &[MediaItem]) -> Result<(), P
             .is_some_and(|v| !(subtitles::SIZE_MIN..=subtitles::SIZE_MAX).contains(&v))
         {
             return Err(invalid("subtitle size outside 25%-400%"));
+        }
+        if l.anchor.is_some_and(|a| !a.is_valid()) {
+            return Err(invalid("subtitle 360 anchor out of range"));
         }
         if l.words
             .iter()
@@ -797,14 +816,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 4"));
+        assert!(text.contains("\"schema_version\": 5"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 5");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 6");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(5));
+        assert_eq!(e, ProjectError::TooNew(6));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -982,8 +1001,8 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 4"));
-        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(4)));
+        assert!(text.contains("\"schema_version\": 5"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(5)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         assert_eq!(
             opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
@@ -1127,9 +1146,9 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 4"));
+        assert!(text.contains("\"schema_version\": 5"));
         assert!(text.contains("\"camera\"") && text.contains("\"treat_as_360\""));
-        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(4)));
+        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(5)));
         assert_eq!(load(&file).unwrap().0, q);
         // a project without points of view writes no camera section
         let plain = dir.path().join("plain.vlproj");
@@ -1181,5 +1200,99 @@ pub(crate) mod tests {
         // wrong types in the media switches
         let r = load_edit(&|v| v["media"][0]["format"]["treat_as_360"] = "yes".into());
         assert!(matches!(r, Err(ProjectError::Invalid(_))));
+    }
+
+    // covers: REQ-113
+    #[test]
+    fn text_items_and_anchors_round_trip_and_hostile_values_are_refused() {
+        use crate::text::{Anchor360, TextId, TextItem};
+        let dir = tempfile::tempdir().unwrap();
+        let mut q = v4_sample(dir.path());
+        let id = q.texts.new_id();
+        let mut t = TextItem::new(id, "Hello".into(), Micros(1_000_000));
+        t.anchor = Some(Anchor360 {
+            yaw_cd: 3000,
+            pitch_cd: 1000,
+            size_cd: 500,
+            wrap_cd: 6000,
+        });
+        q.texts.add(t).unwrap();
+        if let Some(l) = q.subtitles.lines.first_mut() {
+            l.anchor = Some(Anchor360 {
+                yaw_cd: -100,
+                pitch_cd: 0,
+                size_cd: 300,
+                wrap_cd: 4000,
+            });
+        }
+        let file = dir.path().join("t.vlproj");
+        save(&q, &file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("\"texts\"") && text.contains("\"anchor\""));
+        assert_eq!(load(&file).unwrap().0, q);
+        // 1.2.6 refuses it, untouched
+        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(5)));
+        // a project of 1.2.6 has no texts
+        let old = text.replace("\"schema_version\": 5", "\"schema_version\": 4");
+        let mut v: serde_json::Value = serde_json::from_str(&old).unwrap();
+        v.as_object_mut().unwrap().remove("texts");
+        let (p, _) = from_json(&v.to_string(), dir.path()).unwrap();
+        assert!(p.texts.is_empty());
+        // hostile
+        let item = |f: &dyn Fn(&mut serde_json::Value)| {
+            let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+            f(&mut v["texts"][0]);
+            from_json(&v.to_string(), dir.path()).map(|_| ())
+        };
+        assert!(item(&|_| {}).is_ok());
+        type Case = Box<dyn Fn(&mut serde_json::Value)>;
+        let cases: Vec<Case> = vec![
+            Box::new(|t| t["ttl"] = 0.into()),
+            Box::new(|t| t["ttl"] = i64::MAX.into()),
+            Box::new(|t| t["effects"]["fade_in"] = 10.into()),
+            Box::new(|t| t["effects"]["blink"] = 9_000_000.into()),
+            Box::new(|t| t["text"] = "x".repeat(1001).into()),
+            Box::new(|t| t["text"] = "".into()),
+            Box::new(|t| t["size"] = 5000.into()),
+            Box::new(|t| t["size"] = 1.into()),
+            Box::new(|t| t["font"] = "a{b".into()),
+            Box::new(|t| t["colour"] = serde_json::json!([1, 2])),
+            Box::new(|t| t["colour"] = serde_json::json!([1, 2, 300])),
+            Box::new(|t| t["place"]["x"] = 20_000.into()),
+            Box::new(|t| t["anchor"]["yaw_cd"] = 99_999.into()),
+            Box::new(|t| t["anchor"]["size_cd"] = 0.into()),
+            Box::new(|t| t["effects"]["slide"] = serde_json::json!(["up", 500_000])),
+        ];
+        for (n, f) in cases.iter().enumerate() {
+            assert!(
+                matches!(item(f.as_ref()), Err(ProjectError::Invalid(_))),
+                "case {n}"
+            );
+        }
+        // duplicate ids
+        let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let first = v["texts"][0].clone();
+        v["texts"].as_array_mut().unwrap().push(first);
+        assert!(from_json(&v.to_string(), dir.path()).is_err());
+        let _ = TextId(1);
+        // a line anchor out of range is damaged too
+        let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        v["subtitles"]["lines"][0]["anchor"]["pitch_cd"] = 99_999.into();
+        assert!(from_json(&v.to_string(), dir.path()).is_err());
+        // too new
+        let new = text.replace("\"schema_version\": 5", "\"schema_version\": 6");
+        assert_eq!(
+            from_json(&new, dir.path()).unwrap_err(),
+            ProjectError::TooNew(6)
+        );
+    }
+
+    /// What videolore 1.2.6 did with the schema number (`SCHEMA_VERSION` was 4 there).
+    fn opened_by_1_2_6(text: &str) -> Result<(), ProjectError> {
+        let v: serde_json::Value = serde_json::from_str(text).unwrap();
+        match v["schema_version"].as_u64().unwrap() {
+            n if n > 4 => Err(ProjectError::TooNew(n)),
+            _ => Ok(()),
+        }
     }
 }

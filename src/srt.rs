@@ -198,6 +198,7 @@ mod tests {
             words: vec![],
             position: None,
             size: None,
+            anchor: None,
         }
     }
 

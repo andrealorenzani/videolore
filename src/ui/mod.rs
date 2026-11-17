@@ -23,6 +23,7 @@ pub mod popups;
 pub mod ruler;
 pub mod settings;
 pub mod status;
+pub mod text_popup;
 pub mod timeline;
 pub mod toolbar;
 pub mod zoom;
@@ -86,11 +87,17 @@ pub struct UiCache {
     pub range_drag: Option<(Micros, bool)>,
     /// A corner of a box being dragged in the preview.
     pub box_resize: Option<picture::BoxResize>,
+    /// A text box being moved or resized in the preview.
+    pub text_box_drag: Option<picture::TextBoxDrag>,
     /// The preview picture is being dragged to turn a 360 camera.
     pub camera_drag: bool,
     /// Values of a point of view being edited in its popup: media, its time, and
     /// (time in s, yaw, pitch, zoom in degrees).
     pub pov_edit: Option<(crate::media::MediaId, Micros, [f64; 4])>,
+    /// The new text being filled in (its fields and the text buffer).
+    pub text_draft: Option<(crate::text::TextItem, String)>,
+    /// The text of an existing item while it is being typed.
+    pub text_edit: Option<(crate::text::TextId, String)>,
 }
 
 impl UiCache {
@@ -544,5 +551,7 @@ pub fn action_tooltip(ctx: &Context, app: &AppState, id: actions::ActionId) -> S
 mod sphere_ux_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod text_ux_tests;
 #[cfg(test)]
 mod ux_tests;

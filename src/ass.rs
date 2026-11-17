@@ -194,14 +194,43 @@ pub fn document(
     height: u32,
     shift: Micros,
 ) -> String {
+    document_with_texts(lines, preset, width, height, shift, &[])
+}
+
+/// Style of the text items (REQ-111): white, black outline, centred; everything else
+/// comes from the tags of each event.
+fn text_style(width: u32, height: u32) -> String {
+    let size = crate::text::font_px(height, crate::subtitles::SIZE_NORMAL);
+    format!(
+        "Style: Text,Noto Sans,{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,\
+         100,100,0,0,1,{},0,5,{ml},{ml},0,1\n",
+        outline(size),
+        ml = margin_lr(width)
+    )
+}
+
+/// [`document`] plus the events of text items (timeline times, like the lines).
+pub fn document_with_texts(
+    lines: &[ShownLine],
+    preset: Preset,
+    width: u32,
+    height: u32,
+    shift: Micros,
+    texts: &[crate::text::AssEvent],
+) -> String {
     let mut s = format!(
         "[Script Info]\nScriptType: v4.00+\nPlayResX: {width}\nPlayResY: {height}\n\
          WrapStyle: 0\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\n\
          Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, \
          BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, \
-         BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n{}\n\n\
+         BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n{}\n{}\n\
          [Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n",
-        style(preset, width, height)
+        style(preset, width, height),
+        if texts.is_empty() {
+            String::new()
+        } else {
+            text_style(width, height)
+        }
     );
     let at = |t: Micros| (t - shift).max(Micros::ZERO);
     for l in lines.iter().filter(|l| l.end > shift) {
@@ -236,6 +265,16 @@ pub fn document(
             s.push_str(&dialogue(at(start), at(end), text.trim_end()));
         }
     }
+    for e in texts.iter().filter(|e| e.end > shift) {
+        let (ml, mr) = e.margins.unwrap_or((0, 0));
+        s.push_str(&format!(
+            "Dialogue: 1,{},{},Text,,{ml},{mr},0,,{{{}}}{}\n",
+            ass_time(at(e.start)),
+            ass_time(at(e.end)),
+            e.tags,
+            e.text
+        ));
+    }
     s
 }
 
@@ -256,6 +295,7 @@ mod tests {
             words,
             position: None,
             size: None,
+            anchor: None,
         }
     }
 

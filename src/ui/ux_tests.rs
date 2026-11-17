@@ -379,7 +379,7 @@ fn every_toolbar_command_can_be_triggered_at_800_pixels() {
 /// Toolbar actions shown as buttons.
 fn visible_toolbar(h: &Harness) -> Vec<actions::ActionId> {
     let toolbar_y = |n: &Node| n.rect.min.y > 22.0 && n.rect.max.y < 60.0;
-    toolbar::TOOLBAR
+    toolbar::actions(&h.app)
         .iter()
         .filter(|id| {
             let l = toolbar::label(&h.app, **id);
@@ -404,7 +404,7 @@ fn overflow(mut h: Harness, visible: Vec<actions::ActionId>) {
     let before = h.nodes.clone();
     h.click(more.rect.center());
     let menu_nodes = opened(&before, &h.nodes);
-    for id in toolbar::TOOLBAR {
+    for id in toolbar::actions(&h.app) {
         if visible.contains(&id) {
             continue;
         }
@@ -540,7 +540,7 @@ fn clicking_markers_opens_their_settings() {
     h.app
         .dispatch(Command::AddSubtitle, Instant::now())
         .unwrap();
-    let line = h.app.selected_line.unwrap();
+    let line = h.app.selection.primary_line().unwrap();
     h.idle(1);
     lane_click(&mut h, five);
     let choices = h.app.popups.chooser.clone().expect("chooser");
@@ -726,7 +726,7 @@ fn keyboard_shortcuts_run_and_esc_closes_the_topmost_popup() {
     h.app
         .dispatch(Command::AddSubtitle, Instant::now())
         .unwrap();
-    let line = h.app.selected_line.unwrap();
+    let line = h.app.selection.primary_line().unwrap();
     let clip = h.app.project.timeline.clips[0].id;
     h.app
         .dispatch(
@@ -857,7 +857,7 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
     let mut h = Harness::new(app, 1280.0, 800.0);
     let rows: Vec<_> = effects::rows().into_iter().collect();
     let names: Vec<&str> = rows.iter().map(|r| r.1).collect();
-    assert_eq!(names, ["Fade through black", "Subtitles", "Volume"]);
+    assert_eq!(names, ["Fade IN/OUT", "Subtitles", "Volume"]);
     for (effect, name) in rows {
         // the row shows only the name, with the tooltip explaining how to apply it
         let n = h.find(name).unwrap_or_else(|| panic!("{name}"));
@@ -1094,7 +1094,7 @@ fn an_effect_dragged_onto_a_clip_applies_to_that_clip_only() {
     let ids: Vec<_> = h.app.project.timeline.clips.iter().map(|c| c.id).collect();
     let before = h.app.project.edit();
     // (c) dropped on the music track or on empty space: nothing changes
-    let row = h.find("Fade through black").unwrap();
+    let row = h.find("Fade IN/OUT").unwrap();
     let music = h
         .nodes
         .iter()
@@ -1119,11 +1119,11 @@ fn an_effect_dragged_onto_a_clip_applies_to_that_clip_only() {
         "no clip moved"
     );
     let dropped = h.app.project.edit();
-    assert!(h.has("Fade through black — b.mp4"), "{:#?}", h.labels());
+    assert!(h.has("Fade IN/OUT — b.mp4"), "{:#?}", h.labels());
     h.key(Key::Escape, Modifiers::NONE);
     h.key(Key::Z, Modifiers::COMMAND);
     assert_eq!(h.app.project.edit(), before);
-    // the same from the clip's menu: Effects > Fade through black
+    // the same from the clip's menu: Effects > Fade IN/OUT
     let clips = clip_nodes(&h);
     let nodes_before = h.nodes.clone();
     h.right_click(clips[1].rect.center());
@@ -1133,16 +1133,16 @@ fn an_effect_dragged_onto_a_clip_applies_to_that_clip_only() {
     h.frame(vec![Event::PointerMoved(effects.rect.center())]);
     h.click(effects.rect.center());
     let sub = opened(&nodes_before, &h.nodes);
-    for name in ["Fade through black", "Subtitles", "Volume"] {
+    for name in ["Fade IN/OUT", "Subtitles", "Volume"] {
         assert!(find_in(&sub, name).is_some(), "{name}: {sub:#?}");
     }
-    let item = find_in(&sub, "Fade through black").unwrap().clone();
+    let item = find_in(&sub, "Fade IN/OUT").unwrap().clone();
     h.click(item.rect.center());
     assert_eq!(h.app.project.edit(), dropped);
     // (b) a double-click applies it to the whole video
     h.key(Key::Escape, Modifiers::NONE);
     h.key(Key::Z, Modifiers::COMMAND);
-    let row = h.find("Fade through black").unwrap();
+    let row = h.find("Fade IN/OUT").unwrap();
     h.double_click(row.rect.center());
     let tl = &h.app.project.timeline;
     assert!(
@@ -1161,9 +1161,9 @@ fn a_subtitle_dragged_in_the_preview_moves_and_stays_inside_the_picture() {
     let now = Instant::now();
     app.dispatch(Command::Seek(Micros(1_000_000)), now).unwrap();
     app.dispatch(Command::AddSubtitle, now).unwrap();
-    let id = app.selected_line.unwrap();
+    let id = app.selection.primary_line().unwrap();
     app.dispatch(Command::AddSubtitle, now).unwrap();
-    let other = app.selected_line.unwrap();
+    let other = app.selection.primary_line().unwrap();
     // the second line sits elsewhere (top right) so only the first is grabbed
     app.dispatch(
         Command::SetLinePositions {

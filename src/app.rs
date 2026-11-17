@@ -18,6 +18,7 @@ use crate::preview::{AudioSink, Frame, Preview, PreviewConfig};
 use crate::project::{self, Edit, Project, ProjectDoc};
 use crate::proxy::{self, ProxyCache, ProxyEvent, ProxyTask, ProxyWorker};
 use crate::render;
+use crate::selection::ObjRef;
 use crate::settings::{
     self, Budget, Effort, ExportChoice, PreviewQuality, SavedLayout, Settings, StartNotice,
     SubtitleQuality,
@@ -75,7 +76,7 @@ impl EffectKind {
 
     pub fn name(self) -> &'static str {
         match self {
-            EffectKind::Fade => "Fade through black",
+            EffectKind::Fade => "Fade IN/OUT",
             EffectKind::Subtitles => "Subtitles",
             EffectKind::Volume => "Volume",
         }
@@ -198,6 +199,8 @@ pub enum Modal {
     },
     /// Confirmation before removing the downloaded speech recognition files.
     ConfirmRemoveSpeechFiles,
+    /// Which video to make for a project with 360° clips: a 360 video or the flat camera view.
+    ExportKind,
     About,
 }
 
@@ -212,10 +215,12 @@ pub enum Popup {
     /// The settings of one fade or one subtitle line ([`Popups::instance`]).
     Instance,
     Shortcuts,
+    /// A new text, or the settings of one text item ([`Popups::text`]).
+    Text,
 }
 
 impl Popup {
-    pub const ALL: [Popup; 7] = [
+    pub const ALL: [Popup; 8] = [
         Popup::Settings,
         Popup::Fades,
         Popup::Subtitles,
@@ -223,17 +228,19 @@ impl Popup {
         Popup::ClipDetails,
         Popup::Instance,
         Popup::Shortcuts,
+        Popup::Text,
     ];
 
     pub fn title(self) -> &'static str {
         match self {
             Popup::Settings => settings::SETTINGS_TITLE,
-            Popup::Fades => "Fade through black",
+            Popup::Fades => "Fade IN/OUT",
             Popup::Subtitles => "Subtitles",
             Popup::Volume => "Volume",
             Popup::ClipDetails => "Clip details",
             Popup::Instance => "Selected effect",
             Popup::Shortcuts => "Keyboard shortcuts",
+            Popup::Text => "Text",
         }
     }
 }
@@ -263,6 +270,8 @@ pub struct Popups {
     pub instance: Option<Instance>,
     /// Overlapping markers the user must choose from.
     pub chooser: Option<Vec<Instance>>,
+    /// The text item shown by [`Popup::Text`]; `None` = a new text.
+    pub text: Option<crate::text::TextId>,
     /// What each effect popup was last applied to (shown in its title).
     pub targets: Vec<(Popup, Target)>,
 }
@@ -283,6 +292,9 @@ impl Popups {
         self.targets.retain(|(x, _)| *x != p);
         if p == Popup::Instance {
             self.instance = None;
+        }
+        if p == Popup::Text {
+            self.text = None;
         }
     }
 
@@ -438,6 +450,10 @@ pub enum Command {
     StepFrames(i64),
     SetZoom(f32),
     PickExport,
+    /// The answer of the question Export asks for a project with 360° clips (REQ-103).
+    ChooseExportMode(render::ExportMode),
+    /// Exports to a file in a chosen way.
+    ExportAs(PathBuf, render::ExportMode),
     Export(PathBuf),
     CancelExport,
     PickFfmpeg,
@@ -493,6 +509,44 @@ pub enum Command {
     },
     /// Adds a subtitle line to the selection, or takes it out (Ctrl/Cmd+click).
     ToggleLine(LineId),
+    /// Adds a text item at the playhead from the fields of a draft (REQ-108).
+    AddText(crate::text::TextItem),
+    /// Replaces a text item with the edited one (REQ-108, REQ-110).
+    EditText(crate::text::TextItem),
+    /// Moves a text item in time and sets its time to live (REQ-110).
+    MoveText {
+        id: crate::text::TextId,
+        start: Micros,
+        ttl: Micros,
+    },
+    /// Removes text items (REQ-110).
+    DeleteTexts(Vec<crate::text::TextId>),
+    /// Moves and resizes the box of text items in the preview (REQ-111).
+    SetTextBoxes {
+        ids: Vec<crate::text::TextId>,
+        place: Pos,
+        size: u16,
+    },
+    /// Moves texts fixed to the sphere to another point of it (REQ-112).
+    MoveTextAnchor {
+        ids: Vec<crate::text::TextId>,
+        yaw_cd: i32,
+        pitch_cd: i32,
+    },
+    /// Moves subtitle lines fixed to the sphere to another point of it (REQ-112).
+    MoveLineAnchor {
+        ids: Vec<LineId>,
+        yaw_cd: i32,
+        pitch_cd: i32,
+    },
+    /// Selects a text item, moves the playhead to it and opens its popup (REQ-110).
+    OpenText(crate::text::TextId),
+    /// Selects only this text item (a click on its box in the preview).
+    SelectText(crate::text::TextId),
+    /// Opens the popup of a new text (REQ-108).
+    OpenNewText,
+    /// Adds a text item to the selection or takes it out (Ctrl/Cmd/Shift+click).
+    ToggleText(crate::text::TextId),
     /// Selects the lines whose timeline start is in `[from, to]` (`add`: keeps the
     /// current selection too) and moves the playhead to the first one.
     SelectRange {
@@ -584,6 +638,13 @@ impl Command {
             Command::SetMix(_) => "Volume",
             Command::GenerateSubtitles | Command::ConfirmRegenerate => "Generate subtitles",
             Command::AddSubtitle => "Add subtitle line",
+            Command::AddText(_) => "Add text",
+            Command::EditText(_) => "Edit text",
+            Command::MoveText { .. }
+            | Command::SetTextBoxes { .. }
+            | Command::MoveTextAnchor { .. } => "Move text",
+            Command::MoveLineAnchor { .. } => "Move subtitle",
+            Command::DeleteTexts(_) => "Delete text",
             Command::DeleteSubtitle(_) => "Delete subtitle line",
             Command::SetSubtitleText(..) => "Edit subtitle text",
             Command::RetimeSubtitle { .. } => "Change subtitle timing",
@@ -592,7 +653,7 @@ impl Command {
             Command::ApplyEffect {
                 effect: EffectKind::Fade,
                 ..
-            } => "Fade through black",
+            } => "Fade IN/OUT",
             Command::ApplyEffect {
                 effect: EffectKind::Subtitles,
                 ..
@@ -693,10 +754,9 @@ pub struct AppState {
     pub selected_clip: Option<ClipId>,
     pub selected_media: Option<MediaId>,
     pub selected_music: Option<MusicClipId>,
-    pub selected_line: Option<LineId>,
-    /// Selected subtitle lines (Ctrl/Cmd+click, Shift+drag): moved together. Not part of
-    /// the project or of undo.
-    pub selection: std::collections::BTreeSet<LineId>,
+    /// Selected subtitle lines and text items (Ctrl/Cmd/Shift+click, Shift+drag): moved
+    /// together. Not part of the project or of undo.
+    pub selection: crate::selection::Selection,
     /// Lines being dragged in the preview and where (shown at once, saved on release).
     pub drag_pos: Option<(Vec<LineId>, Pos)>,
     /// Lines whose corner is being dragged in the preview and their new size.
@@ -778,6 +838,8 @@ pub struct AppState {
     pub stt_progress: Option<f32>,
     /// Where the speech model is installed (`None`: generation unavailable).
     pub model_store: Option<ModelStore>,
+    /// Fonts installed on this computer (scanned in the background).
+    pub fonts: crate::fonts::Fonts,
     model_install: Option<(Receiver<ModelEvent>, Arc<AtomicBool>)>,
     /// Model download progress (0..=1) while it runs.
     pub model_progress: Option<f32>,
@@ -883,6 +945,7 @@ impl AppState {
         s.preview.proxies = s.settings.preview_quality != PreviewQuality::Original;
         s.proxy_cache = ProxyCache::default_dir().map(ProxyCache::new);
         s.proxy_cache_size = s.proxy_cache.as_ref().map(ProxyCache::size).unwrap_or(0);
+        s.fonts = crate::fonts::Fonts::start();
         s.model_store = ModelStore::default_dir().map(|d| ModelStore {
             work_root: Some(work_root),
             ..ModelStore::new(d)
@@ -921,7 +984,6 @@ impl AppState {
             selected_clip: None,
             selected_media: None,
             selected_music: None,
-            selected_line: None,
             selection: Default::default(),
             drag_pos: None,
             resize_drag: None,
@@ -973,6 +1035,7 @@ impl AppState {
             stt: None,
             stt_progress: None,
             model_store: None,
+            fonts: crate::fonts::Fonts::with(Vec::new()),
             model_install: None,
             model_progress: None,
             transcriber: Arc::new(|_, _| Err(stt::SttError::NotAvailable)),
@@ -1320,7 +1383,7 @@ impl AppState {
                 .selected_music
                 .is_some_and(|id| self.project.music.get(id).is_some()),
             Command::PlayPause => has_ff && !tl.clips.is_empty(),
-            Command::PickExport | Command::Export(_) => {
+            Command::PickExport | Command::Export(_) | Command::ExportAs(..) => {
                 has_ff && !tl.clips.is_empty() && !self.is_exporting()
             }
             Command::CancelExport => self.is_exporting(),
@@ -1330,6 +1393,12 @@ impl AppState {
             }
             Command::CancelSubtitles => self.is_generating(),
             Command::AddSubtitle => tl.locate(self.playhead).is_some(),
+            Command::AddText(_) | Command::OpenNewText => {
+                !tl.clips.is_empty() && self.playhead < tl.duration()
+            }
+            Command::DeleteTexts(ids) => {
+                !ids.is_empty() && ids.iter().all(|i| self.project.texts.get(*i).is_some())
+            }
             Command::ClearProxyCache => self.proxy_cache.is_some(),
             Command::RemoveSpeechFiles | Command::ConfirmRemoveSpeechFiles => {
                 self.model_store.is_some() && !self.is_generating()
@@ -1705,22 +1774,26 @@ impl AppState {
             Command::AddSubtitle => {
                 let (at, min) = (self.playhead, self.frame_len());
                 let mut added = None;
+                // on a 360 clip the line is fixed to the point the camera looks at
+                let anchor = self.text_anchor_at_playhead();
                 self.edit(now, label, |e| {
-                    added = Some(
-                        e.subtitles
-                            .add_at(&e.timeline, at, "New subtitle", min)
-                            .map_err(err)?,
-                    );
+                    let id = e
+                        .subtitles
+                        .add_at(&e.timeline, at, "New subtitle", min)
+                        .map_err(err)?;
+                    if let Some(l) = e.subtitles.lines.iter_mut().find(|l| l.id == id) {
+                        l.anchor = anchor;
+                    }
+                    added = Some(id);
                     Ok(())
                 })?;
-                self.selected_line = added;
+                if let Some(id) = added {
+                    self.selection.select_only(ObjRef::Line(id));
+                }
                 Ok(())
             }
             Command::DeleteSubtitle(id) => {
                 self.edit(now, label, |e| e.subtitles.delete(id).map_err(err))?;
-                if self.selected_line == Some(id) {
-                    self.selected_line = None;
-                }
                 Ok(())
             }
             Command::SetSubtitleText(id, text) => {
@@ -1748,8 +1821,10 @@ impl AppState {
                 })
             }
             Command::SelectLine(id) => {
-                self.selected_line = id;
-                self.selection = id.into_iter().collect();
+                self.selection.clear();
+                if let Some(id) = id {
+                    self.selection.select_only(ObjRef::Line(id));
+                }
                 Ok(())
             }
             Command::SetPreset(p) => {
@@ -1909,13 +1984,25 @@ impl AppState {
                 Ok(())
             }
             Command::PickExport => {
-                let ext = self.export_extension();
-                match self.dialogs.pick_export(&ext) {
-                    Some(p) => self.dispatch_inner(Command::Export(p), now),
-                    None => Ok(()),
+                // a project with 360 clips first asks which video to make (REQ-103)
+                if self.has_sphere_clip() {
+                    self.modal = Some(Modal::ExportKind);
+                    return Ok(());
                 }
+                self.pick_and_export(render::ExportMode::Automatic, now)
             }
-            Command::Export(path) => self.start_export(path),
+            Command::ChooseExportMode(mode) => {
+                if self.modal != Some(Modal::ExportKind) {
+                    return Ok(());
+                }
+                self.modal = None;
+                if mode == render::ExportMode::Sphere360 && self.has_flat_clip() {
+                    return Err(render::RenderError::MixedSphere.to_string());
+                }
+                self.pick_and_export(mode, now)
+            }
+            Command::Export(path) => self.start_export(path, render::ExportMode::Automatic),
+            Command::ExportAs(path, mode) => self.start_export(path, mode),
             Command::CancelExport => {
                 if let Some(h) = &self.export {
                     h.cancel();
@@ -1978,9 +2065,7 @@ impl AppState {
                     .instance_start(i)
                     .ok_or("that fade or subtitle line no longer exists")?;
                 if let Instance::Line(id, _) = i {
-                    self.selected_line = Some(id);
-                    self.selection.clear();
-                    self.selection.insert(id);
+                    self.selection.select_only(ObjRef::Line(id));
                 }
                 self.popups.instance = Some(i);
                 self.popups.chooser = None;
@@ -2023,7 +2108,7 @@ impl AppState {
                 if self.preview.is_playing() {
                     self.preview.pause(now);
                 }
-                self.selected_line = Some(id);
+                self.selection.select_only(ObjRef::Line(id));
                 self.seek(line.start, now);
                 let shown = self.shown_project().into_owned();
                 self.preview.play(&shown, self.playhead, now)?;
@@ -2077,6 +2162,37 @@ impl AppState {
             } => self.set_clip_volume(clip, volume, muted, now),
             Command::SetEdgeFade { edge, on } => self.set_edge_fade(edge, on, now),
             Command::ToggleLine(id) => self.toggle_line(id),
+            Command::AddText(draft) => self.add_text(draft, now),
+            Command::EditText(item) => self.edit_text(item, now),
+            Command::MoveText { id, start, ttl } => self.move_text(id, start, ttl, now),
+            Command::DeleteTexts(ids) => self.delete_texts(ids, now),
+            Command::SetTextBoxes { ids, place, size } => {
+                self.set_text_boxes(ids, place, size, now)
+            }
+            Command::MoveTextAnchor {
+                ids,
+                yaw_cd,
+                pitch_cd,
+            } => self.move_text_anchor(ids, yaw_cd, pitch_cd, now),
+            Command::MoveLineAnchor {
+                ids,
+                yaw_cd,
+                pitch_cd,
+            } => self.move_line_anchor(ids, yaw_cd, pitch_cd, now),
+            Command::OpenText(id) => self.open_text(id, now),
+            Command::OpenNewText => {
+                self.popups.text = None;
+                self.popups.show(Popup::Text);
+                Ok(())
+            }
+            Command::ToggleText(id) => self.toggle_text(id),
+            Command::SelectText(id) => {
+                if self.project.texts.get(id).is_none() {
+                    return Err("no such text".into());
+                }
+                self.selection.select_only(ObjRef::Text(id));
+                Ok(())
+            }
             Command::SelectRange { from, to, add } => self.select_range(from, to, add, now),
             Command::ClearSelection => {
                 self.selection.clear();
@@ -2312,6 +2428,8 @@ impl AppState {
             Command::Undo => "Nothing to undo",
             Command::Redo => "Nothing to redo",
             Command::Split | Command::AddSubtitle => "Move the playhead over a clip first",
+            Command::AddText(_) | Command::OpenNewText => texts::PLAYHEAD_IN_VIDEO,
+            Command::DeleteTexts(_) => texts::SELECT_A_TEXT,
             Command::Cut | Command::Copy | Command::Delete => "Select a clip first",
             Command::Merge if self.target_clip().is_none() => "Select a clip first",
             Command::Merge
@@ -2367,7 +2485,9 @@ impl AppState {
                 subs_create::BEING_CREATED
             }
             _ if no_ffmpeg => "ffmpeg is not ready",
-            Command::PickExport | Command::Export(_) if self.is_exporting() => {
+            Command::PickExport | Command::Export(_) | Command::ExportAs(..)
+                if self.is_exporting() =>
+            {
                 "An export is already running"
             }
             Command::GenerateSubtitles if !stt::available() => {
@@ -2375,6 +2495,7 @@ impl AppState {
             }
             Command::PickExport
             | Command::Export(_)
+            | Command::ExportAs(..)
             | Command::GenerateSubtitles
             | Command::ApplyEffect { .. }
             | Command::SetEdgeFade { .. }
@@ -2480,7 +2601,6 @@ impl AppState {
         self.selected_clip = None;
         self.selected_media = None;
         self.selected_music = None;
-        self.selected_line = None;
         self.selection.clear();
         self.drag_pos = None;
         self.clipboard = None;
@@ -2490,6 +2610,7 @@ impl AppState {
         self.popups.instance = None;
         self.popups.chooser = None;
         self.popups.close(Popup::Instance);
+        self.popups.close(Popup::Text);
         self.popups.targets.clear();
         self.close_allowed = false;
         let ids: Vec<MediaId> = self.project.media.iter().map(|m| m.id).collect();
@@ -2616,12 +2737,41 @@ impl AppState {
         }
     }
 
-    fn start_export(&mut self, path: PathBuf) -> Result<(), String> {
+    /// The video has a 360° clip.
+    pub fn has_sphere_clip(&self) -> bool {
+        self.project.timeline.clips.iter().any(|c| {
+            self.project
+                .media(c.media)
+                .is_some_and(|m| m.format.is_360())
+        })
+    }
+
+    /// The video has a clip that is not 360°.
+    fn has_flat_clip(&self) -> bool {
+        self.project.timeline.clips.iter().any(|c| {
+            self.project
+                .media(c.media)
+                .is_none_or(|m| !m.format.is_360())
+        })
+    }
+
+    fn pick_and_export(&mut self, mode: render::ExportMode, now: Instant) -> Result<(), String> {
+        let ext = self.export_extension();
+        match self.dialogs.pick_export(&ext) {
+            Some(p) => self.dispatch_inner(Command::ExportAs(p, mode), now),
+            None => Ok(()),
+        }
+    }
+
+    fn start_export(&mut self, path: PathBuf, mode: render::ExportMode) -> Result<(), String> {
         if self.is_exporting() {
             return Err("an export is already running".into());
         }
         let info = self.ffmpeg.as_ref().map_err(|e| e.clone())?;
         export::validate_output(&self.project, &path).map_err(|e| e.to_string())?;
+        if mode == render::ExportMode::Sphere360 && self.has_flat_clip() {
+            return Err(render::RenderError::MixedSphere.to_string());
+        }
         let job = ExportJob {
             project: self.project.clone(),
             output: path,
@@ -2635,6 +2785,7 @@ impl AppState {
             hw: self.hw_offer(),
             stall_timeout: self.stall_timeout,
             check_timeout: export::CHECK_TIMEOUT,
+            mode,
         };
         let runner: Arc<dyn Runner> = Arc::new(self.limited(Priority::Export));
         self.export = Some(export::start(job, runner));
@@ -2674,11 +2825,6 @@ impl AppState {
             && self.project.music.get(id).is_none()
         {
             self.selected_music = None;
-        }
-        if let Some(id) = self.selected_line
-            && self.project.subtitles.get(id).is_none()
-        {
-            self.selected_line = None;
         }
         self.prune_selection();
         if self.preview.is_playing() {
@@ -3017,6 +3163,7 @@ fn preview_config(
 mod effects;
 mod sphere;
 mod subs_create;
+mod texts;
 pub use subs_create::pick_track;
 
 #[cfg(test)]
@@ -3029,5 +3176,7 @@ mod settings_tests;
 mod sphere_tests;
 #[cfg(test)]
 pub(crate) mod tests;
+#[cfg(test)]
+mod text_tests;
 #[cfg(test)]
 mod ux_tests;

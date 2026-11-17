@@ -12,6 +12,7 @@ This page covers building and running; the details are in the sub-documents:
 | [code-modules.md](code-modules.md) | Module map, main patterns, background jobs, conventions |
 | [code-effects.md](code-effects.md) | Effects on a clip or the whole video, clip volume, fades at the video's edges, the video's own subtitles and word matching, subtitle positions, SRT export, timeline ruler, project format 3 (all since 1.2.0) |
 | [code-360.md](code-360.md) | Boxes and corner handles, text size, align and reset, 360° video: camera maths, how the camera reaches ffmpeg, spike results, preview copies, project format 4 (all since 1.2.6) |
+| [code-text.md](code-text.md) | Text items and their effects, one selection for lines and texts, the Context Menu group, texts fixed to the 360° sphere, the "360 video" export and its spherical marker, project format 5 (all since 1.3.0) |
 | [code-ui.md](code-ui.md) | The window: menus, toolbar, resizable sections, shortcuts, popups, timeline markers, status bar, recent projects, drag and drop |
 | [code-testing.md](code-testing.md) | Unit, UI and integration tests, coverage, CI jobs |
 | [code-packaging.md](code-packaging.md) | Installers, bundled ffmpeg, notices, release assets, manual checklist per OS, known limitations |
@@ -102,6 +103,7 @@ is raised together with the toolchain, and dependencies are kept on their newest
 | whisper-rs | 0.16 | Speech recognition (optional, `stt`) |
 | ureq | 3.5 (`rustls` only) | Speech model download (optional, `stt`) |
 | objc2, objc2-foundation | 0.6, 0.3 | macOS only: opening double-clicked projects |
+| fontdb | 0.24 | Installed font families for the text font choice (default features: fontconfig directories, memory-mapped files) |
 | winit | 0.30 | macOS only: switching off the default menu so Cmd+Q asks about unsaved changes |
 
 If line coverage suddenly drops far below the usual ~95% after a toolchain change, delete

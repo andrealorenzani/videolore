@@ -2,7 +2,104 @@
 
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
+## Index (human docs, one line per heading; read a range with sed -n 'A,Bp')
+- docs/business.md § (title, purpose, users, documents) — L1-13 (13 lines)
+- docs/business.md § Documents — L14-24 (11 lines)
+- docs/business.md § Constraints — L25-29 (5 lines)
+- docs/business.md § Key decisions (general) — L30-49 (20 lines)
+- docs/business.md § Known limitations (1.2.0, 1.3.0) — L50-71 (22 lines)
+- docs/business.md § Out of scope — L72-82 (11 lines)
+- docs/business-editing.md § intro — L1-4 (4 lines)
+- docs/business-editing.md § Features — L5-14 (10 lines)
+- docs/business-editing.md § Requirements / Media and projects (REQ-001..004, 026..029, 094, 105, 113) — L15-29 (15 lines)
+- docs/business-editing.md § Timeline — L30-40 (11 lines)
+- docs/business-editing.md § Preview — L41-45 (5 lines)
+- docs/business-editing.md § Layout and commands — L46-48 (3 lines)
+- docs/business-editing.md § Responsiveness and performance — L49-54 (6 lines)
+- docs/business-editing.md § Key decisions — L55-69 (15 lines)
+- docs/business-editing.md § Known limitations — L70-77 (8 lines)
+- docs/business-editing.md § Out of scope — L78-81 (4 lines)
+- docs/business-ui.md § intro — L1-6 (6 lines)
+- docs/business-ui.md § Features — L7-23 (17 lines)
+- docs/business-ui.md § Requirements — L24-25 (2 lines)
+- docs/business-ui.md § Layout (REQ-024, 066-068) — L26-31 (6 lines)
+- docs/business-ui.md § Menus, toolbar, shortcuts and status bar (REQ-025, 069-074) — L32-46 (15 lines)
+- docs/business-ui.md § Effects (REQ-075, 107, 076, 077, 082) — L47-64 (18 lines)
+- docs/business-ui.md § Timeline ruler (REQ-093) — L65-67 (3 lines)
+- docs/business-ui.md § Clips, context menus, recent projects, drag and drop (REQ-078..081) — L68-73 (6 lines)
+- docs/business-ui.md § Key decisions — L74-84 (11 lines)
+- docs/business-ui.md § Impact on existing features — L85-97 (13 lines)
+- docs/business-ui.md § Since 1.2.0 — L98-104 (7 lines)
+- docs/business-ui.md § Changed in 1.3.0 — L105-113 (9 lines)
+- docs/business-ui.md § Known limitations — L114-120 (7 lines)
+- docs/business-ui.md § Out of scope — L121-130 (10 lines)
+- docs/business-text.md § intro — L1-6 (6 lines)
+- docs/business-text.md § Features — L7-13 (7 lines)
+- docs/business-text.md § Requirements (REQ-108..111) — L14-15 (2 lines)
+- docs/business-text.md § Adding text (REQ-108) — L16-18 (3 lines)
+- docs/business-text.md § Text effects (REQ-109) — L19-21 (3 lines)
+- docs/business-text.md § On the timeline and on the picture (REQ-110, 111) — L22-25 (4 lines)
+- docs/business-text.md § Key decisions — L26-32 (7 lines)
+- docs/business-text.md § Impact on existing features — L33-41 (9 lines)
+- docs/business-text.md § Known limitations — L42-48 (7 lines)
+- docs/business-text.md § Out of scope — L49-53 (5 lines)
+- docs/business-picture.md § intro — L1-8 (8 lines)
+- docs/business-picture.md § Features — L9-17 (9 lines)
+- docs/business-picture.md § Requirements — L18-19 (2 lines)
+- docs/business-picture.md § Boxes, size and Context Menu (REQ-096..099, 106) — L20-26 (7 lines)
+- docs/business-picture.md § 360 video (REQ-100..105, 112) — L27-35 (9 lines)
+- docs/business-picture.md § Key decisions — L36-45 (10 lines)
+- docs/business-picture.md § Impact on existing features — L46-58 (13 lines)
+- docs/business-picture.md § Known limitations — L59-71 (13 lines)
+- docs/business-picture.md § Out of scope — L72-76 (5 lines)
+- docs/business-subtitles.md § intro — L1-4 (4 lines)
+- docs/business-subtitles.md § Features — L5-18 (14 lines)
+- docs/business-subtitles.md § Requirements — L19-20 (2 lines)
+- docs/business-subtitles.md § Creating and editing (REQ-014..018, 044 etc.) — L21-29 (9 lines)
+- docs/business-subtitles.md § Subtitles already in the video (REQ-086..087, 095) — L30-40 (11 lines)
+- docs/business-subtitles.md § Saving subtitles as a file (REQ-088) — L41-43 (3 lines)
+- docs/business-subtitles.md § Position on screen and selection (REQ-089..092) — L44-51 (8 lines)
+- docs/business-subtitles.md § Key decisions — L52-63 (12 lines)
+- docs/business-subtitles.md § Known limitations — L64-73 (10 lines)
+- docs/business-subtitles.md § Out of scope — L74-81 (8 lines)
+- docs/business-export.md § intro — L1-4 (4 lines)
+- docs/business-export.md § Features — L5-14 (10 lines)
+- docs/business-export.md § Requirements (REQ-021..023 etc.) — L15-21 (7 lines)
+- docs/business-export.md § Faster export (0.4.0) — L22-32 (11 lines)
+- docs/business-export.md § Key decisions — L33-49 (17 lines)
+- docs/business-export.md § Known limitations (0.4.0) — L50-61 (12 lines)
+- docs/business-export.md § Out of scope — L62-73 (12 lines)
+- docs/business-music.md § intro/Features/Requirements/Key decisions/Out of scope — L1-28 (28 lines; intro L1-4, Features L5-10, Requirements L11-16, Key decisions L17-23, Out of scope L24-28)
+- docs/business-install.md § intro/Features/Requirements/Key decisions/Known limitations/Out of scope — L1-41 (41 lines; intro L1-4, Features L5-13, Requirements L14-20, Key decisions L21-30, Known limitations L31-36, Out of scope L37-41)
+- docs/business-performance.md § intro — L1-6 (6 lines)
+- docs/business-performance.md § Features — L7-20 (14 lines)
+- docs/business-performance.md § Requirements / Automatic setup — L21-29 (9 lines)
+- docs/business-performance.md § Performance — L30-38 (9 lines)
+- docs/business-performance.md § Safety — L39-43 (5 lines)
+- docs/business-performance.md § Quality goals — L44-69 (26 lines)
+- docs/business-performance.md § Key decisions — L70-83 (14 lines)
+- docs/business-performance.md § Known limitations — L84-89 (6 lines)
+- docs/business-performance.md § Out of scope — L90-96 (7 lines)
+Line ranges checked at the 1.3.0 STATUS (convention: heading to the line before the next heading); re-check with grep -n '^#' after any edit.
+
+## Decisions from REFINE (1.3.0, Andrea answers)
+- Q1 = C: for projects WITH 360 clips, Export asks "360 video" or "Flat camera view" (1.2.6 export) each time. Explicit exception to D2, only for these projects. 360 video = full sphere, camera not applied, subtitles/text at their sphere points; flat = 1.2.6 rules (360 counts 1920x1080). Mixed 360+flat projects: flat only (360 choice refused with message).
+- Q2 = B: text fonts = fonts installed on the computer; look may differ per computer (stated in docs). Default font = bundled subtitle font (assumption). Missing font -> default there (ASSUMPTION, check at build).
+- No open SEVERE questions.
+
 ## State
+- 1.3.0 STATUS (2026-11-17, PE report): IMPLEMENTED = 090, 091, 092, 098, 099, 103, 106, 107, 108, 109, 110, 111, 112, 113 (new or reworded) + reworded 075, 102, 023. NO planned REQ left in docs/business*.md. Next free ID REQ-114 (unchanged).
+  - Doc edits (STATUS): "(planned)" markers and "planned" wording removed in all business docs (1.3.0 headings now "Added/Changed/Built in 1.3.0"; business-ui "Planned for 1.3.0" heading -> "Changed in 1.3.0"). REQ-096 wording: "are unchanged" -> names the gestures (REQ-090 Ctrl/Cmd+click and Shift+click add; REQ-091 Shift+drag range), because they are now built (roadmap item for the Documenter).
+  - Limitations added (PE facts, docs/code-text.md): (a) a subtitle line added on a 360 clip is drawn as plain white text, no preset box, no word highlight (preview and export) -> also in REQ-112 text (business-picture, business-subtitles, business.md); (b) 360 export spherical marker only for MP4/MOV (Matroska/WebM: none; ffmpeg 6.1 drops the side data on re-encode) -> business-picture, business.md; (c) project load REFUSES a text with ttl above 24 h (one day, MAX_TTL, as damaged, REQ-057); add/edit/move clamp ttl to video length; a video cut shorter keeps its texts -> business-text, business.md.
+  - REQ-113 hostile-value wording corrected: was "time to live of 0 or more than the video" -> now "below 0.1 s or above 24 hours, refused on opening" (code: load refuses above one day, not video length). Stays implemented.
+  - Roadmap items to Documenter (see Future work of the report): text overlays item (line 20) now built; 360 video export item (line 28) remove; box selection wording item (line 97) resolved by REQ-096 reword; spherical-marker player check (line 30) stays open.
+- 1.3.0 PLAN (target 1.3.0, Andrea request 2026-11-17). NEW REQs (planned): 106 Context Menu visibility; 107 rename Fade through black -> Fade IN/OUT; 108 Add Text popup; 109 text effects (Fade IN, Fade OUT, Blink, Slide in); 110 text bar on timeline (TTL drag, no ripple); 111 text box/preview/export; 112 360 anchoring of text + subtitle lines; 113 1.3.0 project format compat. REWORDED (set planned, were implemented): 023 (text items force re-encode), 075 (Add Text row, 4 rows), 090/091/092 (selection kept, Shift+click, text items), 098/099 (Context Menu, shown not greyed), 102 (Set POV in Context Menu; acceptance preview only), 103 (for 360 projects: export asks 360 video or flat camera view; no speed req). Impact notes only: 069, 070, 071/072, 077, 082, 089, 096, 101, 022, 029.
+- 1.3.0 REFINE applied: REQ-103 now = export question for 360 projects (360 video | flat camera view), text fonts = installed (Q2=B). Docs edited in place (line ranges unchanged; re-check with grep -n '^#' at next edit).
+- 1.3.0 docs: NEW docs/business-text.md (108-111). docs/business-picture.md rewritten (Context Menu 106, 360 anchoring 112, OOS: 360 export and sphere-fixed subtitles removed from OOS). docs/business-ui.md: 075/107, "Planned for 1.3.0" section. docs/business-subtitles.md: 090-092 + 2 key decisions. docs/business-export.md: features + 023. docs/business-editing.md: 113 (after 105), key decision. docs/business.md: Documents line, key decisions (3), limitations (1.2.0, 1.3.0) +3 items.
+- 1.3.0 MINOR defaults (taken, Andrea can overrule): M1 text items on own Text lane between video and music, no ripple (like D9/REQ-043). M2 text effect times 0.1-5 s, defaults 0.5 s (fades, blink interval, slide duration); each fade limited to TTL/2; effects combine. M3 Add Text: TTL default 3 s, colour white, text centred in lower third, default text size 5% of picture height (assumption). M4 bar min 0.1 s; right end = TTL, left end = start (keeps end). M5 Context Menu: hidden (not greyed) when nothing to act on; Set POV shown without selection (acts on playhead) -> resolves conflict in user text; menus keep greying (REQ-069). M6 Context Menu = toolbar group (same place as 1.2.6 group). M7 Shift+click = Ctrl/Cmd+click add; plain click on selected box keeps the group; click on empty picture clears. M8 group drag keeps 1.2.0 same-position rule (Andrea asked "group move = same position" in 1.2.0). M9 360 text/subtitle anchored to view centre at add time, size fixed in world, not drawn outside view; auto-generated 360 subtitles stay view-fixed (ASSUMPTION). M10 360 + flat clips in one project: 360 video choice refused with message; flat camera view allowed (Q1=C). M11 360 output keeps 360 clips own pixel size (022 over 360 clips). M12 Delete key removes selected text item. M13 text not in .srt, no outline/background, no auto box fit. M14 schema bump 1.3.0 (like D36), 1.2.6 refuses. M15 text max length = subtitle limit. M16 Reset in Context Menu on 360 = "Reset view" (REQ-099 live view). M17 Effects row "Add Text" not draggable.
+- Rejected/considered: keep 1.2.6 flat export as default (Andrea wording "export in 360 degree"); rippling text (chosen fixed, like music); separate popup for Context Menu (chose toolbar group, same as 1.2.6).
+- Product risks 1.3.0: Shift+drag / preview drag conflicts (look-around vs box move); text readability without outline; 360 export slow (accepted by Andrea); Context Menu appearing/disappearing may confuse (tooltips + shortcuts window).
+- Next free ID: REQ-114. QG next: QG-06.
 - 1.2.6 STATUS: REQ-096..105 ALL (implemented) (tests annotated, 96.0% line cov). Nothing planned. Next free ID: REQ-106. Added limitation: moving-camera export ~1/3 real time (no faster promise); REQ-103 clarified: 360 next to smaller normal clips follows REQ-022 lowest-pixel-count; Reset also clears size (limitation line).
 - docs/business-picture.md (NEW 1.2.6, 62 lines): § Features L7-12 · § Requirements L14-27 (### Boxes, size and effect commands L16-20 = 096-099; ### 360 video L22-27 = 100-104) · § Key decisions L29-36 · § Impact on existing features L38-47 · § Known limitations L49-55 · § Out of scope L57-62. REQ-105 in business-editing.md "### Media and projects" (after 094). Index docs/business.md: new Documents line + key decision + limitation line.
 - (older) Target version 1.2.0. Next free ID was REQ-096. Never reuse IDs. Quality goals use QG-NN (next QG-06), no covers: tests.

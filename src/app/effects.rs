@@ -174,12 +174,7 @@ impl AppState {
         if self.project.subtitles.get(id).is_none() {
             return Err("no such subtitle line".into());
         }
-        if !self.selection.remove(&id) {
-            self.selection.insert(id);
-            self.selected_line = Some(id);
-        } else if self.selected_line == Some(id) {
-            self.selected_line = self.selection.iter().next().copied();
-        }
+        self.selection.click(ObjRef::Line(id), true);
         Ok(())
     }
 
@@ -191,37 +186,44 @@ impl AppState {
         now: Instant,
     ) -> Result<(), String> {
         let (a, b) = (from.min(to), from.max(to));
-        let picked: Vec<(LineId, Micros)> = self
+        let mut picked: Vec<(ObjRef, Micros)> = self
             .shown_ids()
             .into_iter()
             .filter(|(_, start)| *start >= a && *start <= b)
+            .map(|(id, start)| (ObjRef::Line(id), start))
             .collect();
-        if !add {
-            self.selection.clear();
-        }
-        self.selection.extend(picked.iter().map(|(id, _)| *id));
-        if let Some((id, start)) = picked.first() {
-            self.selected_line = Some(*id);
-            self.seek(*start, now);
+        picked.extend(
+            self.project
+                .texts
+                .items
+                .iter()
+                .filter(|t| t.start >= a && t.start <= b)
+                .map(|t| (ObjRef::Text(t.id), t.start)),
+        );
+        let first = picked.iter().map(|(_, start)| *start).min();
+        let objs: Vec<ObjRef> = picked.iter().map(|(o, _)| *o).collect();
+        self.selection.pick(&objs, add);
+        if let Some(start) = first {
+            self.seek(start, now);
         }
         Ok(())
     }
 
     /// The lines "Reset position" and a group drag act on.
     pub fn selected_lines(&self) -> Vec<LineId> {
-        if !self.selection.is_empty() {
-            return self.selection.iter().copied().collect();
-        }
-        self.selected_line.into_iter().collect()
+        self.selection.lines()
     }
 
     /// The lines a drag of `id` moves: the selection when `id` is in it, else `id` alone.
     pub fn drag_group(&self, id: LineId) -> Vec<LineId> {
-        if self.selection.contains(&id) && self.selection.len() > 1 {
-            self.selection.iter().copied().collect()
-        } else {
-            vec![id]
-        }
+        self.selection
+            .drag_targets(ObjRef::Line(id))
+            .into_iter()
+            .filter_map(|o| match o {
+                ObjRef::Line(l) => Some(l),
+                ObjRef::Text(_) => None,
+            })
+            .collect()
     }
 
     pub(super) fn set_line_positions(
@@ -336,7 +338,9 @@ impl AppState {
     /// Removes lines that no longer exist from the selection.
     pub(super) fn prune_selection(&mut self) {
         let subs = &self.project.subtitles;
-        self.selection.retain(|id| subs.get(*id).is_some());
+        let texts = &self.project.texts;
+        self.selection
+            .prune(|id| subs.get(id).is_some(), |id| texts.get(id).is_some());
         if let Some((ids, _)) = &self.drag_pos
             && ids.iter().any(|id| subs.get(*id).is_none())
         {
@@ -348,7 +352,7 @@ impl AppState {
 /// Undo name of applying an effect.
 fn effect_label(effect: EffectKind) -> &'static str {
     match effect {
-        EffectKind::Fade => "Fade through black",
+        EffectKind::Fade => "Fade IN/OUT",
         EffectKind::Subtitles => "Create subtitles",
         EffectKind::Volume => "Volume",
     }

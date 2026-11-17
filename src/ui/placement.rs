@@ -103,6 +103,103 @@ pub fn boxes(
         .collect()
 }
 
+/// The box of a text item (frame pixels): its laid-out text and padding, centred on its
+/// place.
+pub fn text_box(item: &crate::text::TextItem, frame: (u32, u32), text_size: Vec2) -> Rect {
+    let font = crate::text::font_px(frame.1, item.size);
+    let pad = ass::outline(font) as f32;
+    let size = text_size + vec2(2.0 * pad, 2.0 * pad);
+    let (fx, fy) = item.place.fraction();
+    Rect::from_center_size(
+        pos2(
+            (fx * f64::from(frame.0)) as f32,
+            (fy * f64::from(frame.1)) as f32,
+        ),
+        size,
+    )
+}
+
+/// The box of a text fixed to the sphere, seen by the camera `cam` on a picture of `frame`
+/// pixels (REQ-112): at the projected point, with the text as big as the scene around it.
+/// `None` while the point is behind the camera or the box is outside the picture.
+pub fn anchored_box(
+    item: &crate::text::TextItem,
+    cam: crate::camera::Camera,
+    frame: (u32, u32),
+    measure: &mut dyn FnMut(&str, f32, f32) -> Vec2,
+) -> Option<Rect> {
+    let a = item.anchor?;
+    let (x, y) = crate::camera::project(
+        cam,
+        frame.0,
+        frame.1,
+        f64::from(a.yaw_cd) / 100.0,
+        f64::from(a.pitch_cd) / 100.0,
+    )?;
+    let focal = (f64::from(frame.0) / 2.0) / (cam.fov_deg().to_radians() / 2.0).tan();
+    let per_deg = focal * std::f64::consts::PI / 180.0;
+    let font = (f64::from(a.size_cd) / 100.0 * per_deg * f64::from(item.size) / 1000.0).max(4.0);
+    let wrap = (f64::from(a.wrap_cd) / 100.0 * per_deg).max(8.0);
+    let text = measure(&item.text, font as f32, wrap as f32);
+    let pad = ass::outline(font.round() as u32) as f32;
+    let rect = Rect::from_center_size(pos2(x as f32, y as f32), text + vec2(2.0 * pad, 2.0 * pad));
+    rect.intersects(Rect::from_min_size(
+        pos2(0.0, 0.0),
+        vec2(frame.0 as f32, frame.1 as f32),
+    ))
+    .then_some(rect)
+}
+
+/// The boxes of the text items on screen at `at` (a text that is hidden for a moment by
+/// its blink keeps its box: it is still there to grab). With a 360 camera `cam`, a text
+/// fixed to the sphere is where the camera sees it (and has no box when it is out of
+/// view); otherwise every text is at its flat place.
+pub fn text_boxes(
+    project: &Project,
+    at: Micros,
+    frame: (u32, u32),
+    cam: Option<crate::camera::Camera>,
+    measure: &mut dyn FnMut(&str, f32, f32) -> Vec2,
+) -> Vec<(crate::text::TextId, Rect)> {
+    let wrap = (frame.0 as f32 - 2.0 * ass::margin_lr(frame.0) as f32).max(1.0);
+    project
+        .texts
+        .shown_at(at)
+        .into_iter()
+        .filter_map(|t| match (t.anchor, cam) {
+            (Some(_), Some(c)) => anchored_box(t, c, frame, measure).map(|r| (t.id, r)),
+            _ => {
+                let font = crate::text::font_px(frame.1, t.size);
+                let size = measure(&t.text, font as f32, wrap);
+                Some((t.id, text_box(t, frame, size)))
+            }
+        })
+        .collect()
+}
+
+/// The boxes of the lines fixed to the sphere that are on screen at `at`, as the camera
+/// `cam` sees them (`None`: the point is out of view, so the line has no box there).
+pub fn anchored_line_boxes(
+    project: &Project,
+    at: Micros,
+    frame: (u32, u32),
+    cam: crate::camera::Camera,
+    measure: &mut dyn FnMut(&str, f32, f32) -> Vec2,
+) -> Vec<(LineId, Option<Rect>)> {
+    project
+        .subtitles
+        .shown_at(&project.timeline, at)
+        .into_iter()
+        .filter(|l| l.anchor.is_some() && !l.text.trim().is_empty())
+        .map(|l| {
+            let mut t = crate::text::TextItem::new(crate::text::TextId(0), l.text.clone(), l.start);
+            t.size = l.size.unwrap_or(crate::subtitles::SIZE_NORMAL);
+            t.anchor = l.anchor;
+            (l.line, anchored_box(&t, cam, frame, measure))
+        })
+        .collect()
+}
+
 /// The topmost box under frame point `p`.
 pub fn hit(boxes: &[(LineId, Rect)], p: Pos2) -> Option<(LineId, Rect)> {
     boxes.iter().rev().find(|(_, r)| r.contains(p)).copied()

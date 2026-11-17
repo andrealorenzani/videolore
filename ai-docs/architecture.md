@@ -2,7 +2,7 @@
 
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
-target: 1.2.6 PLAN (boxes+size+align/reset, 360 video; ADR-059..065; REQ-096..105, schema v4, no new crates) | prev 1.2.0 (effects per clip/whole video, embedded subtitle reuse + alignment, SRT export, per-line positions, selection, ruler; ADR-049..058; earlier: 1.1.0 ADR-041..048, 0.4.2 ADR-037..040 + deviations; ADR-032 superseded) | MSRV 1.100 (ADR-012) | toolchain: latest stable | ed 2024 | GPL-3.0-only
+target: 1.3.0 BUILT (text items via ASS/libass, installed fonts (+fontdb 0.24, MIT), one Selection, Context Menu, 360 anchors burned into sphere before v360, 360 video export + own MP4/MOV spherical writer; ADR-066..079 + addenda DEV-1..3; REQ-106..113 implemented; schema v5; details ai-docs/architecture-plan-1.3.0.md (plan + § Built in 1.3.0 and deviations); Q1=A, Q2=A confirmed 2026-11-17) | prev 1.2.6 (boxes+size+align/reset, 360 video; ADR-059..065; REQ-096..105, schema v4, no new crates) | prev 1.2.0 (effects per clip/whole video, embedded subtitle reuse + alignment, SRT export, per-line positions, selection, ruler; ADR-049..058; earlier: 1.1.0 ADR-041..048, 0.4.2 ADR-037..040 + deviations; ADR-032 superseded) | MSRV 1.100 (ADR-012) | toolchain: latest stable | ed 2024 | GPL-3.0-only
 scope 0.2.0: resolve all 0.1.3 known limitations + REQ-026..044 + REQ-014..020 implemented (music, subtitles/STT) + bundled ffmpeg (C1 reversed) + installers.
 scope 0.3.0: REQ-045..059 (auto setup, plain Settings, effort levels, preview quality, subtitle quality levels, model storage, old-CPU gate, responsiveness, untrusted-input hardening, safe downloads, private temp files) + QG-01..04 (perf review, vuln check + ffmpeg refresh, faster tests, CI warnings). REQ-055 (hw encode) stays planned (ADR-032). Andrea away: SEVERE items defaulted (ADR-030/031/032, effort semantics ADR-029, in-app Settings window ADR-028) -> confirm on return.
 scope 0.4.0: REQ-055 (reworded, implemented) + REQ-060..065 + QG-05 (manual real-hw matrix): hw H.264/HEVC export for NVENC/QSV/AMF(win)/VA-API(linux)/VideoToolbox(macOS), opt-in "Export: Faster" (Best quality default, S1), probe on demand, stall watchdog, output check, silent sw redo, failure memory. all vendors on (S2). next free REQ-066, QG-06 (PM).
@@ -17,11 +17,22 @@ numbers below are decisions/estimates, not measurements; QG-01/03/05 measured va
 
 scope 1.2.6: REQ-096..105 (PM section 1.2.6; docs/business-picture.md + REQ-105 in business-editing.md). no SEVERE questions (M1 flat export, M3 align=centre decided by PM as MINOR). technical Qs decided: engine v360 (ADR-059), per-source POVs in source time (061), camera view fills output frame (063), 360 proxy 4096 wide (063), sizes permille + \fs (064), schema v4 (065). next free REQ-106 (PM).
 
-## human docs index (new/changed 1.2.6; other docs: grep -n '^#')
-- docs/architecture.md § Overview..Known risks — L5-146 (index, edited: version line, sub-doc rows, camera component, 360/boxes decisions + NFR + risk lines)
-- docs/architecture-360.md § Approach L5-9 · § Recognising a 360 video L10-15 · § Camera and POVs L16-22 · § Preview and export graph L23-31 · § Performance and limits L32-37 · § Tests L38-42 · § Risks L43-47 (47 lines)
-- docs/architecture-boxes.md § Boxes on the picture L5-9 · § Moving and resizing L10-14 · § Effect commands L15-20 · § Tests L21-25 (25 lines)
-- docs/architecture-projects.md: v4 row + "1.2.6 (planned)" + "New in version 4" bullets; docs/architecture-ui.md: toolbar bullet + markers bullet; docs/architecture-subtitles.md § Position on screen: Size bullet.
+## ai sub-documents (read only when a task needs them)
+- ai-docs/architecture-plan-1.3.0.md § whole file — L1-136 (136 lines): code facts, crate decision, text model, effects to ASS events, flat render, selection, context menu, 360 anchors, 360 video export, project v5, rename, tests per REQ, ordered steps (done), security, risks, questions; § Built in 1.3.0 and deviations — L131-136 (DEV-1 time to live, DEV-2 spherical marker, DEV-3 anchored subtitle lines, DEV-4 selection).
+
+## human docs index (1.3.0 sections; other sections: grep -n '^#' <doc>)
+- docs/architecture.md § Title and status — L1-4 (4 lines, built 1.3.0) · § Overview — L5-9 (REQ-001..113, 1.3.0 sentence) · § Sub-documents — L10-29 (decisions row, 1.3.0 rows) · § Components — L30-65 (text, fonts, selection, spherical rows) · § Data flow — L66-81 (1.3.0 text and anchors bullet) · § Main technical decisions — L82-84 (link to decisions doc) · § Projects — L85-87 (v5) · § Deviations from the 1.3.0 plan (as built) — L88-93 (DEV list) · § Non-functional targets — L94-114 (text item targets) · § Known risks — L127-138 (1.3.0 bullet) (138 lines, at the limit: next change splits Non-functional targets)
+- docs/architecture-decisions.md § whole file — L1-29 (29 lines, new in 1.3.0, moved out of architecture.md; 1.3.0 bullet)
+- docs/architecture-text.md § Model L5-9 · § Rendering L10-15 · § Effects L16-22 · § Fonts and safety L23-28 · § Tests L29-33 · § Risks L34-39 · § Deviations (1.3.0) L40-41 (41 lines, 1.3.0)
+- docs/architecture-360.md § Anchored text and subtitles (1.3.0) L49-58 (built-differently bullet L57) · § Export as 360 video (1.3.0) L59-65 (spherical marker sentence L61) · § Tests for 1.3.0 L66-69 (69 lines; other sections unchanged)
+- docs/architecture-boxes.md § Effect commands L15-20 (toolbar note L19) · § Context Menu and text boxes (1.3.0) L21-25 · § Tests L26-31 (31 lines)
+- docs/architecture-projects.md § Format versions L5-22 (v5 row L14, 1.3.0) · § Loading and validation L23-31 (v5 bullet L29, 1.3.0) · § Unsaved changes L32-37 · § What is not in a project L38-39 (39 lines)
+- docs/architecture-ui.md § Selection (1.3.0) L78-82 · § Add Text popup (1.3.0) L83-86 · § Risks L87-90; other sections unchanged (90 lines)
+- docs/architecture-subtitles.md § Position on screen (1.2.0) L50-61: 1.3.0 selection and anchor bullet L59 (110 lines)
+- docs/architecture-effects.md § Fade through black L15-23: 1.3.0 label bullet L16 (38 lines)
+- docs/architecture-ffmpeg.md § Subtitle rendering and fonts L52-57: 1.3.0 installed fonts bullet L55 (78 lines)
+- docs/architecture-dependencies.md § Rust crates L15-42: 1.3.0 paragraph L37 (fontdb; in-house spherical marker) (72 lines)
+- docs/architecture-security.md § Text items and fonts (1.3.0) L61-66 · § Spherical marker (1.3.0) L67-70 (83 lines)
 
 ## component map (src/ modules)
 - time: µs/rational time, ts parse/format, no floats in cut math. pure.
@@ -603,6 +614,38 @@ ADR-065 (1.2.6) schema v4. REQ-105.
 - position accuracy: export text centre within 2% of frame height of preview position (libass integration test 320x180).
 - alignment quality gate (gated, Fast model, committed fixture): >= 90% words matched, matched starts within 0.3 s (ASSUMPTION borderline, risk 38).
 
+ADR-066 (1.3.0) text items = own project list, rendered by the subtitle ASS/libass path (one engine for preview and export). REQ-108..111, 113.
+  alt rejected: drawtext (no wrap box, weak fontconfig name lookup, no move/fade combos); per-item PNG + overlay expressions (sprites, slide/fade by expressions, layout drift vs egui); in-process rasteriser (second engine). reason: wrap, escape, fonts and burn-in already tested.
+ADR-067 (1.3.0) text effects = ASS events from one pure function on the timeline: \fad/\fade (fades), \move (slide, times relative to event start), one event per visible blink phase. caps 2000 events/item, 20000/project, refused by validation. REQ-109.
+  alt rejected: \t chains for blink (long, slow to parse); sendcmd on ASS (libass has no runtime change); per-frame overlay expressions. reason: testable without ffmpeg, bounded cost.
+ADR-068 (1.3.0) installed fonts: fontdb 0.24.0 default features (MIT; pure Rust; keeps fontconfig dirs on Linux); background scan at start; family name stored, charset whitelist (letters digits space - . _ ( )); egui gets font bytes from a worker (cap 64 MiB, LRU 8); missing font kept, libass fallback, UI note. REQ-108/111. TECHNICAL (decided: user answer "installed fonts").
+  alt rejected: font-kit (native code per OS), fontique 0.13 (larger tree), per-OS APIs (3 implementations). Only new crate of 1.3.0.
+ADR-069 (1.3.0) 360 anchor stored as (yaw, pitch, size_cd, wrap_cd) in 1/100 deg; anchored text burned into the equirect frame of its 360 segment BEFORE v360 (static ASS per segment, local times; box across yaw ±180 written twice). REQ-112. ADDENDUM (built, DEV-3): anchored SUBTITLE lines are drawn as plain white TextItems (no preset box/highlight); automatic view-fixed lines unchanged.
+  alt rejected: per-frame ASS repositioning (libass cannot change placement at run time); overlay after projection with per-frame sprites (second projection); GPU (rejected ADR-059). reason: exact placement from the same projection, no per-frame cost.
+ADR-070 (1.3.0) projection in pure camera.rs: rectilinear project(cam,w,h,yaw,pitch)->Option<xy> and unproject; same convention and f=(w/2)/tan(hfov/2) as v360 (sign from the 1.2.6 spike; band test). box = projected tangent-plane corners. REQ-112/111. Tolerance 1 deg vs real ffmpeg.
+ADR-071 (1.3.0) graph: events computed on the timeline, cut per segment; anchored pieces in 360 segments before v360; flat pieces in the flat ASS after concat only on flat ranges; no extra ffmpeg process (ADR-015 budget). 1.2.6 argv byte-identical when no text/anchor (golden).
+  alt rejected: one ASS with segment time mapping (projection differs per segment); one ffmpeg run per segment (process budget).
+ADR-072 (1.3.0) ExportMode {Automatic, Sphere360, FlatCamera} in the export plan; the UI asks each time for projects with 360 clips (not saved, user decision); Sphere360 = graph without v360, all segments 360 (refused with message otherwise); size = REQ-022 lowest pixel count. REQ-103.
+  alt rejected: automatic choice (user decided ask); choice stored in project (user decided ask each time).
+ADR-073 (1.3.0) ONE Selection value (BTreeSet<ObjRef{Line,Text}>) in window state, pure transitions in src/selection.rs. removes HashSet selection + selected_line (two states = cause of lost multi-selection). REQ-090..092.
+  alt rejected: keep both and sync (the bug source).
+ADR-074 (1.3.0) Context group = pure rule over selection + playhead-on-360; actions stay shared-table actions; greyed states removed from the group only. REQ-106.
+ADR-075 (1.3.0) rename label only "Fade through black" -> "Fade IN/OUT" in the label table; internal EffectKind name and format unchanged. REQ-107.
+  alt rejected: rename internal enum (churn, no value).
+ADR-076 (1.3.0) schema v5: texts (#[serde(default)] Vec) + line.anchor (Option, skip if None); written always (ADR-051/065 reason); loads 1..5, TooNew >5; validation list in ai-docs/architecture-plan-1.3.0.md. REQ-113. ADDENDUM (built, DEV-1): on load ttl refused only if <100 ms or >24 h (text.rs MAX_TTL); ttl longer than video accepted on load (cut at video end); add/edit/move clamp to MIN_TTL..=video length (app/texts.rs clamp_ttl). Plan's "longer than video = refused" dropped.
+ADR-077 (1.3.0) TECHNICAL: slide and fade of anchored text move in the plane of the sphere picture (direction = frame directions), not across the view (per-frame position would need a second renderer). Consequence: text may leave the view while sliding. REQ-109/112.
+ADR-078 (1.3.0) 360 video output: anchored items at anchor; automatic (view-fixed) subtitle lines at their preset frame place (confirmed by Andrea, Q2=A). Spherical Video V1 on the output: spike M0 decides the way (native option, remux, or own box writer last). REQ-103. ADDENDUM (built, DEV-2): spike result ffmpeg 6.1.1 drops spherical side data on re-encode (measured) -> option 3 taken: src/spherical.rs rewrites moov of own MP4/MOV output, adds uuid ffcc8263-f855-4a93-8814-587a02521fdd Spherical V1 XML box; only moov read (size-capped), rest copied; MKV/WebM unmarked; bundled 9.x not measured.
+ADR-079 (1.3.0) TECHNICAL: anchored text layout in equirect px: size = 5% of view vertical FOV at add time (deg) x factor, wrap = 60% of view horizontal FOV (assumption, to confirm with REQ-111 wording). REQ-111/112.
+
+## NFR targets (1.3.0 additions)
+- every UI frame <= 200 ms with texts during export + STT + look-around on 4K x 2K and 8K x 4K (REQ-104 harness extended; gate).
+- event build <= 50 ms for 200 items (unit); events <= 2000/item, <= 20000/project (validation).
+- font scan on worker, never blocks start-up (QG-01 bound still 0.5 s over 0.2.2); picker "Loading fonts…" until done.
+- flat text centre within 2% H preview vs export; 360 text within 1 deg (preview vs export and yaw/pitch math vs v360).
+- 1.2.6 projects: export argv byte-identical (golden v1..v4 fixtures).
+- 360 video export: no speed target (user decision).
+- coverage >= 85 %, feature coverage 100 % for REQ-106..113 (`// covers:`).
+
 ## NFR targets (1.2.6 additions)
 - every UI frame <= 200 ms (gate): camera drag/zoom + box drag/resize + playback of 360 during export + STT, on 4K x 2K and 8K x 4K generated 360 files (REQ-056 harness extended).
 - ESTIMATES (not gates): camera still 4K src < 400 ms, 8K proxy < 700 ms; 360 export >= 0.5x realtime 4K->1080p; sendcmd file for 10 min 30 fps < 100 ms; path lookup O(log n).
@@ -612,6 +655,9 @@ ADR-065 (1.2.6) schema v4. REQ-105.
 
 ## security (1.2.6)
 - sendcmd file + filter args built only from validated ints formatted by us; no user/file string reaches ffmpeg or ASS; metadata read = enumerated ffprobe values; POV count/values bounded on load (ADR-065); file in private Work folder (0700, ADR-033), relative name, escaped; hostile 8K/huge dims -> too_large gate (ints u32, no overflow: use u64 products).
+
+## security (1.3.0)
+- text/font names untrusted: ASS escape (ADR-020 path), font charset whitelist <=100 chars, colour #RRGGBB, numbers formatted by us; caps 2000/20000 events; font files: regular, <=64 MiB, worker; system fonts parsed by OS/libass/FreeType (trusted, risk noted); anchors validated on load; no network, no unsafe.
 
 ## security
 threat: malicious media names/contents, malicious project JSON, PATH hijack, tampered downloads (ffmpeg build, model), filtergraph/ASS injection, desktop entry injection.
@@ -640,6 +686,7 @@ bundled non-Rust: ffmpeg GPL builds (BtbN, Riedl), Noto Sans Bold OFL-1.1, model
 1.1.0: no new crates (runtime or dev). checked 2026-11-15: egui/eframe 0.37.0, winit 0.30.13 (via eframe; no Wayland DnD), egui_kittest 0.37.0 (fallback only, ADR-045). egui built-ins used: MenuBar, menu_button/SubMenuButton, Popup, Window, ScrollArea::show_rows, Modifiers::COMMAND + format_shortcut, AccessKit output for tests. rejected: egui_dock/egui_tiles, muda.
 1.2.0: no new crates (runtime or dev). egui built-ins: DragAndDrop (set_payload / dnd_hover_payload / dnd_release_payload), CursorIcon::Copy/NoDrop, FontFamily::Name for bundled Noto Sans Bold (text measure). rejected: srtparse/subparse/srtlib (ADR-054), strsim (ADR-056), isolang (static 639 table), ab_glyph/fontdue (ADR-057), matroska/mp4 demux crates (ADR-053), forced aligners (ADR-056).
 
+1.3.0: +fontdb 0.24.0 (MIT, rust-version 1.71, default features; transitive fontconfig-parser 0.5.8 MIT, memmap2 0.9 MIT/Apache, roxmltree MIT/Apache, ttf-parser 0.25 MIT/Apache) = the only new crate. rejected: font-kit 0.14.3, fontique 0.13.0, per-OS APIs. PE: cargo tree + cargo-deny after adding. checked 2026-11-17 via cargo info (read-only).
 1.2.6: no new crates (runtime/dev). v360/sendcmd from bundled ffmpeg (pinned); egui CursorIcon resize + scroll/zoom_delta built in. checked plan time only, not re-verified.
 
 ## risks
@@ -648,6 +695,7 @@ bundled non-Rust: ffmpeg GPL builds (BtbN, Riedl), Noto Sans Bold OFL-1.1, model
 3. Riedl URL retention unknown -> CI fails loudly, re-pin.
 4. whisper-rs-sys bindgen/libclang on 3 OS -> build time + CI fragility.
 5. non-Latin subtitle scripts -> system fonts (documented limitation).
+6. 1.3.0: spherical marker resolved by own MP4/MOV writer (ADR-078 addendum; MKV/WebM unmarked); libass vs fontdb family names (silent fallback in export only); flat text near poles (accepted, Q1=A); slide leaves the view (ADR-077); blink event cost (capped); egui vs libass wrap (as subtitles). detail: ai-docs/architecture-plan-1.3.0.md § Risks.
 6. GPL corresponding-source adequacy not lawyer-reviewed.
 7. some linux file managers won't run ELF from tar.gz -> README fallback.
 8. scope largest so far, long CI -> milestones M0–M7 each green.
@@ -710,6 +758,12 @@ covers: REQ-055 (M4/M5), 060 (M1/M6), 061 (M3), 062 (M2/M5), 063 (M5), 064 (M1/M
 
 ## 1.2.0 milestones (PE)
 0 baselines BEFORE change: tests/fixtures/project-v2-1.1.vlproj (boundary fades, mix, music, subs w/ word timings) + tests/fixtures/export-argv-1.1.0.txt for it + project-v1; headless frame time | 1 schema v3 + model fields + validation + saved-doc patch (REQ-094/057) | 2 timeline edge fades + clip volume ops, merge rule (REQ-083/084/011/020) | 3 render gain, stream-copy rule, FrameKey positions; real ffmpeg: black first/last frame, muted clip silence volumedetect (REQ-083/084/023) | 4 ass \pos + placement; libass centroid within 2% H (REQ-089/017) | 5 srt.rs write/parse/strip_tags + corpus + ffmpeg round trip + atomic export (REQ-088) | 6 media subtitle detection + background re-check + tooltip; MKV output_ts_offset (REQ-086/057) | 7 align.rs + iso639 table (REQ-095) | 8 stt ranges + modes + fallbacks + cancel all-or-nothing; only clip range -ss/-t reaches ffmpeg (REQ-085/087/095/052/054) | 9 app flows ApplyEffect x3 x2, undo, pending re-check, REQ-044 range, SubtitleSource modal, consent "Use without matching words", language, one job, selection, group positions, Esc, ExportSrt (REQ-082/085/087/090/091/092/044/015) | 10 ui/ruler.rs (REQ-093) | 11 UI wiring + AccessKit tests + REQ-068 audit 800x500 (REQ-075/082/089..092/068/069/077/078/079) | 12 gated alignment_matches_real_speech w/ committed fixture (REQ-095/086/087) | 13 REQ-056 harness + effect drag + preview drag during export + matching | 14 full suite, coverage >= 85, feature coverage 100. version set by documenter.
+
+## 1.3.0 milestones (PE)
+M0 baselines + spikes (golden argv v1..v4, 1.2.6 export argv, headless frame time; spherical metadata on re-encode; libass family lookup; yaw sign for burn-in; egui set_fonts cost) | M1 one Selection (REQ-090..092) | M2 schema v5 + TextItem + validation (REQ-113) | M3 text.rs events + caps (REQ-109) | M4 fonts module (REQ-108 font part) | M5 flat burn-in + boxes (REQ-111, 110 box) | M6 Add Text popup, Text lane, Delete/undo (REQ-108, 110, 071, 075, 082) | M7 context group + rename (REQ-106, 107) | M8 camera project/unproject vs v360 (REQ-112 math) | M9 anchors on 360 incl. seam + flat fallback (REQ-112) | M10 Sphere360 export + metadata + mixed refusal (REQ-103) | M11 perf gates (REQ-104 harness with texts) | M12 quality gates, CI green. Full steps: ai-docs/architecture-plan-1.3.0.md § Ordered implementation steps.
+## 1.3.0 answers of Andrea (REFINE 2026-11-17; no open questions)
+- Q1 = A: 360 text is a flat sticker on the sphere (exact place, one projection engine; narrows toward the poles like any flat picture in a 360 video). Per-view perspective text (B) is not planned.
+- Q2 = A: automatic (view-fixed) subtitle lines in a 360 video export stay at their preset place in the frame (lower third, about 30 deg below the front).
 
 ## 1.2.6 milestones (PE)
 0 SPIKE + baselines BEFORE change: golden argv of v1, v2(1.1), v3(1.2.5) fixtures; spike script: generated equirect band picture -> v360 with sendcmd per-frame yaw/pitch/h_fov/v_fov; record sign, units, timing on bundled + CI ffmpeg; report to Architect if fov not commandable (REQ-102/103) | 1 camera.rs pure + tests (path, arc, clamp, drag/zoom, command_lines) (REQ-101/102) | 2 schema v4 + models (media.spherical/treat_as_360, camera, line.size) + validation + hostile corpus + golden v1-3 (REQ-105/100) | 3 media detection (fixtures JSON + spherical-360.mp4) + bg re-check + tag + Clip details switch (REQ-100) | 4 render sphere segment + cmd files + effective_dims + no-stream-copy + FrameKey; real ffmpeg band-picture tests, preview==export, 45° mid, split edge views (REQ-102/103/023/022) | 5 proxy 4096 rule + too_large gate + message (REQ-104) | 6 ass size tags + placement measure + golden None (REQ-097/017) | 7 ui/boxes.rs pure (handles, resize, align, cursor) (REQ-096..099) | 8 app commands: live view, DragCamera/Zoom/SetPov/Edit/Remove/Set360, ResizeLines, AlignSelected, ResetObjects, ToggleBoxes, disabled reasons, undo labels, override rules (REQ-098/099/101/102) | 9 settings show_boxes + corpus (REQ-096/057) | 10 UI: actions+toolbar group+fit+menus+shortcuts uniqueness+context menus, preview box drawing/handles/cursors, camera drag/wheel, Set POV button, POV markers + popup (REQ-069..072, 096..102) | 11 AccessKit tests + 800x500 audit incl. 15 toolbar commands + REQ-068 | 12 REQ-056 harness: camera drag + box resize during export + STT on 4K x 2K and 8K x 4K (REQ-104) | 13 hw export + outcheck with a 360 clip via SimulatedHw (REQ-103) | 14 full suite, coverage >= 85, feature coverage 100 (// covers: REQ-096..105). tests use small generated files; 8K file only for the gate test (few frames, lavfi, not committed).

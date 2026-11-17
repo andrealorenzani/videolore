@@ -20,6 +20,7 @@ pub const HANDLE_TOLERANCE: f32 = 8.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjectId {
     Line(LineId),
+    Text(crate::text::TextId),
 }
 
 /// One movable object on the picture.

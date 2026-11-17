@@ -130,6 +130,8 @@ pub struct ExportJob {
     pub stall_timeout: Duration,
     /// Time limit of the check's metadata read ([`CHECK_TIMEOUT`]).
     pub check_timeout: Duration,
+    /// What to make of a project with 360° clips (REQ-103).
+    pub mode: render::ExportMode,
 }
 
 /// `<dir>/.<name>.videolore-partial`.
@@ -225,7 +227,7 @@ pub fn start(job: ExportJob, runner: Arc<dyn Runner>) -> ExportHandle {
 /// Builds the plan, probing keyframes (cached per source) only when stream copy is possible.
 pub fn plan(job: &ExportJob, runner: &dyn Runner) -> Result<Plan, ExportError> {
     let mut cache: HashMap<MediaId, Vec<Micros>> = HashMap::new();
-    let plan = render::plan_export(&job.project, &job.encoders, |m, t| {
+    let plan = render::plan_export_mode(&job.project, &job.encoders, job.mode, |m, t| {
         let kf = cache
             .entry(m.id)
             .or_insert_with(|| probe_keyframes(runner, &job.ffprobe, &m.path).unwrap_or_default());
@@ -324,7 +326,8 @@ pub fn run(
         (None, Plan::Reencode { .. }) => ExportMethod::Software,
     };
     match result {
-        Ok(()) => match crate::scratch::publish(&partial)
+        Ok(()) => match mark_if_sphere(job, &partial)
+            .and_then(|()| crate::scratch::publish(&partial))
             .and_then(|()| std::fs::rename(&partial, &output))
         {
             Ok(()) => Ok((output, method)),
@@ -338,6 +341,16 @@ pub fn run(
             Err(e)
         }
     }
+}
+
+/// A 360 video carries the spherical-video information (REQ-103): written into the
+/// finished file before it is published. Containers other than MP4/MOV are left as they
+/// are.
+fn mark_if_sphere(job: &ExportJob, file: &Path) -> std::io::Result<()> {
+    if job.mode == render::ExportMode::Sphere360 {
+        crate::spherical::mark_equirectangular(file)?;
+    }
+    Ok(())
 }
 
 /// `<dir>/.<name>.hw.videolore-partial`: the hardware attempt's own partial file.
@@ -564,7 +577,8 @@ impl Attempt<'_> {
             }
         };
         let r = r.and_then(|()| {
-            crate::scratch::publish(&partial)
+            mark_if_sphere(self.job, &partial)
+                .and_then(|()| crate::scratch::publish(&partial))
                 .and_then(|()| std::fs::rename(&partial, output))
                 .map_err(fatal)
         });
@@ -840,6 +854,7 @@ pub(crate) mod tests {
             hw: None,
             stall_timeout: STALL_TIMEOUT,
             check_timeout: CHECK_TIMEOUT,
+            mode: Default::default(),
         }
     }
 

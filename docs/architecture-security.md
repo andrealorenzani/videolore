@@ -58,6 +58,16 @@ There are no secrets, accounts or telemetry.
 - **Recent projects (1.1.0):** names are shown with control and direction-override characters replaced, the full path appears only in a tooltip, and a project is opened only when the user clicks it, through the normal loading path. A missing file is reported and removed. The list stores full project paths in the user's own settings folder; File > Open recent > Clear list removes them.
 - Exports go to a temporary file renamed on success; source files are never written.
 
+## Text items and fonts (1.3.0)
+- Text and font names come from the project file, so they are untrusted: text goes through the subtitle escaping (no styling can be injected), a font name is limited to 100 characters from letters, digits, spaces and `- . _ ( )`, and a colour must be `#RRGGBB`.
+- Blink and other effects are capped in number of ASS events (2,000 per item, 20,000 per project), so a hostile project cannot make `ffmpeg` work without end.
+- Installed fonts are read only from the system font folders, as regular files of at most 64 MiB, on a background thread. System fonts are parsed by the font code of the operating system and of `ffmpeg` (trusted, as for any system font); a broken system font is outside the project's control.
+- Anchors on the sphere are numbers validated on load and formatted by `videolore` before they reach the filter graph.
+
+## Spherical marker (1.3.0)
+- The 360 marker is written into the export's own MP4 or MOV file, never into a source file. Only the small movie box is read into memory, under a size limit; every size and offset is checked, and the code does not panic on any input. The rest of the file is copied unchanged.
+- The marker is a fixed XML text written by `videolore`; nothing from the project or the media file reaches it.
+
 ## Unsafe code
 Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in two reviewed places: the cancel callback passed to whisper.cpp and the macOS "open document" handler.
 

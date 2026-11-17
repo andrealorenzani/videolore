@@ -27,6 +27,8 @@ mod hw;
 mod v12;
 #[path = "ffmpeg_integration/v126.rs"]
 mod v126;
+#[path = "ffmpeg_integration/v13.rs"]
+mod v13;
 
 struct Env {
     info: FfmpegInfo,
@@ -259,6 +261,7 @@ impl Env {
             hw: None,
             stall_timeout: export::STALL_TIMEOUT,
             check_timeout: export::CHECK_TIMEOUT,
+            mode: Default::default(),
         }
     }
 

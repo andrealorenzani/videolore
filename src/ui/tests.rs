@@ -457,7 +457,7 @@ fn volume_and_subtitle_editing_from_the_popups() {
     app.dispatch(Command::Seek(Micros(1_000_000)), Instant::now())
         .unwrap();
     app.dispatch(Command::AddSubtitle, Instant::now()).unwrap();
-    let id = app.selected_line.unwrap();
+    let id = app.selection.primary_line().unwrap();
     let clip = app.project.timeline.clips[0].id;
     app.dispatch(
         Command::OpenInstance(crate::app::Instance::Line(id, clip)),
@@ -1157,7 +1157,7 @@ fn effect_and_subtitle_drags_stay_responsive_while_exporting_and_matching() {
         .unwrap();
     app.dispatch(Command::Seek(Micros(1_000_000)), now).unwrap();
     app.dispatch(Command::AddSubtitle, now).unwrap();
-    let line = app.selected_line.unwrap();
+    let line = app.selection.primary_line().unwrap();
     app.dispatch(Command::ClearSelection, now).unwrap();
     app.frame = Some(crate::preview::Frame {
         pts: Micros::ZERO,
@@ -1320,7 +1320,13 @@ fn look_around_and_resize_stay_responsive_on_big_spheres_while_exporting_and_mat
             .unwrap();
         app.dispatch(Command::Seek(Micros(1_000_000)), now).unwrap();
         app.dispatch(Command::AddSubtitle, now).unwrap();
-        let line = app.selected_line.unwrap();
+        let line = app.selection.primary_line().unwrap();
+        // this gate is about a line fixed to the picture
+        app.project
+            .subtitles
+            .lines
+            .iter_mut()
+            .for_each(|l| l.anchor = None);
         app.dispatch(
             Command::SetLinePositions {
                 ids: vec![line],

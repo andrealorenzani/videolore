@@ -56,6 +56,7 @@ Since 1.2.0 Subtitles is applied like the other effects (see [effects](architect
 - **Moving a group:** dragging one of the selected lines moves them all to exactly the same position (their previous relative positions are not kept), as one undo step. Only the dragged line's box is kept inside the picture. Reset position on a selection resets all of them.
 - The selection is part of the window state, not of the project or the undo history.
 - **Size (1.2.6):** a line can also have its own text size, 25–400% of the style's, with a box and corner handles in the preview; see [boxes](architecture-boxes.md).
+- **1.3.0:** the selection is one thing for the timeline and the preview: Ctrl/Shift+click on a box adds to it without moving it, and a Shift+drag selection survives so the selected boxes can be moved together (see [user interface](architecture-ui.md#selection-130)). A subtitle line added at the playhead on a 360 clip is anchored to the sphere; drawn there, it is plain white text without its preset style (see [360 video](architecture-360.md#anchored-text-and-subtitles-130)).
 - **Known limits:** egui and the burn-in library may measure text a few pixels differently near the edges (the burned result is what counts); a line made longer after being placed near an edge may then cross it; positioned lines shown at the same time can overlap.
 
 ## CPU requirements (since 0.2.1)

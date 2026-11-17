@@ -21,6 +21,10 @@ const CLIP_COLORS: [Color32; 4] = [
     Color32::from_rgb(150, 100, 60),
     Color32::from_rgb(120, 80, 150),
 ];
+const TEXT_COLOR: Color32 = Color32::from_rgb(170, 90, 140);
+/// Height of the Text lane and the width of the grab zones at the ends of a bar.
+pub const TEXT_H: f32 = 18.0;
+pub const BAR_GRAB: f32 = 6.0;
 const MUSIC_COLOR: Color32 = Color32::from_rgb(40, 130, 130);
 const LINE_COLOR: Color32 = Color32::from_rgb(230, 200, 90);
 /// Share of the track area used by the video track (the rest is music).
@@ -67,10 +71,52 @@ pub fn track_rects(area: Rect) -> (Rect, Rect) {
     )
 }
 
+/// Splits the area left under the video track into the Text lane (between video and
+/// music) and the music track.
+pub fn text_lane(below_video: Rect) -> (Rect, Rect) {
+    let top = below_video.min.y;
+    (
+        Rect::from_min_max(
+            pos2(below_video.min.x, top),
+            pos2(below_video.max.x, top + TEXT_H),
+        ),
+        Rect::from_min_max(
+            pos2(below_video.min.x, top + TEXT_H + TRACK_GAP),
+            below_video.max,
+        ),
+    )
+}
+
 /// Height of the timeline content: the visible height, or the sum of the minimum heights
 /// when that is more (then it scrolls).
 pub fn content_height(visible: f32) -> f32 {
-    visible.max(RULER_H + LANE_H + VIDEO_MIN_H + MUSIC_MIN_H + TRACK_GAP)
+    visible.max(RULER_H + LANE_H + VIDEO_MIN_H + TEXT_H + MUSIC_MIN_H + 2.0 * TRACK_GAP)
+}
+
+/// What a drag on the bar of a text item changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BarDrag {
+    /// The whole bar: the start moves, the time to live stays.
+    Move,
+    /// The left end: the start moves, the end stays.
+    Left,
+    /// The right end: the time to live changes.
+    Right,
+}
+
+/// Start and time to live of a bar dragged by `delta` (REQ-110): never before 0 and never
+/// shorter than the minimum time to live.
+pub fn dragged(start: Micros, ttl: Micros, mode: BarDrag, delta: Micros) -> (Micros, Micros) {
+    let min = crate::text::MIN_TTL;
+    match mode {
+        BarDrag::Move => ((start + delta).max(Micros::ZERO), ttl),
+        BarDrag::Left => {
+            let end = start + ttl;
+            let s = (start + delta).clamp(Micros::ZERO, (end - min).max(Micros::ZERO));
+            (s, end - s)
+        }
+        BarDrag::Right => (start, (ttl + delta).max(min)),
+    }
 }
 
 /// Where the timeline was drawn this frame.
@@ -82,6 +128,7 @@ pub struct Geometry {
     pub zoom: f32,
     pub lane: Rect,
     pub video: Rect,
+    pub text: Rect,
     pub music: Rect,
 }
 
@@ -200,15 +247,25 @@ fn tracks(
         vec2(rect.width(), LANE_H),
     );
     let tracks_area = Rect::from_min_max(pos2(rect.min.x, lane.max.y + 2.0), rect.max);
-    let (video, music) = track_rects(tracks_area);
+    let (video, below) = track_rects(tracks_area);
+    let (text, music) = text_lane(below);
     cache.timeline = Some(Geometry {
         x0,
         zoom: z,
         lane,
         video,
+        text,
         music,
     });
     painter.rect_filled(lane, 0.0, Color32::from_gray(24));
+    painter.rect_filled(text, 0.0, Color32::from_gray(34));
+    painter.text(
+        pos2(rect.min.x + 2.0, text.min.y + 1.0),
+        Align2::LEFT_TOP,
+        "T",
+        FontId::proportional(10.0),
+        Color32::GRAY,
+    );
     painter.rect_filled(music, 0.0, Color32::from_gray(38));
     painter.text(
         pos2(rect.min.x + 2.0, music.min.y + 1.0),
@@ -360,6 +417,7 @@ fn tracks(
         ui.ctx().set_cursor_icon(egui::CursorIcon::NoDrop);
     }
     marker_lane(ui, app, cache, &painter, lane, x0, z, visible, cmds);
+    text_track(ui, app, &painter, text, x0, z, visible, cmds);
     music_track(ui, app, cache, &painter, music, x0, z, visible, cmds);
     range_select(ui, cache, &painter, rect, x0, z, cmds);
     let xp = x0 + px(app.playhead);
@@ -530,7 +588,7 @@ fn marker_lane(
     for m in &all {
         let chosen = app.popups.instance == Some(m.instance)
             || matches!(m.instance, Instance::Line(id, _)
-                if app.selected_line == Some(id) || app.selection.contains(&id));
+                if app.selection.contains(&id));
         let outline = Stroke::new(
             if chosen { 2.0 } else { 1.0 },
             if chosen {
@@ -610,7 +668,7 @@ fn marker_lane(
     let hover = resp.hover_pos().map(|p| under(p.x)).unwrap_or_default();
     let resp = if hover.is_empty() {
         resp.on_hover_text(
-            "Markers: ◆ fade, ⚑ subtitle line (Ctrl/Cmd+click: select several), ● clip \
+            "Markers: ◆ fade, ⚑ subtitle line (Ctrl/Cmd or Shift+click: select several), ● clip \
              volume, ■ 360° point of view, + add a fade. Click one for its settings.",
         )
     } else {
@@ -621,7 +679,7 @@ fn marker_lane(
         && let Some(p) = resp.interact_pointer_pos()
     {
         let hit = under(p.x);
-        let toggle = ui.input(|i| i.modifiers.command);
+        let toggle = ui.input(|i| i.modifiers.command || i.modifiers.shift);
         match hit.as_slice() {
             [] => {
                 cmds.push(Command::ClearSelection);
@@ -838,6 +896,113 @@ fn music_track(
                 cmds,
                 vec![select.clone(), Command::OpenPopup(Popup::ClipDetails)],
             );
+        });
+    }
+}
+
+/// The Text lane: one bar per text item, from its start for its time to live (REQ-110).
+#[allow(clippy::too_many_arguments)]
+fn text_track(
+    ui: &mut Ui,
+    app: &AppState,
+    painter: &Painter,
+    lane: Rect,
+    x0: f32,
+    z: f32,
+    visible: Rect,
+    cmds: &mut Vec<Command>,
+) {
+    let px = |t: Micros| (t.as_secs_f64() * f64::from(z)) as f32;
+    let video_end = app.project.timeline.duration();
+    for t in &app.project.texts.items {
+        let r = Rect::from_min_size(
+            pos2(x0 + px(t.start), lane.min.y),
+            vec2(px(t.ttl), lane.height()),
+        );
+        let first = t.text.lines().next().unwrap_or("").to_string();
+        let selected = app.selection.contains_text(t.id);
+        let resp = ui
+            .interact(
+                r,
+                Id::unique(("videolore-text", t.id.0)),
+                Sense::click_and_drag(),
+            )
+            .on_hover_text(format!(
+                "{first}\nClick for its settings, drag to move, drag an end to change the time \
+                 it stays, right-click to delete"
+            ));
+        let grab = BAR_GRAB.min(r.width() / 3.0);
+        let left = ui.interact(
+            Rect::from_min_size(r.min, vec2(grab, r.height())),
+            Id::unique(("videolore-text-left", t.id.0)),
+            Sense::drag(),
+        );
+        let right = ui.interact(
+            Rect::from_min_max(pos2(r.max.x - grab, r.min.y), r.max),
+            Id::unique(("videolore-text-right", t.id.0)),
+            Sense::drag(),
+        );
+        if left.hovered() || right.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        }
+        if r.intersects(visible) {
+            painter.rect_filled(r.shrink(1.0), 3.0, TEXT_COLOR);
+            let cut = x0 + px(video_end);
+            if cut < r.max.x {
+                // the part after the end of the video is not shown
+                let past = Rect::from_min_max(pos2(cut.max(r.min.x), r.min.y), r.max);
+                painter.rect_filled(past.shrink(1.0), 3.0, Color32::from_black_alpha(120));
+            }
+            if selected {
+                painter.rect_stroke(
+                    r,
+                    3.0,
+                    Stroke::new(2.0_f32, Color32::YELLOW),
+                    StrokeKind::Inside,
+                );
+            }
+            paint_name(
+                painter,
+                r.min + vec2(4.0, 2.0),
+                &first,
+                r.width() - 8.0,
+                10.0,
+            );
+        }
+        if resp.clicked() {
+            if ui.input(|i| i.modifiers.command || i.modifiers.shift) {
+                cmds.push(Command::ToggleText(t.id));
+            } else {
+                cmds.push(Command::OpenText(t.id));
+            }
+        }
+        for (mode, r) in [
+            (BarDrag::Move, &resp),
+            (BarDrag::Left, &left),
+            (BarDrag::Right, &right),
+        ] {
+            // the pointer's start is gone when the button is released: keep the last delta
+            let drag_id = r.id.with("dx");
+            if let Some(d) = r.total_drag_delta() {
+                ui.data_mut(|data| data.insert_temp(drag_id, d.x));
+            }
+            if r.drag_stopped() {
+                let dx: f32 = ui.data_mut(|data| data.remove_temp(drag_id)).unwrap_or(0.0);
+                if dx != 0.0 {
+                    let delta = Micros::from_secs_f64(f64::from(dx / z));
+                    let (start, ttl) = dragged(t.start, t.ttl, mode, delta);
+                    cmds.push(Command::MoveText {
+                        id: t.id,
+                        start,
+                        ttl,
+                    });
+                }
+            }
+        }
+        let del = Command::DeleteTexts(vec![t.id]);
+        resp.context_menu(|ui| {
+            entry(ui, true, "Settings…", cmds, vec![Command::OpenText(t.id)]);
+            entry(ui, app.is_enabled(&del), "Delete", cmds, vec![del.clone()]);
         });
     }
 }

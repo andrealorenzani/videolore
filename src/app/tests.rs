@@ -781,11 +781,11 @@ fn subtitles_are_generated_after_consent_and_edited_with_undo() {
     );
     app.dispatch(Command::Seek(s(4)), now).unwrap();
     app.dispatch(Command::AddSubtitle, now).unwrap();
-    let added = app.selected_line.unwrap();
+    let added = app.selection.primary_line().unwrap();
     assert_eq!(app.project.subtitles.lines.len(), 4);
     app.dispatch(Command::SelectLine(Some(added)), now).unwrap();
     app.dispatch(Command::DeleteSubtitle(added), now).unwrap();
-    assert!(app.selected_line.is_none());
+    assert!(app.selection.primary_line().is_none());
     assert!(app.dispatch(Command::DeleteSubtitle(added), now).is_err());
     app.dispatch(Command::Undo, now).unwrap();
     assert!(app.project.subtitles.get(added).is_some());

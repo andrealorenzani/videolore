@@ -125,3 +125,10 @@ See [code-360.md](code-360.md) (section "Tests and fixtures"). Real-ffmpeg tests
 `tests/fixtures/export-argv-1.2.5.txt` (written by the ignored test `write_golden_1_2_5`, run only
 with the 1.2.5 code). The four responsiveness gates in `src/ui/tests.rs` run one at a time
 (`one_gate_at_a_time`) because each keeps every core busy.
+
+### 1.3.0 tests
+
+See [code-text.md](code-text.md) (section "Tests"). Real-ffmpeg tests are in
+`tests/ffmpeg_integration/v13.rs` (black clips with a raised bit rate so the text is not blurred
+away, a 2048x1024 black sphere). Project hostile values are in `project::tests`. The golden argv
+files of 1.1.0 and 1.2.5 still pass unchanged: a project without texts exports as before.

@@ -9,12 +9,13 @@ Back to the [index](business.md).
 - Music and subtitles are included in the exported file (subtitles are burned into the picture).
 - HEVC files play on Apple devices.
 - (1.2.0) Subtitles can also be saved as a separate `.srt` file with File > Export subtitles (.srt)… (REQ-088, see [Subtitles](business-subtitles.md)).
+- (1.3.0) Text items are burned into the picture like subtitles (REQ-111); a project with a text item is re-encoded. For a project with 360 clips, Export asks whether to make a 360 video that keeps the whole sphere or the flat camera view of 1.2.6 (REQ-103, see [Boxes on the picture and 360 video](business-picture.md)). This question is the only exception to the automatic output format, and it appears only for such projects.
 - (0.4.0) **Faster export** with the computer's video hardware (NVIDIA, Intel, AMD, Apple), chosen in Settings. If the hardware is missing or fails, the normal method is used automatically and the result is always a correct file.
 
 ## Requirements
 - REQ-021 (implemented): Export shows progress and can be cancelled; a cancelled export leaves no partial file.
 - REQ-022 (implemented): The output format is chosen automatically: if all clips share the same format it is kept; otherwise the lowest by pixel count, then frame rate, then bitrate is used, with letterboxing and never stretching.
-- REQ-023 (implemented): Export does as little processing as possible: stream copy (no re-encode) when all clips share an identical format, there are no effects (fades between clips or at the start or end of the video, subtitles, music, video sound level other than 100% or muted, a clip volume other than 100% or a muted clip) and every cut starts on a keyframe; otherwise a single re-encode pass, always frame-accurate.
+- REQ-023 (implemented): Export does as little processing as possible: stream copy (no re-encode) when all clips share an identical format, there are no effects (fades between clips or at the start or end of the video, subtitles, text items, music, video sound level other than 100% or muted, a clip volume other than 100% or a muted clip) and every cut starts on a keyframe; otherwise a single re-encode pass, always frame-accurate.
 - REQ-036 (implemented): Exported HEVC video in MP4 or MOV carries the Apple-compatible tag (hvc1), both with stream copy and with re-encode.
 - REQ-037 (implemented): A timeline of 200 segments cut from one source exports successfully and frame-accurately.
 

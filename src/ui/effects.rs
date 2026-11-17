@@ -64,6 +64,11 @@ pub fn rows() -> [(EffectKind, &'static str); 3] {
     EffectKind::ALL.map(|e| (e, e.name()))
 }
 
+/// The row below the effects that opens the popup of a new text (REQ-075, REQ-108).
+pub const ADD_TEXT_ROW: &str = "Add Text";
+/// Tooltip of [`ADD_TEXT_ROW`].
+pub const ADD_TEXT_TOOLTIP: &str = "Opens a popup to add a text at the playhead";
+
 /// Number of fades of every kind (boundaries, start, end).
 pub fn fade_count(app: &AppState) -> usize {
     let tl = &app.project.timeline;
@@ -104,6 +109,16 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             cmds.push(Command::OpenPopup(popup));
         }
     }
+    // not an effect to drop on a clip: only a click
+    let r = ui
+        .add(
+            Button::selectable(app.popups.is_open(crate::app::Popup::Text), ADD_TEXT_ROW)
+                .min_size(egui::vec2(w, 0.0)),
+        )
+        .on_hover_text(ADD_TEXT_TOOLTIP);
+    if r.clicked() {
+        cmds.push(Command::OpenNewText);
+    }
 }
 
 /// Text of a fade in lists and the chooser.
@@ -127,7 +142,7 @@ pub fn fade_text(app: &AppState, b: usize) -> String {
 pub fn fades_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let tl = &app.project.timeline;
     ui.label(
-        "A fade through black darkens the end of a clip to black and brings the next one \
+        "A Fade IN/OUT darkens the end of a clip to black and brings the next one \
          up from black; the sound fades out and in with it. Every fade has the same fixed \
          length.",
     );
@@ -350,7 +365,7 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
             for l in &shown[range] {
                 let i = Instance::Line(l.line, l.clip);
                 let on = app.popups.instance == Some(i)
-                    || app.selected_line == Some(l.line)
+                    || app.selection.primary_line() == Some(l.line)
                     || app.selection.contains(&l.line);
                 let text = format!("{}  {}", timecode(l.start), l.text);
                 if ui

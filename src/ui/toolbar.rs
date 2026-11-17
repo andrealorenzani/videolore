@@ -10,8 +10,8 @@ use super::{action_tooltip, menu};
 use crate::app::{AppState, Command};
 use eframe::egui::{Button, TextStyle, TextWrapMode, Ui, WidgetText};
 
-/// The toolbar's actions, left to right.
-pub const TOOLBAR: [ActionId; 15] = [
+/// The toolbar's actions, left to right, before the Context Menu group.
+pub const TOOLBAR: [ActionId; 12] = [
     ActionId::Import,
     ActionId::AddToTimeline,
     ActionId::AddMusic,
@@ -24,13 +24,43 @@ pub const TOOLBAR: [ActionId; 15] = [
     ActionId::Redo,
     ActionId::PlayPause,
     ActionId::Export,
-    ActionId::AlignHorizontal,
-    ActionId::AlignVertical,
-    ActionId::ResetObjects,
 ];
 
-/// Index of the first button of the effect group (drawn after a separator).
-pub const EFFECT_GROUP: usize = 12;
+/// Index of the first button of the Context Menu group (drawn after a separator).
+pub const EFFECT_GROUP: usize = TOOLBAR.len();
+
+/// The Context Menu (REQ-106): the commands that act on what is selected or under the
+/// playhead. Empty (so the group is not drawn at all) when there is nothing to act on:
+/// Align and Reset with a subtitle line selected, Set POV and Reset with the playhead
+/// over a 360 clip. A selected text item shows nothing (1.3.0).
+pub fn context_group(app: &AppState) -> Vec<ActionId> {
+    context_group_of(
+        app.selection.has_lines(),
+        app.sphere_at_playhead().is_some(),
+    )
+}
+
+/// [`context_group`] from its two inputs.
+pub fn context_group_of(line_selected: bool, on_360: bool) -> Vec<ActionId> {
+    let mut v = Vec::new();
+    if line_selected {
+        v.extend([ActionId::AlignHorizontal, ActionId::AlignVertical]);
+    }
+    if on_360 {
+        v.push(ActionId::SetPov);
+    }
+    if line_selected || on_360 {
+        v.push(ActionId::ResetObjects);
+    }
+    v
+}
+
+/// Every button of the toolbar now: the fixed ones, then the Context Menu group.
+pub fn actions(app: &AppState) -> Vec<ActionId> {
+    let mut v = TOOLBAR.to_vec();
+    v.extend(context_group(app));
+    v
+}
 
 /// Label of a toolbar button (shorter than the menu's).
 pub fn label(app: &AppState, id: ActionId) -> String {
@@ -88,9 +118,10 @@ fn tool_button(ui: &mut Ui, app: &AppState, id: ActionId, cmds: &mut Vec<Command
     }
 }
 
-/// The effect group moves to the "»" menu as a whole: part of it is never left in the row.
-pub fn visible(fitting: usize) -> usize {
-    if fitting > EFFECT_GROUP && fitting < TOOLBAR.len() {
+/// The Context Menu group moves to the "»" menu as a whole: part of it is never left in
+/// the row.
+pub fn visible(fitting: usize, total: usize) -> usize {
+    if fitting > EFFECT_GROUP && fitting < total {
         EFFECT_GROUP
     } else {
         fitting
@@ -98,21 +129,25 @@ pub fn visible(fitting: usize) -> usize {
 }
 
 pub fn toolbar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
-    let widths: Vec<f32> = TOOLBAR
+    let all = actions(app);
+    let widths: Vec<f32> = all
         .iter()
         .map(|id| button_width(ui, &label(app, *id)))
         .collect();
-    let n = visible(fit(&widths, ui.available_width(), button_width(ui, "»")));
+    let n = visible(
+        fit(&widths, ui.available_width(), button_width(ui, "»")),
+        all.len(),
+    );
     ui.horizontal(|ui| {
-        for (i, id) in TOOLBAR[..n].iter().enumerate() {
+        for (i, id) in all[..n].iter().enumerate() {
             if i == EFFECT_GROUP {
                 ui.separator();
             }
             tool_button(ui, app, *id, cmds);
         }
-        if n < TOOLBAR.len() {
+        if n < all.len() {
             ui.menu_button("»", |ui| {
-                for id in &TOOLBAR[n..] {
+                for id in &all[n..] {
                     menu::action_item(ui, app, *id, cmds);
                 }
             })
@@ -136,10 +171,27 @@ mod tests {
         assert_eq!(fit(&w, 10.0, 20.0), 0);
         assert_eq!(fit(&[], 10.0, 20.0), 0);
         // the effect group is kept together
-        assert_eq!(visible(15), 15);
-        assert_eq!(visible(14), EFFECT_GROUP);
-        assert_eq!(visible(13), EFFECT_GROUP);
-        assert_eq!(visible(12), 12);
-        assert_eq!(visible(5), 5);
+        assert_eq!(visible(15, 15), 15);
+        assert_eq!(visible(14, 15), EFFECT_GROUP);
+        assert_eq!(visible(13, 15), EFFECT_GROUP);
+        assert_eq!(visible(12, 15), 12);
+        assert_eq!(visible(5, 15), 5);
+        assert_eq!(visible(12, 12), 12);
+    }
+
+    // covers: REQ-106
+    #[test]
+    fn the_context_group_depends_on_the_selection_and_the_playhead() {
+        use ActionId::*;
+        assert!(context_group_of(false, false).is_empty());
+        assert_eq!(
+            context_group_of(true, false),
+            [AlignHorizontal, AlignVertical, ResetObjects]
+        );
+        assert_eq!(context_group_of(false, true), [SetPov, ResetObjects]);
+        assert_eq!(
+            context_group_of(true, true),
+            [AlignHorizontal, AlignVertical, SetPov, ResetObjects]
+        );
     }
 }

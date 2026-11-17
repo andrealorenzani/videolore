@@ -2,6 +2,33 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.3.0 — 2026-11-17 19:08 +0000
+
+Text items, one selection for the preview and the timeline, and 360 video export: titles and captions on the picture, texts and subtitle lines that stay at their point of a 360° sphere, and a 360 video that keeps the whole sphere.
+
+### Added
+- **Text items**: the "Add Text" row in the Effects list (or Effects > Add text at playhead) writes a multiline text at the playhead, in a colour and a font installed on the computer (the bundled subtitle font by default). Each text has the effects Fade IN, Fade OUT, Blink and Slide in, in any combination, each with its own time. A text is shown for its time to live, drawn as a bar on a new Text lane of the timeline (drag the bar to move it or to change its length), and has a box on the picture that moves and resizes like a subtitle line; it is burned into the export (REQ-108 to REQ-111). See [Text](business-text.md).
+- **One selection for lines and texts**: Ctrl/Cmd+click or Shift+click adds a subtitle line or text item to the selection, Shift+drag on the timeline selects those that start in a range, and dragging a selected box in the preview moves the whole selection (REQ-090 to REQ-092).
+- **Texts and subtitle lines on 360 clips**: a text or a subtitle line added on a 360 clip stays at the point of the sphere the camera is looking at, so it does not move when the camera turns (REQ-112).
+- **360 video export**: for a project with 360 clips, Export asks between a 360 video, which keeps the whole sphere with the texts at their points, and the flat camera view (REQ-103).
+- **Context Menu**: a toolbar group with Align horizontally, Align vertically, Set POV and Reset, shown only when it has something to act on (REQ-106).
+
+### Changed
+- "Fade through black" is named "Fade IN/OUT" everywhere; its behaviour is unchanged (REQ-107).
+- A project with text items or 360 anchors is saved in format 5 (REQ-113). Projects saved by 1.3.0 cannot be opened by 1.2.6 or earlier; older projects open unchanged.
+- A project with a text item is re-encoded on export, with the hardware export too (REQ-023, REQ-062).
+- The installed fonts are listed with one new library, `fontdb` 0.24.0.
+
+### Quality
+- Line coverage 96.0%; feature coverage 96/96 (REQ-023, REQ-075, REQ-090 to REQ-092, REQ-098, REQ-099, REQ-102, REQ-103 and REQ-106 to REQ-113 implemented).
+
+### Known limitations
+- Text items have no outline, shadow or background box, use the fonts installed on the computer (so they can look different on another computer) and are not written to the `.srt` file.
+- A subtitle line placed on a 360 clip is drawn as plain white text (no preset box, no word highlight).
+- A 360 video export carries its 360 marker only in MP4 and MOV files.
+- A project file with a text whose time to live is above 24 hours, or below 0.1 s, is refused as damaged on opening; while editing, a text's time to live is limited to the video's length.
+- The 360 video export is slow; no speed is promised.
+
 ## 1.2.8 — 2026-11-17 18:59 +0000
 
 ### Workflow

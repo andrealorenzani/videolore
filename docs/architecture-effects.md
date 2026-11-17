@@ -13,6 +13,7 @@ Part of [Architecture](architecture.md). Since 1.2.0 (requirements REQ-082..084,
 - **Undo:** applying a fade or subtitles is one undo step. Applying Volume only opens its popup; the undo step is recorded when a value actually changes (slider released, mute switched), so opening the popup without changing anything leaves no empty step.
 
 ## Fade through black
+- Since 1.3.0 the user sees the name **Fade IN/OUT** instead of "Fade through black" everywhere (label change only; the internal name and the project format are unchanged). The text effects Fade IN and Fade OUT of text items are separate, see [text items](architecture-text.md).
 - **On a clip:** fades at both edges of the clip. A boundary with a neighbour gets the usual fade-out plus fade-in (as in earlier versions); if the clip is the first one it also fades in from black at the start, if it is the last one it fades out to black at the end. Removing the effect from a clip removes the fades at both its edges.
 - **On the whole video:** one fade from black at the very start and one to black at the very end.
 - **Design decision:** the start and end fades belong to the **edges of the video**, not to a clip. They stay at the start and end whatever is edited later (cutting or moving the first clip, adding clips). The alternative, attaching them to the first and last clip, was rejected because cutting the first clip would remove the fade from black. Consequence: if the first clip is moved into the middle, the fade from black stays at the start of the video.

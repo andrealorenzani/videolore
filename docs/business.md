@@ -17,7 +17,8 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [Export](business-export.md) — automatic output format, stream copy vs re-encode, progress and cancel, Apple-compatible HEVC, long timelines, faster export with the computer's video hardware (with automatic fallback and output check).
 - [Music and volume](business-music.md) — the music track, mixing and volumes, the volume of each video clip, how music behaves when the video is edited.
 - [Subtitles](business-subtitles.md) — automatic offline subtitles, the speech model download, editing, styles, how subtitles follow edits, subtitles for one clip, reusing the subtitles already in a video, `.srt` export, moving lines on screen and selecting several lines.
-- [Boxes on the picture and 360 video](business-picture.md) — 1.2.6: visible boxes to move and enlarge what sits on the picture, effect commands (align horizontally, align vertically, reset) in the toolbar, 360° videos with look-around and points of view (POV) the camera moves between in a straight line.
+- [Text](business-text.md) — 1.3.0: "Add Text" in the Effects list, multiline texts with the effects Fade IN, Fade OUT, Blink and Slide in, time to live on the timeline, colour, font installed on the computer, text on the picture and in the export.
+- [Boxes on the picture and 360 video](business-picture.md) — 1.2.6: visible boxes to move and enlarge what sits on the picture, effect commands (align horizontally, align vertically, reset) in the toolbar, 360° videos with look-around and points of view (POV) the camera moves between in a straight line. 1.3.0: the toolbar group becomes the Context Menu, Export of a 360 project asks for a 360 video or the flat camera view, text and subtitles on a 360 clip stay at their place in the sphere.
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, third-party notices, first-launch steps.
 - [Settings, performance and safety](business-performance.md) — automatic setup at first start, the Settings window (preview quality, subtitle quality, how hard videolore works, export speed), more accurate speech models, older processors, responsiveness, safe handling of files and downloads, private temporary files, quality goals (including the real-hardware check of faster export).
 
@@ -27,7 +28,7 @@ Professional editors needing multitrack video, color grading or advanced effects
 - **Settings belong to the program, never to a project**, and the main part of Settings uses plain words only; technical details stay in a collapsed "Advanced" section.
 
 ## Key decisions (general)
-- Output format is automatic: there is no export settings dialog.
+- Output format is automatic: there is no export settings dialog (since 1.3.0 one question is asked for projects with 360 clips, see below).
 - Stream copy is used only when the result is guaranteed frame-accurate; correctness comes before speed.
 - Fade length is fixed (not user-tunable) to keep the editor simple.
 - (1.1.0) Window sections can be resized by dragging their borders, and the sizes are remembered; sections still cannot be moved, docked or hidden. (Until 1.0 the layout was fixed.)
@@ -38,12 +39,21 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (1.2.0) Every effect can be applied to one video clip (drag and drop or right-click) or to the whole video (double-click in the Effects list).
 - (1.2.0) When a video already contains subtitles, the user chooses between using their text (matched word by word to the speech) and recognising the speech; the video's text is never replaced.
 - (1.2.0) The project file format changes to store start and end fades, clip volumes and subtitle positions; older projects open with the same result.
-- (1.2.6) A 360° video is shown through a camera the user can turn; the export is a normal flat video that follows the camera path set with points of view. This is the only keyframe-like feature, limited to the camera of 360 clips.
+- (1.2.6) A 360° video is shown through a camera the user can turn; the export was a normal flat video that follows the camera path set with points of view. This is the only keyframe-like feature, limited to the camera of 360 clips.
+- (1.3.0) For a project with 360 clips, Export asks whether to make a 360 video (the whole sphere) or the flat camera view of 1.2.6. This is an explicit exception to the automatic output format, only for such projects.
+- (1.3.0) Text items are a new kind of object on the picture, on their own timeline lane: they are not a video track, so multiple video tracks stay out of scope. The text effects Fade IN and Fade OUT have a set time; the video effect "Fade through black" is named "Fade IN/OUT" and keeps its fixed length.
+- (1.3.0) Text and subtitle lines added on a 360 clip are anchored to a point of the sphere and do not move when the camera turns.
 - (0.4.0) Export can use the computer's video hardware (NVIDIA, Intel, AMD, Apple) when the user chooses "Export: Faster" in Settings. Best quality stays the default. Every hardware result is checked, and on any problem the export is silently redone with the normal method, so the user always gets a correct file.
 
 Topic-specific decisions are in each document.
 
-## Known limitations (1.2.0)
+## Known limitations (1.2.0, 1.3.0)
+- (1.3.0) Text uses the fonts installed on the computer, so the same text can look different on each computer. A project that mixes 360 and flat clips can only be exported as the flat camera view.
+- (1.3.0) Text items have no outline or background box; a text that does not fit its box runs past it; video edits do not move text items.
+- (1.3.0) The 360 export is slow (no speed is promised); subtitle lines generated automatically on a 360 clip follow the camera instead of a point of the sphere.
+- (1.3.0) A subtitle line placed on a 360 clip is drawn as plain white text (no preset box, no word highlight).
+- (1.3.0) A 360 video export carries its 360 marker only in MP4 and MOV files.
+- (1.3.0) A project file with a text whose time to live is above 24 hours is refused as damaged when opened; while editing, a text's time to live is limited to the video's length.
 - Dropping files onto the window does not work in Linux Wayland sessions; File > Import media… and File > Open… work there (see [Window, menus and effects](business-ui.md)).
 - Subtitles in scripts other than Latin, Greek and Cyrillic are not fully supported (see [Subtitles](business-subtitles.md)).
 - x86-64 processors without AVX2 (from before about 2013) cannot generate subtitles automatically; videolore shows a clear message instead of crashing, and lines can still be added by hand (see [Settings, performance and safety](business-performance.md)).

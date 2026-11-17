@@ -15,9 +15,10 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Limit the background work of the hardware check** — a check costs about 13–20 s per request, takes one process slot and may wake the discrete graphics card on hybrid laptops; the repeat is not paused while an export or subtitle generation runs, so pause or delay it then. (source: 0.4.2, release verification of 0.4.1 and known limitation)
 - **Show the repeat in Settings → Advanced** — say "check inconclusive, repeating" while the automatic repeat runs. (source: 0.4.2, release verification of 0.4.1)
 - **Under extreme load the check can still find no hardware** — after its repeat, a very busy computer can still end with "no hardware", so Faster uses the normal method. (source: 0.4.2, known limitation)
+- **Hardware check of 360 video export with texts** — the 360 video export with anchored texts has not been run on real graphics hardware; check it with the QG-05 checklist in [code-hardware](code-hardware.md). (source: 1.3.0, check to do)
 
 ## Effects
-- **More effect types** — title or text overlays and per-clip speed. Each needs its own requirements. (source: 1.1.0, postponed from the 1.1.0 request)
+- **More effect types** — per-clip speed and other effects beyond fades, volume, subtitles and text items. Each effect needs its own requirements. (source: 1.1.0, postponed from the 1.1.0 request)
 - **Length of each fade** — every fade lasts 0.5 s (or half a shorter clip) and cannot be changed; let the user choose the length of each fade. (source: 1.1.0, postponed from the 1.1.0 request)
 - **Volume over time** — volume that changes along the timeline (automation), instead of one level per clip and one for the music. (source: 1.1.0, postponed from the 1.1.0 request)
 - **Effects on music clips** — per-clip music volume and fades on music; today only the video clips take effects. (source: 1.2.0, out of scope of the 1.2.0 request)
@@ -25,7 +26,10 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Start and end fades follow the clip** — the fades from and to black stay at the edges of the video when clips move; let them follow the first or last clip. (source: 1.2.0, known limitation)
 
 ## 360 video
-- **Export 360 video** — keep the 360 format in the export (today a 360 clip is exported only as a flat video that follows the camera path). (source: 1.2.6, postponed from the 1.2.6 request)
+- **Automatic subtitles keep their preset place in 360 video export** — in a 360 video export, automatic subtitle lines stay at the preset place (the lower third, about 30° below the front) and do not follow the view; let the user anchor them or choose the place. (source: 1.3.0, known limitation)
+- **Spherical information of 360 video export** — check on real players that a re-encoded 360 video written by the 1.3.0 export still shows as 360 video, with the same spherical information as the source. (source: 1.3.0, check to do)
+- **Indicator for off-view items** — text items and subtitle lines on a 360 clip are hidden while their point is outside the view; show where they are, for example with an arrow at the edge of the picture. (source: 1.3.0, known limitation)
+- **360 subtitles anchored to the sphere** — subtitle lines generated automatically on a 360 clip still follow the camera; anchor them to a point of the sphere like the lines added by hand. (source: 1.3.0, known limitation)
 - **Stereo 3D, cube maps and 180° video** — side-by-side or top-and-bottom stereo, cube-map layouts, partial 180° pictures and cropped equirectangular pictures are not recognised; only one full equirectangular picture is supported, and cropped ones are shown as flat video. (source: 1.2.6, postponed from the 1.2.6 request)
 - **Separate points of view per clip** — two copies of the same part of one source share their points of view; give each clip its own camera path. (source: 1.2.6, known limitation)
 - **Instant look-around** — a camera still is estimated at 150–700 ms (targets 400 ms for 4K and 700 ms for 8K); if that feels slow while dragging, add a quick view computed inside the program, while the final picture still comes from `ffmpeg`. (source: 1.2.6, measurement to do)
@@ -34,7 +38,23 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Easing between points of view** — the camera moves at a constant speed in a straight line between POVs; add easing curves or other speeds. (source: 1.2.6, postponed from the 1.2.6 request)
 - **Keyboard control of the 360 camera** — turn, zoom and set POVs from the keyboard; today only the mouse and the wheel work. (source: 1.2.6, postponed from the 1.2.6 request)
 - **Spatial sound that follows the camera** — rotate ambisonic audio with the camera; today the spatial sound is played as it is. (source: 1.2.6, postponed from the 1.2.6 request)
-- **Other objects on the picture** — titles, stickers and overlays that can be placed and moved like subtitle lines; the boxes are built to take them. (source: 1.2.6, postponed from the 1.2.6 request)
+- **Other objects on the picture** — stickers, images and shapes that can be placed and moved like subtitle lines; the boxes are built to take them. Titles are text items, built in 1.3.0. (source: 1.2.6, postponed from the 1.2.6 request)
+- **Preset box and word highlight for 360 subtitles** — a subtitle line placed on a 360 clip is plain white text; give it the preset box and the word highlight. (source: 1.3.0, known limitation)
+- **360 marker in other containers** — a 360 video export carries its 360 marker only in MP4 and MOV files; write it in Matroska and WebM too. (source: 1.3.0, known limitation)
+- **Spherical marker on the bundled ffmpeg** — the MP4 and MOV 360 marker writer was checked only with the system ffmpeg 6.1.1; the bundled ffmpeg 9.x path was not measured. Check the marker and the 360 export with the bundled 9.x build. (source: 1.3.0, check to do)
+
+## Text
+- **Outline, shadow or background box for text** — a text has no outline or box today, so its readability depends on the colour and the picture behind it. (source: 1.3.0, known limitation)
+- **Text that grows its box** — a text that does not fit its box runs past it; grow the box, or warn. (source: 1.3.0, known limitation)
+- **Align and Reset for text items** — the Context Menu commands of subtitle lines (Align horizontally, Align vertically, Reset) for text items too. (source: 1.3.0, postponed from the 1.3.0 request)
+- **Rich text and saved text styles** — different bold, italic or colour per word, and reusable text styles. (source: 1.3.0, out of scope of the 1.3.0 request)
+- **Text in the .srt file** — decide whether text items are written to the subtitle file, or kept to the video only. (source: 1.3.0, open question)
+- **Font names across libraries** — check on Linux, macOS and Windows that the family names listed by the font scan are the names the subtitle renderer finds; a name that differs falls back silently to another font. The lookup of system fonts by the subtitle renderer is not tested on CI. (source: 1.3.0, check to do)
+- **Font fallback check** — verify that a text whose font is missing on a computer falls back to the bundled subtitle font as planned. (source: 1.3.0, assumption to check when built)
+- **Text that follows video edits** — text items keep their timeline time when the video is edited, unlike a subtitle line that follows its speech; decide whether they should follow the clips. (source: 1.3.0, known limitation)
+- **Longer text times** — a project file with a text whose time to live is above 24 hours is refused as damaged on opening; raise the limit if longer texts are needed. (source: 1.3.0, known limitation)
+- **Box of a blinking text** — the box of a text stays visible while Blink hides the text; hide it with the text, or keep it on purpose. (source: 1.3.0, known limitation)
+- **Preview box of texts with the installed font** — the preview measures a text's box with the bundled font, while the picture uses the installed one; measure it with the same font. (source: 1.3.0, known limitation)
 
 ## Subtitles
 - **Meet the accuracy target of reused subtitles** — the word timing of a video's own subtitles is approximate: 82% of the words were matched and the start error averaged 0.48 s, against a target of 90% and 0.3 s. Improve the word timing (DTW timestamps, sound-onset snapping, or a larger model), then re-enable the strict test `alignment_matches_real_speech`. (source: 1.2.0, known limitation, REQ-095)
@@ -66,6 +86,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Group actions on selected lines** — delete or shift the timing of several subtitle lines selected together; today only moving and resetting their positions works on a selection. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **Snap and safe-area guides** — snap moved subtitle lines to guides, and show title-safe areas in the preview. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **Drag clip edges to trim** — trim a clip by dragging its edge on the timeline; today trimming uses the Clip details window. (source: 1.1.0, postponed from the 1.1.0 request)
+- **Group drags of mixed selections** — when a selection holds subtitle lines and text items, a drag moves each kind on its own; make one drag move both. (source: 1.3.0, known limitation)
 
 ## Interface
 - **Native macOS menu bar** — the menu bar is inside the window on macOS, and the standard Hide and Minimize items are switched off so that Cmd+Q asks about unsaved changes. Move the menu to the top of the screen and restore Hide and Minimize, keeping that prompt. (source: 0.2.0, known limitation; menu inside the window since 1.1.0)
@@ -80,6 +101,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Keyboard navigation of timeline markers** — move from marker to marker with the keyboard; markers can be reached only with the mouse today. (source: 1.1.0, known limitation)
 - **Remember window size, position and popup positions** — the window size and position are not remembered at all, and popups keep their place only until videolore is closed. Remember them across sessions. (source: 1.1.0, known limitation)
 - **Better default popup positions** — popups open near the centre of the window and can cover the timeline; choose positions that leave the timeline visible. (source: 1.1.0, known limitation)
+- **Multi-selection lost** — a multi-selection was reported to disappear; it could not be reproduced in 1.3.0. Report a concrete way to trigger it if it persists. (source: 1.3.0, not reproduced)
 - **Ctrl/Cmd+V for clips** — the shortcut pastes clips only when the system clipboard holds text, because the windowing layer sends no paste event otherwise. The menu and toolbar Paste always work. (source: 1.1.0, known limitation)
 - **Drag and drop on Linux Wayland** — dropping files onto the window does not work in Wayland sessions, because the windowing library does not report dropped files there. Enable it when the library supports it. File > Import media… and File > Open… work there. (source: 1.1.0, known limitation)
 - **Discover Ctrl/Cmd+click and Shift+drag** — selecting several subtitle lines with these gestures is not shown anywhere on screen; add a hint or a menu entry. (source: 1.2.0, known limitation)
@@ -97,6 +119,9 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Hardware decoding for preview and preview copies** — only the export uses the computer's video hardware today; decoding the preview and making preview copies with it could speed up large sources. (source: 1.2.6, speed review)
 - **GPU or SIMD path for 360 reprojection** — if the 8K look-around target of REQ-104 is not met, move the 360 reprojection to the graphics card or to SIMD code. (source: 1.2.6, product risk)
 - **Faster moving-camera export** — a 360 clip with a moving camera exports at about one third of real time; send fewer commands per second to `ffmpeg`, or compute the projection inside the program. (source: 1.2.6, known limitation)
+- **Cost of loading an installed font** — a font of about 20 MB may take noticeable time to load into the interface's font set; measure it and load on demand or in parts if it slows the window. (source: 1.3.0, check to do)
+- **Faster 360 video export** — the 360 video export of 1.3.0 is accepted as slow and no speed is promised; measure it on real 8K x 4K material and speed it up if it is too slow for users. (source: 1.3.0, decision: slow export accepted)
+- **Record 4K and 8K frame times** — the frame times of the preview and of the 360 view at 4K and 8K were not recorded for the 1.3.0 features; measure them against the 200 ms target of REQ-104. (source: 1.3.0, measurement to do)
 - **Measured quality goals** — the numbers of the quality goals (detection time, regressions, speed) are assumptions to confirm with measurements. (source: 0.3.0, assumption)
 
 ## Quality

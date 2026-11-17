@@ -25,6 +25,24 @@ pub struct BoxResize {
     pub frame: (u32, u32),
 }
 
+/// A text box being moved or resized in the preview (REQ-111).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextBoxDrag {
+    /// Every text that moves with the grabbed one.
+    pub ids: Vec<crate::text::TextId>,
+    /// `Some` when a corner is dragged, else the whole box moves.
+    pub corner: Option<Corner>,
+    /// The box and the size at the start (frame pixels, thousandths).
+    pub rect: Rect,
+    pub size: u16,
+    /// Pointer minus box centre at the start.
+    pub grab: egui::Vec2,
+    pub frame: (u32, u32),
+    /// The camera when the box belongs to a text fixed to the sphere: moving it then
+    /// changes the point of the sphere, not the flat place.
+    pub cam: Option<crate::camera::Camera>,
+}
+
 /// Side of the square corner handles (screen pixels).
 const HANDLE_SIDE: f32 = 7.0;
 
@@ -56,7 +74,19 @@ pub fn items(app: &AppState, ui: &Ui, frame: (u32, u32)) -> Vec<BoxItem> {
             .size()
     };
     let shown = app.shown_project();
-    placement::boxes(&shown, app.playhead, frame, &mut measure)
+    let cam = app.camera_at_playhead();
+    let mut line_boxes = placement::boxes(&shown, app.playhead, frame, &mut measure);
+    if let Some(c) = cam {
+        // lines fixed to the sphere are where the camera sees them
+        for (id, r) in placement::anchored_line_boxes(&shown, app.playhead, frame, c, &mut measure)
+        {
+            line_boxes.retain(|(l, _)| *l != id);
+            if let Some(r) = r {
+                line_boxes.push((id, r));
+            }
+        }
+    }
+    let mut v: Vec<BoxItem> = line_boxes
         .into_iter()
         .map(|(id, rect)| BoxItem {
             id: ObjectId::Line(id),
@@ -67,7 +97,23 @@ pub fn items(app: &AppState, ui: &Ui, frame: (u32, u32)) -> Vec<BoxItem> {
                 .and_then(|l| l.size)
                 .unwrap_or(SIZE_NORMAL),
         })
-        .collect()
+        .collect();
+    v.extend(
+        placement::text_boxes(
+            &shown,
+            app.playhead,
+            frame,
+            app.camera_at_playhead(),
+            &mut measure,
+        )
+        .into_iter()
+        .map(|(id, rect)| BoxItem {
+            id: ObjectId::Text(id),
+            rect,
+            size: shown.texts.get(id).map_or(SIZE_NORMAL, |t| t.size),
+        }),
+    );
+    v
 }
 
 /// Draws the boxes (and the handles) and runs every pointer interaction on the picture,
@@ -103,8 +149,10 @@ pub fn interact(
 
     // outlines and handles
     for b in &items {
-        let ObjectId::Line(id) = b.id;
-        let selected = app.selection.contains(&id);
+        let selected = match b.id {
+            ObjectId::Line(id) => app.selection.contains(&id),
+            ObjectId::Text(id) => app.selection.contains_text(id),
+        };
         let s = placement::to_screen(b.rect, picture, frame);
         if show {
             let color = if selected {
@@ -137,7 +185,10 @@ pub fn interact(
         }
     }
 
-    let dragging = cache.subtitle_drag.is_some() || cache.box_resize.is_some() || cache.camera_drag;
+    let dragging = cache.subtitle_drag.is_some()
+        || cache.box_resize.is_some()
+        || cache.text_box_drag.is_some()
+        || cache.camera_drag;
     if !dragging && let Some(p) = resp.hover_pos() {
         match hit(show, &items, to_frame(p), tol) {
             Some((_, h)) => ctx.set_cursor_icon(boxes::cursor(h, false)),
@@ -146,17 +197,23 @@ pub fn interact(
         }
     }
 
-    // a click inside a box selects its object (Ctrl/Cmd+click adds or removes it)
+    // a click inside a box selects its object (Ctrl/Cmd/Shift+click adds or removes it);
+    // a click on the empty picture clears the selection (REQ-090)
     if resp.clicked()
         && let Some(p) = resp.interact_pointer_pos()
-        && let Some((b, _)) = hit(show, &items, to_frame(p), tol)
     {
-        let ObjectId::Line(id) = b.id;
-        cmds.push(if ui.input(|i| i.modifiers.command) {
-            Command::ToggleLine(id)
-        } else {
-            Command::SelectLine(Some(id))
-        });
+        match hit(show, &items, to_frame(p), tol) {
+            Some((b, _)) => {
+                let toggle = ui.input(|i| i.modifiers.command || i.modifiers.shift);
+                cmds.push(match (b.id, toggle) {
+                    (ObjectId::Line(id), true) => Command::ToggleLine(id),
+                    (ObjectId::Line(id), false) => Command::SelectLine(Some(id)),
+                    (ObjectId::Text(id), true) => Command::ToggleText(id),
+                    (ObjectId::Text(id), false) => Command::SelectText(id),
+                });
+            }
+            None => cmds.push(Command::ClearSelection),
+        }
     }
 
     if resp.drag_started() {
@@ -165,31 +222,61 @@ pub fn interact(
             .or(resp.interact_pointer_pos());
         cache.subtitle_drag = None;
         cache.box_resize = None;
+        cache.text_box_drag = None;
         cache.camera_drag = false;
         if let Some(o) = origin {
             let f = to_frame(o);
             match hit(show, &items, f, tol) {
-                Some((b, Hit::Corner(corner))) => {
-                    let ObjectId::Line(line) = b.id;
-                    cache.box_resize = Some(BoxResize {
-                        line,
-                        ids: app.drag_group(line),
-                        corner,
-                        rect: b.rect,
-                        size: b.size,
-                        frame,
-                    });
-                }
-                Some((b, Hit::Body)) => {
-                    let ObjectId::Line(line) = b.id;
-                    cache.subtitle_drag = Some(placement::Drag {
-                        line,
-                        ids: app.drag_group(line),
-                        grab: f - b.rect.center(),
-                        size: b.rect.size(),
-                        frame,
-                    });
-                }
+                Some((b, h)) => match b.id {
+                    ObjectId::Text(id) => {
+                        cache.text_box_drag = Some(TextBoxDrag {
+                            ids: app
+                                .selection
+                                .drag_targets(crate::selection::ObjRef::Text(id))
+                                .into_iter()
+                                .filter_map(|o| match o {
+                                    crate::selection::ObjRef::Text(t) => Some(t),
+                                    crate::selection::ObjRef::Line(_) => None,
+                                })
+                                .collect(),
+                            corner: match h {
+                                Hit::Corner(c) => Some(c),
+                                Hit::Body => None,
+                            },
+                            rect: b.rect,
+                            size: b.size,
+                            grab: f - b.rect.center(),
+                            frame,
+                            cam: app
+                                .project
+                                .texts
+                                .get(id)
+                                .filter(|t| t.anchor.is_some())
+                                .and_then(|_| app.camera_at_playhead()),
+                        });
+                    }
+                    ObjectId::Line(line) => match h {
+                        Hit::Corner(corner) => {
+                            cache.box_resize = Some(BoxResize {
+                                line,
+                                ids: app.drag_group(line),
+                                corner,
+                                rect: b.rect,
+                                size: b.size,
+                                frame,
+                            });
+                        }
+                        Hit::Body => {
+                            cache.subtitle_drag = Some(placement::Drag {
+                                line,
+                                ids: app.drag_group(line),
+                                grab: f - b.rect.center(),
+                                size: b.rect.size(),
+                                frame,
+                            });
+                        }
+                    },
+                },
                 None => cache.camera_drag = sphere,
             }
         }
@@ -235,6 +322,7 @@ pub fn interact(
         );
     }
 
+    text_box_drag(ui, cache, cmds, &resp, picture);
     resize_drag(ui, app, cache, cmds, &resp, picture, frame);
     move_drag(ui, app, cache, cmds, &resp, picture, frame);
 
@@ -335,17 +423,107 @@ fn move_drag(
             StrokeKind::Outside,
         );
         ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+        let cam = app.camera_at_playhead().filter(|_| {
+            app.project
+                .subtitles
+                .get(d.line)
+                .is_some_and(|l| l.anchor.is_some())
+        });
         if resp.drag_stopped() {
             cache.subtitle_drag = None;
-            cmds.push(Command::SetLinePositions {
-                ids: d.ids,
-                pos: Some(pos),
-            });
+            match cam {
+                // a line fixed to the sphere goes to the point of the sphere under its box
+                Some(cam) => {
+                    let (yaw, pitch) = crate::camera::unproject(
+                        cam,
+                        frame.0,
+                        frame.1,
+                        f64::from(c.x),
+                        f64::from(c.y),
+                    );
+                    cmds.push(Command::MoveLineAnchor {
+                        ids: d.ids,
+                        yaw_cd: (yaw * 100.0).round() as i32,
+                        pitch_cd: (pitch * 100.0).round() as i32,
+                    });
+                }
+                None => cmds.push(Command::SetLinePositions {
+                    ids: d.ids,
+                    pos: Some(pos),
+                }),
+            }
         } else if app.drag_pos.as_ref() != Some(&(d.ids.clone(), pos)) {
             cmds.push(Command::DragLines(Some((d.ids, pos))));
         }
     } else if resp.drag_stopped() {
         cache.subtitle_drag = None;
         cmds.push(Command::DragLines(None));
+    }
+}
+
+/// A text box being moved or resized: an outline follows the pointer, one undo step on
+/// release (REQ-111).
+fn text_box_drag(
+    ui: &Ui,
+    cache: &mut UiCache,
+    cmds: &mut Vec<Command>,
+    resp: &egui::Response,
+    picture: Rect,
+) {
+    let Some(d) = cache.text_box_drag.clone() else {
+        return;
+    };
+    let Some(p) = resp.interact_pointer_pos().or(resp.hover_pos()) else {
+        if resp.drag_stopped() {
+            cache.text_box_drag = None;
+        }
+        return;
+    };
+    let pointer = placement::to_frame(p, picture, d.frame);
+    let (rect, size) = match d.corner {
+        Some(c) => {
+            let out = boxes::resize(d.rect, d.size, c, pointer, d.frame);
+            (out.rect, out.size)
+        }
+        None => {
+            let c = placement::clamp_centre(pointer - d.grab, d.rect.size(), d.frame);
+            (Rect::from_center_size(c, d.rect.size()), d.size)
+        }
+    };
+    ui.painter().rect_stroke(
+        placement::to_screen(rect, picture, d.frame),
+        2.0,
+        Stroke::new(2.0, Color32::YELLOW),
+        StrokeKind::Outside,
+    );
+    ui.ctx().set_cursor_icon(match d.corner {
+        Some(c) => boxes::cursor(Hit::Corner(c), true),
+        None => CursorIcon::Grabbing,
+    });
+    if resp.drag_stopped() {
+        cache.text_box_drag = None;
+        match d.cam {
+            // a text fixed to the sphere goes to the point of the sphere under the box
+            Some(cam) if d.corner.is_none() => {
+                let c = rect.center();
+                let (yaw, pitch) = crate::camera::unproject(
+                    cam,
+                    d.frame.0,
+                    d.frame.1,
+                    f64::from(c.x),
+                    f64::from(c.y),
+                );
+                cmds.push(Command::MoveTextAnchor {
+                    ids: d.ids,
+                    yaw_cd: (yaw * 100.0).round() as i32,
+                    pitch_cd: (pitch * 100.0).round() as i32,
+                });
+            }
+            _ => cmds.push(Command::SetTextBoxes {
+                ids: d.ids,
+                place: boxes::centre_pos(rect, d.frame),
+                size,
+            }),
+        }
     }
 }

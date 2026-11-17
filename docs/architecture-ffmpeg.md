@@ -52,6 +52,7 @@ At startup, in the background, `videolore` checks the version, the encoders and 
 ## Subtitle rendering and fonts
 - Subtitles are burned in with `ffmpeg`'s `subtitles` filter (libass), present in all three builds.
 - The bundled font is Noto Sans Bold (SIL Open Font License 1.1, about 0.5 MB), stored in `assets/fonts/` with its licence text and source.
+- Since 1.3.0 text items may use any font installed on the computer; libass finds it by family name through the system, so no font file is added to the installers.
 - It covers Latin, Greek and Cyrillic only. **Limitation:** other scripts (for example Arabic, Chinese, Hindi) fall back to whatever system fonts libass finds, so they may look different per OS or show as empty boxes, and the app's subtitle editor cannot display them.
 
 ## Licences and source code

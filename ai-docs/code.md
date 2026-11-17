@@ -33,10 +33,10 @@
 - docs/code-hardware.md § Results — L192-219 (28 lines)
 - docs/code-hardware.md § Known limitations — L220-237 (18 lines)
 - docs/code-modules.md § Code — modules and patterns — L1-5 (5 lines)
-- docs/code-modules.md § Module map — L6-40 (35 lines)
-- docs/code-modules.md § Main patterns — L41-106 (66 lines)
-- docs/code-modules.md § Conventions — L107-123 (17 lines)
-- docs/code-modules.md § Machine, recommendation and "How hard videolore works" — L124-148 (25 lines)
+- docs/code-modules.md § Module map — L6-41 (36 lines)
+- docs/code-modules.md § Main patterns — L42-107 (66 lines)
+- docs/code-modules.md § Conventions — L108-124 (17 lines)
+- docs/code-modules.md § Machine, recommendation and "How hard videolore works" — L125-149 (25 lines)
 - docs/code-packaging.md § Code — installers, notices and known limitations — L1-2 (2 lines)
 - docs/code-packaging.md § Release assets — L3-17 (15 lines)
 - docs/code-packaging.md § cargo-packager configuration (Windows and macOS) — L18-37 (20 lines)
@@ -50,7 +50,17 @@
 - docs/code-testing.md § Coverage — L82-89 (8 lines)
 - docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L90-101 (12 lines)
 - docs/code-testing.md § 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`) — L102-119 (18 lines)
-- docs/code-testing.md § 1.2.6 tests — L120-127 (8 lines)
+- docs/code-testing.md § 1.2.6 tests — L120-128 (9 lines)
+- docs/code-testing.md § 1.3.0 tests — L129-134 (6 lines)
+- docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-7 (7 lines)
+- docs/code-text.md § Where things are — L8-20 (13 lines)
+- docs/code-text.md § Model and file — L21-35 (15 lines)
+- docs/code-text.md § Effects as ASS events — L36-50 (15 lines)
+- docs/code-text.md § Texts fixed to the sphere — L51-74 (24 lines)
+- docs/code-text.md § Export of a project with 360 clips — L75-91 (17 lines)
+- docs/code-text.md § Selection and Context Menu — L92-102 (11 lines)
+- docs/code-text.md § Tests — L103-112 (10 lines)
+- docs/code-text.md § Known limits — L113-119 (7 lines)
 - docs/code-ui.md § Code — the window (UI) — L1-8 (8 lines)
 - docs/code-ui.md § Window structure — L9-23 (15 lines)
 - docs/code-ui.md § Layout — L24-47 (24 lines)
@@ -60,14 +70,17 @@
 - docs/code-ui.md § Settings file — L108-114 (7 lines)
 - docs/code-ui.md § Since 1.2.0 — L115-125 (11 lines)
 - docs/code-ui.md § Preview picture (1.2.6) — L126-134 (9 lines)
-- docs/code.md § Code — L1-19 (19 lines)
-- docs/code.md § Build, test, run — L20-35 (16 lines)
-- docs/code.md § System requirements for building — L36-45 (10 lines)
-- docs/code.md § Settings and machine detection — L46-56 (11 lines)
-- docs/code.md § CPU baseline for speech recognition — L57-66 (10 lines)
-- docs/code.md § Cargo features — L67-77 (11 lines)
-- docs/code.md § Finding ffmpeg — L78-85 (8 lines)
-- docs/code.md § Dependencies — L86-108 (23 lines)
+- docs/code.md § Code — L1-20 (20 lines)
+- docs/code.md § Build, test, run — L21-36 (16 lines)
+- docs/code.md § System requirements for building — L37-46 (10 lines)
+- docs/code.md § Settings and machine detection — L47-57 (11 lines)
+- docs/code.md § CPU baseline for speech recognition — L58-67 (10 lines)
+- docs/code.md § Cargo features — L68-78 (11 lines)
+- docs/code.md § Finding ffmpeg — L79-86 (8 lines)
+- docs/code.md § Dependencies — L87-110 (24 lines)
+
+## State (1.3.0)
+1.3.0 implemented REQ-090..092 (selection), 098/099 (context group data), 103 (360 export), 106..113 (+ reworded 075, 102, 023); see "1.3.0 notes". Docs: + docs/code-text.md. Status flip (planned -> implemented) and version are the documenter's/PM's; PE did not touch business docs. Quality at hand-off: fmt ok, clippy -D warnings ok (also mac/win targets), cargo test ok (419 lib + 44 integration), coverage see report, feature-coverage 96/96 (the 17 planned REQs above all have `// covers:` tests: grep -rn "covers:.*REQ-1" src tests).
 
 ## State (1.2.6 target)
 1.2.6 implemented REQ-096..105 (boxes, text size, align/reset, 360 video, schema 4); see "1.2.6 notes". Docs: + docs/code-360.md. Version bump = documenter; REQ status flip (planned -> implemented) = documenter/PM (not done by PE).
@@ -127,6 +140,24 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 - ui/settings.rs: settings_body (window drawn by popups.rs since 1.1; choice() indent id (group,label) — "Balanced" exists in two groups -> id clash otherwise), advanced_lines(app) (pub, tested), banner (Area Foreground). modals: consent_text(level,spec), consent_choices(app,level).
 - ui (pre-1.1 facts still valid): close_requested && !close_allowed -> CancelClose + RequestClose; quit_requested -> ViewportCommand::Close; modal_open() disables keymap; music lane drag uses total_drag_delta stored in egui temp data — press_origin is None on release frame; mix slider: UiCache.mix_drag during drag, SetMix on drag_stopped/click; line TextEdit buffer UiCache.line_edit reset when not focused; About text cached in UiCache.about.
 - lib.rs: #![deny(unsafe_code)]; #[allow(unsafe_code)] only on stt::whisper and desktop::macos. real_app(Option<PathBuf>) pushes argv project into desktop queue; native_options (icon from assets/icon/icon-256.rgba, app_id videolore, macOS with_default_menu(false)); prepare_desktop(). main.rs: project_arg + prepare_desktop + run_native.
+
+## 1.3.0 notes (plan: architecture-plan-1.3.0.md, steps M0-M12)
+- New crate fontdb 0.24.0 (default features; adds fontconfig-parser, roxmltree, tinyvec; cargo-deny ok; packaging/notices/rust-crates.txt regenerated). No other crate. No unsafe.
+- New modules: text (model+validation+ASS events, pure), selection, fonts, spherical (MP4 uuid box writer), app/texts.rs, ui/text_popup.rs; tests app/text_tests.rs, ui/text_ux_tests.rs, tests/ffmpeg_integration/v13.rs.
+- Selection: app.selection: Selection{lines,texts,primary}; old selected_line + BTreeSet removed. API shims keep old test shape: contains(&LineId), iter() (lines), len(), FromIterator<LineId>, primary_line(). Plain click on a box that is selected -> select only it (egui clicked() never fires after a drag, so a drag keeps the group; the reported "multi-selection lost" was not reproduced: the only plain-click path is a click without movement). Click on empty picture now ClearSelection (REQ-090). Shift = Ctrl for toggling on markers, boxes, bars.
+- Project schema 5 (always). Texts{items,next_id} in Edit/Project; ProjectFile.texts Vec (next_id = max id). DEVIATION: ttl on load only <= 24 h (MAX_TTL), not <= video length (a video can be cut shorter later; the file must still open). Clamped to video length when adding/editing/moving.
+- text.rs: events_with(item, Layout, video_end, windows) is the single generator; phases(); alpha_at()/envelope(); blink + fades via \alpha + \t, plain fade via \fad; windows split phases (flat clips only for anchored items). estimate_box 0.6 em/char. equirect_events duplicates ±W at the seam; Layout.margins -> Dialogue MarginL/R (wrap width). ass::document_with_texts adds style "Text" only when texts exist (golden argv of 1.1.0/1.2.5 unchanged). Text event layer 1.
+- render: subtitles_doc includes text events (flat_windows(project) = Some(ranges of flat clips) when any 360 clip), returns Some also when only anchored texts exist (fonts folder + libass needed); Segment.anchored (ASS doc, anc<N>.ass via command_files, burned BEFORE sendcmd/v360 and in the flat branch after fps for Sphere360); FrameKey.texts Vec<(TextItem, frame index if effects)>. ExportMode{Automatic,Sphere360,FlatCamera}, plan_export_mode (plan_export = Automatic wrapper); Sphere360: sphere=None for all segments, real 360 sizes (no effective_format), mixed -> RenderError::MixedSphere. ExportJob.mode (6 literals updated).
+- app: Command::{AddText, EditText, MoveText, DeleteTexts, SetTextBoxes, MoveTextAnchor, SelectText, ToggleText, OpenText, OpenNewText, ChooseExportMode, ExportAs}; Popup::Text (+Popups.text: Option<TextId>); Modal::ExportKind; PickExport asks first when has_sphere_clip(). Delete key action -> DeleteTexts when the last pick is a text. set_text_boxes keeps `place` of anchored items. text_anchor_at_playhead = camera::anchor_at(camera_at_playhead, output_size).
+- ui: Add Text row (ADD_TEXT_ROW) + action AddText in Effects menu; Text lane between video and music (text_lane(), TEXT_H 18; Geometry.text; bars: body drag Move, 6 px grab zones Left/Right, pure dragged()); toolbar::TOOLBAR is now 12 + context_group(app) (EFFECT_GROUP = 12; visible(fitting,total)); picture.rs: ObjectId::Text, TextBoxDrag (ghost outline, commit on release), anchored boxes via placement::anchored_box; modals ExportKind; text_popup.rs (draft in UiCache.text_draft for a new text, existing text edits commit per change: checkbox/combos at once, text on lost_focus, DragValue on drag_stopped/lost_focus, colour when the pointer is up).
+- Rename (REQ-107): all user-visible "Fade through black" -> "Fade IN/OUT" (EffectKind::Fade.name(), Popup::Fades title, undo label, tooltips, markers); internal names unchanged.
+- spherical.rs: ffmpeg 6.1.1 re-encode DROPS the source's spherical side data (spike (a)); no ffmpeg option writes it -> own moov rewrite: Spherical Video V1 uuid box in the video trak; stco/co64 += marker size when moov precedes mdat; only moov in memory; temp file <partial>.spherical-partial in the same dir; non-MP4/odd boxes -> Ok(false). ffprobe then shows projection=equirectangular. Hooked in export::mark_if_sphere (software + hardware publish).
+- Spikes: (a) above; (b) libass family lookup for a system font NOT tested (only the bundled Noto Sans; fonts picker lists fontdb families; fontconfig in ffmpeg decides); (c) yaw sign verified by v13 tests (positive yaw = right = larger equirect x); (d) egui set_fonts NOT done (box measuring uses the bundled font).
+- Fixtures/tests: black clips need bit_rate raised (20 Mb/s) in Project or the export bit rate (from the source's tiny rate) blurs the white text away (peak Y 28 instead of 240).
+- Gotchas: fontdb scan of a real system (2000+ faces) is heavy under llvm-cov: never in unit tests (they use Fonts::start_with + a temp dir with the bundled font); with it the BUSY gates and align::ten_thousand_cues_align_quickly (2 s bound, ~1.9 s under llvm-cov) were flaky. UI modifier keys in tests: Event::ModifiersChanged before pointer events.
+- Req -> test map (1.3.0): 090 selection::tests, app/text_tests texts_and_lines_share_one_selection, ui text_ux shift_click...; 091 selection range + SelectRange test (app/effects_tests + text_tests); 092 selection drag_targets, text_ux shift_click... (group drag both get same place); 098/099 toolbar::tests context group, sphere_ux_tests effect commands; 103 render a_360_video_keeps_the_sphere..., app export_asks_360_or_flat..., text_ux export_of_a_project..., spherical::tests, v13 a_360_video_keeps...; 106 toolbar::tests + text_ux the_context_group...; 107 text_ux no_user_visible_text...; 108 app/text_tests adding..., popup state, text_ux the_add_text_row..., escape_closes..., fonts tests; 109 text::tests events/alpha, v13 fade/blink/slide; 110 text_ux a_text_bar..., ctrl_or_shift..., app moving/deleting; 111 render a_text_item_forces_reencode..., text_ux a_text_box_is_dragged..., app box test, v13 a_text_is_shown...; 112 camera::tests (3), render a_text_fixed_to_the_sphere..., app a_text_added_on_a_360_clip..., v13 pin + seam; 113 project::tests text_items_and_anchors..., text::tests hostile/list, schema 5 tests.
+- Line anchors DONE (fix round): AddSubtitle sets anchor via text_anchor_at_playhead; render::anchored_line_items turns anchored lines into TextItems for anchored_doc; subtitles_doc drops anchored lines on 360 clips (line_on_sphere); ShownLine.anchor; FrameKey.line_anchors; Command::MoveLineAnchor; placement::anchored_line_boxes; tests: app text_tests, render, sphere_ux_tests, v13. Existing sphere UI tests clear the anchor of their line (they test picture-fixed lines). align timing test: best of 3 runs, same 2 s bound.
+- Debt 1.3.0: anchored lines drawn as plain text (no preset style); egui box measure uses bundled font; slide estimate; flat box drag of anchored text on flat clip does not move it; mixed selection group moves per kind; M0 baselines/M11 perf numbers not recorded (gates pass); a text hidden by blink keeps its box; Sphere360 + hardware check path (compare graph) untested for anchored files; fonts missing in libass fallback untested on CI; JSON of Anchor360 limits: size_cd 1..=17000, wrap_cd 1..=36000.
 
 ## 1.2.6 notes (REQ-096..105; plan ADR-059..065)
 - Module map additions: camera (pure; Camera{yaw_cd,pitch_cd,fov_cd} Eq/Hash, Pov, CameraPaths serde as Vec<{media,povs}>, at(), dragged/zoomed/lerp, filter(id,cam,w,h), command_lines(target,path,src_in,src_out,fps,w,h), diagonal_fov_deg); render (Segment.sphere:Option<Vec<Pov>>, Graph.command_files + Box<Graph> in Plan::Reencode (clippy large_enum), write_command_files, effective_format/SPHERE_FORMAT, RenderError::SphereTooLarge for Source::Preview only, FrameKey.camera + ShownSubtitle tuple with size, PreviewRender.command_files); media (MediaFormat.spherical/treat_as_360 + is_360(), spherical_of(); both live in MediaFormat so ProjectDoc dirty works; ProjectDoc::set_spherical); proxy (wants_proxy 360 rule, cache_key_kind, SPHERE_*); project (SCHEMA 4, Edit/Project/ProjectDoc.camera, CameraPaths::validate); subtitles (Line/ShownLine.size, set_boxes, reset, any_moved_or_sized, SIZE_*); ass (sized_font, line_tag); settings (show_boxes lenient default true); app/sphere.rs (live: HashMap<MediaId,LiveView>, resize_drag, camera_restart, Axis, ResizeDrag); ui/boxes.rs, ui/picture.rs (interact, hit, items, BoxResize), ui/placement (line_box takes size).

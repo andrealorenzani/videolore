@@ -39,7 +39,13 @@ fn sphere_app() -> (tempfile::TempDir, AppState) {
 fn with_line(app: &mut AppState) -> crate::subtitles::LineId {
     let now = Instant::now();
     app.dispatch(Command::AddSubtitle, now).unwrap();
-    let id = app.selected_line.unwrap();
+    let id = app.selection.primary_line().unwrap();
+    // these tests are about a line fixed to the picture, not to the sphere
+    app.project
+        .subtitles
+        .lines
+        .iter_mut()
+        .for_each(|l| l.anchor = None);
     app.dispatch(Command::SetSubtitleText(id, "HHHH".into()), now)
         .unwrap();
     app.dispatch(
@@ -181,7 +187,7 @@ fn a_resize_gives_every_selected_line_the_size() {
     let a = with_line(&mut app);
     let now = Instant::now();
     app.dispatch(Command::AddSubtitle, now).unwrap();
-    let b = app.selected_line.unwrap();
+    let b = app.selection.primary_line().unwrap();
     app.dispatch(Command::SetSubtitleText(b, "x".into()), now)
         .unwrap();
     app.dispatch(
@@ -440,16 +446,22 @@ fn the_effect_commands_are_in_the_toolbar_and_the_menus_and_run() {
     assert_eq!(h.app.project.subtitles.get(id).unwrap().position, None);
     // Reset is greyed out now, with the reason as tooltip text on the command
     assert!(!h.app.is_enabled(&Command::ResetObjects));
-    // nothing selected: Align is greyed out
+    // nothing selected: Align is not shown, Set POV stays (the playhead is on a 360 clip)
     h.app.selection.clear();
-    h.app.selected_line = None;
     h.idle(2);
-    let n = h
-        .nodes
-        .iter()
-        .find(|n| n.label == "Align vertically" && n.rect.max.y < 60.0)
-        .unwrap();
-    assert!(n.disabled);
+    assert!(
+        h.nodes
+            .iter()
+            .any(|n| n.label == "Set POV" && n.role == Role::Button && n.rect.max.y < 60.0)
+    );
+    for label in ["Align horizontally", "Align vertically"] {
+        assert!(
+            !h.nodes
+                .iter()
+                .any(|n| n.label == label && n.role == Role::Button && n.rect.max.y < 60.0),
+            "{label} still on the bar"
+        );
+    }
 }
 
 // covers: REQ-098, REQ-070
@@ -550,4 +562,35 @@ fn the_preview_right_click_menu_has_the_effect_commands_and_set_pov() {
         .unwrap();
     assert!(!set.disabled);
     let _ = PointerButton::Primary;
+}
+
+// covers: REQ-112
+#[test]
+fn a_line_fixed_to_the_sphere_is_dragged_to_another_point_not_to_a_flat_place() {
+    let (_d, mut app) = sphere_app();
+    let now = Instant::now();
+    app.dispatch(Command::AddSubtitle, now).unwrap();
+    let id = app.selection.primary_line().unwrap();
+    app.dispatch(Command::SetSubtitleText(id, "HHHH".into()), now)
+        .unwrap();
+    app.dispatch(Command::ClearSelection, now).unwrap();
+    let before = app
+        .project
+        .subtitles
+        .get(id)
+        .unwrap()
+        .anchor
+        .expect("fixed to the sphere");
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let pic = picture(&h);
+    // the box is at the centre of the view (the front): drag it to the right
+    h.drag(pic.center(), pic.center() + vec2(120.0, 0.0));
+    let l = h.app.project.subtitles.get(id).unwrap();
+    assert_eq!(l.position, None, "the flat place is untouched");
+    assert!(
+        l.anchor.unwrap().yaw_cd > before.yaw_cd + 500,
+        "{:?}",
+        l.anchor
+    );
+    assert!(!h.app.live.contains_key(&h.app.project.media[0].id));
 }

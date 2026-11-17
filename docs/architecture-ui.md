@@ -75,6 +75,15 @@ The interface is tested headless (no window): egui's accessibility tree, which l
 - Since 1.2.0 the same 200 ms limit is tested while dragging an effect onto a clip and a subtitle in the preview during an export and word matching.
 - The layout is computed in constant time, markers outside the view are skipped, the subtitle list draws only visible rows, and the settings file is written only when a drag ends, the layout is reset or the recent list changes.
 
+## Selection (1.3.0)
+- Before 1.3.0 the window kept two selection states (one set of subtitle lines and one "selected line"); a plain click in the preview could lose a multi-selection. Since 1.3.0 there is **one selection** of objects (subtitle lines and text items) in window state, held by the pure module `selection`, not saved and not in the undo history.
+- The rules are pure functions: a plain click selects only the object (unless it is already selected, so a drag can move the group); Ctrl/Cmd or Shift click toggles it; Shift+drag on the timeline selects the objects whose start is in the range; a plain click on empty space or Esc (when no popup is open) clears it. Every surface (timeline markers, Subtitles popup list, the preview boxes, the Text lane) sends the same events.
+- Dragging a selected box in the preview moves the whole group to the dragged object's final place, as one undo step.
+
+## Add Text popup (1.3.0)
+- The Effects list's "Add Text" row (and Effects > Add text at playhead) opens a non-modal popup with the multiline text, the effects, time to live, colour and font (see [text items](architecture-text.md)). "Add" is one command and one undo step; Esc or Close creates nothing. The popup's list of installed fonts is filled by the background scan; while it runs the picker shows "Loading fonts…".
+- Fade through black is labelled "Fade IN/OUT" everywhere in the interface (label change only, one label table; the internal name and the project format are unchanged).
+
 ## Risks
 - egui changes its menu, popup and panel API between releases; the logic lives in small pure modules (layout, actions, markers, background jobs) so the drawing code stays thin.
 - Global keys such as Delete, Backspace and the arrows must not fire while typing; this is checked by tests for each key.

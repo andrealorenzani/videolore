@@ -18,6 +18,10 @@ const WIDTH: f32 = 340.0;
 /// Draws every open popup and the marker chooser.
 pub fn windows(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
     let open = app.popups.open.clone();
+    if !app.popups.is_open(Popup::Text) {
+        cache.text_draft = None;
+        cache.text_edit = None;
+    }
     for (n, p) in open.into_iter().enumerate() {
         window(ctx, app, cache, cmds, p, n);
     }
@@ -61,6 +65,7 @@ fn window(
                 Popup::ClipDetails => clip_details_body(ui, app, cache, cmds),
                 Popup::Instance => instance_body(ui, app, cache, cmds),
                 Popup::Shortcuts => shortcuts_body(ui),
+                Popup::Text => super::text_popup::text_body(ui, app, cache, cmds),
             });
         });
     if !open {
@@ -280,7 +285,7 @@ fn fade_instance(
         ui.label("This fade no longer exists.");
         return;
     };
-    ui.strong("Fade through black");
+    ui.strong("Fade IN/OUT");
     let name = |i: usize| {
         app.project
             .media(tl.clips[i].media)

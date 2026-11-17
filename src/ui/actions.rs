@@ -45,6 +45,7 @@ pub enum ActionId {
     ToggleFadeAtPlayhead,
     GenerateSubtitles,
     AddSubtitleLine,
+    AddText,
     ApplyClipFade,
     ApplyClipSubtitles,
     ApplyClipVolume,
@@ -236,7 +237,7 @@ pub const ACTIONS: &[Action] = &[
         [plain(Key::ArrowRight)],
         "Move the playhead one frame forward"
     ),
-    action!(Fades, "Fades…", [], "Fades through black between clips"),
+    action!(Fades, "Fades…", [], "Fade IN/OUT between clips"),
     action!(
         Subtitles,
         "Subtitles…",
@@ -263,8 +264,14 @@ pub const ACTIONS: &[Action] = &[
         "Add a subtitle line at the playhead"
     ),
     action!(
+        AddText,
+        "Add text at playhead",
+        [],
+        "Opens a popup to add a text at the playhead"
+    ),
+    action!(
         ApplyClipFade,
-        "Fade through black",
+        "Fade IN/OUT",
         [],
         "Fade the selected clip at both of its edges"
     ),
@@ -282,7 +289,7 @@ pub const ACTIONS: &[Action] = &[
     ),
     action!(
         ApplyWholeFade,
-        "Fade through black",
+        "Fade IN/OUT",
         [],
         "Fade from black at the start and to black at the end of the video"
     ),
@@ -403,6 +410,9 @@ impl ActionId {
             Cut => Command::Cut,
             Copy => Command::Copy,
             Paste => Command::Paste,
+            Delete if app.selection.primary_text().is_some() => {
+                Command::DeleteTexts(app.selection.texts())
+            }
             Delete => Command::Delete,
             Split => Command::Split,
             Merge => Command::Merge,
@@ -423,6 +433,7 @@ impl ActionId {
             ToggleFadeAtPlayhead => Command::ToggleFadeAtPlayhead,
             GenerateSubtitles => Command::GenerateSubtitles,
             AddSubtitleLine => Command::AddSubtitle,
+            AddText => Command::OpenNewText,
             ApplyClipFade => apply(EffectKind::Fade, Target::Selected),
             ApplyClipSubtitles => apply(EffectKind::Subtitles, Target::Selected),
             ApplyClipVolume => apply(EffectKind::Volume, Target::Selected),

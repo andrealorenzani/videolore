@@ -2,7 +2,7 @@
 
 Back to the [index](business.md).
 
-Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, status bar, one popup per effect, markers on the timeline). Since 1.2.0 an effect applies to one video clip or to the whole video, and the ruler switches unit with the visible range. In 1.1.0 nothing changes in how projects are saved: the markers show data the project already contains. The project format changed in 1.2.0 (see [Editing](business-editing.md), REQ-094).
+Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, status bar, one popup per effect, markers on the timeline). Since 1.2.0 an effect applies to one video clip or to the whole video, and the ruler switches unit with the visible range. In 1.1.0 nothing changes in how projects are saved: the markers show data the project already contains. The project format changed in 1.2.0 (see [Editing](business-editing.md), REQ-094). In 1.3.0: "Fade through black" is renamed "Fade IN/OUT", the Effects list gets "Add Text", and the selection works across the preview and the timeline.
 
 ## Features
 - **Window**: from top to bottom, a menu bar, a toolbar, the four sections (Media, Preview, Timeline, Effects) and a status bar. Each section has a title header.
@@ -11,7 +11,7 @@ Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, st
 - **Menus**: File, Edit, Playback, Effects, View, Help, each item with its keyboard shortcut and greyed out when it cannot be used.
 - **Toolbar**: the most common commands in one row; at narrow widths the rest goes into a "»" menu.
 - **Status bar**: the latest message, background work with progress (imports, preview copies, speech file download, subtitle generation, export, with Cancel where possible) and the output folder.
-- **Effects section**: a list of the effect names (Fade through black, Subtitles, Volume); clicking one opens its settings popup.
+- **Effects section**: a list of the effect names (Fade IN/OUT, Subtitles, Volume; since 1.3.0 also "Add Text"); clicking one opens its settings popup.
 - **Applying effects** (1.2.0): drag an effect from the Effects list onto a video clip, or right-click the clip and choose Effects ▸, to apply it to that clip; double-click it in the list to apply it to the whole video.
 - **Markers on the timeline**: every fade (between clips, at the start and at the end of the video), every subtitle line and every clip with its own volume has a marker; clicking it opens the settings of that single item. Clip boundaries without a fade show a small "Add fade" handle.
 - **Timeline ruler** (1.2.0): seconds when up to 90 seconds are visible, minutes and seconds up to 90 minutes, hours beyond.
@@ -45,7 +45,8 @@ Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, st
 - REQ-074 (implemented): The Undo and Redo menu items and toolbar tooltips name the action: "Undo <action>" / "Redo <action>". Acceptance: after a split the menu shows "Undo Split"; after undoing it shows "Redo Split".
 
 ### Effects
-- REQ-075 (implemented): The Effects section is a vertical list of the effect types Fade through black, Subtitles and Volume. Since 1.2.0 each row shows only the effect name, with the tooltip "Drag onto a clip to apply it to that clip; double-click to apply it to the whole video". Clicking a row opens that effect's popup; double-clicking applies it to the whole video (REQ-082); rows can be dragged onto video clips. The list scrolls if needed. Clip details, music clip details, export and the shortcut list are not in this section. (In 1.1.0 each row also showed a one-line description and a count.) Acceptance: the three rows' text is exactly the effect names; clicking each opens its popup; the tooltip exists.
+- REQ-075 (implemented): The Effects section is a vertical list of the effect types Fade IN/OUT, Subtitles and Volume, followed by an "Add Text" row (REQ-108, see [Text](business-text.md)). Each row shows only its name. The three effect rows have the tooltip "Drag onto a clip to apply it to that clip; double-click to apply it to the whole video"; the "Add Text" row has the tooltip "Opens a popup to add a text at the playhead". Clicking an effect row opens that effect's popup; clicking "Add Text" opens the new text popup; double-clicking an effect row applies it to the whole video (REQ-082); the three effect rows can be dragged onto video clips, "Add Text" cannot. The list scrolls if needed. Clip details, music clip details, export and the shortcut list are not in this section. Acceptance: the four rows' text is exactly the names; clicking each opens its popup; the tooltips exist; "Add Text" cannot be dropped on a clip.
+- REQ-107 (implemented): The effect "Fade through black" is named "Fade IN/OUT" everywhere the user sees it: the Effects list, the Effects and right-click menus, the popup title, tooltips and the keyboard shortcuts window. Its behaviour is unchanged (REQ-011, REQ-083). The text effects "Fade IN" and "Fade OUT" of REQ-109 are separate settings of a text item. Acceptance: no user-visible text "Fade through black" remains; the Effects list row, its menu entries and its popup title read "Fade IN/OUT"; the effect works as before.
 - REQ-082 (implemented): Each effect (Fade through black, Subtitles, Volume) can be applied **to a video clip**, by dragging it from the Effects list onto the clip or by right-clicking the clip and choosing Effects ▸ <effect>, or **to the whole video**, by double-clicking it in the Effects list (the whole video counts as one clip from the start to the end of the timeline). A single click still opens the effect's popup (REQ-076). Each application opens the popup of the instance created or changed and is one undo step; for Volume the undo step is recorded when a value is changed in the popup that opens (slider release or mute), not when the popup opens. Dropping an effect anywhere other than a video clip (for example on the music track or empty space) does nothing, and while dragging the pointer shows whether a drop is possible. Acceptance: (a) for each effect, dropping it on clip 2 of 3 gives the same result as the right-click menu, and one undo restores the previous state (for Volume, one undo restores the changed level); (b) double-clicking gives the whole-video result (REQ-083, REQ-084, REQ-085) and one undo restores the previous state; (c) dropping on the music track or on empty space changes nothing.
 - REQ-076 (implemented): Effect popups are floating windows inside videolore (like Settings), not blocking: editing and playback continue while one is open. There is one per effect type; each can be moved and closed with its close button or Esc. Changes apply immediately, show in the preview and are each one undo step.
   - Fades: explains the effect (fixed length, REQ-011; video and audio); "Add fade at the boundary nearest the playhead"; list of all fades with their time (clicking one moves the playhead there and opens that fade's popup); "Remove all fades" (one undo step).
@@ -75,7 +76,7 @@ Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, st
 - The layout and the recent-projects list are program settings, never part of a project (like every other setting). Older settings files load without any notice; old 1.0 builds drop these two values when they save their settings (accepted).
 - Effect and clip popups do not block the editor, so the user can keep playing and editing while one is open.
 - Clicking a fade marker opens its settings instead of removing it, so a fade is never removed by accident; a separate "Add fade" handle adds one.
-- Only the existing effects are listed (Fade through black, Subtitles, Volume). The whole-video Volume has no timeline marker; since 1.2.0 a clip with its own volume (not 100% or muted) has one.
+- Only the existing effects are listed (Fade IN/OUT, Subtitles, Volume), plus "Add Text" since 1.3.0. The whole-video Volume has no timeline marker; since 1.2.0 a clip with its own volume (not 100% or muted) has one.
 - The command bar of 0.x is replaced by the toolbar and the status bar; the zoom slider moves to the Timeline header.
 - Settings… is in the Edit menu, and Ctrl/Cmd+, still opens it.
 - When a drop contains several projects, the first one wins and the other files are ignored, with a message.
@@ -100,6 +101,15 @@ Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, st
 - REQ-073: the status bar also shows checking videos for subtitle tracks and "Matching subtitles to the speech", with Cancel.
 - REQ-076: popups say whether they show the whole-video instance or a clip's ("— whole video" or "— <clip name>"); new popups for a clip's volume and for the start and end fades.
 - REQ-068: the new dialog, menu items and popup fields fit at 800x500.
+
+### Changed in 1.3.0
+- REQ-107: "Fade through black" is "Fade IN/OUT" in the Effects list, menus (Effects ▸ and right-click ▸ entries), popups and tooltips.
+- REQ-075: the Effects list gets "Add Text"; the popup and the timeline lane are in [Text](business-text.md) (REQ-108 to REQ-111).
+- REQ-082 (drag and double-click) and REQ-079 (Effects ▸ entries): the three effects are unchanged apart from the name; "Add Text" is not applied to clips.
+- REQ-077: text items are bars on a Text lane of the timeline, not markers; their popup opens from the bar (REQ-110).
+- REQ-106 (Context Menu, see [Boxes on the picture and 360 video](business-picture.md)): the toolbar group is shown only with a selection or a 360 clip under the playhead.
+- REQ-090 to REQ-092: a selection stays while the selected boxes are dragged in the preview; Shift+click adds to the selection like Ctrl/Cmd+click; a Shift+drag on the timeline keeps the selection (see [Subtitles](business-subtitles.md)).
+- REQ-071: Delete removes a selected text item; the shortcuts window lists Shift+click on the picture and the timeline.
 
 ## Known limitations
 - Drag and drop does not work in Linux Wayland sessions (the windowing library used by videolore does not report dropped files there); use File > Import media… and File > Open….

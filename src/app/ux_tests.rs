@@ -74,7 +74,7 @@ fn undo_and_redo_name_the_action() {
     assert_eq!(app.undo_text(), "Undo Remove fade");
     app.dispatch(Command::AddSubtitle, now).unwrap();
     assert_eq!(app.undo_text(), "Undo Add subtitle line");
-    let id = app.selected_line.unwrap();
+    let id = app.selection.primary_line().unwrap();
     app.dispatch(Command::SetSubtitleText(id, "Hi".into()), now)
         .unwrap();
     assert_eq!(app.undo_text(), "Undo Edit subtitle text");
@@ -253,13 +253,13 @@ fn a_subtitle_line_is_edited_from_its_popup_and_undone() {
     let now = Instant::now();
     app.dispatch(Command::Seek(s(1)), now).unwrap();
     app.dispatch(Command::AddSubtitle, now).unwrap();
-    let id = app.selected_line.unwrap();
+    let id = app.selection.primary_line().unwrap();
     let clip = ids(&app)[0];
     app.dispatch(Command::SelectLine(None), now).unwrap();
     app.dispatch(Command::Seek(s(7)), now).unwrap();
     let line = Instance::Line(id, clip);
     app.dispatch(Command::OpenInstance(line), now).unwrap();
-    assert_eq!(app.selected_line, Some(id));
+    assert_eq!(app.selection.primary_line(), Some(id));
     assert_eq!(app.playhead, s(1));
     assert_eq!(app.instance_start(line), Some(s(1)));
     app.dispatch(Command::SetSubtitleText(id, "Edited".into()), now)
@@ -294,7 +294,7 @@ fn play_this_line_stops_at_its_end_and_popups_do_not_stop_playback() {
     app.dispatch(Command::Append(None), t0).unwrap();
     app.dispatch(Command::Seek(s(1)), t0).unwrap();
     app.dispatch(Command::AddSubtitle, t0).unwrap(); // 1 s to 3 s
-    let id = app.selected_line.unwrap();
+    let id = app.selection.primary_line().unwrap();
     app.dispatch(Command::Seek(s(4)), t0).unwrap();
     app.dispatch(Command::PlayLine(id), t0).unwrap();
     assert!(app.preview.is_playing());
