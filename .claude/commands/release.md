@@ -41,7 +41,7 @@ No changes since <V> (release "<name>", notes in `releases/<V> - <name>/RELEASE_
 ```
 
 ## 5. Commit, tag and push the release
-1. `scripts/version.sh check && scripts/release-guard.sh`, then `git add -A` and `git commit -m "Release <V> <name>"` (single line, no prefixes, body or trailers).
+1. `scripts/version.sh check && scripts/release-guard.sh`, then `git add -A` and `git commit -m "Release <V> <name>"` (one human-readable line, no prefixes or body, plus the `Co-Authored-By:` trailer as the only other line).
 2. Tag: `git tag -a v<V> -m "Release <V> - <name>"`.
 3. `git push origin main`, then `git push origin v<V>`.
 4. The tag push triggers `.github/workflows/build.yml`: executables, installers and the **GitHub release `v<V>`** with `releases/<V> - <name>/RELEASE_NOTES.md` as notes. Watch the run until it ends (`gh run watch` if available, otherwise poll the public API `https://api.github.com/repos/<owner>/<repo>/actions/runs?head_sha=<sha>` with a background wait loop) and report the result. If it fails, read the annotations, report them and stop before step 6 only if the user asks; the release commit and tag stay as they are.

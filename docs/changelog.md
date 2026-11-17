@@ -2,6 +2,11 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.2.8 — 2026-11-17 18:59 +0000
+
+### Workflow
+- Commit messages stay one line but may now include the co-author trailer as the only extra line (rule 9).
+
 ## 1.2.7 — 2026-11-17 18:55 +0000
 
 ### Workflow

@@ -38,7 +38,7 @@ If the user named a version (e.g. "for 0.3.0"), that is the **target version**. 
 Call `documenter` with the target version and part `close`. It checks the README (latest changes), the docs consistency and the version.
 
 ## Commit
-Do **not** run tests (only the Principal Engineer does). Run only the static checks `scripts/version.sh check && scripts/release-guard.sh`, then `git add -A` and commit with a **single human-readable line** describing the feature for a human (no prefixes, no body, no trailers, no mention of agents/AI). Do not push unless the user asks.
+Do **not** run tests (only the Principal Engineer does). Run only the static checks `scripts/version.sh check && scripts/release-guard.sh`, then `git add -A` and commit with **one human-readable line** describing the feature for a human (no prefixes, no body, no mention of agents/AI in that line) plus the `Co-Authored-By:` trailer as the only other line. Do not push unless the user asks.
 
 ## Finish
 Report to the user in a few lines: target version, what was built, files changed, test results with line and feature coverage as reported by the Principal Engineer, decisions taken with defaults, open points, and what went into the roadmap.

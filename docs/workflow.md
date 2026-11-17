@@ -56,7 +56,7 @@ target version (named by the user, else next-patch)
 5. README is for users: no reference to AI/agents/workflow; "Latest changes" shows only the last 3 versions, by version, never by date. The **poem** at the end of the README is rewritten only when a new major version is released (`X.0.0`); verses 1-9 end with `\` so GitHub shows one verse per line.
 6. Workflow changes only via `/change-workflow`.
 7. **Only the Principal Engineer runs tests**, after coding, looping (fix code, rerun) until the suite passes; it reports line coverage and feature coverage, which the Documenter writes into the badge with `scripts/coverage.sh --badge`. No other agent or command runs tests, builds or coverage; `/release` asks the Principal Engineer for a VERIFY run. CI reruns everything independently. Code passes `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`; line coverage ≥ 85% and feature coverage 100% (`REQ-NNN (implemented)` in `docs/business*.md` ↔ `// covers: REQ-NNN` in tests).
-8. Every development ends with a commit with a single human-readable line (no prefixes, body or trailers). Push only on request.
+8. Every development ends with a commit with one human-readable line (no prefixes or body) plus the `Co-Authored-By:` trailer as the only other line. Push only on request.
 9. `LICENSE` is the unmodified GPL-3.0 text; Andrea Lorenzani's copyright is in the README and in the header of each `.rs` file.
 10. **Token economy** (`AGENTS.md` rule 12): agents read their index first and grep only the paragraphs they need. The Documenter checks all of `docs/` with `scripts/docs-check.sh` and reads in full only the files a development changed; on `/release` it compacts every `docs/` file (not `ai-docs/`, not the changelog), removing only useless data.
 
@@ -143,3 +143,4 @@ Used by `/clone-workflow`.
 - 2026-11-15 — v1.2.4: the Pages workflow no longer enables Pages itself (the default token cannot); enabling it is a one-time manual step.
 - 2026-11-16 — v1.2.5: notes become indexes (`ai-docs/` index by paragraph and line range, optional `ai-docs/<area>-<topic>.md` sub-documents); `/add-feature` hands work over through files, the command relays only questions, paths and counts; the Documenter runs after each part, with no ownership guardrail on `docs/`; the README poem changes only on a major release; docs compacted on release (and once now).
 - 2026-11-17 — v1.2.7: models per agent: Haiku for Product Manager, Architect and Documenter; Principal Engineer on Sonnet, or Opus when the session model is Opus.
+- 2026-11-17 — v1.2.8: commit messages may carry the `Co-Authored-By:` trailer as their only second line (rule 9).
