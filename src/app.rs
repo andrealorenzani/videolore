@@ -29,6 +29,7 @@ use crate::stt::{
 use crate::subtitles::{LineId, Pos, Preset};
 use crate::time::{Fps, Micros};
 use crate::timeline::{Clip, ClipId, EditError};
+pub use sphere::{Axis, LiveView, ResizeDrag};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -250,6 +251,8 @@ pub enum Instance {
     FadeEnd,
     /// The sound level of one video clip.
     ClipVolume(ClipId),
+    /// A point of view of a 360 source, at this source time.
+    Pov(MediaId, Micros),
 }
 
 /// The open floating windows, most recently opened last.
@@ -507,6 +510,44 @@ pub enum Command {
     ResetPosition,
     /// Where lines are while being dragged in the preview (not an edit).
     DragLines(Option<(Vec<LineId>, Pos)>),
+    /// Turns the camera of the 360 clip under the playhead: the picture was dragged by
+    /// `dx`/`dy` pixels in a preview `view_w` pixels wide (not an edit).
+    DragCamera {
+        dx: f32,
+        dy: f32,
+        view_w: f32,
+    },
+    /// Wheel or pinch zoom of the 360 clip under the playhead (positive zooms in).
+    ZoomCamera(f32),
+    /// Stores the camera shown at the playhead as a point of view of its 360 source.
+    SetPov,
+    /// Changes a point of view: its time (`old_t` finds it) and view.
+    EditPov {
+        media: MediaId,
+        old_t: Micros,
+        pov: crate::camera::Pov,
+    },
+    RemovePov {
+        media: MediaId,
+        t: Micros,
+    },
+    /// "Treat as 360° video": the user's choice for a source (`None`: what the file says).
+    Set360(MediaId, Option<bool>),
+    /// A corner drag finished: `ids` get `size` (thousandths), `line` its new centre.
+    ResizeLines {
+        ids: Vec<LineId>,
+        line: LineId,
+        size: u16,
+        pos: Pos,
+    },
+    /// Lines being resized in the preview (not an edit).
+    DragResize(Option<ResizeDrag>),
+    /// Centres the selected lines on the picture along one axis.
+    AlignSelected(Axis),
+    /// Selected lines back to the style's place and size; else the 360 camera to front.
+    ResetObjects,
+    /// View > Show boxes on the picture.
+    ToggleBoxes,
     /// Asks where to save the subtitles as an `.srt` file.
     PickExportSrt,
     ExportSrt(PathBuf),
@@ -561,9 +602,15 @@ impl Command {
             Command::SetEdgeFade { on: true, .. } => "Add fade",
             Command::SetEdgeFade { on: false, .. } => "Remove fade",
             Command::SetLinePositions { pos: Some(_), .. } => "Move subtitle",
-            Command::SetLinePositions { pos: None, .. } | Command::ResetPosition => {
-                "Reset subtitle position"
-            }
+            Command::SetLinePositions { pos: None, .. }
+            | Command::ResetPosition
+            | Command::ResetObjects => "Reset",
+            Command::SetPov => "Set POV",
+            Command::EditPov { .. } => "Edit POV",
+            Command::RemovePov { .. } => "Remove POV",
+            Command::ResizeLines { .. } => "Resize subtitle",
+            Command::AlignSelected(Axis::Horizontal) => "Align horizontally",
+            Command::AlignSelected(Axis::Vertical) => "Align vertically",
             _ => "Edit",
         }
     }
@@ -589,8 +636,9 @@ pub struct ExportStatus {
     pub stream_copy: Option<bool>,
 }
 
-/// The subtitle tracks found in a file (`Some(empty)` when the check failed).
-type TrackCheck = (MediaId, Vec<media::SubtitleTrack>);
+/// What a later check of a file found: its subtitle tracks (empty when the check failed)
+/// and whether it carries spherical information.
+type TrackCheck = (MediaId, Vec<media::SubtitleTrack>, bool);
 
 /// A file to analyse with ffprobe.
 struct ProbeJob {
@@ -651,6 +699,14 @@ pub struct AppState {
     pub selection: std::collections::BTreeSet<LineId>,
     /// Lines being dragged in the preview and where (shown at once, saved on release).
     pub drag_pos: Option<(Vec<LineId>, Pos)>,
+    /// Lines whose corner is being dragged in the preview and their new size.
+    pub resize_drag: Option<ResizeDrag>,
+    /// The camera of each 360 source you looked through (window state: not saved, not
+    /// in undo). A moved camera without POVs stays; with POVs a drag overrides the path
+    /// until the next seek, play or Reset.
+    pub live: HashMap<MediaId, LiveView>,
+    /// When playback restarts with the dragged camera (a short quiet time after the drag).
+    camera_restart: Option<Instant>,
     /// A subtitle creation waiting for an answer or a background check.
     pub pending_create: Option<CreateRequest>,
     /// The clip the running creation is for (`None`: the whole video).
@@ -868,6 +924,9 @@ impl AppState {
             selected_line: None,
             selection: Default::default(),
             drag_pos: None,
+            resize_drag: None,
+            live: HashMap::new(),
+            camera_restart: None,
             pending_create: None,
             creating_for: None,
             stt_matching: false,
@@ -1233,10 +1292,12 @@ impl AppState {
             }
             Command::SetClipVolume { clip, .. } => tl.get(*clip).is_some(),
             Command::SetEdgeFade { .. } => !tl.clips.is_empty(),
-            Command::ResetPosition => self
-                .selected_lines()
-                .iter()
-                .any(|id| self.project.subtitles.get(*id).is_some()),
+            Command::ResetPosition => self.selection_is_changed(),
+            Command::ResetObjects => self.selection_is_changed() || self.reset_applies_to_camera(),
+            Command::AlignSelected(_) => !self.selected_lines().is_empty(),
+            Command::SetPov | Command::DragCamera { .. } | Command::ZoomCamera(_) => {
+                self.sphere_at_playhead().is_some()
+            }
             Command::PickExportSrt | Command::ExportSrt(_) => self.has_shown_subtitles(),
             Command::MoveLeft => self
                 .target_clip()
@@ -1828,7 +1889,9 @@ impl AppState {
                     self.refresh_still(now);
                     Ok(())
                 } else {
-                    self.preview.play(&self.project, self.playhead, now)
+                    self.clear_overrides();
+                    let shown = self.shown_project().into_owned();
+                    self.preview.play(&shown, self.playhead, now)
                 }
             }
             Command::Seek(t) => {
@@ -1962,7 +2025,8 @@ impl AppState {
                 }
                 self.selected_line = Some(id);
                 self.seek(line.start, now);
-                self.preview.play(&self.project, self.playhead, now)?;
+                let shown = self.shown_project().into_owned();
+                self.preview.play(&shown, self.playhead, now)?;
                 self.stop_at = Some(line.end);
                 Ok(())
             }
@@ -2021,8 +2085,27 @@ impl AppState {
             Command::SetLinePositions { ids, pos } => self.set_line_positions(ids, pos, now),
             Command::ResetPosition => {
                 let ids = self.selected_lines();
-                self.set_line_positions(ids, None, now)
+                self.reset_lines(ids, now)
             }
+            Command::ResetObjects => self.reset_objects(now),
+            Command::AlignSelected(axis) => self.align_selected(axis, now),
+            Command::ResizeLines {
+                ids,
+                line,
+                size,
+                pos,
+            } => self.resize_lines(ids, line, size, pos, now),
+            Command::DragResize(d) => {
+                self.drag_resize(d, now);
+                Ok(())
+            }
+            Command::DragCamera { dx, dy, view_w } => self.drag_camera(dx, dy, view_w, now),
+            Command::ZoomCamera(scroll) => self.zoom_camera(scroll, now),
+            Command::SetPov => self.set_pov(now),
+            Command::EditPov { media, old_t, pov } => self.edit_pov(media, old_t, pov, now),
+            Command::RemovePov { media, t } => self.remove_pov(media, t, now),
+            Command::Set360(media, choice) => self.set_360(media, choice, now),
+            Command::ToggleBoxes => self.toggle_boxes(),
             Command::DragLines(d) => {
                 self.drag_lines(d, now);
                 Ok(())
@@ -2092,6 +2175,7 @@ impl AppState {
                 Some(tl.duration() - last.fade_len())
             }
             Instance::ClipVolume(c) => tl.index_of(c).map(|i| tl.start_of(i)),
+            Instance::Pov(m, t) => self.pov_position(m, t),
         }
     }
 
@@ -2255,7 +2339,20 @@ impl AppState {
             Command::CancelSubtitles => "Subtitles are not being generated",
             Command::ClearRecent => "The list is empty",
             Command::PickExportSrt | Command::ExportSrt(_) => effects::NO_SUBTITLES,
-            Command::ResetPosition => effects::SELECT_A_LINE,
+            Command::ResetPosition if self.selected_lines().is_empty() => effects::SELECT_A_LINE,
+            Command::ResetPosition => sphere::ALREADY_ORIGINAL,
+            Command::ResetObjects if self.selected_lines().is_empty() => {
+                if self.sphere_at_playhead().is_some() {
+                    sphere::CAMERA_AT_FRONT
+                } else {
+                    sphere::SELECT_ON_PICTURE
+                }
+            }
+            Command::ResetObjects => sphere::ALREADY_ORIGINAL,
+            Command::AlignSelected(_) => sphere::SELECT_ON_PICTURE,
+            Command::SetPov | Command::DragCamera { .. } | Command::ZoomCamera(_) => {
+                sphere::NOT_A_360
+            }
             Command::ApplyEffect {
                 target: Target::Selected,
                 ..
@@ -2439,10 +2536,13 @@ impl AppState {
         // Subtitle lines of the file go too; an undo step must never bring back a clip
         // whose file is gone, so the history is dropped when it refers to the file.
         self.project.subtitles.lines.retain(|l| l.media != id);
+        self.project.camera.drop_media(id);
+        self.live.remove(&id);
         if self.history.any(|e| {
             e.timeline.clips.iter().any(|c| c.media == id)
                 || e.music.clips.iter().any(|c| c.media == id)
                 || e.subtitles.lines.iter().any(|l| l.media == id)
+                || !e.camera.path(id).is_empty()
         }) {
             self.history.clear();
         }
@@ -2475,7 +2575,7 @@ impl AppState {
         if !wanted {
             return;
         }
-        let Ok(key) = proxy::key_of(&m.path) else {
+        let Ok(key) = proxy::key_of_kind(&m.path, m.format.is_360()) else {
             return;
         };
         let cancel = Arc::new(AtomicBool::new(false));
@@ -2593,6 +2693,8 @@ impl AppState {
         let dur = self.project.timeline.duration();
         let t = self.fps().snap(t.clamp(Micros::ZERO, dur)).min(dur);
         self.playhead = t;
+        self.clear_overrides();
+        self.camera_restart = None;
         if self.project.timeline.clips.is_empty() {
             self.preview.invalidate(now);
             self.preview.forget_frame();
@@ -2600,7 +2702,8 @@ impl AppState {
             return;
         }
         if self.ffmpeg.is_ok() {
-            let _ = self.preview.seek(&self.project, t, now);
+            let shown = self.shown_project().into_owned();
+            let _ = self.preview.seek(&shown, t, now);
         }
     }
 
@@ -2611,17 +2714,14 @@ impl AppState {
             && self.ffmpeg.is_ok()
         {
             let t = self.playhead;
-            if self.drag_pos.is_some() {
-                let shown = self.shown_project().into_owned();
-                let _ = self.preview.request_still(&shown, t, now);
-            } else {
-                let _ = self.preview.request_still(&self.project, t, now);
-            }
+            let shown = self.shown_project().into_owned();
+            let _ = self.preview.request_still(&shown, t, now);
         }
     }
 
     /// Per-frame housekeeping: background results, preview frames, playhead, export.
     pub fn tick(&mut self, now: Instant) {
+        self.tick_camera(now);
         if let Some(b) = &mut self.banner
             && let Some(life) = b.lifetime
         {
@@ -2915,6 +3015,7 @@ fn preview_config(
 }
 
 mod effects;
+mod sphere;
 mod subs_create;
 pub use subs_create::pick_track;
 
@@ -2924,6 +3025,8 @@ mod effects_tests;
 mod hw_tests;
 #[cfg(test)]
 mod settings_tests;
+#[cfg(test)]
+mod sphere_tests;
 #[cfg(test)]
 pub(crate) mod tests;
 #[cfg(test)]

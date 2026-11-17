@@ -7,7 +7,7 @@
 
 use super::markers::{self, HIT_TOLERANCE, MarkerKind};
 use super::{UiCache, ruler, scroll_body, zoom};
-use crate::app::{AppState, Command, Edge, EffectKind, Instance, Popup, Target};
+use crate::app::{AppState, Axis, Command, Edge, EffectKind, Instance, Popup, Target};
 use crate::time::Micros;
 use crate::timeline::Timeline;
 use eframe::egui::{
@@ -573,6 +573,20 @@ fn marker_lane(
                 ));
                 painter.line_segment([pos2(m.x, mid - 6.0), pos2(m.x, mid + 6.0)], outline);
             }
+            MarkerKind::Pov => {
+                // a camera icon-ish square on its point
+                let d = 5.0;
+                painter.add(Shape::convex_polygon(
+                    vec![
+                        pos2(m.x - d, mid - d),
+                        pos2(m.x + d, mid - d),
+                        pos2(m.x + d, mid + d),
+                        pos2(m.x - d, mid + d),
+                    ],
+                    Color32::from_rgb(120, 70, 170),
+                    outline,
+                ));
+            }
             MarkerKind::AddFade => {
                 let c = pos2(m.x, mid);
                 painter.circle(
@@ -597,7 +611,7 @@ fn marker_lane(
     let resp = if hover.is_empty() {
         resp.on_hover_text(
             "Markers: ◆ fade, ⚑ subtitle line (Ctrl/Cmd+click: select several), ● clip \
-             volume, + add a fade. Click one for its settings.",
+             volume, ■ 360° point of view, + add a fade. Click one for its settings.",
         )
     } else {
         let text: Vec<&str> = hover.iter().map(|m| m.tooltip.as_str()).collect();
@@ -679,6 +693,7 @@ fn marker_lane(
                             muted: false,
                         },
                     ),
+                    Instance::Pov(media, t) => ("Remove", Command::RemovePov { media, t }),
                 };
                 entry(ui, app.is_enabled(&cmd), label, cmds, vec![cmd]);
                 if let Instance::Line(id, _) = i {
@@ -686,7 +701,21 @@ fn marker_lane(
                         ids: vec![id],
                         pos: None,
                     };
-                    entry(ui, true, "Reset position", cmds, vec![reset]);
+                    entry(ui, true, "Reset position and size", cmds, vec![reset]);
+                    // the effect commands act on this line
+                    for (label, axis) in [
+                        ("Align horizontally", Axis::Horizontal),
+                        ("Align vertically", Axis::Vertical),
+                    ] {
+                        let pick = Command::OpenInstance(i);
+                        entry(
+                            ui,
+                            true,
+                            label,
+                            cmds,
+                            vec![pick, Command::AlignSelected(axis)],
+                        );
+                    }
                 }
             }
         }

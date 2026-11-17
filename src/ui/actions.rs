@@ -5,7 +5,7 @@
 //! the toolbar, the tooltips, the shortcuts window and the key bindings all read it, so
 //! they can never disagree.
 
-use crate::app::{AppState, Command, EffectKind, Popup, Target, ZOOM_STEP};
+use crate::app::{AppState, Axis, Command, EffectKind, Popup, Target, ZOOM_STEP};
 use crate::time::Micros;
 use eframe::egui::{Key, KeyboardShortcut, Modifiers};
 
@@ -51,7 +51,11 @@ pub enum ActionId {
     ApplyWholeFade,
     ApplyWholeSubtitles,
     ApplyWholeVolume,
-    ResetSubtitlePosition,
+    AlignHorizontal,
+    AlignVertical,
+    ResetObjects,
+    SetPov,
+    ToggleBoxes,
     ZoomIn,
     ZoomOut,
     ZoomFit,
@@ -295,10 +299,34 @@ pub const ACTIONS: &[Action] = &[
         "Set the sound levels of the whole video"
     ),
     action!(
-        ResetSubtitlePosition,
-        "Reset subtitle position",
+        AlignHorizontal,
+        "Align horizontally",
+        [cmd_shift(Key::H)],
+        "Centre the selected objects on the picture, left to right"
+    ),
+    action!(
+        AlignVertical,
+        "Align vertically",
+        [cmd_shift(Key::J)],
+        "Centre the selected objects on the picture, top to bottom"
+    ),
+    action!(
+        ResetObjects,
+        "Reset",
+        [cmd_shift(Key::R)],
+        "Put the selected objects back at their original place and size; a 360° view back to the front"
+    ),
+    action!(
+        SetPov,
+        "Set POV",
+        [plain(Key::P)],
+        "Save the 360° view shown now as a point of view at the playhead"
+    ),
+    action!(
+        ToggleBoxes,
+        "Show boxes on the picture",
         [],
-        "Put the selected subtitle lines back at the place of the style"
+        "Show or hide the boxes around the objects you can move on the picture"
     ),
     action!(
         ZoomIn,
@@ -401,7 +429,11 @@ impl ActionId {
             ApplyWholeFade => apply(EffectKind::Fade, Target::WholeVideo),
             ApplyWholeSubtitles => apply(EffectKind::Subtitles, Target::WholeVideo),
             ApplyWholeVolume => apply(EffectKind::Volume, Target::WholeVideo),
-            ResetSubtitlePosition => Command::ResetPosition,
+            AlignHorizontal => Command::AlignSelected(Axis::Horizontal),
+            AlignVertical => Command::AlignSelected(Axis::Vertical),
+            ResetObjects => Command::ResetObjects,
+            SetPov => Command::SetPov,
+            ToggleBoxes => Command::ToggleBoxes,
             ZoomIn => Command::ZoomBy(ZOOM_STEP),
             ZoomOut => Command::ZoomBy(1.0 / ZOOM_STEP),
             ZoomFit => Command::ZoomFit,
@@ -426,6 +458,10 @@ impl ActionId {
         match self {
             ActionId::Undo | ActionId::Redo => self.label(app),
             ActionId::Export if app.is_exporting() => "Stop the export (no file is left)".into(),
+            ActionId::ToggleBoxes if app.settings.show_boxes => {
+                "Boxes are shown on the picture: click to hide them".into()
+            }
+            ActionId::ToggleBoxes => "Boxes are hidden: click to show them on the picture".into(),
             _ => action(self).tooltip.into(),
         }
     }

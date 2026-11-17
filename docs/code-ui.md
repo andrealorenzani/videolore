@@ -11,7 +11,7 @@ frame (greyed-out controls are never dispatched: `is_enabled` is checked again).
 | Part | Module | Notes |
 |---|---|---|
 | Menu bar | `ui::menu` | `egui::MenuBar` in a top panel; File, Edit, Playback, Effects, View, Help; File > Open recent ▸ is a submenu; a menu taller than the window scrolls |
-| Toolbar | `ui::toolbar` | 12 actions in one row; `toolbar::fit` decides how many fit, the rest goes in a "»" menu |
+| Toolbar | `ui::toolbar` | 12 actions in one row, a separator, then the effect group (Align horizontally, Align vertically, Reset); `toolbar::fit` decides how many fit, the rest goes in a "»" menu and the group moves there as a whole (`toolbar::visible`) |
 | Content area | `ui::layout` + `ui::mod` | Media, Preview, Timeline, Effects with three draggable borders |
 | Status bar | `ui::status` | latest message, `AppState::background_jobs()` (label, progress, Cancel command), "Output: …" |
 | Floating windows | `ui::popups` | Settings, Fades, Subtitles, Volume, Clip details, the selected fade or line, Keyboard shortcuts, the marker chooser |
@@ -90,7 +90,7 @@ marker lane hits every marker within 4 px: one opens it (`OpenInstance`) or adds
 edits, cuts and zoom. "Play this line" seeks, plays and stops at the line's end (`tick` checks
 `stop_at`).
 
-Right-click menus exist on video clips, music clips, markers and the empty timeline; a double
+Right-click menus exist on video clips, music clips, markers, the empty timeline and the preview picture (Align, Reset, Set POV); a double
 click on a clip opens Clip details.
 
 ## Undo names, recent projects, drag and drop
@@ -123,3 +123,12 @@ mouse gestures (`popups::GESTURES`). New markers: ◆ at the very start/end for 
 mute. The media tooltip says "Contains subtitles (<language>)". Details in
 [code-effects.md](code-effects.md).
 
+## Preview picture (1.2.6)
+
+`ui::picture::interact` draws the boxes and corner handles of the objects on the picture (when
+View > Show boxes on the picture is on) and runs every pointer interaction on it: a click selects
+the object under the pointer, dragging the body moves it, dragging a corner resizes it
+(`ui::boxes`), dragging anywhere else on a 360° clip turns the camera, the wheel and pinch
+zoom. A "Set POV" button appears in the controls row while the playhead is over a 360° clip.
+POVs are markers of a new kind (square) on the marker lane; their popup holds the time, yaw,
+pitch and zoom as numbers and Remove. Details in [code-360.md](code-360.md).

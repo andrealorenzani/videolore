@@ -1,0 +1,191 @@
+{
+  "schema_version": 3,
+  "next_media_id": 3,
+  "media": [
+    {
+      "id": 1,
+      "path_abs": "/videolore-fixture-does-not-exist/a.mp4",
+      "path_rel": "a.mp4",
+      "name": "a.mp4",
+      "duration": 5000000,
+      "format": {
+        "container": "mp4",
+        "vcodec": "h264",
+        "acodec": "aac",
+        "width": 1280,
+        "height": 720,
+        "fps": {
+          "num": 30,
+          "den": 1
+        },
+        "bit_rate": 2000000,
+        "audio_bit_rate": 128000,
+        "sample_rate": 48000,
+        "channels": 2,
+        "subtitle_tracks": []
+      }
+    },
+    {
+      "id": 2,
+      "path_abs": "/videolore-fixture-does-not-exist/b.mp4",
+      "path_rel": "b.mp4",
+      "name": "b.mp4",
+      "duration": 3000000,
+      "format": {
+        "container": "mp4",
+        "vcodec": "h264",
+        "acodec": "aac",
+        "width": 640,
+        "height": 360,
+        "fps": {
+          "num": 25,
+          "den": 1
+        },
+        "bit_rate": 800000,
+        "audio_bit_rate": 96000,
+        "sample_rate": 44100,
+        "channels": 2
+      }
+    },
+    {
+      "id": 3,
+      "path_abs": "/videolore-fixture-does-not-exist/song.mp3",
+      "path_rel": "song.mp3",
+      "name": "song.mp3",
+      "duration": 10000000,
+      "format": {
+        "container": "mp3",
+        "vcodec": null,
+        "acodec": "mp3",
+        "width": 0,
+        "height": 0,
+        "fps": null,
+        "bit_rate": null,
+        "audio_bit_rate": 192000,
+        "sample_rate": 44100,
+        "channels": 2
+      }
+    }
+  ],
+  "timeline": {
+    "clips": [
+      {
+        "id": 1,
+        "media": 1,
+        "src_in": 0,
+        "src_out": 2000000,
+        "volume": 50
+      },
+      {
+        "id": 3,
+        "media": 2,
+        "src_in": 500000,
+        "src_out": 3000000
+      },
+      {
+        "id": 2,
+        "media": 1,
+        "src_in": 2000000,
+        "src_out": 5000000,
+        "muted": true
+      }
+    ],
+    "fades": [
+      [
+        1,
+        3
+      ],
+      [
+        3,
+        2
+      ]
+    ],
+    "next_clip_id": 3,
+    "start_fade": true,
+    "end_fade": true
+  },
+  "music": {
+    "clips": [
+      {
+        "id": 1,
+        "media": 3,
+        "src_in": 1000000,
+        "src_out": 9000000,
+        "start": 1500000
+      }
+    ],
+    "next_id": 1
+  },
+  "mix": {
+    "video_volume": 80,
+    "video_muted": false,
+    "music_volume": 60,
+    "music_muted": false
+  },
+  "subtitles": {
+    "language": "en",
+    "language_overridden": false,
+    "preset": "word_highlight",
+    "lines": [
+      {
+        "id": 1,
+        "media": 1,
+        "start": 500000,
+        "end": 1800000,
+        "text": "hello there world",
+        "words": [
+          {
+            "start": 500000,
+            "end": 900000,
+            "text": "hello"
+          },
+          {
+            "start": 900000,
+            "end": 1300000,
+            "text": "there"
+          },
+          {
+            "start": 1300000,
+            "end": 1800000,
+            "text": "world"
+          }
+        ],
+        "edited": false,
+        "position": {
+          "x": 2500,
+          "y": 8000
+        }
+      },
+      {
+        "id": 2,
+        "media": 2,
+        "start": 1000000,
+        "end": 2500000,
+        "text": "a line {with} braces",
+        "words": [],
+        "edited": true
+      },
+      {
+        "id": 3,
+        "media": 1,
+        "start": 3000000,
+        "end": 4500000,
+        "text": "the end",
+        "words": [
+          {
+            "start": 3000000,
+            "end": 3600000,
+            "text": "the"
+          },
+          {
+            "start": 3700000,
+            "end": 4500000,
+            "text": "end"
+          }
+        ],
+        "edited": false
+      }
+    ],
+    "next_id": 3
+  }
+}

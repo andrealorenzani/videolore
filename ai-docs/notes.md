@@ -1,80 +1,50 @@
-# ai-notes: notes
+# ai-notes: documenter notes
 
-- docs inventory: README.md LICENSE; docs/ index+sub-docs: business{,-editing,-export,-install,-music,-subtitles}.md, architecture{,-ffmpeg,-media-pipeline,-packaging,-security,-subtitles,-dependencies}.md, code{,-modules,-testing,-packaging}.md, changelog.md, workflow.md; release/ frozen, never touch (empty)
-- all sub-docs linked from their index; no dead links (checked 0.2.0); anchor architecture-ffmpeg.md#subtitle-rendering-and-fonts exists
-- version 0.2.0 set via scripts/version.sh (Cargo.toml, Cargo.lock, README badge); check consistent
-- 0.2.0 dev: changelog entry 2026-11-14 10:17 +0000; coverage 95.4 (README badge), features 44/44
-- last README poem: 2026-11-14 (0.4.0, 10 verses, lines 1-9 end with backslash)
-- README rules: "workflows" only in GitHub Actions badge/link URLs (allowed); no AI/agent/command/workflow words
-- README badges: one per normal dependency (eframe, cpal, rfd, whisper-rs, ureq, serde, serde_json, thiserror, directories, tempfile, sha2, sysinfo) + ffmpeg 9.0.2 bundled (from packaging/ffmpeg.lock); macOS-only objc2/winit have no badge
-- docs fixes 0.2.0: business-editing shortcut "S for split" -> Ctrl/Cmd+B (+Save/Quit); business-editing known limitations +3 (undo history on media removal, proxy regen, 720p); architecture-packaging link to code-packaging.md
-- UI labels: command bar "Clear proxy cache", settings "Clear preview copies" (both real, docs use both correctly)
-- open: AGENTS.md (not mine) Project section says MSRV 1.88 (stale, fix via /change-workflow)
-- open: business.md "Known limitations (0.2.0)" does not list the 3 editing limitations (kept in business-editing.md)
-- open: docs/workflow.md unchanged in 0.2.0 (.claude/ and AGENTS.md untouched in this development)
-- open: docs/business-editing.md uses "freezes the window" (product wording, not WIP; left as is)
-- open: ai-docs/architecture.md and ai-docs/business.md contain stale 0.1.x facts? not mine; PM/Arch to refresh if needed
-- 0.2.1 dev (2026-11-14 11:02 +0000): version set via scripts/version.sh (consistent); changelog entry 0.2.1 added; coverage badge 95.9 (PE), features 44/44
-- 0.2.1 README: System requirements section added (CPU AVX2/FMA/F16C for subtitles on Windows/Linux x86-64; Apple Silicon all); known limitation added; latest changes 0.2.1 line; poem replaced (10 verses, lines 1-9 end with backslash)
-- 0.2.1 links: no dead links; all sub-docs linked from indexes; anchor architecture-subtitles.md#cpu-requirements-since-021 exists
-- open: business.md / business-subtitles.md / business-install.md (PM) do not mention the AVX2 CPU requirement or the crash on old CPUs; reported to caller
-- open: docs/workflow.md unchanged in 0.2.1 (.claude/ and AGENTS.md untouched; CI cache prefix only in build.yml, documented in code-testing.md)
-- open: CI cache prefix v1-rust-ggml-portable documented in docs/code-testing.md (PE owned, consistent)
-- 0.2.2 dev (2026-11-14 11:21 +0000): version set via scripts/version.sh (consistent); changelog 0.2.2 added with correction of the 0.2.1 CI-cause guess (callback UB in whisper-rs set_abort_callback_safe, not memory test); coverage badge 95.9 (PE), features 44/44
-- 0.2.2 README: latest-changes 0.2.2 line; poem replaced (10 verses, lines 1-9 end with backslash)
-- 0.2.2 links: no dead links; scripts/test-annotations.sh listed in docs/code.md; docs/workflow.md scripts table is workflow-only (not listed there, by design)
-- open: AGENTS.md scripts list lacks test-annotations.sh and notices/package/fetch-ffmpeg/icons (not mine; reported)
-- open: 0.2.0/0.2.1 changelog entries left as written (history); 0.2.1 CI-cause guess corrected only in 0.2.2 entry
-- open: no commit made by documenter in 0.2.2 (caller commits)
-- 0.3.0 dev (2026-11-14 15:18 +0000): version set via scripts/version.sh set 0.3.0 (consistent); coverage badge 96.2 (PE); features 58/58; changelog 0.3.0 entry added (Known limitations + decisions-to-confirm listed)
-- 0.3.0 README: what-it-is +setup sentence (182 words); system reqs (old CPU message, model sizes 32/190/574 MB); usage items 5,6 + new item 9 Settings; shortcut Ctrl/Cmd+,; limitations (old CPU no longer crash, hw encoder, preview copies wording); latest-changes 0.3.0 line; poem replaced (10 verses, 1-9 end with backslash)
-- 0.3.0 docs fixes (not mine, stale facts): business-editing.md REQ-025 + proxy-cache line ("Clear proxy cache" gone from command bar -> Settings); architecture-subtitles.md + architecture-performance.md flash attention "on" -> off (code FLASH_ATTENTION=false, PE measured slower); workflow.md CI msrv job = build only
-- 0.3.0 link check: 0 dead links, all sub-docs linked from indexes; anchor architecture-subtitles.md#cpu-requirements-since-021 exists
-- open: docs/business-performance.md QG-03 still states the 30% target; measured 25% (not met) -> reported, PM to record result
-- open: AGENTS.md / .claude untouched in 0.3.0 (docs/workflow.md only CI-description fix)
-- open: docs/code-modules.md / code.md / code-testing.md (PE) checked for stale AVX2-crash text: none found after fixes
-- open: docs/business-performance.md + architecture-performance.md: QG-01 numbers in changelog only (fine)
-- open: no commit made by documenter in 0.3.0 (caller commits)
-- 0.4.0 dev (2026-11-14 20:05 +0000): version set via scripts/version.sh set 0.4.0 (consistent); changelog 0.4.0 entry added (Summary, Added/Changed/Fixed/Security/Removed, Quality, Quality not reached, Known limitations); coverage badge 96.3 (PE), features 65/65
-- 0.4.0 README: what-it-is +1 clause (192 words); usage items 8,9 (Export choice); known limitations: NVIDIA 610, libva 2.21 (Ubuntu 24.04 skipped), Fedora freeworld, not always quicker, HEVC Intel driver, unverified combos, several GPUs; latest-changes 0.4.0 line; poem replaced (10 verses, lines 1-9 end with backslash)
-- 0.4.0 links: 0 dead links, anchors ok, all sub-docs linked (architecture-hardware-export, code-hardware); docs/workflow.md unchanged (.claude/ and AGENTS.md untouched)
-- 0.4.0 docs fixes: none needed in other owners' docs (checked export/performance/architecture/code-hardware for 2.21, 610, 14%/41% figures: consistent)
-- open: docs/architecture-hardware-export.md index blurb says "measured results"; its section is "Performance" (cosmetic, PE/Architect)
-- open: README poem/changelog header time 20:05 (written before the final date call at 20:06)
-- open: no commit made by documenter in 0.4.0 (caller commits)
-- 0.4.2 dev (2026-11-14 21:59 +0000): version set via scripts/version.sh set 0.4.2 (consistent); coverage badge 96.3 (PE), features 65/65; changelog 0.4.2 entry at top (above 0.4.1)
-- 0.4.2 README: latest changes now 0.4.2, 0.4.0, 0.3.0 (0.2.2 dropped; 0.4.1 workflow-only); known limitation "very busy computer" added; poem replaced (10 verses, 1-9 end with backslash)
-- 0.4.2 roadmap: 5 hardware-check items + split code-hardware.md (Quality section, new); "Under extreme load" item in Export
-- 0.4.2 links: 0 dead links, 0 bad anchors, all sub-docs linked from indexes; timing figures (1 s / 4 s / 10 s, repeat) consistent in architecture, architecture-hardware-export, code-hardware, business-export
-- open: docs/code-hardware.md is 237 lines (not 234 as the caller said); split item in roadmap
-- open: docs/architecture-hardware-export.md Known limitations has no 0.4.2 item beyond the 139 note; roadmap covers it
-- open: docs/workflow.md unchanged in 0.4.2 (.claude/ and AGENTS.md untouched)
-- open: no commit made by documenter in 0.4.2 (caller commits)
-- RELEASE 0.4.2 "MVP" (version unchanged): changelog "### Release 0.4.2 — MVP" added under the 0.4.2 header (changelog NOT cleaned, releases/ untouched); roadmap refreshed (open limitations from docs/ added across Export, Subtitles, Editing, Performance, Quality, Packaging; "A10"/"A1" internal IDs replaced by plain "assumption"/"open question"); coverage badge 96.3 (PE); README poem replaced (10 verses, 1-9 end with backslash); latest changes kept 0.4.2, 0.4.0, 0.3.0
-- 0.4.2 release link check: 0 dead links, 0 bad anchors, all sub-docs linked from indexes; badges vs Cargo deps: 12 of 12 match
-- open: changelog has duplicate "## 0.1.0" header (two entries at the bottom, 0.1.0 — 23:01 and 23:04); left for the release clean-up
-- open: business.md says "Projects saved by 0.2.0 cannot be opened by 0.1.x"; README says "this version" (both acceptable, not changed)
-- open: docs/workflow.md and .claude/ untouched in the release
-- open: no commit made by documenter in release 0.4.2 (caller commits)
-- 0.4.3 dev (2026-11-14 22:35 +0000): version set via scripts/version.sh set 0.4.3 (consistent); changelog 0.4.3 entry replaces "No changes since 0.4.2" line (Fixed/Added/Changed/Quality); coverage badge 96.3 (PE), features 65/65
-- 0.4.3 roadmap: 5 items added (CI installer-config check under Quality; 4 under Packaging: installer job before release, pin NSIS toolchain, licence page encoding, 0.4.2 macOS/Windows installers missing)
-- 0.4.3 README: latest changes 0.4.3, 0.4.2, 0.4.0 (0.3.0 dropped); known limitation "0.4.2 release has only Linux installers"; poem replaced (10 verses, 1-9 end with backslash)
-- 0.4.3 links: 0 dead links, 0 bad anchors, all sub-docs linked; no forbidden words in README (only GitHub workflow URLs)
-- open: README Installation still says "Each release has one installer per system" (true from 0.4.3 on if installer job passes; limitation line covers 0.4.2)
-- open: docs/workflow.md and .claude/ untouched in 0.4.3; no commit made by documenter (caller commits)
-- 1.1.0 dev (2026-11-15 17:52 +0000): version set via scripts/version.sh set 1.1.0 (consistent); coverage badge 96.1 (PE), features 81/81; changelog 1.1.0 entry (Added/Changed/Removed/Quality/Known limitations; no Fixed: none in plan)
-- 1.1.0 README: usage rewritten (menu bar, toolbar, 4 sections, status bar, F1); shortcut table extended; known limitations +Wayland DnD, +1.0 settings downgrade, +Ctrl/Cmd+V clipboard, +window/popup memory, +macOS menu inside window; latest changes 1.1.0, 0.4.3, 0.4.2 (0.4.0 dropped); poem replaced (10 verses, 1-9 end with backslash), last poem date 2026-11-15
-- 1.1.0 roadmap: new groups Effects and Interface; Editing gets marker/clip-edge drags; macOS Hide/Minimize item merged with native menu bar item; Not planned += 1.0 settings downgrade (accepted)
-- 1.1.0 docs fixes (other owners): business-ui.md + business.md known limitations gained 1.0 downgrade and Ctrl/Cmd+V bullets (PM docs; list in report)
-- 1.1.0 links: 0 dead links, 0 bad anchors, all sub-docs linked from indexes
-- open: docs/business.md line "Projects saved by 0.2.0 cannot be opened by 0.1.x" (fine, historic)
-- open: docs/business-editing.md Known limitations still say Hide/Minimize only (macOS) — consistent with README
-- open: docs/workflow.md and .claude/ untouched in 1.1.0; no commit made by documenter (caller commits)
-- 1.2.0 dev (2026-11-15 21:42 +0000): version set via scripts/version.sh set 1.2.0 (consistent); changelog 1.2.0 entry at top (Added/Changed/Quality/Known limitations); coverage badge 95.9 (PE), features 95/95; tests 310 unit (1 ignored) + 29 integration (3 ignored)
-- 1.2.0 README: what-it-is 199 words; usage items 3, 4, 5 rewritten (effects per clip/whole video, own subtitles, drag/group, .srt export); shortcut row for multi-select; limitations: schema 3 (not openable by 1.1.0), REQ-095 target not met (82%, 0.48 s), overlap/edge/fades/srt limits; latest changes 1.2.0, 1.1.0, 0.4.3; poem replaced (10 verses, 1-9 end with backslash)
-- 1.2.0 REQ-095 status note added (not met: 23/28 words, 0.48 s mean, 1.10 s max): docs/business-subtitles.md (REQ-095 acceptance, limitations, word-highlight claim softened), docs/business.md known limitations, docs/architecture-subtitle-tracks.md (acceptance + risks). PM/Architect informed via changelog only
-- 1.2.0 roadmap: Effects "More effect types" lost fades-from-black part (delivered); Subtitles/Effects/Editing/Interface/Performance/Quality items added; app.rs size 2,900; not-verified items under Quality
-- 1.2.0 links: 0 dead links, 0 bad anchors, all sub-docs linked from indexes (architecture 12, business 7, code 6)
-- open: docs/workflow.md and .claude/, AGENTS.md untouched in 1.2.0 (workflow.md 118 lines, no split needed)
-- open: plan file path given by caller (scratchpad final-plan-1.2.0.md) does not exist; used the summary in the message
-- open: no commit made by documenter in 1.2.0 (caller commits)
+## Index of managed docs (line ranges, refreshed 1.2.6)
+- README.md § title+badges — L1-20 (20 lines)
+- README.md § What it is — L22-23 (2 lines)
+- README.md § System requirements — L25-29 (5 lines)
+- README.md § Installation — L31-61 (31 lines)
+- README.md § Usage (steps 1-11, shortcuts) — L63-99 (37 lines)
+- README.md § Known limitations — L101-131 (31 lines)
+- README.md § Docs links — L133 (1 line)
+- README.md § Latest changes — L135-140 (6 lines)
+- README.md § License — L142-144 (3 lines)
+- README.md § Poem — L146-159 (14 lines, 10 verses)
+- docs/changelog.md § 1.2.6 — L5-27 (23 lines)
+- docs/changelog.md § 1.2.5 … 1.2.1 (workflow-only except 1.2.2) — L28-69
+- docs/changelog.md § 1.2.0 — L70-102; 1.1.0 — L103-144; 1.0.0 — L145-147; 0.4.3 and older — L148-165
+- docs/roadmap.md § Export — L5-18 (14 items)
+- docs/roadmap.md § Effects — L19-26 (6 items)
+- docs/roadmap.md § 360 video — L27-38 (12 items)
+- docs/roadmap.md § Subtitles — L39-60 (22 items)
+- docs/roadmap.md § Editing — L61-69 (5 items)
+- docs/roadmap.md § Interface — L70-88 (~17 items)
+- docs/roadmap.md § Performance — L89-101 (11 items)
+- docs/roadmap.md § Quality — L102-114 (~12 items)
+- docs/roadmap.md § Packaging — L115-127 (~11 items)
+- docs/roadmap.md § Workflow — L128-130 (1 item)
+- docs/roadmap.md § Not planned — L131-135 (4 items)
+- docs/workflow.md § Agents — L5-19; Commands — L20-28; /add-feature pipeline — L29-47; Rules — L48-61; Token economy — L62-72; Skills — L73-75; CI — L76-78; Scripts — L79-92; Hooks and settings — L93-95; Repository — L96-98; Where things live — L99-113; Workflow manifest — L114-130; Workflow history — L131-143
+
+## Consistency checks (1.2.6 close)
+- version 1.2.6 set, `scripts/version.sh check` consistent; badge in README 1.2.6
+- coverage badge 96.0% matches the 1.2.6 changelog (line coverage 96.0%, features 105/105)
+- scripts/docs-check.sh: ok
+- README Latest changes: 1.2.6, 1.2.2, 1.2.0 (1.2.1, 1.2.3, 1.2.4, 1.2.5 are workflow-only)
+- README and roadmap free of AI/agent/command/workflow words (the only "workflow" hit was a roadmap item, reworded)
+- roadmap: diff against HEAD has only additions (no lost items), no duplicated titles; 18 items from 1.2.6 plus one "Not planned" item present once
+- roadmap: "Workflow" item rewritten without workflow/notes references and with current sizes (architecture 148.5 KB, code 62.2 KB, business 52.6 KB)
+- docs/code-hardware.md is 237 lines (roadmap item matches)
+- .claude/ and AGENTS.md unchanged in 1.2.6: docs/workflow.md needs no update
+- AGENTS.md states MSRV 1.100 (matches Cargo.toml rust-version); the earlier "MSRV 1.88" open item is closed
+
+## Open items
+- README poem: the text mentions "the version rose to 1.2.4" and the project page, so it was edited in a non-major development; it must stay unchanged until the next major release. Not changed here; for the caller to decide.
+- README Known limitations and roadmap item (source 0.4.3) both say macOS and Windows installers for 0.4.2 come "with the next release"; not verified against the 0.4.3 release. Left as is.
+- business.md "Known limitations (0.2.0)" may not list the three editing limitations kept in business-editing.md (not rechecked in 1.2.6).
+- Subtitle lines overlap: README/changelog 1.2.6 limitation and roadmap item (1.2.0) describe the same issue; kept once in the roadmap.
+
+## Development log
+- 0.2.0: changelog entry, coverage badge 95.4, features 44/44; docs fixes (editing shortcut, limitations)
+- 1.2.6 close: roadmap checked for lost/duplicate items (none), Workflow item reworded, README Latest changes checked, docs-check ok

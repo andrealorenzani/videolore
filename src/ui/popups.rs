@@ -89,6 +89,10 @@ pub fn instance_label(app: &AppState, i: Instance) -> String {
             "Volume of {}",
             app.clip_name(c).unwrap_or_else(|| "a clip".into())
         ),
+        Instance::Pov(m, t) => {
+            let at = app.pov_position(m, t).map(timecode).unwrap_or_default();
+            format!("360° point of view {at}")
+        }
     }
 }
 
@@ -171,7 +175,97 @@ pub fn instance_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mu
         Some(Instance::FadeStart) => effects::edge_fade_body(ui, app, Edge::Start, cmds),
         Some(Instance::FadeEnd) => effects::edge_fade_body(ui, app, Edge::End, cmds),
         Some(Instance::ClipVolume(c)) => effects::clip_volume_body(ui, app, cache, c, cmds),
+        Some(Instance::Pov(m, t)) => pov_instance(ui, app, cache, m, t, cmds),
     }
+}
+
+/// The popup of a point of view: its time and its view as numbers, and Remove (REQ-102).
+/// The numbers are committed as one undo step when an edit ends.
+fn pov_instance(
+    ui: &mut Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    media: crate::media::MediaId,
+    t: Micros,
+    cmds: &mut Vec<Command>,
+) {
+    let Some(p) = app
+        .project
+        .camera
+        .path(media)
+        .iter()
+        .find(|p| p.t == t)
+        .copied()
+    else {
+        ui.label("This point of view no longer exists.");
+        return;
+    };
+    let name = app
+        .project
+        .media(media)
+        .map(|m| m.name.clone())
+        .unwrap_or_default();
+    ui.strong("360° point of view");
+    ui.add(egui::Label::new(format!("Source: {name}")).truncate());
+    ui.weak("The camera moves in a straight line, in time, from one point of view to the next.");
+    // values being edited (kept between frames until the edit ends)
+    let mut v = match &cache.pov_edit {
+        Some((m, old, v)) if *m == media && *old == t => *v,
+        _ => [
+            t.as_secs_f64(),
+            p.cam.yaw_deg(),
+            p.cam.pitch_deg(),
+            p.cam.fov_deg(),
+        ],
+    };
+    let mut changed = false;
+    let mut done = false;
+    egui::Grid::new("pov-grid").num_columns(2).show(ui, |ui| {
+        let max = app
+            .project
+            .media(media)
+            .map_or(0.0, |m| m.duration.as_secs_f64());
+        for (label, i, range, suffix) in [
+            ("Time (source)", 0, 0.0..=max, " s"),
+            ("Direction (yaw)", 1, -180.0..=180.0, "°"),
+            ("Up/down (pitch)", 2, -90.0..=90.0, "°"),
+            ("Zoom (field of view)", 3, 30.0..=110.0, "°"),
+        ] {
+            ui.label(label);
+            let r = ui.add(
+                egui::DragValue::new(&mut v[i])
+                    .range(range)
+                    .speed(if i == 0 { 0.01 } else { 0.5 })
+                    .max_decimals(if i == 0 { 3 } else { 2 })
+                    .suffix(suffix),
+            );
+            changed |= r.changed();
+            done |= r.drag_stopped() || r.lost_focus();
+            ui.end_row();
+        }
+    });
+    if changed {
+        cache.pov_edit = Some((media, t, v));
+    }
+    if done || (changed && !ui.input(|i| i.pointer.any_down())) {
+        cache.pov_edit = None;
+        let pov = crate::camera::Pov {
+            t: Micros::from_secs_f64(v[0]),
+            cam: crate::camera::Camera::new(
+                (v[1] * 100.0).round() as i64,
+                (v[2] * 100.0).round() as i64,
+                (v[3] * 100.0).round() as i64,
+            ),
+        };
+        if pov != p {
+            cmds.push(Command::EditPov {
+                media,
+                old_t: t,
+                pov,
+            });
+        }
+    }
+    button(ui, app, "Remove", Command::RemovePov { media, t }, cmds);
 }
 
 fn fade_instance(
@@ -367,6 +461,17 @@ fn clip_settings(
         timecode(c.src_out),
         timecode(c.len())
     ));
+    if let Some(m) = app.project.media(c.media).filter(|m| m.has_video()) {
+        // the user's choice wins over what the file says; it applies to the whole source
+        let mut on = m.format.is_360();
+        let r = ui.checkbox(&mut on, "Treat as 360° video").on_hover_text(
+            "Show this video through a camera you can turn (an equirectangular 2:1 \
+                 picture). Saved with the project; applies to every clip of this file.",
+        );
+        if r.changed() {
+            cmds.push(Command::Set360(c.media, Some(on)));
+        }
+    }
     let frame = app.fps().frame_duration();
     let inside = app.playhead > start && app.playhead < start + c.len();
     let offset = app.playhead - start;

@@ -35,6 +35,46 @@ pub struct MediaFormat {
     /// imported before 1.2.0); `Some(empty)`: checked, there are none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle_tracks: Option<Vec<SubtitleTrack>>,
+    /// The file carries equirectangular spherical-video information, one picture, not
+    /// stereo (1.2.6). `None`: not checked yet (media imported before 1.2.6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spherical: Option<bool>,
+    /// The user's choice "Treat as 360° video" for this source; wins over `spherical`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub treat_as_360: Option<bool>,
+}
+
+impl MediaFormat {
+    /// True when the source is shown through the 360 camera: the user's choice, else
+    /// what the file says, else no. Only video can be 360.
+    pub fn is_360(&self) -> bool {
+        self.vcodec.is_some() && self.treat_as_360.or(self.spherical).unwrap_or(false)
+    }
+}
+
+/// True when the video stream says equirectangular projection, with no cropped bounds
+/// and no stereo layout. Only fixed values of ffprobe's output are read.
+pub fn spherical_of(video: &Value) -> bool {
+    let Some(list) = video.get("side_data_list").and_then(Value::as_array) else {
+        return false;
+    };
+    let kind = |d: &Value| {
+        d.get("side_data_type")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let equirect = list.iter().any(|d| {
+        kind(d) == "Spherical Mapping"
+            && d.get("projection").and_then(Value::as_str) == Some("equirectangular")
+            && ["bound_left", "bound_top", "bound_right", "bound_bottom"]
+                .iter()
+                .all(|k| d.get(*k).and_then(num_u64).unwrap_or(0) == 0)
+    });
+    let flat = list.iter().all(|d| {
+        kind(d) != "Stereo 3D" || matches!(d.get("type").and_then(Value::as_str), None | Some("2D"))
+    });
+    equirect && flat
 }
 
 /// Most subtitle tracks recorded for one file.
@@ -390,6 +430,7 @@ pub fn parse_ffprobe(json: &str, path: &Path) -> Result<(Micros, MediaFormat), M
         acodec: codec(audio),
         ..MediaFormat::default()
     };
+    f.spherical = Some(video.is_some_and(spherical_of));
     if let Some(s) = video {
         f.width = s.get("width").and_then(num_u64).unwrap_or(0) as u32;
         f.height = s.get("height").and_then(num_u64).unwrap_or(0) as u32;
@@ -777,5 +818,74 @@ pub(crate) mod tests {
             .label(),
             "xyz"
         );
+    }
+
+    fn probe_with(side: &str) -> MediaFormat {
+        let json = format!(
+            r#"{{"streams": [{{"codec_type": "video", "codec_name": "h264", "width": 128,
+            "height": 64, "side_data_list": [{side}]}}], "format": {{"duration": "1"}}}}"#
+        );
+        parse_ffprobe(&json, Path::new("/a/b.mp4")).unwrap().1
+    }
+
+    // covers: REQ-100
+    #[test]
+    fn spherical_information_is_recognised_only_for_whole_equirectangular_pictures() {
+        let eq = r#"{"side_data_type": "Spherical Mapping", "projection": "equirectangular",
+            "yaw": 0, "pitch": 0, "roll": 0}"#;
+        assert_eq!(probe_with(eq).spherical, Some(true));
+        assert!(probe_with(eq).is_360());
+        let cube = r#"{"side_data_type": "Spherical Mapping", "projection": "cubemap"}"#;
+        assert_eq!(probe_with(cube).spherical, Some(false));
+        let bounded = r#"{"side_data_type": "Spherical Mapping", "projection": "equirectangular",
+            "bound_left": 100, "bound_right": 0}"#;
+        assert_eq!(probe_with(bounded).spherical, Some(false));
+        let zero_bounds = r#"{"side_data_type": "Spherical Mapping", "projection": "equirectangular",
+            "bound_left": 0, "bound_top": "0"}"#;
+        assert_eq!(probe_with(zero_bounds).spherical, Some(true));
+        let stereo = format!(r#"{eq}, {{"side_data_type": "Stereo 3D", "type": "side by side"}}"#);
+        assert_eq!(probe_with(&stereo).spherical, Some(false));
+        let flat3d = format!(r#"{eq}, {{"side_data_type": "Stereo 3D", "type": "2D"}}"#);
+        assert_eq!(probe_with(&flat3d).spherical, Some(true));
+        assert_eq!(probe_with("").spherical, Some(false));
+        // no side data at all, and audio only
+        let (_, plain) = parse_ffprobe(
+            r#"{"streams": [{"codec_type": "video", "codec_name": "h264", "width": 2, "height": 2}],
+            "format": {"duration": "1"}}"#,
+            Path::new("/a/b.mp4"),
+        )
+        .unwrap();
+        assert_eq!(plain.spherical, Some(false));
+        let (_, audio) = parse_ffprobe(
+            r#"{"streams": [{"codec_type": "audio", "codec_name": "mp3"}],
+            "format": {"duration": "1"}}"#,
+            Path::new("/a/b.mp3"),
+        )
+        .unwrap();
+        assert!(!audio.is_360());
+    }
+
+    // covers: REQ-100
+    #[test]
+    fn the_users_switch_wins_over_the_file() {
+        let mut f = probe_with("");
+        assert!(!f.is_360());
+        f.treat_as_360 = Some(true);
+        assert!(f.is_360());
+        let mut g = probe_with(
+            r#"{"side_data_type": "Spherical Mapping", "projection": "equirectangular"}"#,
+        );
+        assert!(g.is_360());
+        g.treat_as_360 = Some(false);
+        assert!(!g.is_360());
+        // audio can never be 360
+        let a = MediaFormat {
+            treat_as_360: Some(true),
+            ..MediaFormat::default()
+        };
+        assert!(!a.is_360());
+        // nothing stored when unset
+        let json = serde_json::to_string(&MediaFormat::default()).unwrap();
+        assert!(!json.contains("spherical") && !json.contains("treat_as_360"));
     }
 }

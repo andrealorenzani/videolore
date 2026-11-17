@@ -277,6 +277,7 @@ pub fn run(
     if let Some(doc) = plan.subtitles() {
         write_subtitles(work.path(), doc).map_err(io)?;
     }
+    render::write_command_files(work.path(), plan.command_files()).map_err(io)?;
     let mut after = None;
     if let Some((cand, codec, bps)) = hw_choice(job, &plan) {
         let attempt = Attempt {
@@ -696,6 +697,7 @@ impl Attempt<'_> {
             None => render::input_args(&graph.inputs),
         };
         let dir = self.work.path();
+        render::write_command_files(dir, &graph.command_files).map_err(|_| CheckFailure::Decode)?;
         let args = outcheck::compare_args(
             inputs,
             graph.inputs.len(),

@@ -844,6 +844,14 @@ impl crate::ffmpeg::Runner for SlowExport {
     }
 }
 
+/// The responsiveness gates keep every core busy: they run one after the other, so that
+/// their load does not add up (the 200 ms limit is for one export and one speech job).
+static BUSY_GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn one_gate_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+    BUSY_GATE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Keeps every core busy until cancelled (speech recognition at "Maximum speed").
 struct BusyTranscriber;
 
@@ -876,6 +884,7 @@ impl crate::stt::Transcriber for BusyTranscriber {
 // covers: REQ-056
 #[test]
 fn stays_responsive_while_exporting_and_transcribing() {
+    let _gate = one_gate_at_a_time();
     use crate::settings::{Effort, SubtitleQuality};
     let dir = tempfile::tempdir().unwrap();
     let f = files(dir.path());
@@ -999,6 +1008,7 @@ fn stays_responsive_while_exporting_and_transcribing() {
 // covers: REQ-056, REQ-066, REQ-073, REQ-021
 #[test]
 fn borders_and_popups_stay_responsive_and_export_cancels_from_the_status_bar() {
+    let _gate = one_gate_at_a_time();
     use super::ux_tests::Harness;
     use crate::settings::{Effort, SubtitleQuality};
     let dir = tempfile::tempdir().unwrap();
@@ -1120,6 +1130,7 @@ fn borders_and_popups_stay_responsive_and_export_cancels_from_the_status_bar() {
 // covers: REQ-056, REQ-082, REQ-089, REQ-095
 #[test]
 fn effect_and_subtitle_drags_stay_responsive_while_exporting_and_matching() {
+    let _gate = one_gate_at_a_time();
     use super::ux_tests::Harness;
     use crate::app::{EffectKind, Instance, Modal, SourceChoice, Target};
     use crate::settings::{Effort, SubtitleQuality};
@@ -1270,4 +1281,196 @@ fn effect_and_subtitle_drags_stay_responsive_while_exporting_and_matching() {
     h.app
         .dispatch(Command::CancelSubtitles, Instant::now())
         .unwrap();
+}
+
+/// Looking around a 360 picture and resizing a box while an export runs and subtitles
+/// are being matched to the speech, on 4K x 2K and 8K x 4K spheres: every frame of the
+/// interface stays short (REQ-056 gate, extended by REQ-104).
+// covers: REQ-104, REQ-056, REQ-101, REQ-097
+#[test]
+fn look_around_and_resize_stay_responsive_on_big_spheres_while_exporting_and_matching() {
+    let _gate = one_gate_at_a_time();
+    use super::ux_tests::Harness;
+    use crate::app::{EffectKind, Modal, SourceChoice, Target};
+    use crate::settings::{Effort, SubtitleQuality};
+    for (w, hgt) in [(3840u32, 1920u32), (7680, 3840)] {
+        let dir = tempfile::tempdir().unwrap();
+        let f = files(dir.path());
+        let fake = SlowExport {
+            inner: crate::app::tests::runner().holding_streams(),
+            secs: 5.0,
+            hardware: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+        let mut app = AppState::with_ffmpeg(
+            Ok(crate::app::tests::info()),
+            Arc::new(fake),
+            Box::new(FakeDialogs::default()),
+            Box::new(crate::preview::NullSink),
+        );
+        let now = Instant::now();
+        import(&mut app, f);
+        app.project.media[0].format.width = w;
+        app.project.media[0].format.height = hgt;
+        app.project.media[0].format.spherical = Some(true);
+        for i in [0, 1] {
+            app.dispatch(Command::Append(Some(app.project.media[i].id)), now)
+                .unwrap();
+        }
+        app.dispatch(Command::SetEffort(Effort::Maximum), now)
+            .unwrap();
+        app.dispatch(Command::Seek(Micros(1_000_000)), now).unwrap();
+        app.dispatch(Command::AddSubtitle, now).unwrap();
+        let line = app.selected_line.unwrap();
+        app.dispatch(
+            Command::SetLinePositions {
+                ids: vec![line],
+                pos: Some(crate::subtitles::Pos { x: 5000, y: 5000 }),
+            },
+            now,
+        )
+        .unwrap();
+        app.dispatch(Command::SetSubtitleText(line, "HHHH".into()), now)
+            .unwrap();
+        app.dispatch(Command::ClearSelection, now).unwrap();
+        app.frame = Some(crate::preview::Frame {
+            pts: Micros::ZERO,
+            width: 64,
+            height: 36,
+            rgba: vec![0; 64 * 36 * 4],
+        });
+        app.frame_serial += 1;
+        let mut h = Harness::new(app, 1280.0, 800.0);
+        h.idle(3);
+        let store = crate::stt::tests::store_for(dir.path(), b"m");
+        std::fs::create_dir_all(&store.dir).unwrap();
+        std::fs::write(
+            store.path(SubtitleQuality::Fast),
+            crate::stt::tests::level_body(b"m", 0),
+        )
+        .unwrap();
+        h.app.model_store = Some(store);
+        h.app.settings.subtitle_quality = SubtitleQuality::Fast;
+        h.app.transcriber =
+            Arc::new(|_, _| Ok(Box::new(BusyTranscriber) as Box<dyn crate::stt::Transcriber>));
+        h.app.project.media[1].format.subtitle_tracks = Some(vec![crate::media::SubtitleTrack {
+            ordinal: 0,
+            codec: crate::media::TextCodec::Srt,
+            language: Some("eng".into()),
+            title: None,
+        }]);
+        let clip = h.app.project.timeline.clips[1].id;
+        if crate::stt::available() {
+            h.app
+                .dispatch(
+                    Command::ApplyEffect {
+                        effect: EffectKind::Subtitles,
+                        target: Target::Clip(clip),
+                    },
+                    now,
+                )
+                .unwrap();
+            assert!(matches!(h.app.modal, Some(Modal::SubtitleSource { .. })));
+            h.app
+                .dispatch(Command::ChooseSubtitleSource(SourceChoice::Use(0)), now)
+                .unwrap();
+            assert!(h.app.is_generating());
+            h.app
+                .dispatch(Command::ClosePopup(Popup::Subtitles), now)
+                .unwrap();
+        }
+        h.app
+            .dispatch(Command::Export(dir.path().join("busy.mp4")), now)
+            .unwrap();
+        assert!(h.app.is_exporting());
+        h.idle(2);
+        let pic = h.find("Drag to look around").unwrap().rect;
+        let btn = |pos, pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        let mut worst = Duration::ZERO;
+        let mut times = Vec::new();
+        let mut timed = |h: &mut Harness, events: Vec<Event>| {
+            let t = Instant::now();
+            h.frame(events);
+            let took = t.elapsed();
+            times.push(took.as_millis());
+            worst = worst.max(took);
+        };
+        // (1) the camera dragged across the picture, with wheel zoom
+        let from = pic.min + vec2(pic.width() * 0.2, pic.height() * 0.3);
+        timed(&mut h, vec![Event::PointerMoved(from)]);
+        timed(&mut h, vec![btn(from, true)]);
+        for i in 1..=15 {
+            let p = from + vec2(8.0 * i as f32, 3.0 * i as f32);
+            timed(&mut h, vec![Event::PointerMoved(p)]);
+        }
+        timed(&mut h, vec![btn(from + vec2(120.0, 45.0), false)]);
+        for _ in 0..5 {
+            timed(
+                &mut h,
+                vec![Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: vec2(0.0, 40.0),
+                    phase: egui::TouchPhase::Move,
+                    source: egui::MouseWheelSource::Wheel,
+                    modifiers: Modifiers::NONE,
+                }],
+            );
+        }
+        let m = h.app.project.media[0].id;
+        assert!(h.app.live.contains_key(&m), "the camera turned");
+        // (2) a corner of the subtitle's box dragged
+        let hs = {
+            let raw = RawInput {
+                screen_rect: Some(h.screen()),
+                ..Default::default()
+            };
+            let now = Instant::now();
+            let (app, cache) = (&mut h.app, &mut h.cache);
+            let mut out = h.ctx.run_ui(raw, |ui| frame_ui(ui, app, cache, now));
+            let v: Vec<Rect> = out
+                .shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::Shape::Rect(r) if (r.rect.width() - 7.0).abs() < 0.01 => Some(r.rect),
+                    _ => None,
+                })
+                .collect();
+            out.textures_delta.clear();
+            out.drop_without_applying_deltas();
+            v
+        };
+        let corner = hs
+            .iter()
+            .max_by(|a, b| (a.center().x + a.center().y).total_cmp(&(b.center().x + b.center().y)))
+            .expect("handles")
+            .center();
+        timed(&mut h, vec![Event::PointerMoved(corner)]);
+        timed(&mut h, vec![btn(corner, true)]);
+        for i in 1..=10 {
+            timed(
+                &mut h,
+                vec![Event::PointerMoved(
+                    corner + vec2(4.0 * i as f32, 2.0 * i as f32),
+                )],
+            );
+        }
+        assert!(h.app.resize_drag.is_some(), "the box follows the pointer");
+        timed(&mut h, vec![btn(corner + vec2(40.0, 20.0), false)]);
+        timed(&mut h, vec![]);
+        assert!(h.app.project.subtitles.get(line).unwrap().size.is_some());
+        assert!(
+            worst <= Duration::from_millis(200),
+            "{w}x{hgt}: slowest frame {worst:?} ({times:?} ms)"
+        );
+        assert!(h.app.is_exporting(), "the export was still running");
+        h.app.dispatch(Command::CancelExport, now).unwrap();
+        h.app.wait_export(Instant::now());
+        h.app
+            .dispatch(Command::CancelSubtitles, Instant::now())
+            .unwrap();
+    }
 }

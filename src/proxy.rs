@@ -32,6 +32,25 @@ pub const PARAMS_VERSION: u32 = 1;
 pub const MAX_WIDTH: u32 = 960;
 pub const MAX_HEIGHT: u32 = 540;
 
+/// A 360 source wider than this gets a preview copy of [`SPHERE_COPY`] (the camera view is
+/// made from the copy, so it needs far more pixels than a flat picture: a 90° view of a
+/// 960 pixel copy would be 240 pixels wide).
+pub const SPHERE_COPY_ABOVE: u32 = 4096;
+/// Size of the preview copy of a big 360 source.
+pub const SPHERE_COPY: (u32, u32) = (4096, 2048);
+/// A 360 source bigger than this is not decoded for the preview (it is still exported).
+pub const SPHERE_MAX: (u32, u32) = (16384, 8192);
+
+/// True when the preview cannot show a 360 source of this size (it has to stay out of
+/// memory: an 8K frame is 100 MB). Products are 64-bit: no overflow.
+pub fn sphere_too_large(width: u32, height: u32) -> bool {
+    width > SPHERE_MAX.0 || height > SPHERE_MAX.1
+}
+
+/// The message shown for [`sphere_too_large`].
+pub const SPHERE_TOO_LARGE: &str =
+    "This 360° video is too large to show here. It is still exported.";
+
 /// The automatic proxy rule ("Preview quality: Automatic").
 pub fn needs_proxy(width: u32, height: u32, machine: &Machine) -> bool {
     let px = u64::from(width) * u64::from(height);
@@ -48,6 +67,12 @@ pub fn format_needs_proxy(f: &MediaFormat, machine: &Machine) -> bool {
 /// Whether the preview of `f` uses a proxy with the chosen preview quality: Automatic =
 /// the rule above, Smoother = every video bigger than 1280x720, Original = never.
 pub fn wants_proxy(f: &MediaFormat, quality: PreviewQuality, machine: &Machine) -> bool {
+    if f.is_360() {
+        // its own rule: only a source wider than the copy, and never when too large to show
+        return quality != PreviewQuality::Original
+            && f.width > SPHERE_COPY_ABOVE
+            && !sphere_too_large(f.width, f.height);
+    }
     let px = u64::from(f.width) * u64::from(f.height);
     match quality {
         PreviewQuality::Automatic => format_needs_proxy(f, machine),
@@ -71,12 +96,22 @@ pub fn fit_even(width: u32, height: u32, max_w: u32, max_h: u32) -> (u32, u32) {
 
 /// Cache key of a source: first 32 hex digits of SHA-256(path, size, mtime, version).
 pub fn cache_key(path: &Path, size: u64, mtime_ns: u128) -> String {
+    cache_key_kind(path, size, mtime_ns, false)
+}
+
+/// [`cache_key`] of a normal copy (`sphere` false, the same key as always) or of the large
+/// copy of a 360 source (a different file, so switching "Treat as 360" never reuses the
+/// wrong one).
+pub fn cache_key_kind(path: &Path, size: u64, mtime_ns: u128, sphere: bool) -> String {
     let mut h = Sha256::new();
     h.update(path.as_os_str().as_encoded_bytes());
     h.update([0]);
     h.update(size.to_le_bytes());
     h.update(mtime_ns.to_le_bytes());
     h.update(PARAMS_VERSION.to_le_bytes());
+    if sphere {
+        h.update(b"360");
+    }
     h.finalize()
         .iter()
         .take(16)
@@ -86,13 +121,18 @@ pub fn cache_key(path: &Path, size: u64, mtime_ns: u128) -> String {
 
 /// Cache key of an existing file.
 pub fn key_of(path: &Path) -> io::Result<String> {
+    key_of_kind(path, false)
+}
+
+/// [`key_of`] for the kind of copy (see [`cache_key_kind`]).
+pub fn key_of_kind(path: &Path, sphere: bool) -> io::Result<String> {
     let meta = std::fs::metadata(path)?;
     let mtime = meta
         .modified()?
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    Ok(cache_key(path, meta.len(), mtime))
+    Ok(cache_key_kind(path, meta.len(), mtime, sphere))
 }
 
 /// True for file names the cache owns: `<32 hex>.mkv` or `<32 hex>.mkv.partial`.
@@ -180,7 +220,12 @@ pub fn proxy_args(
     version: FfVersion,
     threads: Option<u32>,
 ) -> Vec<OsString> {
-    let (w, h) = fit_even(format.width, format.height, MAX_WIDTH, MAX_HEIGHT);
+    let (mw, mh) = if format.is_360() {
+        SPHERE_COPY
+    } else {
+        (MAX_WIDTH, MAX_HEIGHT)
+    };
+    let (w, h) = fit_even(format.width, format.height, mw, mh);
     let fps = format.fps.unwrap_or(Fps { num: 30, den: 1 });
     let gop = ((fps.as_f64() / 2.0).round() as u32).max(1);
     let mut a = argv([
@@ -684,5 +729,82 @@ mod tests {
         let ev = h.join().unwrap().unwrap();
         assert_eq!(attempts.load(Ordering::SeqCst), 2, "restarted");
         assert_eq!(ev, ProxyEvent::Ready(MediaId(1), w.cache.path_for(&t.key)));
+    }
+
+    fn sphere(w: u32, h: u32) -> MediaFormat {
+        MediaFormat {
+            vcodec: Some("h264".into()),
+            width: w,
+            height: h,
+            spherical: Some(true),
+            ..MediaFormat::default()
+        }
+    }
+
+    // covers: REQ-104
+    #[test]
+    fn big_spheres_get_a_large_copy_and_huge_ones_none() {
+        let m = machine(8, 16);
+        // 4K x 2K and below: the original; 8K: a 4096x2048 copy; never with Original
+        assert!(!wants_proxy(
+            &sphere(4096, 2048),
+            PreviewQuality::Automatic,
+            &m
+        ));
+        assert!(!wants_proxy(
+            &sphere(3840, 1920),
+            PreviewQuality::Smoother,
+            &m
+        ));
+        assert!(wants_proxy(
+            &sphere(7680, 3840),
+            PreviewQuality::Automatic,
+            &m
+        ));
+        assert!(wants_proxy(
+            &sphere(7680, 3840),
+            PreviewQuality::Smoother,
+            &m
+        ));
+        assert!(!wants_proxy(
+            &sphere(7680, 3840),
+            PreviewQuality::Original,
+            &m
+        ));
+        // too large to show: no copy either
+        assert!(sphere_too_large(16385, 100) && sphere_too_large(100, 8193));
+        assert!(!sphere_too_large(16384, 8192));
+        assert!(!wants_proxy(
+            &sphere(20_000, 10_000),
+            PreviewQuality::Automatic,
+            &m
+        ));
+        assert!(sphere_too_large(u32::MAX, u32::MAX));
+        // a flat video of 8K keeps the normal rule
+        let mut flat = sphere(7680, 3840);
+        flat.treat_as_360 = Some(false);
+        assert!(wants_proxy(&flat, PreviewQuality::Automatic, &m));
+        // the copy is 4096 wide and 2:1, the key differs from the normal copy's
+        let a = proxy_args(
+            Path::new("/m/s.mp4"),
+            Path::new("/c/x.mkv"),
+            &sphere(7680, 3840),
+            FfVersion::Dev,
+            None,
+        );
+        let text: Vec<String> = a.iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        assert!(
+            text.contains(&"scale=4096:2048,setsar=1".to_string()),
+            "{text:?}"
+        );
+        assert_ne!(
+            cache_key_kind(Path::new("/a"), 1, 2, true),
+            cache_key_kind(Path::new("/a"), 1, 2, false)
+        );
+        assert_eq!(
+            cache_key_kind(Path::new("/a"), 1, 2, false),
+            cache_key(Path::new("/a"), 1, 2)
+        );
+        assert!(SPHERE_TOO_LARGE.contains("too large"));
     }
 }

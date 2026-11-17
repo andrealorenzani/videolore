@@ -341,6 +341,19 @@ pub struct Settings {
     /// Recently opened or saved projects, most recent first (1.1).
     #[serde(default, deserialize_with = "lenient_recent")]
     pub recent: Vec<PathBuf>,
+    /// View > Show boxes on the picture (1.2.6); on when missing or not a yes/no.
+    #[serde(default = "boxes_on", deserialize_with = "lenient_bool_true")]
+    pub show_boxes: bool,
+}
+
+fn boxes_on() -> bool {
+    true
+}
+
+/// Reads a yes/no leniently: anything that is not a boolean is `true` (the default).
+fn lenient_bool_true<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_bool().unwrap_or(true))
 }
 
 impl Default for Settings {
@@ -364,6 +377,7 @@ impl Settings {
             hardware_off: Vec::new(),
             layout: None,
             recent: Vec::new(),
+            show_boxes: true,
         }
     }
 

@@ -836,3 +836,36 @@ fn the_largest_settings_file_fits_the_size_limit() {
         json.len()
     );
 }
+
+// covers: REQ-096, REQ-057
+#[test]
+fn show_boxes_defaults_on_survives_save_and_ignores_hostile_values() {
+    let m = fp(8, 4, 16);
+    // files of 1.2.5 have no such field: on, and nothing is rewritten
+    let mut old = file_1_0(&m);
+    old.as_object_mut().unwrap().remove("show_boxes");
+    let st = startup(&bytes(&old.to_string()), &m);
+    assert!(st.settings.show_boxes);
+    assert!(!st.write);
+    // turned off: written and read back
+    let mut s = st.settings.clone();
+    s.show_boxes = false;
+    let st = startup(&saved(&s), &m);
+    assert!(!st.settings.show_boxes);
+    assert_eq!(st.notice, None);
+    assert_eq!(st.settings, s);
+    // anything that is not a yes/no is the default, the rest of the file stays valid
+    for bad in [
+        serde_json::json!("no"),
+        serde_json::json!(0),
+        serde_json::json!(null),
+        serde_json::json!([false]),
+    ] {
+        let mut f = file_1_0(&m);
+        f["effort"] = serde_json::json!("maximum");
+        f["show_boxes"] = bad;
+        let st = startup(&bytes(&f.to_string()), &m);
+        assert!(st.settings.show_boxes);
+        assert_eq!(st.settings.effort, Effort::Maximum);
+    }
+}

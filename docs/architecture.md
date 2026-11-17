@@ -1,17 +1,19 @@
 # Architecture
 
-Version 1.2.0. Rust (edition 2024), minimum Rust 1.100 (the project follows the latest stable Rust). License GPL-3.0.
+Built up to version 1.2.6; the 1.2.6 parts (360 video and boxes) are described below. Rust (edition 2024), minimum Rust 1.100 (the project follows the latest stable Rust). License GPL-3.0.
 
 ## Overview
 `videolore` is a desktop video editor with a native window (Linux, macOS, Windows). It does not decode or encode video itself: it drives the `ffmpeg` and `ffprobe` programs, which are **bundled with the installers** since 0.2.0. The editor keeps the edit (video clips, cuts, fades, a music track, subtitles) in memory, previews it, and exports it with a single `ffmpeg` run.
 
-Implemented: requirements REQ-001..095 (see [business](business.md)). 0.3.0 added automatic setup for each computer, a plain-language Settings window, three subtitle quality levels, a processor check before generating subtitles, and security hardening (REQ-045..054, 056..059). 0.4.0 adds an opt-in faster export with the computer's video hardware (NVIDIA, Intel, AMD, Linux VA-API, Apple VideoToolbox), with an automatic check of every result and a silent redo with the normal method on any problem (REQ-055, 060..065; see [hardware export](architecture-hardware-export.md)). 1.1.0 restructures the window: resizable sections, a menu bar, a toolbar, a status bar, an Effects list with popups, markers for fades and subtitle lines on the timeline, recent projects and drag and drop (REQ-066..081; see [user interface](architecture-ui.md)). 1.2.0 lets every effect be applied to one clip or to the whole video (fades from and to black, per-clip volume, subtitles for one clip), reuses text subtitle tracks found inside videos with words matched to the speech, exports subtitles as SRT, lets each subtitle line be placed anywhere on screen (alone or as a selected group), and labels the time ruler in seconds, minutes or hours (REQ-082..095; see [effects](architecture-effects.md) and [subtitle tracks](architecture-subtitle-tracks.md)).
+Implemented: requirements REQ-001..105 (see [business](business.md)). 0.3.0 added automatic setup for each computer, a plain-language Settings window, three subtitle quality levels, a processor check before generating subtitles, and security hardening (REQ-045..054, 056..059). 0.4.0 adds an opt-in faster export with the computer's video hardware (NVIDIA, Intel, AMD, Linux VA-API, Apple VideoToolbox), with an automatic check of every result and a silent redo with the normal method on any problem (REQ-055, 060..065; see [hardware export](architecture-hardware-export.md)). 1.1.0 restructures the window: resizable sections, a menu bar, a toolbar, a status bar, an Effects list with popups, markers for fades and subtitle lines on the timeline, recent projects and drag and drop (REQ-066..081; see [user interface](architecture-ui.md)). 1.2.0 lets every effect be applied to one clip or to the whole video (fades from and to black, per-clip volume, subtitles for one clip), reuses text subtitle tracks found inside videos with words matched to the speech, exports subtitles as SRT, lets each subtitle line be placed anywhere on screen (alone or as a selected group), and labels the time ruler in seconds, minutes or hours (REQ-082..095; see [effects](architecture-effects.md) and [subtitle tracks](architecture-subtitle-tracks.md)). 1.2.6 adds a visible box with corner handles around every movable object on the picture (today the subtitle lines) with a per-line size, toolbar commands Align horizontally, Align vertically and Reset, and 360 video with look-around, points of view (POVs) and a linear camera path exported as a flat video (REQ-096..105; see [boxes](architecture-boxes.md) and [360 video](architecture-360.md)).
 
 ## Sub-documents
 | Document | Contents |
 |---|---|
 | [architecture-effects.md](architecture-effects.md) | Applying effects to a clip or the whole video (1.2.0): fades from and to black, clip volume, drag from the Effects list, export rules, tests. |
 | [architecture-subtitle-tracks.md](architecture-subtitle-tracks.md) | Subtitle tracks inside videos (1.2.0): detection, reading, "use or recognise", matching words to the speech, fallbacks, SRT export, tests and risks. |
+| [architecture-boxes.md](architecture-boxes.md) | 1.2.6: boxes and corner handles, per-line size, Align and Reset commands, toolbar group, show-boxes setting, tests. |
+| [architecture-360.md](architecture-360.md) | 1.2.6: recognising 360 video, virtual camera and POVs, one `ffmpeg` engine for preview and export, preview copies, size limit, performance, tests, risks. |
 | [architecture-projects.md](architecture-projects.md) | Project files: format versions 1–3 and compatibility, loading and validation, unsaved changes. |
 | [architecture-ui.md](architecture-ui.md) | The window (1.1.0): layout and resizable sections, menus, toolbar, shortcuts, status bar, effect popups, timeline markers, recent projects, drag and drop, interface tests. |
 | [architecture-performance.md](architecture-performance.md) | Machine detection, recommended settings, the "How hard videolore works" levels and what they control, the 0.3.0 performance review. |
@@ -27,15 +29,16 @@ Implemented: requirements REQ-001..095 (see [business](business.md)). 0.3.0 adde
 | Module | Role |
 |---|---|
 | `time` | Exact time arithmetic and timestamp formatting (no floating point in cut math). |
-| `media` | Information about a media file read from `ffprobe`; status "analysing / ready / rejected"; video or audio-only; since 1.2.0 its text subtitle tracks. |
+| `media` | Information about a media file read from `ffprobe`; status "analysing / ready / rejected"; video or audio-only; since 1.2.0 its text subtitle tracks; since 1.2.6 whether it is 360. |
 | `timeline` | The video track: clips, in/out points, order, cuts, fades (since 1.2.0 also from and to black at the video's edges), each clip's volume, and the rules that keep it valid. |
 | `music` | The music track: audio clips that never overlap; place, move, trim, split, delete. |
 | `subtitles` | Subtitle lines stored against the source speech, and how they appear on the timeline; since 1.2.0 each line's position on screen. |
 | `srt` (1.2.0) | Reads and writes SRT subtitle files (tracks found in videos, SRT export). |
 | `align` (1.2.0) | Matches the words of a subtitle track to the recognised speech to time each word. |
+| `camera` (1.2.6) | Pure camera maths for 360 video: limits, POV path (linear, shortest way round), drag and zoom mapping, the command file for the `v360` filter (absolute commands, changed values only). |
 | `ass` | Writes the subtitle file (ASS format) used by `ffmpeg` for the chosen style. |
 | `history` | Undo and redo of the whole edit (video, music, subtitles, volumes); since 1.1.0 each step has a name ("Undo Split"). |
-| `project` | Save/load projects as versioned JSON (version 3 since 1.2.0, opens versions 1 and 2); unsaved-changes tracking. See [project files](architecture-projects.md). |
+| `project` | Save/load projects as versioned JSON (version 3 since 1.2.0, version 4 since 1.2.6; opens all older versions); unsaved-changes tracking. See [project files](architecture-projects.md). |
 | `format` | Output formats, codecs and which encoder to use, with fallbacks. |
 | `render` | Turns the edit into an export plan and the exact `ffmpeg` arguments; also the preview graphs. |
 | `ffmpeg` | Finds `ffmpeg`/`ffprobe` (bundled copy first), checks features, runs them, reads progress, cancels. |
@@ -64,6 +67,7 @@ Implemented: requirements REQ-001..095 (see [business](business.md)). 0.3.0 adde
 - **Changing a setting:** applies immediately to the next job; running jobs continue unchanged. Settings are saved atomically and never stored in projects.
 - **User interface (1.1.0):** every menu item, toolbar button, shortcut and context-menu entry produces a command from one shared table; the application state runs it. Dragging a section border updates the layout live and saves it once when released. See [user interface](architecture-ui.md).
 - **Recent projects and drag and drop (1.1.0):** opening a recent or dropped project goes through the unsaved-changes prompt; dropped media follow the same path as File > Import.
+- **360 video and boxes (1.2.6):** a 360 clip is rendered by `ffmpeg` through a camera (preview and export share one graph); dragging the picture changes a live camera, Set POV saves it into the project; boxes and handles are drawn by the preview only and change a line's saved position and size. See [360 video](architecture-360.md) and [boxes](architecture-boxes.md).
 - **Opening a project by double-click:** on Windows and Linux the file path arrives on the command line; on macOS it arrives as a system event. Both go through the unsaved-changes prompt.
 
 The UI never waits on `ffmpeg` or on disk, apart from saving or loading the project file itself (at most 16 MiB), the settings file (at most 64 KiB) and a few small files written at Linux startup.
@@ -89,11 +93,13 @@ The UI never waits on `ffmpeg` or on disk, apart from saving or loading the proj
 - **Subtitle positions (1.2.0):** stored per line as a fraction of the picture and burned in with position tags written by `videolore`, so preview and export match; the selection of lines is window state, not project data.
 - **Speech-to-text:** local whisper.cpp, included in release builds; three quality levels, each model downloaded once after consent. See [subtitles](architecture-subtitles.md).
 - **whisper.cpp CPU baseline (0.2.1):** compiled for AVX2/FMA/F16C on x86-64 instead of for the build machine's CPU. Since 0.3.0 the processor is checked first, so older computers get a clear message instead of a crash. A slower speech engine for older processors is not planned (decided on 2026-11-14). See [subtitles](architecture-subtitles.md#cpu-requirements-since-021).
-- **Projects:** format version 3 since 1.2.0 (always written; 1.1 cannot open it, older files open unchanged); unsaved changes are detected by comparing the edit with the last saved one, so undoing back to the saved state clears the marker. See [Projects](#projects).
+- **Projects:** format version 3 since 1.2.0 (always written; 1.1 cannot open it, older files open unchanged; version 4 since 1.2.6); unsaved changes are detected by comparing the edit with the last saved one, so undoing back to the saved state clears the marker. See [Projects](#projects).
+- **360 video (1.2.6):** the `v360` filter of the bundled `ffmpeg` for preview and export, driven by absolute `sendcmd` commands that send only changed values (no new crate; an own reprojection or a GPU shader was rejected: two implementations to keep within 1°, subtitles); POVs are stored per source in source time so editing never makes the camera jump; the exported picture is flat and fills the output frame; 360 counts as 1920x1080 for the automatic format; projects use format version 4 (written always, 1.2.5 cannot open it). See [360 video](architecture-360.md).
+- **Boxes and sizes (1.2.6):** one box layer for every movable object, a per-line text size 25–400% burned with a font-size tag, Align and Reset as ordinary actions of the shared table, "Show boxes" as a program setting. See [boxes](architecture-boxes.md).
 - **Installers:** unsigned. See [packaging](architecture-packaging.md).
 
 ## Projects
-Versioned JSON files, format version 3 since 1.2.0 (opens versions 1 and 2 with exactly the same result; files from a newer version are refused and never modified); strict validation after loading; unsaved-changes prompt on New, Open, close and Quit. Details in [project files](architecture-projects.md).
+Versioned JSON files, format version 3 since 1.2.0, version 4 since 1.2.6 (opens versions 1 and 2 with exactly the same result; files from a newer version are refused and never modified); strict validation after loading; unsaved-changes prompt on New, Open, close and Quit. Details in [project files](architecture-projects.md).
 
 ## Non-functional targets
 - `ffmpeg`/`ffprobe` processes never exceed the limit of the chosen level: 3 for Light and Balanced, 3 to 6 for Maximum (guaranteed by the job queue, tested with 20 imports + export + preview at every level).
@@ -104,6 +110,7 @@ Versioned JSON files, format version 3 since 1.2.0 (opens versions 1 and 2 with 
 - The window keeps reacting while an export and subtitle generation run together at any level: every frame within 200 ms in an automated test (since 1.1.0 also while dragging a section border and with popups open).
 - Interface (1.1.0): the smallest window stays 800x500; there every control is visible or reachable by scrolling; section proportions hold within 1 pixel at 800x500, 1280x800 and 2560x1440; all 12 toolbar commands usable at 800 px wide. Goal: under 16 ms per frame at 1280x800 (estimate).
 - Subtitles and effects (1.2.0): matching words for 10,000 lines in under 50 ms (the cost is the speech recognition of the same audio); writing an SRT file of 10,000 lines in under 100 ms; burned subtitle position within 2% of the frame height of the preview position; real-speech matching test: at least 90% of words matched, each within 0.3 s; the window stays within 200 ms per frame while dragging effects and subtitles during an export and word matching.
+- 360 and boxes (1.2.6): every interface frame within 200 ms while looking around, dragging boxes and playing during an export and subtitle generation (4K x 2K and 8K x 4K test files); camera still under 400 ms (4K) and 700 ms (8K copy), estimates; camera view within 1° of the export; box and size within 2% of the picture height; projects without 360 clips export with exactly the 1.2.5 commands.
 - Importing 10 files does not block the UI (each frame under 50 ms).
 - Still preview frame: no render for edits that do not change the picture at the playhead; at most one render for a burst of 10 edits.
 - Playback: video keeps real time if audio stalls; audio/video drift after the audio resumes at most 40 ms (requirement: 100 ms).
@@ -135,4 +142,5 @@ Listed in each sub-document; the main ones:
 - Speech-to-text needs a C++ toolchain and libclang on every CI platform, which makes builds slower and more fragile.
 - Drag and drop does not work in native Linux Wayland sessions (1.1.0); File > Import… and Open… remain the way there. Dragging effects inside the window (1.2.0) works everywhere.
 - Word matching (1.2.0) depends on how closely a subtitle track follows the speech; whisper's word times are accurate to about 0.1–0.3 s. Projects saved by 1.2.0 cannot be opened by 1.1. See [subtitle tracks](architecture-subtitle-tracks.md#risks).
+- 360 (1.2.6): exporting a moving camera runs at about a third of real time or less (accepted, speed work on the roadmap); camera stills while dragging may feel slow on large sources; two copies of the same part of one source share their POVs; projects saved by 1.2.6 cannot be opened by 1.2.5. See [360 video](architecture-360.md#risks).
 - egui releases often change its API; a new stable Rust can add lints: GUI code is kept thin and the code is fixed promptly.

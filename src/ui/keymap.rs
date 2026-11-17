@@ -243,7 +243,7 @@ mod tests {
                     .any(|(s, _)| s.logical_key == k && s.modifiers == m)
             );
         }
-        assert_eq!(b.len(), 28);
+        assert_eq!(b.len(), 32);
         let ctx = Context::default();
         assert!(shortcut_text(&ctx, ActionId::Save).unwrap().contains('S'));
         assert_eq!(shortcut_text(&ctx, ActionId::Merge), None);

@@ -48,6 +48,7 @@ At the limit of 3, export + playback use all slots; everything else waits.
 ## Proxies
 Lower-resolution copies used only for preview when a source is "big for this machine" (REQ-038).
 - **Rule (Preview quality "Automatic", the default):** a proxy is made when the picture is larger than 1920x1080, or larger than 1280x720 on a machine with fewer than 8 logical cores or less than 8 GB of RAM. It depends only on resolution (rotation included), cores and RAM, so it is deterministic. Audio-only files never get one. The rule is a tunable assumption.
+- **360 video (1.2.6):** a 360 source wider than 4096 pixels gets a 4096x2048 copy instead of the rule above, so the view stays sharp; export always uses the original. See [360 video](architecture-360.md#preview-and-export-graph).
 - **Format:** H.264 at most 960x540, same frame rate, a keyframe every half second (fast seeking), AAC stereo, in Matroska.
 - **Generation:** in the background, one at a time, with progress on the media item; written under a temporary name and renamed when complete. In Light it uses at most half the cores.
 - **Cache:** in the system cache folder (`…/videolore/proxies/`), outside the project. The file name is a hash of the source path, size, modification time and proxy settings, so a changed source gets a new proxy. Proxies are reused across sessions and recreated if missing. Clearing deletes only proxy files not being generated. There is no automatic clean-up.

@@ -17,6 +17,7 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [Export](business-export.md) — automatic output format, stream copy vs re-encode, progress and cancel, Apple-compatible HEVC, long timelines, faster export with the computer's video hardware (with automatic fallback and output check).
 - [Music and volume](business-music.md) — the music track, mixing and volumes, the volume of each video clip, how music behaves when the video is edited.
 - [Subtitles](business-subtitles.md) — automatic offline subtitles, the speech model download, editing, styles, how subtitles follow edits, subtitles for one clip, reusing the subtitles already in a video, `.srt` export, moving lines on screen and selecting several lines.
+- [Boxes on the picture and 360 video](business-picture.md) — 1.2.6: visible boxes to move and enlarge what sits on the picture, effect commands (align horizontally, align vertically, reset) in the toolbar, 360° videos with look-around and points of view (POV) the camera moves between in a straight line.
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, third-party notices, first-launch steps.
 - [Settings, performance and safety](business-performance.md) — automatic setup at first start, the Settings window (preview quality, subtitle quality, how hard videolore works, export speed), more accurate speech models, older processors, responsiveness, safe handling of files and downloads, private temporary files, quality goals (including the real-hardware check of faster export).
 
@@ -37,6 +38,7 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (1.2.0) Every effect can be applied to one video clip (drag and drop or right-click) or to the whole video (double-click in the Effects list).
 - (1.2.0) When a video already contains subtitles, the user chooses between using their text (matched word by word to the speech) and recognising the speech; the video's text is never replaced.
 - (1.2.0) The project file format changes to store start and end fades, clip volumes and subtitle positions; older projects open with the same result.
+- (1.2.6) A 360° video is shown through a camera the user can turn; the export is a normal flat video that follows the camera path set with points of view. This is the only keyframe-like feature, limited to the camera of 360 clips.
 - (0.4.0) Export can use the computer's video hardware (NVIDIA, Intel, AMD, Apple) when the user chooses "Export: Faster" in Settings. Best quality stays the default. Every hardware result is checked, and on any problem the export is silently redone with the normal method, so the user always gets a correct file.
 
 Topic-specific decisions are in each document.
@@ -50,6 +52,7 @@ Topic-specific decisions are in each document.
 - Projects saved by 0.2.0 cannot be opened by 0.1.x versions, and projects saved by 1.2.0 cannot be opened by 1.1 or earlier.
 - When a video's own subtitles are reused, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the REQ-095 accuracy target (90% of words, within 0.3 s) is not met yet with the Fast level (measured 82%, 0.48 s average word-start error; see [Subtitles](business-subtitles.md)).
 - Matching a video's own subtitles to the speech works only as well as their text follows what is said; translated or paraphrased subtitles often get evenly spread words (see [Subtitles](business-subtitles.md)).
+- (1.2.6) Projects saved by 1.2.6 cannot be opened by 1.2.5 or earlier; exporting a moving 360 camera runs at about one third of real time; only equirectangular single-picture 360 video is supported and it is exported flat (see [Boxes on the picture and 360 video](business-picture.md)).
 - Subtitle lines moved to their own place can overlap when shown at the same time; editing a line's text after moving it can push it past the edge of the picture in the export (see [Subtitles](business-subtitles.md)).
 - On macOS the standard Hide and Minimize menu items are not available, and the menu bar is inside the window rather than at the top of the screen.
 - Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.

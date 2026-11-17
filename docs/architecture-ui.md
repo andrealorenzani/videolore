@@ -33,7 +33,7 @@ These are the defaults at first start and after **View > Reset layout**. Each fr
 - Undo and Redo name the action ("Undo Split"). The undo history stores a short name with each step.
 - Shortcuts use Cmd on macOS and Ctrl elsewhere, shown in the system's style. They do nothing while typing in a text field or while a dialog that needs an answer is open. Esc closes the topmost popup.
 - egui's own keyboard zoom (Ctrl/Cmd with +, - and 0 scaling the whole interface) is turned off, because those keys zoom the timeline.
-- The toolbar shows 12 common commands as one row. When the window is too narrow, the commands that do not fit move into a "»" menu at the right end, so all 12 stay usable at 800 px.
+- The toolbar shows the common commands as one row (12 up to 1.2.5; 15 since 1.2.6 with a separated group Align horizontally, Align vertically, Reset, see [boxes](architecture-boxes.md)). When the window is too narrow, the commands that do not fit move into a "»" menu at the right end, so all of them stay usable at 800 px.
 - Menus are drawn inside the window on every system, including macOS, where the system menu bar stays off so that Cmd+Q asks about unsaved changes (see [project files](architecture-projects.md#unsaved-changes)). Very long menus scroll.
 
 ## Status bar
@@ -50,7 +50,7 @@ Left: the latest message. Middle: background work with progress (files being ana
 - Each fade and each subtitle line has a marker in a lane above the video track: a diamond for a fade at its clip boundary, a flag with a thin bar for a subtitle line. A boundary without a fade shows a small "+" handle that adds one.
 - Markers are computed from the edit every time it is drawn (nothing new is stored, so the project format does not change). They follow cuts, ripples and zoom, and disappear with the clip they belong to. Only markers in the visible part of the timeline are drawn.
 - Clicking a marker selects it, moves the playhead there and opens its popup. When several markers are under the pointer, a small list lets the user choose.
-- Since 1.2.0 there are also markers for the fade from black at the start and to black at the end, and for a clip whose volume is not 100% or is muted. Ctrl/Cmd+click on subtitle line markers selects several lines, and Shift+drag on the timeline selects the lines starting in a range (see [subtitles](architecture-subtitles.md#position-on-screen-120)). Dragging an effect from the Effects list onto a video clip applies it there.
+- Since 1.2.0 there are also markers for the fade from black at the start and to black at the end, and for a clip whose volume is not 100% or is muted. Ctrl/Cmd+click on subtitle line markers selects several lines, and Shift+drag on the timeline selects the lines starting in a range (see [subtitles](architecture-subtitles.md#position-on-screen-120)). Dragging an effect from the Effects list onto a video clip applies it there. Since 1.2.6: a marker for each POV of a 360 clip, opening a popup with time, direction, zoom and Remove (see [360 video](architecture-360.md)).
 
 ## Time ruler (1.2.0)
 - Labels depend on the time at the right edge of the visible part: up to 90 s in seconds ("45s"), up to 90 minutes as minutes and seconds ("01:40", minutes may go past 59, e.g. "75:30"), beyond that as hours, minutes and seconds ("01:05:00").

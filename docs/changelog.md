@@ -2,6 +2,29 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.2.6 — 2026-11-16 23:30 +0000
+
+Boxes on the picture and 360 video: every movable object on the picture gets a visible box that moves and resizes, a group of Align and Reset commands is added to the toolbar, and 360° videos can be looked around in and exported as a flat video that follows a camera path set by the user.
+
+### Added
+- **Boxes on the picture**: the preview draws a thin box around each movable object (today the subtitle lines); drag it to move, drag a corner to enlarge or shrink. The box is never exported, and View > Show boxes on the picture hides it. One drag is one undo step. Requirements REQ-096 and REQ-097 in [Boxes on the picture and 360 video](business-picture.md).
+- **Align horizontally, Align vertically and Reset**: a separate toolbar group, also in the Effects and right-click menus, with shortcuts and tooltips. Align centres the selected object(s) on the picture on that axis; Reset returns a subtitle line to its style's place and 100% size, or a 360 view to the front (REQ-098, REQ-099).
+- **Per-line text size**: each subtitle line can be 25–400% of its style's text size, set with its box, kept in the project and shown the same in the preview and the export (REQ-097).
+- **360° video**: a full equirectangular 360° video is recognised from its file information (or set per clip with "Treat as 360° video") and shown as a camera view; drag to look around, mouse wheel or pinch to zoom, during playback too. **Set POV** stores the view at the playhead; between POVs the camera moves in a straight line at constant speed, and the path follows the clip when it is split or trimmed (REQ-100 to REQ-102). The camera view is made from a preview copy for large sources, and every interface frame stays under 200 ms while looking around (REQ-104).
+- **360 export**: a 360 clip is exported as a normal flat video of the camera path, with fades, subtitles, music and volumes (REQ-103). Architecture in [360 video](architecture-360.md) and [boxes](architecture-boxes.md).
+
+### Changed
+- **Project format version 4** (REQ-105): stores the subtitle line sizes, the "360°" switch of each clip and the POVs of each source. Projects from 1.2.5 and earlier open with the same result; projects saved by 1.2.6 cannot be opened by 1.2.5 or earlier.
+
+### Known limitations
+- Exporting a 360 clip with a moving camera runs at about one third of real time (a 30 s clip takes about 90 s); the interface stays responsive meanwhile.
+- Only single-picture equirectangular 360 video is supported; spatial sound is played as it is and does not follow the camera; no camera roll; no keyboard control of the camera.
+- Align horizontally does nothing for a line that is already at the style's place; an enlarged line's text may wrap and shift its centre slightly.
+- Subtitle lines shown at the same time can overlap after moving or enlarging.
+
+### Quality
+- Line coverage 96.0%; feature coverage 105/105 (REQ-096 to REQ-105 added and implemented).
+
 ## 1.2.5 — 2026-11-16 22:40 +0000
 
 Workflow only: no change to the program or to what the app does.

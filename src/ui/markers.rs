@@ -26,6 +26,8 @@ pub enum MarkerKind {
     ClipVolume,
     /// A boundary without a fade: clicking adds one.
     AddFade,
+    /// A point of view of a 360 clip.
+    Pov,
 }
 
 /// One marker, with its x position for the current zoom.
@@ -155,6 +157,32 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
                 short(&l.text)
             ),
         });
+    }
+    // points of view inside the kept part of each 360 clip, at the clip's position
+    let mut start = Micros::ZERO;
+    for c in &tl.clips {
+        let sphere = project.media(c.media).is_some_and(|m| m.format.is_360());
+        if sphere {
+            for p in project.camera.path(c.media) {
+                if p.t >= c.src_in && p.t < c.src_out {
+                    let at = start + (p.t - c.src_in);
+                    out.push(Marker {
+                        kind: MarkerKind::Pov,
+                        instance: Instance::Pov(c.media, p.t),
+                        x: x_of(at),
+                        x_end: x_of(at),
+                        tooltip: format!(
+                            "POV at {}: yaw {:.1}°, pitch {:.1}°, zoom {:.0}°. Click for its settings.",
+                            timecode(at),
+                            p.cam.yaw_deg(),
+                            p.cam.pitch_deg(),
+                            p.cam.fov_deg()
+                        ),
+                    });
+                }
+            }
+        }
+        start = start + c.len();
     }
     let (from, to) = visible;
     out.retain(|m| m.x_end + HIT_TOLERANCE >= from && m.x - HIT_TOLERANCE <= to);

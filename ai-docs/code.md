@@ -2,7 +2,77 @@
 
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
-## State (1.2.0 target)
+## Index of docs/code*.md (L = line range; refresh with the script in "Gotchas" when a doc changes)
+- docs/code-360.md § Code — boxes, text size and 360° video (1.2.6) — L1-5 (5 lines)
+- docs/code-360.md § Where things are — L6-20 (15 lines)
+- docs/code-360.md § How the camera reaches ffmpeg — L21-38 (18 lines)
+- docs/code-360.md § Spike results (milestone 0, measured with ffmpeg 6.1.1) — L39-56 (18 lines)
+- docs/code-360.md § Settled points — L57-75 (19 lines)
+- docs/code-360.md § Boxes, size and commands — L76-89 (14 lines)
+- docs/code-360.md § Tests and fixtures — L90-99 (10 lines)
+- docs/code-360.md § Known limits — L100-106 (7 lines)
+- docs/code-effects.md § Code — effects on clips, the video's own subtitles, positions, SRT (1.2.0) — L1-4 (4 lines)
+- docs/code-effects.md § Applying an effect — L5-27 (23 lines)
+- docs/code-effects.md § Fades at the video's edges — L28-38 (11 lines)
+- docs/code-effects.md § Clip volume — L39-48 (10 lines)
+- docs/code-effects.md § Subtitles for a clip or the whole video — L49-70 (22 lines)
+- docs/code-effects.md § Reading a track — L71-78 (8 lines)
+- docs/code-effects.md § Matching words (`align`) — L79-97 (19 lines)
+- docs/code-effects.md § Subtitle positions — L98-119 (22 lines)
+- docs/code-effects.md § SRT export — L120-126 (7 lines)
+- docs/code-effects.md § Timeline ruler — L127-133 (7 lines)
+- docs/code-effects.md § Project format 3 — L134-142 (9 lines)
+- docs/code-hardware.md § Code — hardware export ("Export: Faster") — L1-7 (7 lines)
+- docs/code-hardware.md § Modules — L8-19 (12 lines)
+- docs/code-hardware.md § Methods and arguments — L20-53 (34 lines)
+- docs/code-hardware.md § The hardware check (probe) — L54-97 (44 lines)
+- docs/code-hardware.md § The export — L98-120 (23 lines)
+- docs/code-hardware.md § Failure memory — L121-132 (12 lines)
+- docs/code-hardware.md § Tests — L133-166 (34 lines)
+- docs/code-hardware.md § QG-05: real-hardware verification (manual) — L167-191 (25 lines)
+- docs/code-hardware.md § Results — L192-219 (28 lines)
+- docs/code-hardware.md § Known limitations — L220-237 (18 lines)
+- docs/code-modules.md § Code — modules and patterns — L1-5 (5 lines)
+- docs/code-modules.md § Module map — L6-40 (35 lines)
+- docs/code-modules.md § Main patterns — L41-106 (66 lines)
+- docs/code-modules.md § Conventions — L107-123 (17 lines)
+- docs/code-modules.md § Machine, recommendation and "How hard videolore works" — L124-148 (25 lines)
+- docs/code-packaging.md § Code — installers, notices and known limitations — L1-2 (2 lines)
+- docs/code-packaging.md § Release assets — L3-17 (15 lines)
+- docs/code-packaging.md § cargo-packager configuration (Windows and macOS) — L18-37 (20 lines)
+- docs/code-packaging.md § Bundled ffmpeg — L38-52 (15 lines)
+- docs/code-packaging.md § Notices — L53-63 (11 lines)
+- docs/code-packaging.md § Desktop integration — L64-74 (11 lines)
+- docs/code-packaging.md § Manual checklist per OS (before publishing a release) — L75-97 (23 lines)
+- docs/code-packaging.md § Known limitations — L98-115 (18 lines)
+- docs/code-testing.md § Code — tests and CI — L1-2 (2 lines)
+- docs/code-testing.md § Tests — L3-81 (79 lines)
+- docs/code-testing.md § Coverage — L82-89 (8 lines)
+- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L90-101 (12 lines)
+- docs/code-testing.md § 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`) — L102-119 (18 lines)
+- docs/code-testing.md § 1.2.6 tests — L120-127 (8 lines)
+- docs/code-ui.md § Code — the window (UI) — L1-8 (8 lines)
+- docs/code-ui.md § Window structure — L9-23 (15 lines)
+- docs/code-ui.md § Layout — L24-47 (24 lines)
+- docs/code-ui.md § Actions, menus, shortcuts — L48-77 (30 lines)
+- docs/code-ui.md § Floating windows and markers — L78-95 (18 lines)
+- docs/code-ui.md § Undo names, recent projects, drag and drop — L96-107 (12 lines)
+- docs/code-ui.md § Settings file — L108-114 (7 lines)
+- docs/code-ui.md § Since 1.2.0 — L115-125 (11 lines)
+- docs/code-ui.md § Preview picture (1.2.6) — L126-134 (9 lines)
+- docs/code.md § Code — L1-19 (19 lines)
+- docs/code.md § Build, test, run — L20-35 (16 lines)
+- docs/code.md § System requirements for building — L36-45 (10 lines)
+- docs/code.md § Settings and machine detection — L46-56 (11 lines)
+- docs/code.md § CPU baseline for speech recognition — L57-66 (10 lines)
+- docs/code.md § Cargo features — L67-77 (11 lines)
+- docs/code.md § Finding ffmpeg — L78-85 (8 lines)
+- docs/code.md § Dependencies — L86-108 (23 lines)
+
+## State (1.2.6 target)
+1.2.6 implemented REQ-096..105 (boxes, text size, align/reset, 360 video, schema 4); see "1.2.6 notes". Docs: + docs/code-360.md. Version bump = documenter; REQ status flip (planned -> implemented) = documenter/PM (not done by PE).
+
+## State (1.2.0)
 1.2.0 implemented REQ-082..095 + reworded REQ-011/020/023/052/054/069/075/077/078/079; see "1.2.0 notes". Docs: + docs/code-effects.md.
 1.1.0 (UI/UX restructuring) implemented REQ-024/025 reworded + REQ-066..081; see "1.1.0 notes". Docs: + docs/code-ui.md.
 0.4.0 implemented REQ-055 (reworded, hw export), REQ-060..065; QG-05 manual (checklist + results table in docs/code-hardware.md). 0.3.0: REQ-045..054, 056..059. Earlier REQ-001..044 still covered. Version bump = documenter. See "0.4.0 notes" + "0.3.0 notes" below.
@@ -58,6 +128,19 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 - ui (pre-1.1 facts still valid): close_requested && !close_allowed -> CancelClose + RequestClose; quit_requested -> ViewportCommand::Close; modal_open() disables keymap; music lane drag uses total_drag_delta stored in egui temp data — press_origin is None on release frame; mix slider: UiCache.mix_drag during drag, SetMix on drag_stopped/click; line TextEdit buffer UiCache.line_edit reset when not focused; About text cached in UiCache.about.
 - lib.rs: #![deny(unsafe_code)]; #[allow(unsafe_code)] only on stt::whisper and desktop::macos. real_app(Option<PathBuf>) pushes argv project into desktop queue; native_options (icon from assets/icon/icon-256.rgba, app_id videolore, macOS with_default_menu(false)); prepare_desktop(). main.rs: project_arg + prepare_desktop + run_native.
 
+## 1.2.6 notes (REQ-096..105; plan ADR-059..065)
+- Module map additions: camera (pure; Camera{yaw_cd,pitch_cd,fov_cd} Eq/Hash, Pov, CameraPaths serde as Vec<{media,povs}>, at(), dragged/zoomed/lerp, filter(id,cam,w,h), command_lines(target,path,src_in,src_out,fps,w,h), diagonal_fov_deg); render (Segment.sphere:Option<Vec<Pov>>, Graph.command_files + Box<Graph> in Plan::Reencode (clippy large_enum), write_command_files, effective_format/SPHERE_FORMAT, RenderError::SphereTooLarge for Source::Preview only, FrameKey.camera + ShownSubtitle tuple with size, PreviewRender.command_files); media (MediaFormat.spherical/treat_as_360 + is_360(), spherical_of(); both live in MediaFormat so ProjectDoc dirty works; ProjectDoc::set_spherical); proxy (wants_proxy 360 rule, cache_key_kind, SPHERE_*); project (SCHEMA 4, Edit/Project/ProjectDoc.camera, CameraPaths::validate); subtitles (Line/ShownLine.size, set_boxes, reset, any_moved_or_sized, SIZE_*); ass (sized_font, line_tag); settings (show_boxes lenient default true); app/sphere.rs (live: HashMap<MediaId,LiveView>, resize_drag, camera_restart, Axis, ResizeDrag); ui/boxes.rs, ui/picture.rs (interact, hit, items, BoxResize), ui/placement (line_box takes size).
+- shown_project() = the only project handed to preview.play/seek/request_still: applies drag_pos, resize_drag and the live overlay (single POV t=0). Keep every preview call on it.
+- seek() clears live overrides + camera_restart; PlayPause start clears overrides; DragCamera during playback sets camera_restart (100 ms) -> tick_camera restarts play with shown_project.
+- Background re-check (subs_create::start_track_check) now also covers media with spherical==None; TrackCheck=(id,tracks,bool); newly 360 -> maybe_proxy + refresh_still.  redo_proxy (sphere.rs) drops the old copy and queues the kind the source needs now: used by Set360 and by the re-check.
+- Instance::Pov(MediaId, Micros source time); pov_position hides POVs outside every clip's kept range; MarkerKind::Pov; popup pov_instance edits via cache.pov_edit then Command::EditPov.
+- Actions 43->47 (AlignHorizontal/Vertical, ResetObjects replaces ResetSubtitlePosition, SetPov, ToggleBoxes); TOOLBAR 15 (EFFECT_GROUP=12); keymap bound count 28->32. ResetPosition/SetLinePositions{pos:None} now also clear size (reset_lines, undo label "Reset").
+- SPIKE (ffmpeg 6.1.1 local; CI/bundled 9.x NOT measured here): v360 commands are ADDITIVE unless reset_rot=1 (set in filter()); sendcmd single instants miss frames -> use START-END intervals of +-half frame; target `v360@cN`; each command re-inits the LUT ~75-100 ms at 1080p => only changed values, zoom via d_fov (1 cmd). Export of a moving camera ~0.3x realtime or worse. First 1.2.6 plan said h_fov+v_fov explicit, half-frame-early instants: both replaced.
+- Tests: golden v3 fixture tests/fixtures/project-v3-1.2.5.vlproj + export-argv-1.2.5.txt (render::golden_tests, ignored writer write_golden_1_2_5); spherical-360.mp4 / flat-2to1.mp4 (scripts/make-spherical-fixture.sh); integration v126.rs (8 tests, sphere fixtures generated: white meridian LINE_LON=30, parallel LINE_LAT=20; 8K via lavfi); app/sphere_tests.rs; ui/sphere_ux_tests.rs; gate in ui/tests.rs (BUSY_GATE mutex serialises the 4 gates: running 4 BusyTranscriber tests in parallel broke the 200 ms limit under llvm-cov).
+- Coverage 95.9% line, all REQ-096..105 have `// covers:`; feature-coverage.sh passes 95/95 (REQ-096..105 still "(planned)" in docs/business*.md -> flip by documenter/PM; I did not edit them).
+- Requirement -> test map (1.2.6): 096 settings::tests::show_boxes..., sphere_ux_tests boxes_are_drawn..., view_menu...; 097 ass/subtitles/boxes/resize tests, integration a_sized_subtitle..., golden 1_2_5; 098 boxes align, app align test, ui effect_commands + overflow; 099 app reset tests, ui; 100 media spherical tests, integration spherical_files_are_recognised, app Set360, ui clip details; 101 camera drag/zoom, app live, ui drag/wheel, integration camera; 102 camera path tests, integration path/short way/split/pitch+zoom, app Set POV, markers; 103 render sphere tests, integration export + mixed, hw_tests 360; 104 proxy sphere, render too-large, integration 8K copy, ui gate; 105 project v4 tests + golden 1_2_5.
+- Debt 1.2.6: moving-camera export speed (see spike); POVs shared by copies of one source; Align H of a None-position line is a no-op; resize box wraps may move the centre slightly (text wraps more when bigger); no keyboard camera control; docs/architecture-360.md still says h_fov+v_fov / half-frame-early (architect to update); BtbN 9.x v360 not re-measured (reset_rot semantics assumed same).
+
 ## 1.2.0 notes
 - No new crates. Schema 3 always written; v1/v2 load via serde defaults. Golden: tests/fixtures/export-argv-1.1.0.txt (argv + ASS of project-v1 and project-v2-1.1 fixtures, captured with 1.1.0 code BEFORE changes; regenerate only on purpose: `cargo test --lib write_golden_1_1 -- --ignored`). render::golden_tests now pub(crate) (open_fixture, V2_FIXTURE reused by project + app tests).
 - timeline: Clip{+volume u8 (serde default fn 100), +muted}, Clip::new, has_volume; Timeline{+start_fade,+end_fade} edge-attached; fades_of includes edges; set_clip_fades/clip_has_fades/set_edge_fades/has_any_fade/clear_fades/set_clip_volume; can_merge = contiguous && merge_block_reason none (DIFFERENT_VOLUMES); EditError::EmptyTimeline. split copies `..c`.
@@ -95,6 +178,7 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 - UNVERIFIED (CI/manual only): real NSIS build on Windows (makensis), codesign/hdiutil on macOS runner, macOS odoc at launch, Gatekeeper on nested ffmpeg, AppImage on Fedora/Ubuntu, real whisper test, Riedl URLs.
 
 ## Gotchas
+- Docs index above: regenerate with a small script: for every docs/code*.md heading (#..####, outside code fences) line range = heading line to the line before the next heading.
 - **whisper-rs 0.16.0 `set_abort_callback_safe` is UB** (root cause of CI 0.2.0/0.2.1 failure `GenericError(-6)`): it boxes `Box<dyn FnMut>` again, passes `*mut Box<dyn FnMut>` but trampoline::<F> casts to `*mut F`; with F = closure{Arc<AtomicBool>} it reads ArcInner.data at (inner box ptr + 16) = uninitialised tail of the 8-byte alloc's 32-byte chunk -> nonzero on a used heap -> whisper_encode_internal returns false at its final abort check -> whisper_full_with_state -6 (lang detect passed: its encode gets nullptr callback). Also leaked the closure each call. Fix: own `unsafe extern "C" fn abort_requested(*mut c_void)` reading `*const AtomicBool`, set via `set_cancel_flag(&mut FullParams<'f,'f>, &'f AtomicBool)` (unsafe set_abort_callback + _user_data). Deterministic repro: allocate/free thousands of 0xFF Vec<u8> (8..64B) right before `transcribe` -> old code fails 3/3, new passes (`abort_check_of_whisper_ignores_heap_garbage`, named to start first in the parallel run). MALLOC_PERTURB_/tcache_count=0 did NOT reproduce; grooming before stt::run did not either (too many allocs in between). Don't use whisper-rs *_safe callbacks without reading their trampoline. whisper-rs maps codes wrongly too (7/8 positive) -> `whisper_full_error(code)` (-1/-2 mel, -3 lang, -4 decoders, -5 audio_ctx, -6 encode/abort, -7 kv cache, -8/-9 decode).
 - CI: test steps (check + msrv) `set -o pipefail; cargo test | tee $RUNNER_TEMP/cargo-test.txt || { scripts/test-annotations.sh ...; exit 1; }` -> `::error file=,line=,title=test X failed::` (max 9 + summary; esc % CR LF, props also : ,). Annotations public via check-runs API. Coverage step not wrapped.
 - egui 0.37: App::ui(&mut self, ui, frame); CentralPanel::show(ui,..); Id::new deprecated -> Id::unique; run_ui; FullOutput w/ texture deltas panics on drop -> drop_without_applying_deltas(); viewport commands for tests: out.viewport_output[&ViewportId::ROOT].commands; close button = RawInput.viewports[ROOT].events=[ViewportEvent::Close].

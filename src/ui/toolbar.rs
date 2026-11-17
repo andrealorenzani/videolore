@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! The toolbar (REQ-070): the 12 most common commands in one row. When the window is too
-//! narrow, the buttons that do not fit go into a "»" menu at the right end.
+//! The toolbar (REQ-070): the 12 most common commands in one row, then (separated) the
+//! group of effect commands (REQ-098/099). When the window is too narrow, the buttons that
+//! do not fit go into a "»" menu at the right end, the effect group first and as a whole.
 
 use super::actions::ActionId;
 use super::{action_tooltip, menu};
@@ -10,7 +11,7 @@ use crate::app::{AppState, Command};
 use eframe::egui::{Button, TextStyle, TextWrapMode, Ui, WidgetText};
 
 /// The toolbar's actions, left to right.
-pub const TOOLBAR: [ActionId; 12] = [
+pub const TOOLBAR: [ActionId; 15] = [
     ActionId::Import,
     ActionId::AddToTimeline,
     ActionId::AddMusic,
@@ -23,7 +24,13 @@ pub const TOOLBAR: [ActionId; 12] = [
     ActionId::Redo,
     ActionId::PlayPause,
     ActionId::Export,
+    ActionId::AlignHorizontal,
+    ActionId::AlignVertical,
+    ActionId::ResetObjects,
 ];
+
+/// Index of the first button of the effect group (drawn after a separator).
+pub const EFFECT_GROUP: usize = 12;
 
 /// Label of a toolbar button (shorter than the menu's).
 pub fn label(app: &AppState, id: ActionId) -> String {
@@ -34,6 +41,8 @@ pub fn label(app: &AppState, id: ActionId) -> String {
         ActionId::Split => "Split".into(),
         ActionId::Undo => "Undo".into(),
         ActionId::Redo => "Redo".into(),
+        ActionId::AlignHorizontal => "Align horizontally".into(),
+        ActionId::AlignVertical => "Align vertically".into(),
         ActionId::PlayPause if app.preview.is_playing() => "Pause".into(),
         ActionId::PlayPause => "Play".into(),
         _ => id.label(app),
@@ -79,14 +88,26 @@ fn tool_button(ui: &mut Ui, app: &AppState, id: ActionId, cmds: &mut Vec<Command
     }
 }
 
+/// The effect group moves to the "»" menu as a whole: part of it is never left in the row.
+pub fn visible(fitting: usize) -> usize {
+    if fitting > EFFECT_GROUP && fitting < TOOLBAR.len() {
+        EFFECT_GROUP
+    } else {
+        fitting
+    }
+}
+
 pub fn toolbar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let widths: Vec<f32> = TOOLBAR
         .iter()
         .map(|id| button_width(ui, &label(app, *id)))
         .collect();
-    let n = fit(&widths, ui.available_width(), button_width(ui, "»"));
+    let n = visible(fit(&widths, ui.available_width(), button_width(ui, "»")));
     ui.horizontal(|ui| {
-        for id in &TOOLBAR[..n] {
+        for (i, id) in TOOLBAR[..n].iter().enumerate() {
+            if i == EFFECT_GROUP {
+                ui.separator();
+            }
             tool_button(ui, app, *id, cmds);
         }
         if n < TOOLBAR.len() {
@@ -114,5 +135,11 @@ mod tests {
         assert_eq!(fit(&w, 300.0, 20.0), 5);
         assert_eq!(fit(&w, 10.0, 20.0), 0);
         assert_eq!(fit(&[], 10.0, 20.0), 0);
+        // the effect group is kept together
+        assert_eq!(visible(15), 15);
+        assert_eq!(visible(14), EFFECT_GROUP);
+        assert_eq!(visible(13), EFFECT_GROUP);
+        assert_eq!(visible(12), 12);
+        assert_eq!(visible(5), 5);
     }
 }

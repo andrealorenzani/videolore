@@ -16,10 +16,11 @@
 //! and music bed with their volumes, `amix` + `alimiter`).
 
 use crate::ass;
+use crate::camera::{self, Camera, Pov};
 use crate::ffmpeg::{FfVersion, argv, file_arg, filter_graph_args};
 use crate::format::{self, EncodeSettings};
 use crate::hwenc::{Codec, HwEncode};
-use crate::media::{MediaId, MediaItem};
+use crate::media::{MediaFormat, MediaId, MediaItem};
 use crate::music::{END_FADE, Mix};
 use crate::project::Project;
 use crate::subtitles::Preset;
@@ -48,6 +49,8 @@ pub enum RenderError {
     Missing(String),
     #[error("a clip refers to an unknown source")]
     UnknownMedia,
+    #[error("This 360° video is too large to show here. It is still exported.")]
+    SphereTooLarge,
 }
 
 /// Who reads the files: the export always uses the originals; the preview may use proxies.
@@ -84,6 +87,9 @@ pub struct Segment {
     pub gain: f64,
     /// The fade-out is the one at the very end of the video: its last frame is black.
     pub to_black: bool,
+    /// A 360 source (1.2.6): the points of view of its camera path (source time). Empty:
+    /// the camera stays at the front. `None`: a normal clip.
+    pub sphere: Option<Vec<Pov>>,
 }
 
 impl Segment {
@@ -108,6 +114,12 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
             if m.missing {
                 return Err(RenderError::Missing(m.name.clone()));
             }
+            if matches!(src, Source::Preview { .. })
+                && m.format.is_360()
+                && crate::proxy::sphere_too_large(m.format.width, m.format.height)
+            {
+                return Err(RenderError::SphereTooLarge);
+            }
             let (fade_in, fade_out) = tl.fades_of(i);
             out.push(Segment {
                 media: m.id,
@@ -120,6 +132,10 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 fade_out,
                 gain: crate::music::clip_gain(c),
                 to_black: tl.end_fade && i + 1 == tl.clips.len() && !tl.has_fade(i),
+                sphere: m
+                    .format
+                    .is_360()
+                    .then(|| project.camera.path(m.id).to_vec()),
             });
         }
         start = end;
@@ -138,6 +154,26 @@ pub fn timeline_media(project: &Project) -> Result<Vec<&MediaItem>, RenderError>
         .iter()
         .map(|c| project.media(c.media).ok_or(RenderError::UnknownMedia))
         .collect()
+}
+
+/// Size a 360 clip counts as when the output format is chosen (REQ-022): the camera view
+/// is a flat picture of this size at the source's frame rate.
+pub const SPHERE_FORMAT: (u32, u32) = (1920, 1080);
+
+/// The format of `m` as the output choice sees it: a 360 source counts as a flat
+/// 1920x1080 picture.
+pub fn effective_format(m: &MediaItem) -> MediaFormat {
+    let mut f = m.format.clone();
+    if f.is_360() {
+        // the bit rate of a big sphere would be wasted on a flat 1080p picture
+        let from = (f.width as u128 * f.height as u128).max(1);
+        let to = SPHERE_FORMAT.0 as u128 * SPHERE_FORMAT.1 as u128;
+        f.bit_rate = f
+            .bit_rate
+            .map(|b| ((b as u128 * to / from) as u64).clamp(1_500_000, b.max(1_500_000)));
+        (f.width, f.height) = SPHERE_FORMAT;
+    }
+    f
 }
 
 /// Output picture geometry.
@@ -307,6 +343,17 @@ pub struct GraphSpec {
 pub struct Graph {
     pub inputs: Vec<Input>,
     pub graph: String,
+    /// Files the graph reads from the working folder: `(name, content)`, the camera
+    /// commands of the 360 clips (written by [`write_command_files`]).
+    pub command_files: Vec<(String, String)>,
+}
+
+/// Writes the command files of a graph into the working folder `dir`.
+pub fn write_command_files(dir: &Path, files: &[(String, String)]) -> io::Result<()> {
+    for (name, content) in files {
+        std::fs::write(dir.join(name), content)?;
+    }
+    Ok(())
 }
 
 /// Labels for the users of each input stream (`split`/`asplit` when shared).
@@ -382,6 +429,7 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
     }
     let (mut vused, mut aused) = (vec![0usize; offset], vec![0usize; offset]);
     let g = &spec.geometry;
+    let mut command_files: Vec<(String, String)> = Vec::new();
     let mut concat_in = String::new();
     for (i, s) in segs.iter().enumerate() {
         let k = idx[i];
@@ -391,14 +439,45 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
             let src = &vlabels[k][vused[k]];
             vused[k] += 1;
             let (w, h) = (g.width, g.height);
-            let mut c = format!(
-                "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB,\
-                 scale={w}:{h}:force_original_aspect_ratio=decrease,\
-                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f},format={pf}",
-                o = s.skip.ff(),
-                f = g.fps.ff(),
-                pf = spec.pix_fmt,
-            );
+            let mut c = if let Some(path) = &s.sphere {
+                // the camera view fills the output picture: no scale, no bars
+                let from = s.src_in + s.skip;
+                let cam = camera::at(path, from).unwrap_or(Camera::FRONT);
+                let id = format!("c{i}");
+                let cmds = camera::command_lines(
+                    &format!("v360@{id}"),
+                    path,
+                    from,
+                    s.src_in + s.len,
+                    g.fps,
+                    w,
+                    h,
+                );
+                let send = if cmds.is_empty() {
+                    String::new()
+                } else {
+                    let name = format!("cam{i}.txt");
+                    command_files.push((name.clone(), cmds));
+                    format!("sendcmd=f={name},")
+                };
+                format!(
+                    "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS,fps={f},{send}{v360},\
+                     setsar=1,setpts=PTS+{o}/TB,format={pf}",
+                    v360 = camera::filter(&id, cam, w, h),
+                    o = s.skip.ff(),
+                    f = g.fps.ff(),
+                    pf = spec.pix_fmt,
+                )
+            } else {
+                format!(
+                    "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB,\
+                     scale={w}:{h}:force_original_aspect_ratio=decrease,\
+                     pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f},format={pf}",
+                    o = s.skip.ff(),
+                    f = g.fps.ff(),
+                    pf = spec.pix_fmt,
+                )
+            };
             // two frames: sources often start a few milliseconds late, which costs one
             let early = if s.to_black {
                 Micros(g.fps.frame_duration().0 * 2)
@@ -517,6 +596,7 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
     Graph {
         inputs,
         graph: parts.join(";"),
+        command_files,
     }
 }
 
@@ -538,7 +618,7 @@ pub enum Plan {
     },
     /// One re-encode pass. `subtitles` is the ASS document to burn in, if any.
     Reencode {
-        graph: Graph,
+        graph: Box<Graph>,
         settings: EncodeSettings,
         subtitles: Option<String>,
     },
@@ -550,6 +630,14 @@ impl Plan {
         match self {
             Plan::Reencode { subtitles, .. } => subtitles.as_deref(),
             Plan::StreamCopy { .. } => None,
+        }
+    }
+
+    /// The camera command files the export needs in its working folder.
+    pub fn command_files(&self) -> &[(String, String)] {
+        match self {
+            Plan::Reencode { graph, .. } => &graph.command_files,
+            Plan::StreamCopy { .. } => &[],
         }
     }
 }
@@ -608,7 +696,8 @@ pub fn plan_export(
 ) -> Result<Plan, RenderError> {
     let segs = segments(project, Micros::ZERO, Source::Export)?;
     let media = timeline_media(project)?;
-    let formats: Vec<_> = media.iter().map(|m| &m.format).collect();
+    let owned: Vec<MediaFormat> = media.iter().map(|m| effective_format(m)).collect();
+    let formats: Vec<&MediaFormat> = owned.iter().collect();
     let chosen = format::choose_output(&formats).ok_or(RenderError::Empty)?;
     let settings = format::encode_settings(&chosen, encoders);
     let geometry = Geometry::of(&settings);
@@ -618,7 +707,8 @@ pub fn plan_export(
         && project.timeline.clips.iter().all(|c| !c.has_volume())
         && bed.is_none()
         && subtitles.is_none()
-        && project.mix.video_neutral();
+        && project.mix.video_neutral()
+        && media.iter().all(|m| !m.format.is_360());
     // A file name with a line break or other control character could add lines to the
     // concat list: such projects are always re-encoded (inputs are then plain arguments).
     let safe_names = segs.iter().all(|s| !has_control_chars(&s.path));
@@ -658,7 +748,7 @@ pub fn plan_export(
         },
     );
     Ok(Plan::Reencode {
-        graph,
+        graph: Box::new(graph),
         settings,
         subtitles,
     })
@@ -812,7 +902,8 @@ pub fn output_geometry(
     encoders: &std::collections::BTreeSet<String>,
 ) -> Result<Geometry, RenderError> {
     let media = timeline_media(project)?;
-    let formats: Vec<_> = media.iter().map(|m| &m.format).collect();
+    let owned: Vec<MediaFormat> = media.iter().map(|m| effective_format(m)).collect();
+    let formats: Vec<&MediaFormat> = owned.iter().collect();
     let chosen = format::choose_output(&formats).ok_or(RenderError::Empty)?;
     Ok(Geometry::of(&format::encode_settings(&chosen, encoders)))
 }
@@ -822,6 +913,8 @@ pub fn output_geometry(
 pub struct PreviewRender {
     pub args: Vec<OsString>,
     pub subtitles: Option<String>,
+    /// Camera command files of 360 clips, for the working folder.
+    pub command_files: Vec<(String, String)>,
 }
 
 fn video_render(
@@ -831,7 +924,7 @@ fn video_render(
     export: &Geometry,
     version: FfVersion,
     script: &Path,
-) -> Result<(Vec<OsString>, Option<String>), String> {
+) -> Result<PreviewRender, String> {
     let subtitles = subtitles_doc(project, export, from);
     let graph = build_graph(
         segs,
@@ -849,7 +942,11 @@ fn video_render(
     a.extend(input_args(&graph.inputs));
     a.extend(filter_graph_args(&graph.graph, version, script).map_err(|e| e.to_string())?);
     a.extend(argv(["-map", "[outv]"]));
-    Ok((a, subtitles))
+    Ok(PreviewRender {
+        args: a,
+        subtitles,
+        command_files: graph.command_files,
+    })
 }
 
 /// argv producing raw RGBA frames (preview size of `export`) on stdout from `from`.
@@ -862,9 +959,10 @@ pub fn preview_video_args(
     src: Source,
 ) -> Result<PreviewRender, String> {
     let segs = segments(project, from, src).map_err(|e| e.to_string())?;
-    let (mut args, subtitles) = video_render(project, &segs, from, export, version, script)?;
-    args.extend(argv(["-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"]));
-    Ok(PreviewRender { args, subtitles })
+    let mut r = video_render(project, &segs, from, export, version, script)?;
+    r.args
+        .extend(argv(["-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"]));
+    Ok(r)
 }
 
 /// argv producing the single frame shown at `at` (one segment, one input).
@@ -878,8 +976,8 @@ pub fn still_args(
 ) -> Result<PreviewRender, String> {
     let mut segs = segments(project, at, src).map_err(|e| e.to_string())?;
     segs.truncate(1);
-    let (mut args, subtitles) = video_render(project, &segs, at, export, version, script)?;
-    args.extend(argv([
+    let mut r = video_render(project, &segs, at, export, version, script)?;
+    r.args.extend(argv([
         "-frames:v",
         "1",
         "-f",
@@ -888,7 +986,7 @@ pub fn still_args(
         "rgba",
         "pipe:1",
     ]));
-    Ok(PreviewRender { args, subtitles })
+    Ok(r)
 }
 
 /// The normal method's video graph of the export of `project` at `geometry`, without
@@ -979,6 +1077,15 @@ pub fn preview_audio_args(
     Ok(a)
 }
 
+/// A subtitle on screen as part of a [`FrameKey`]: text, highlighted word, own position
+/// and own size.
+pub type ShownSubtitle = (
+    String,
+    Option<usize>,
+    Option<crate::subtitles::Pos>,
+    Option<u16>,
+);
+
 /// Everything that decides the picture shown at a timeline position. Two positions with
 /// the same key show the same picture, so the still frame is not rendered again.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -990,8 +1097,10 @@ pub struct FrameKey {
     pub fade: Option<(Micros, Micros, Micros, Micros)>,
     pub size: (u32, u32),
     /// Subtitles on screen, the highlighted word and the line's own position.
-    pub subtitles: Vec<(String, Option<usize>, Option<crate::subtitles::Pos>)>,
+    pub subtitles: Vec<ShownSubtitle>,
     pub preset: Preset,
+    /// The camera of a 360 clip at this position.
+    pub camera: Option<Camera>,
 }
 
 /// The key of the picture at `at`, or `None` when there is no picture there.
@@ -1018,10 +1127,14 @@ pub fn frame_key(
             let w = (preset == Preset::WordHighlight)
                 .then(|| l.word_at(at))
                 .flatten();
-            (l.text, w, l.position)
+            (l.text, w, l.position, l.size)
         })
         .collect();
     let g = export.preview();
+    let camera = m
+        .format
+        .is_360()
+        .then(|| camera::at(project.camera.path(m.id), c.src_in + offset).unwrap_or(Camera::FRONT));
     Some(FrameKey {
         path: src.path_of(m),
         frame: fps.frame_index(c.src_in + offset),
@@ -1029,6 +1142,7 @@ pub fn frame_key(
         size: (g.width, g.height),
         subtitles,
         preset,
+        camera,
     })
 }
 
@@ -1531,10 +1645,10 @@ pub(crate) mod tests {
             .add_at(&tl, Micros(400_000), "a b", Micros(1))
             .unwrap();
         let ks = frame_key(&p, Micros(500_000), src, &eg).unwrap();
-        assert_eq!(ks.subtitles, vec![("a b".to_string(), None, None)]);
+        assert_eq!(ks.subtitles, vec![("a b".to_string(), None, None, None)]);
         p.subtitles.preset = Preset::WordHighlight;
         let kw = frame_key(&p, Micros(500_000), src, &eg).unwrap();
-        assert_eq!(kw.subtitles, vec![("a b".to_string(), Some(0), None)]);
+        assert_eq!(kw.subtitles, vec![("a b".to_string(), Some(0), None, None)]);
         // a ready proxy changes the file read by the preview but never the export
         p.media[0].proxy = ProxyState::Ready("/cache/x.mkv".into());
         let kp = frame_key(&p, Micros(500_000), src, &eg).unwrap();
@@ -1701,5 +1815,196 @@ pub(crate) mod tests {
         p.timeline.remove(first_id).unwrap();
         let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
         assert_eq!(segs[0].fade_in, Micros(500_000));
+    }
+
+    fn sphere_project() -> Project {
+        let mut p = project(&[(4, 3840, 1920, 30), (3, 640, 360, 30)]);
+        p.media[0].format.spherical = Some(true);
+        p.media[0].format.bit_rate = Some(40_000_000);
+        p
+    }
+
+    // covers: REQ-103, REQ-023, REQ-022
+    #[test]
+    fn a_360_clip_is_never_stream_copied_and_counts_as_1080p() {
+        let mut p = project(&[(2, 3840, 1920, 30), (2, 3840, 1920, 30)]);
+        // flat: identical formats copy
+        assert!(matches!(
+            plan_export(&p, &enc(), |_, _| true).unwrap(),
+            Plan::StreamCopy { .. }
+        ));
+        p.media[0].format.spherical = Some(true);
+        let Plan::Reencode {
+            graph, settings, ..
+        } = plan_export(&p, &enc(), |_, _| true).unwrap()
+        else {
+            panic!("a 360 clip is re-encoded");
+        };
+        assert_eq!((settings.width, settings.height), (1920, 1080));
+        assert!(
+            graph
+                .graph
+                .contains("v360@c0=input=e:output=flat:reset_rot=1:w=1920:h=1080")
+        );
+        assert!(
+            !graph.graph.split(';').next().unwrap().contains("scale="),
+            "no bars for the camera view"
+        );
+        // the huge bit rate of the sphere is not given to the flat picture
+        assert!(settings.video_bitrate.unwrap() < 10_000_000);
+        // the user's switch turns it off again
+        p.media[0].format.treat_as_360 = Some(false);
+        assert!(matches!(
+            plan_export(&p, &enc(), |_, _| true).unwrap(),
+            Plan::StreamCopy { .. }
+        ));
+        assert_eq!(effective_format(&p.media[0]).width, 3840);
+    }
+
+    // covers: REQ-103, REQ-022
+    #[test]
+    fn a_360_clip_next_to_a_normal_one_follows_the_usual_choice() {
+        let p = sphere_project();
+        let g = output_geometry(&p, &enc()).unwrap();
+        assert_eq!((g.width, g.height), (640, 360));
+        let q = {
+            let mut q = project(&[(4, 3840, 1920, 25)]);
+            q.media[0].format.spherical = Some(true);
+            q
+        };
+        let g = output_geometry(&q, &enc()).unwrap();
+        assert_eq!(
+            (g.width, g.height, g.fps),
+            (1920, 1080, Fps::new(25, 1).unwrap())
+        );
+    }
+
+    // covers: REQ-102, REQ-103
+    #[test]
+    fn the_camera_path_becomes_one_command_file_for_each_moving_clip() {
+        let mut p = sphere_project();
+        let m = p.media[0].id;
+        let pov = |t: i64, yaw: i64| crate::camera::Pov {
+            t: Micros(t),
+            cam: Camera::new(yaw * 100, 0, 9000),
+        };
+        // no POV: the camera stays at the front, no command file
+        let Plan::Reencode { graph, .. } = plan_export(&p, &enc(), |_, _| true).unwrap() else {
+            panic!()
+        };
+        assert!(graph.command_files.is_empty() && !graph.graph.contains("sendcmd"));
+        p.camera.set(m, pov(0, 0)).unwrap();
+        p.camera.set(m, pov(2_000_000, 90)).unwrap();
+        let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
+        let Plan::Reencode { graph, .. } = &plan else {
+            panic!()
+        };
+        assert_eq!(graph.command_files.len(), 1);
+        let (name, text) = &graph.command_files[0];
+        assert_eq!(name, "cam0.txt");
+        assert_eq!(
+            text.lines().count(),
+            60,
+            "one line per frame while it moves"
+        );
+        assert!(graph.graph.contains("fps=30/1,sendcmd=f=cam0.txt,v360@c0="));
+        assert_eq!(plan.command_files().len(), 1);
+        let dir = tempfile::tempdir().unwrap();
+        write_command_files(dir.path(), plan.command_files()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("cam0.txt")).unwrap(),
+            *text
+        );
+        // a clip cut at its start starts at the view the path had there
+        let id = p.timeline.clips[0].id;
+        p.timeline
+            .trim(
+                id,
+                Micros(1_000_000),
+                Micros(4_000_000),
+                Micros(4_000_000),
+                Micros(1),
+            )
+            .unwrap();
+        let Plan::Reencode { graph, .. } = plan_export(&p, &enc(), |_, _| true).unwrap() else {
+            panic!()
+        };
+        assert!(graph.graph.contains("yaw=45.00"), "{}", graph.graph);
+        // a normal clip is untouched by it all
+        assert!(graph.graph.contains("[1:v:0]trim") || graph.graph.contains("scale=640:360"));
+        // preview of a later start: the offset comes after the camera
+        let eg = output_geometry(&p, &enc()).unwrap();
+        let r = preview_video_args(
+            &p,
+            Micros(500_000),
+            &eg,
+            FfVersion::Dev,
+            Path::new("/tmp/g.txt"),
+            Source::Export,
+        )
+        .unwrap();
+        assert_eq!(r.command_files.len(), 1);
+        let a = strs(&r.args).join(" ");
+        assert!(
+            a.contains("v360@c0") && a.contains("setpts=PTS+0.500000/TB"),
+            "{a}"
+        );
+    }
+
+    // covers: REQ-101, REQ-102
+    #[test]
+    fn the_picture_key_follows_the_camera() {
+        let mut p = sphere_project();
+        let m = p.media[0].id;
+        let eg = output_geometry(&p, &enc()).unwrap();
+        let src = Source::Export;
+        let k0 = frame_key(&p, Micros(500_000), src, &eg).unwrap();
+        assert_eq!(k0.camera, Some(Camera::FRONT));
+        p.camera
+            .set(
+                m,
+                crate::camera::Pov {
+                    t: Micros::ZERO,
+                    cam: Camera::new(1000, 0, 9000),
+                },
+            )
+            .unwrap();
+        let k1 = frame_key(&p, Micros(500_000), src, &eg).unwrap();
+        assert_ne!(k0, k1);
+        // a normal clip has no camera
+        let n = frame_key(&p, Micros(4_500_000), src, &eg).unwrap();
+        assert_eq!(n.camera, None);
+    }
+
+    // covers: REQ-104
+    #[test]
+    fn a_sphere_too_large_for_the_preview_is_not_decoded_but_still_exported() {
+        let mut p = project(&[(2, 20_000, 10_000, 30)]);
+        p.media[0].format.spherical = Some(true);
+        let eg = Geometry {
+            width: 1920,
+            height: 1080,
+            fps: Fps::new(30, 1).unwrap(),
+        };
+        let sc = Path::new("/tmp/g.txt");
+        let src = Source::Preview { proxies: true };
+        let e = still_args(&p, Micros::ZERO, &eg, FfVersion::Dev, sc, src).unwrap_err();
+        assert_eq!(
+            e,
+            "This 360° video is too large to show here. It is still exported."
+        );
+        assert!(preview_video_args(&p, Micros::ZERO, &eg, FfVersion::Dev, sc, src).is_err());
+        assert_eq!(
+            segments(&p, Micros::ZERO, src),
+            Err(RenderError::SphereTooLarge)
+        );
+        // the export is planned as usual
+        assert!(matches!(
+            plan_export(&p, &enc(), |_, _| true).unwrap(),
+            Plan::Reencode { .. }
+        ));
+        // a normal video of the same size is not subject to this rule
+        p.media[0].format.spherical = Some(false);
+        assert!(segments(&p, Micros::ZERO, src).is_ok());
     }
 }

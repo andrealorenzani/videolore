@@ -87,6 +87,8 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(GoEnd),
                 A(PrevFrame),
                 A(NextFrame),
+                S,
+                A(SetPov),
             ],
         ),
         (
@@ -102,12 +104,24 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(ToggleFadeAtPlayhead),
                 A(GenerateSubtitles),
                 A(AddSubtitleLine),
-                A(ResetSubtitlePosition),
+                S,
+                A(AlignHorizontal),
+                A(AlignVertical),
+                A(ResetObjects),
+                S,
+                A(SetPov),
             ],
         ),
         (
             "View",
-            vec![A(ZoomIn), A(ZoomOut), A(ZoomFit), S, A(ResetLayout)],
+            vec![
+                A(ZoomIn),
+                A(ZoomOut),
+                A(ZoomFit),
+                S,
+                A(ToggleBoxes),
+                A(ResetLayout),
+            ],
         ),
         ("Help", vec![A(Shortcuts), A(About)]),
     ]
@@ -120,6 +134,8 @@ pub fn action_item(ui: &mut Ui, app: &AppState, id: ActionId, cmds: &mut Vec<Com
     let mut b = Button::new(id.label(app));
     if let Some(s) = keymap::shortcut_text(ui.ctx(), id) {
         b = b.shortcut_text(s);
+    } else if id == ActionId::ToggleBoxes {
+        b = b.shortcut_text(if app.settings.show_boxes { "On" } else { "Off" });
     }
     let r = ui
         .add_enabled(reason.is_none(), b)

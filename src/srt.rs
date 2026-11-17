@@ -197,6 +197,7 @@ mod tests {
             text: text.into(),
             words: vec![],
             position: None,
+            size: None,
         }
     }
 

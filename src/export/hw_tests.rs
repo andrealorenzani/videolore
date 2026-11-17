@@ -51,6 +51,10 @@ struct Sim {
     log: Mutex<Vec<&'static str>>,
     /// The quantiser of each hardware run ("" for bitrate control).
     qps: Mutex<Vec<String>>,
+    /// Commands that found the camera command file `cam0.txt` in their folder.
+    cam_seen: std::sync::atomic::AtomicUsize,
+    /// The size of the hardware file.
+    size: (u32, u32),
 }
 
 const FRAMES: u64 = 50;
@@ -63,6 +67,8 @@ fn sim(hw: Hw) -> Sim {
         software_fails: false,
         log: Mutex::new(Vec::new()),
         qps: Mutex::new(Vec::new()),
+        cam_seen: Default::default(),
+        size: (1280, 720),
     }
 }
 
@@ -85,6 +91,13 @@ const PROGRESS: &str =
     "out_time_us=1000000\nprogress=continue\nout_time_us=2000000\nprogress=end\n";
 
 impl Sim {
+    fn see_camera(&self, cwd: Option<&Path>) {
+        if cwd.is_some_and(|c| c.join("cam0.txt").is_file()) {
+            self.cam_seen
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
     fn note(&self, what: &'static str) {
         self.log.lock().unwrap().push(what);
     }
@@ -104,7 +117,7 @@ impl Sim {
         let json = serde_json::json!({
             "streams": [
                 {"codec_type": "video", "codec_name": "h264", "profile": "High",
-                 "pix_fmt": "yuv420p", "width": 1280, "height": 720,
+                 "pix_fmt": "yuv420p", "width": self.size.0, "height": self.size.1,
                  "r_frame_rate": "30/1", "nb_read_packets": packets.to_string(),
                  "duration": "2.000000"},
                 {"codec_type": "audio", "codec_name": "aac", "sample_rate": "48000",
@@ -161,6 +174,7 @@ impl Runner for Sim {
             || line.contains("_videotoolbox")
         {
             self.note("hardware");
+            self.see_camera(cwd);
             self.cancel_if(CancelAt::HardwareRun);
             let out = out_file(&a).unwrap();
             assert!(out.ends_with(".hw.videolore-partial"), "{out}");
@@ -203,6 +217,7 @@ impl Runner for Sim {
         }
         if line.contains("psnr=stats_file") {
             self.note("compare");
+            self.see_camera(cwd);
             let y = if self.hw == Hw::GreenFrames {
                 "psnr_y:30.0 psnr_u:8.0 psnr_v:7.0"
             } else {
@@ -529,5 +544,45 @@ fn constant_quality_keeps_the_file_size_in_check() {
         other => panic!("{other:?}"),
     }
     assert_eq!(log.last(), Some(&"software"));
+    clean(dir.path());
+}
+
+// covers: REQ-103, REQ-055, REQ-063
+#[test]
+fn a_360_clip_with_a_camera_path_is_exported_in_hardware_and_checked() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = hw_job(dir.path(), Some(Vendor::Nvenc));
+    let m = j.project.media[0].id;
+    j.project.media[0].format.spherical = Some(true);
+    for (t, yaw) in [(0, 0), (2_000_000, 80)] {
+        j.project
+            .camera
+            .set(
+                m,
+                crate::camera::Pov {
+                    t: Micros(t),
+                    cam: crate::camera::Camera::new(yaw * 100, 0, 9000),
+                },
+            )
+            .unwrap();
+    }
+    let mut s = sim(Hw::Works);
+    // a 360 clip counts as 1920x1080 for the output format
+    s.size = (1920, 1080);
+    let (r, _, log) = export(&j, &s);
+    let (_, method) = r.unwrap();
+    assert_eq!(method, ExportMethod::Hardware(Vendor::Nvenc));
+    assert_eq!(log, ["hardware", "metadata", "decode", "compare"]);
+    // the camera command file was in the folder of the hardware run and of the check
+    assert_eq!(s.cam_seen.load(std::sync::atomic::Ordering::SeqCst), 2);
+    // the redo with the normal method gets it too
+    let s = sim(Hw::ExitsWithError);
+    let (r, _, log) = export(&j, &s);
+    assert!(matches!(
+        r.unwrap().1,
+        ExportMethod::SoftwareAfterProblem { .. }
+    ));
+    assert_eq!(log.last(), Some(&"software"));
+    assert!(s.cam_seen.load(std::sync::atomic::Ordering::SeqCst) >= 1);
     clean(dir.path());
 }

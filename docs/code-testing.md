@@ -116,3 +116,12 @@ ffmpeg). Two tests use it when `VIDEOLORE_STT_MODEL` points to the Fast speech f
 every word timed inside its line, at least half of the words found) and the accuracy target
 `alignment_matches_real_speech`, which is `#[ignore]`d because it is not met yet (see
 [code-effects.md](code-effects.md)).
+
+### 1.2.6 tests
+
+See [code-360.md](code-360.md) (section "Tests and fixtures"). Real-ffmpeg tests are in
+`tests/ffmpeg_integration/v126.rs` (generated 2048x1024 sphere with a white meridian and parallel;
+8K file generated at test time, never committed). The 1.2.5 golden argv is
+`tests/fixtures/export-argv-1.2.5.txt` (written by the ignored test `write_golden_1_2_5`, run only
+with the 1.2.5 code). The four responsiveness gates in `src/ui/tests.rs` run one at a time
+(`one_gate_at_a_time`) because each keeps every core busy.

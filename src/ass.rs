@@ -97,6 +97,29 @@ pub fn pos_tag(p: Pos, width: u32, height: u32) -> String {
     format!("{{\\an5\\pos({},{})}}", c(p.x, width), c(p.y, height))
 }
 
+/// Font size in pixels of a line sized `size` thousandths of the preset's (SIZE_NORMAL =
+/// the preset's own size).
+pub fn sized_font(width: u32, height: u32, size: u16) -> u32 {
+    let base = f64::from(font_size(width, height));
+    ((base * f64::from(size) / 1000.0).round() as u32).max(1)
+}
+
+/// The override tag block of a line: its position and size (`\an5\pos(x,y)` and/or
+/// `\fs..\bord..`). Empty for a line with neither, which keeps the 1.2 output unchanged.
+/// A sized line without a position keeps the style's bottom anchor.
+pub fn line_tag(l: &ShownLine, width: u32, height: u32) -> String {
+    let pos = l.position.map(|p| pos_tag(p, width, height));
+    let Some(size) = l.size else {
+        return pos.unwrap_or_default();
+    };
+    let fs = sized_font(width, height, size);
+    let sized = format!("\\fs{fs}\\bord{}", outline(fs));
+    match pos {
+        Some(p) => format!("{}{sized}}}", &p[..p.len() - 1]),
+        None => format!("{{{sized}}}"),
+    }
+}
+
 fn style(preset: Preset, width: u32, height: u32) -> String {
     let size = font_size(width, height);
     let outline = outline(size);
@@ -183,10 +206,7 @@ pub fn document(
     let at = |t: Micros| (t - shift).max(Micros::ZERO);
     for l in lines.iter().filter(|l| l.end > shift) {
         // only this module writes tags: the position comes from validated numbers
-        let tag = l
-            .position
-            .map(|p| pos_tag(p, width, height))
-            .unwrap_or_default();
+        let tag = line_tag(l, width, height);
         if preset != Preset::WordHighlight {
             let text = format!("{tag}{}", escape(&l.text));
             s.push_str(&dialogue(at(l.start), at(l.end), &text));
@@ -235,6 +255,7 @@ mod tests {
             text: text.into(),
             words,
             position: None,
+            size: None,
         }
     }
 
@@ -335,5 +356,30 @@ mod tests {
         );
         assert!(box_padding(Preset::Boxed, 40) >= 1.0);
         assert_eq!(margin_lr(1000), 60);
+    }
+
+    // covers: REQ-097
+    #[test]
+    fn sizes_become_font_size_tags_and_none_changes_nothing() {
+        let mut l = line(1000, 3000, "big", vec![]);
+        l.position = Some(Pos { x: 5000, y: 5000 });
+        let base = document(&[l.clone()], Preset::Classic, 1280, 720, Micros::ZERO);
+        // 720p: base size 40 px; 200% = 80 px, outline scaled with it
+        l.size = Some(2000);
+        let d = document(&[l.clone()], Preset::Classic, 1280, 720, Micros::ZERO);
+        assert!(d.contains("{\\an5\\pos(640,360)\\fs80\\bord6}big"), "{d}");
+        assert_ne!(d, base);
+        // size alone keeps the style's anchor
+        l.position = None;
+        let d = document(&[l.clone()], Preset::Classic, 1280, 720, Micros::ZERO);
+        assert!(d.contains(",,{\\fs80\\bord6}big"), "{d}");
+        // word highlight: every group carries it
+        let words: Vec<Word> = (0..6).map(|i| word(i * 300, i * 300 + 250, "w")).collect();
+        let mut wl = line(0, 1800, "w w w w w w", words);
+        wl.size = Some(500);
+        let d = document(&[wl], Preset::WordHighlight, 1000, 500, Micros::ZERO);
+        assert_eq!(d.matches("{\\fs14\\bord1}{\\k").count(), 2, "{d}");
+        assert_eq!(sized_font(1280, 720, 1000), font_size(1280, 720));
+        assert_eq!(sized_font(10, 10, 250), 2);
     }
 }

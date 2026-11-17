@@ -262,7 +262,10 @@ impl AppState {
             .media
             .iter()
             .filter(|m| {
-                m.is_ready() && !m.missing && m.has_video() && m.format.subtitle_tracks.is_none()
+                m.is_ready()
+                    && !m.missing
+                    && m.has_video()
+                    && (m.format.subtitle_tracks.is_none() || m.format.spherical.is_none())
             })
             .map(|m| (m.id, m.path.clone()))
             .collect();
@@ -283,11 +286,14 @@ impl AppState {
                     return;
                 }
                 // a file that cannot be read now simply has no usable track
-                let tracks = media::probe(&runner, &ffprobe, &path, id)
-                    .ok()
+                let probed = media::probe(&runner, &ffprobe, &path, id).ok();
+                let spherical = probed
+                    .as_ref()
+                    .is_some_and(|m| m.format.spherical == Some(true));
+                let tracks = probed
                     .and_then(|m| m.format.subtitle_tracks)
                     .unwrap_or_default();
-                if tx.send((id, tracks)).is_err() {
+                if tx.send((id, tracks, spherical)).is_err() {
                     return;
                 }
             }
@@ -313,12 +319,28 @@ impl AppState {
                 rx.try_recv(),
                 Err(std::sync::mpsc::TryRecvError::Disconnected)
             );
-        for (id, tracks) in results {
+        let mut newly_360 = Vec::new();
+        for (id, tracks, spherical) in results {
             self.tracks_checking.remove(&id);
             if let Some(m) = self.project.media.iter_mut().find(|m| m.id == id) {
-                m.format.subtitle_tracks = Some(tracks.clone());
+                if m.format.subtitle_tracks.is_none() {
+                    m.format.subtitle_tracks = Some(tracks.clone());
+                    self.saved.set_subtitle_tracks(id, tracks);
+                }
+                if m.format.spherical.is_none() {
+                    m.format.spherical = Some(spherical);
+                    self.saved.set_spherical(id, spherical);
+                    if m.format.is_360() {
+                        newly_360.push(id);
+                    }
+                }
             }
-            self.saved.set_subtitle_tracks(id, tracks);
+        }
+        for id in newly_360 {
+            // the camera view needs its own preview copy and picture
+            self.redo_proxy(id);
+            let now = Instant::now();
+            self.refresh_still(now);
         }
         if finished {
             self.track_check = None;

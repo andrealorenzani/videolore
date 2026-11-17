@@ -258,11 +258,21 @@ pub(crate) fn open_fixture(dir: &Path, text: &str) -> Project {
 
 /// Export argv (folder replaced by `<dir>`) and ASS document of the v1 and 1.1 fixtures.
 fn render_fixtures() -> String {
-    let mut text = String::new();
-    for (name, body) in [
+    render_files(&[
         ("project-v1", crate::project::tests::V1_FIXTURE),
         ("project-v2-1.1", V2_FIXTURE),
-    ] {
+    ])
+}
+
+/// A committed 1.2.5 project (schema 3): volumes, edge fades, a positioned line.
+pub(crate) const V3_FIXTURE: &str = include_str!("../../tests/fixtures/project-v3-1.2.5.vlproj");
+
+/// What videolore 1.2.5 exported for [`V3_FIXTURE`] (frozen before 1.2.6).
+const GOLDEN_1_2_5: &str = include_str!("../../tests/fixtures/export-argv-1.2.5.txt");
+
+fn render_files(files: &[(&str, &str)]) -> String {
+    let mut text = String::new();
+    for (name, body) in files.iter().copied() {
         let dir = tempfile::tempdir().unwrap();
         let p = open_fixture(dir.path(), body);
         let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
@@ -309,5 +319,30 @@ fn projects_of_1_1_export_as_in_1_1_0() {
             assert_eq!(a, b);
         }
         assert_eq!(now.lines().count(), GOLDEN_1_1.lines().count());
+    }
+}
+
+/// Writes the 1.2.5 golden file. Run on purpose only, with the 1.2.5 code.
+#[test]
+#[ignore]
+fn write_golden_1_2_5() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/export-argv-1.2.5.txt"
+    );
+    std::fs::write(path, render_files(&[("project-v3-1.2.5", V3_FIXTURE)])).unwrap();
+}
+
+/// Projects saved by 1.2.5 export exactly as they did in 1.2.5 (REQ-105): no size tag, no
+/// 360 step.
+// covers: REQ-105, REQ-097
+#[test]
+fn projects_of_1_2_5_export_as_in_1_2_5() {
+    let now = render_files(&[("project-v3-1.2.5", V3_FIXTURE)]);
+    if now != GOLDEN_1_2_5 {
+        for (a, b) in now.lines().zip(GOLDEN_1_2_5.lines()) {
+            assert_eq!(a, b);
+        }
+        assert_eq!(now.lines().count(), GOLDEN_1_2_5.lines().count());
     }
 }

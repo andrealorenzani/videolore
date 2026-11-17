@@ -49,11 +49,22 @@ pub fn visible_text(l: &ShownLine, preset: Preset, at: Micros) -> String {
         .unwrap_or_default()
 }
 
-/// The box of a line of `text_size` (frame pixels): centred on its own position, or at
-/// the style's place.
-pub fn line_box(preset: Preset, pos: Option<Pos>, frame: (u32, u32), text_size: Vec2) -> Rect {
+/// The box of a line of `text_size` (frame pixels, measured at the line's own size):
+/// centred on its own position, or at the style's place. `size` is the line's own size
+/// (thousandths of the preset's), which also scales the padding.
+pub fn line_box(
+    preset: Preset,
+    pos: Option<Pos>,
+    size: Option<u16>,
+    frame: (u32, u32),
+    text_size: Vec2,
+) -> Rect {
     let (w, h) = frame;
-    let pad = ass::box_padding(preset, ass::font_size(w, h)) as f32;
+    let font = match size {
+        Some(s) => ass::sized_font(w, h, s),
+        None => ass::font_size(w, h),
+    };
+    let pad = ass::box_padding(preset, font) as f32;
     let size = text_size + vec2(2.0 * pad, 2.0 * pad);
     let (cx, cy) = match pos {
         Some(p) => {
@@ -74,7 +85,6 @@ pub fn boxes(
     measure: &mut dyn FnMut(&str, f32, f32) -> Vec2,
 ) -> Vec<(LineId, Rect)> {
     let preset = project.subtitles.preset;
-    let size = ass::font_size(frame.0, frame.1) as f32;
     let wrap = (frame.0 as f32 - 2.0 * ass::margin_lr(frame.0) as f32).max(1.0);
     project
         .subtitles
@@ -83,8 +93,12 @@ pub fn boxes(
         .filter(|l| !l.text.trim().is_empty())
         .map(|l| {
             let text = visible_text(&l, preset, at);
-            let t = measure(&text, size, wrap);
-            (l.line, line_box(preset, l.position, frame, t))
+            let font = match l.size {
+                Some(s) => ass::sized_font(frame.0, frame.1, s),
+                None => ass::font_size(frame.0, frame.1),
+            };
+            let t = measure(&text, font as f32, wrap);
+            (l.line, line_box(preset, l.position, l.size, frame, t))
         })
         .collect()
 }

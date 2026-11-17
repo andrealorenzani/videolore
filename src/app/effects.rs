@@ -94,6 +94,7 @@ impl AppState {
             (Popup::Instance, Some(Instance::ClipVolume(_))) => "Clip volume",
             (Popup::Instance, Some(Instance::FadeStart)) => "Fade from black",
             (Popup::Instance, Some(Instance::FadeEnd)) => "Fade to black",
+            (Popup::Instance, Some(Instance::Pov(..))) => "Point of view",
             _ => p.title(),
         };
         match self.popups.target(p) {
@@ -233,6 +234,10 @@ impl AppState {
         if ids.is_empty() {
             return Err(SELECT_A_LINE.into());
         }
+        if pos.is_none() {
+            // back to the style's place also gives the size back
+            return self.reset_lines(ids, now);
+        }
         if let Some(p) = pos
             && !p.is_valid()
         {
@@ -246,12 +251,7 @@ impl AppState {
             self.refresh_still(now);
             return Ok(());
         }
-        let label = if pos.is_some() {
-            "Move subtitle"
-        } else {
-            "Reset subtitle position"
-        };
-        self.edit(now, label, |e| {
+        self.edit(now, "Move subtitle", |e| {
             e.subtitles.set_position(&ids, pos).map_err(err)
         })
     }
@@ -273,14 +273,30 @@ impl AppState {
     /// The project as shown in the preview: with the lines being dragged at their new
     /// place.
     pub fn shown_project(&self) -> std::borrow::Cow<'_, Project> {
-        match &self.drag_pos {
-            None => std::borrow::Cow::Borrowed(&self.project),
-            Some((ids, p)) => {
-                let mut q = self.project.clone();
-                let _ = q.subtitles.set_position(ids, Some(*p));
-                std::borrow::Cow::Owned(q)
-            }
+        let overlay = self.live_overlay();
+        if self.drag_pos.is_none() && self.resize_drag.is_none() && overlay.is_empty() {
+            return std::borrow::Cow::Borrowed(&self.project);
         }
+        let mut q = self.project.clone();
+        if let Some((ids, p)) = &self.drag_pos {
+            let _ = q.subtitles.set_position(ids, Some(*p));
+        }
+        if let Some(d) = &self.resize_drag {
+            let _ = q.subtitles.set_boxes(&d.ids, None, Some(Some(d.size)));
+            let _ = q.subtitles.set_boxes(&[d.line], Some(Some(d.pos)), None);
+        }
+        // a camera you dragged is shown as one fixed view
+        for (media, cam) in overlay {
+            q.camera.drop_media(media);
+            let _ = q.camera.set(
+                media,
+                crate::camera::Pov {
+                    t: Micros::ZERO,
+                    cam,
+                },
+            );
+        }
+        std::borrow::Cow::Owned(q)
     }
 
     /// True when some line with text is on the timeline (the SRT export has content).

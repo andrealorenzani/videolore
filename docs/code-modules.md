@@ -14,6 +14,7 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `subtitles` | Subtitle lines stored in *source* time per file; `project()` maps them onto the timeline (cut removes, copy duplicates, trim hides, split keeps); edits; the three styles; each line's own position on screen (`Pos`); replacing the lines of one source range |
 | `srt` | SubRip: writing the timeline's subtitles (`write`), lenient reading of a track converted by ffmpeg (`parse`, capped), tag removal (`strip_tags`) |
 | `align` | Matching the words of a subtitle track to recognised words (per-cue Needleman–Wunsch, close spellings, clamped times, even spread of words not found) |
+| `camera` | The virtual camera of 360° video (pure): `Camera`, `Pov`, `CameraPaths` (per source, source time), interpolation, drag/wheel mapping, the `v360` filter and `sendcmd` file text (see [code-360.md](code-360.md)) |
 | `ass` | Writes the ASS subtitle file: styles, text size `min(0.055·H, 0.09·W)`, word highlight with `\k` tags, escaping of `{ } \` |
 | `history` | Undo/redo by snapshots of `Edit` (timeline + music + subtitles + volumes), up to 100 steps, each with the name of its action ("Undo Split") |
 | `project` | `.vlproj` file (JSON, `schema_version` 3 since 1.2.0; version 1 and 2 files load with defaults, newer ones are refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
@@ -33,8 +34,8 @@ project given on the command line, runs the desktop start-up hooks and opens the
 | `notices` | Bundled components with version, licence and source; the About text |
 | `packaging` | Pinned ffmpeg builds and tools (`packaging/*.lock`) and release asset names |
 | `desktop` | Linux menu entry / icon / `.vlproj` type for the AppImage and tar.gz; macOS Apple Event handler for double-clicked projects; queue of projects to open |
-| `app` | `AppState`, the single command dispatcher (`Command`, `AppState::dispatch`), background results in `tick()`; `app/effects.rs` (applying effects, clip volume, edge fades, line selection and positions, SRT export) and `app/subs_create.rs` (creating subtitles for a clip or the whole video) |
-| `ui` | The window (see [code-ui.md](code-ui.md)): action table (`actions`), menu bar (`menu`), toolbar (`toolbar`), status bar (`status`), resizable sections (`layout`), media list (`media`), timeline with marker lane and music track (`timeline`, `markers`), Effects section and effect popups (`effects`), floating windows (`popups`), Settings body and banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`), ruler labels (`ruler`), subtitle boxes and dragging in the preview (`placement`) |
+| `app` | `AppState`, the single command dispatcher (`Command`, `AppState::dispatch`), background results in `tick()`; `app/effects.rs` (applying effects, clip volume, edge fades, line selection and positions, SRT export) `app/subs_create.rs` (creating subtitles for a clip or the whole video) and `app/sphere.rs` (360 camera, points of view, resize/align/reset) |
+| `ui` | The window (see [code-ui.md](code-ui.md)): action table (`actions`), menu bar (`menu`), toolbar (`toolbar`), status bar (`status`), resizable sections (`layout`), media list (`media`), timeline with marker lane and music track (`timeline`, `markers`), Effects section and effect popups (`effects`), floating windows (`popups`), Settings body and banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`), ruler labels (`ruler`), subtitle boxes and their measuring (`placement`), box geometry (`boxes`) and everything done on the preview picture (`picture`) |
 | `dialogs` | Native file dialogs (rfd) |
 
 ## Main patterns

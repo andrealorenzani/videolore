@@ -25,6 +25,8 @@ use videolore::time::Micros;
 mod hw;
 #[path = "ffmpeg_integration/v12.rs"]
 mod v12;
+#[path = "ffmpeg_integration/v126.rs"]
+mod v126;
 
 struct Env {
     info: FfmpegInfo,

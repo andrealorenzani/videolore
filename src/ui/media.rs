@@ -16,7 +16,13 @@ pub fn status_line(m: &MediaItem) -> String {
         MediaStatus::Rejected(reason) => format!("cannot be used: {reason}"),
         MediaStatus::Ready if m.missing => "missing".to_string(),
         MediaStatus::Ready => {
-            let kind = if m.has_video() { "" } else { "audio only, " };
+            let kind = if !m.has_video() {
+                "audio only, "
+            } else if m.format.is_360() {
+                "360°, "
+            } else {
+                ""
+            };
             format!("{kind}{}  {}", timecode(m.duration), m.format.describe())
         }
     };

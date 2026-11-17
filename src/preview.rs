@@ -449,6 +449,7 @@ struct StillRequest {
     generation: u64,
     args: Vec<OsString>,
     subtitles: Option<String>,
+    command_files: Vec<(String, String)>,
     geometry: Geometry,
     at: Micros,
     key: FrameKey,
@@ -531,6 +532,9 @@ fn still_thread(
         if let Some(doc) = &req.subtitles
             && write_subtitles(&cwd, doc).is_err()
         {
+            continue;
+        }
+        if render::write_command_files(&cwd, &req.command_files).is_err() {
             continue;
         }
         let runner = config.runner.cancellable(Arc::clone(&cancel));
@@ -732,6 +736,7 @@ impl Preview {
         if let Some(doc) = &v.subtitles {
             write_subtitles(&cwd, doc).map_err(|e| e.to_string())?;
         }
+        render::write_command_files(&cwd, &v.command_files).map_err(|e| e.to_string())?;
         let (rate, ch) = self.sink.format();
         let aargs = render::preview_audio_args(
             project,
@@ -848,6 +853,7 @@ impl Preview {
                 generation: self.generation,
                 args: r.args,
                 subtitles: r.subtitles,
+                command_files: r.command_files,
                 geometry: eg.preview(),
                 at,
                 key,

@@ -55,6 +55,7 @@ Since 1.2.0 Subtitles is applied like the other effects (see [effects](architect
 - **Selecting several lines:** Ctrl+click (Cmd+click on macOS) on a line marker or in the Subtitles popup list adds or removes a line; a plain click selects only that line. Shift+drag on the timeline selects every line whose start is in the dragged range (with Ctrl/Cmd too it adds to the selection), and moves the playhead to the first one. Clicking empty timeline clears the selection; Esc closes the topmost popup first, then clears it.
 - **Moving a group:** dragging one of the selected lines moves them all to exactly the same position (their previous relative positions are not kept), as one undo step. Only the dragged line's box is kept inside the picture. Reset position on a selection resets all of them.
 - The selection is part of the window state, not of the project or the undo history.
+- **Size (1.2.6):** a line can also have its own text size, 25–400% of the style's, with a box and corner handles in the preview; see [boxes](architecture-boxes.md).
 - **Known limits:** egui and the burn-in library may measure text a few pixels differently near the edges (the burned result is what counts); a line made longer after being placed near an edge may then cross it; positioned lines shown at the same time can overlap.
 
 ## CPU requirements (since 0.2.1)

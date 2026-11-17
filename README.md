@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.2.5-blue)
+![version](https://img.shields.io/badge/version-1.2.6-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-95.9%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-96.0%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -20,7 +20,7 @@
 [![build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg)](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml)
 
 ## What it is
-`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, or taken from a video's own subtitles, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel, optionally using your computer's video hardware for a faster export. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.
+`videolore` is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, or taken from a video's own subtitles, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file, optionally using your computer's video hardware for a faster export. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so nothing else needs installing, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for personal videos. 360° videos can be explored and exported flat. Multitrack editing and color grading are out of scope.
 
 ## System requirements
 - **Windows** (64-bit, x86_64) and **Linux** (64-bit, x86_64; current Ubuntu LTS and Fedora).
@@ -72,6 +72,8 @@ Start videolore from the menu, the Applications folder, the AppImage or the extr
 7. **Save** the project (**Save** or **Save as**, Ctrl/Cmd+S or Ctrl/Cmd+Shift+S) and reopen it later with **Open**, or from File > Open recent, which lists the last 10 projects. A `•` in the window title means unsaved changes. New, Open, closing the window and Quit ask whether to **Save**, **Discard** or **Cancel**. Projects are `.vlproj` files: double-click one to open it in videolore.
 8. **Export** to one file (File > Export…, the toolbar, or Ctrl/Cmd+E), with progress in the status bar; cancel stops it and leaves no partial file. The output format is chosen automatically: if all clips share the same format, with no fades, music, subtitles or volume changes and cuts on keyframes, the streams are copied without re-encoding; otherwise the video is re-encoded once, letterboxed and never stretched. HEVC files play on Apple devices. With **Export: Faster** in Settings, a re-encoded H.264 or HEVC video is made by your computer's video hardware when it can; every such file is checked, and if the hardware is missing or does not produce a correct file, the normal method is used automatically. The default, **Best quality**, always uses the normal method.
 9. **Settings** (Edit > Settings…, or Ctrl/Cmd+,): choose **Preview quality**, **Subtitle quality**, **How hard videolore works** and **Export** (Faster or Best quality), each explained in one line. The first start picks recommended choices for your computer; **Use recommended settings** sets them again, and the speech files you downloaded can be removed there to free disk space. The **Advanced** section holds the ffmpeg you may want to use instead of the bundled one.
+10. **Boxes on the picture**: everything you can move on the picture, today the subtitle lines, has a thin box in the preview. Drag the box to move it, or drag a corner to make it bigger or smaller (a subtitle line's text size is 25% to 400% of its style). The toolbar has **Align horizontally**, **Align vertically** and **Reset**; Reset puts a line back in its place at its usual size. Hide the boxes with View > Show boxes on the picture. The boxes never appear in the export.
+11. **360 video**: a video recorded as a full 360° sphere is recognised automatically, or you can turn on **Treat as 360° video** in Clip details. Drag the picture to look around, and use the mouse wheel to zoom, during playback too. **Set POV** saves the current view at the playhead; between two saved views the camera moves in a straight line. The export shows this camera movement as a normal flat video. A moving camera exports at about one third of real time.
 
 The About screen lists every bundled third-party component with its version, licence and where to get its source code.
 
@@ -115,7 +117,7 @@ The About screen lists every bundled third-party component with its version, lic
 - Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
 - The window size and position are not remembered, and popups keep their place only until videolore is closed.
 - On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the menu bar is inside the window, not at the top of the screen, and the Hide and Minimize menu items are not available.
-- Projects saved by this version cannot be opened by version 1.1.0 or earlier; they are refused with a message and left untouched. Older projects open unchanged.
+- Projects saved by this version cannot be opened by version 1.2.5 or earlier; they are refused with a message and left untouched. Older projects open unchanged.
 - When a video's own subtitles are used, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the accuracy target is not met yet with the Fast model (on the reference clip 82% of the words were matched, with an average start error of 0.48 s).
 - Matching a video's subtitles to the speech works only as well as their text follows what is said; translated or paraphrased subtitles often get evenly spread words.
 - Moved subtitle lines shown at the same time can overlap, and editing a line's text after moving it can push it past the edge of the picture in the export; use Reset position or drag it again.
@@ -124,13 +126,16 @@ The About screen lists every bundled third-party component with its version, lic
 - Removing a file from the media list also drops the undo history when an undo step refers to it.
 - Cleared preview copies are made again only after reopening the project or changing Preview quality. Under Automatic, a 1280x720 source never gets a preview copy.
 - The preview copy cache is never cleaned automatically.
+- A 360 clip with a moving camera exports at about one third of real time.
+- 360 video must be a single equirectangular picture (no stereo 3D, cube maps or partial 180° video). The export is flat, the camera cannot roll or be steered from the keyboard, and spatial sound does not follow the camera.
+- Align horizontally does nothing for a subtitle line that is still at its style's place. An enlarged line's text may wrap and shift its centre slightly.
 
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **1.2.6** — Boxes on the picture: every movable subtitle line gets a visible box to move and resize, with its own text size; Align horizontally, Align vertically and Reset in the toolbar. 360° videos can be looked around in, with points of view set by the user, and are exported as a flat video that follows that camera path. Projects saved by this version need version 1.2.6 or later.
+- **1.2.2** — A project page for the GitHub repository: the brief, the timeline of every version, and the copyright and licence.
 - **1.2.0** — Effects apply to one clip or to the whole video: fades from and to black, volume and mute per clip, and subtitles for one clip. A video's own subtitle track can be used instead of recognising the speech. Each subtitle line can be dragged to its own place, alone or as a group, subtitles can be exported as an `.srt` file, and the timeline ruler shows seconds, minutes and seconds, or hours, depending on the view. Projects saved by this version need version 1.2.0 or later.
-- **1.1.0** — The window is reorganised: a menu bar and a toolbar with every action (greyed out with the reason when it is not available), a status bar with progress and Cancel, resizable sections, an Effects list whose fades and subtitle lines are markers on the timeline, a Clip details window, Open recent, drag and drop of media and projects, more keyboard shortcuts and F1 for their list.
-- **0.4.3** — The macOS and Windows installers build correctly again. The 0.4.2 release has only the Linux installers.
 
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
