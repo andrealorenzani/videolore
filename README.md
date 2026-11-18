@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.4.0-blue)
+![version](https://img.shields.io/badge/version-1.4.1-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-95.8%25-brightgreen)

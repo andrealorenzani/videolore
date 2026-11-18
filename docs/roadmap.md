@@ -168,6 +168,11 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Other systems** — builds exist for Windows and Linux on x86-64 and for macOS on Apple Silicon only; Intel Macs and ARM Windows or Linux are not built. (source: 0.4.0, scope decision)
 - **Bundled ffmpeg 9.x Clean audio and MP3 output** — the `afftdn` filter and the `libmp3lame` encoder are checked only by the CI smoke test, which checks that they exist; their output on the bundled ffmpeg 9.x build has not been checked by hand. (source: 1.4.0, check to do)
 
+## Project page
+- **Smaller project page images** — the page's GIF images total about 341 KB; animated WebP or AV1 would cut that weight, but browser support must be checked first and a second set of image files would be needed. (source: 1.4.1, project page image review)
+- **Social preview image for the project page** — the page has Open Graph tags but no `og:image`; add a still PNG as `og:image` once the page's absolute URL is confirmed. (source: 1.4.1, known limitation)
+- **Content-Security-Policy for the project page** — add a CSP once the hosts that the badges redirect to are known. (source: 1.4.1, postponed from the 1.4.1 work)
+
 ## Workflow
 - **Shorter internal documents** — the three long internal development documents (architecture about 145 KB, code about 61 KB, business about 51 KB) should become short indexes of the human documentation, one line per paragraph with its line range, with the detail moved to sub-documents. (source: 1.2.5, documentation size)
 

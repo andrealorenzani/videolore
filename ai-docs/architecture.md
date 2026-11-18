@@ -783,3 +783,17 @@ bundled non-Rust: ffmpeg GPL builds (BtbN, Riedl), Noto Sans Bold OFL-1.1, model
 - Q1 = A: 360 text is a flat sticker on the sphere (exact place, one projection engine; narrows toward the poles like any flat picture in a 360 video). Per-view perspective text (B) is not planned.
 - Q2 = A: automatic (view-fixed) subtitle lines in a 360 video export stay at their preset place in the frame (lower third, about 30 deg below the front).
 
+## 1.4.1 PLAN (project page, 2026-11-18; no app code, no REQ)
+- Scope: github_page/index.html + images (static, no build). docs/architecture*.md: no change (page not mentioned). Notes: no new section needed beyond this one.
+- ADR-092 (1.4.1) static page: one HTML file, inline CSS only, no JS, no external scripts or fonts, GIF images kept (WebP/AV1 = Future work: browser support, second asset set). Deployed by pages.yml (paths github_page/**, pinned actions) = OK, no change.
+- Verified: 1.4.1 card time = changelog header 2026-11-18 00:01 +0000 (OPEN item closed); crate versions in page = Cargo.lock; ffmpeg 9.0.2 = README badge; images 317-512 px, 46-71 KB each, shown at <=300 CSS px.
+- TECH items for PE (github_page/index.html, recommended, no REQ):
+  1. img width/height attributes = intrinsic size (sizes above) -> no layout shift.
+  2. loading="lazy" decoding="async" on the 5 images below the fold (intro image stays eager).
+  3. .timeline-wrap (overflow-x: scroll): tabindex="0", role="region", aria-label "Timeline of versions" -> keyboard scroll (WCAG 2.1.1).
+  4. Reduced motion (WCAG 2.2.2): GIFs loop forever; <picture><source media="(prefers-reduced-motion: reduce)" srcset="images/<name>-still.png"> with first frame PNG, no JS. Needs 6 still assets (PE extracts with bundled tooling, not in tests).
+  5. Optional SEO: <link rel="canonical">, og:title/og:description/og:url (og:image only with a static PNG, GIF not reliable); optional <link rel="icon" href="data:,"> to avoid favicon 404.
+  6. Optional defence in depth: meta CSP `default-src 'none'; img-src 'self' https://github.com; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'`; verify the badge still loads (redirects) before shipping.
+- Not changed: links have no target=_blank (no rel issue); no third-party scripts; alt texts descriptive.
+- Future work: animated WebP/AV1 for GIF weight (~341 KB total today); page-level pause control if 4 is not done.
+

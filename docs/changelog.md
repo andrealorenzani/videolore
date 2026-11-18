@@ -2,6 +2,16 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.4.1 — 2026-11-18 00:01 +0000
+
+The project page is rewritten: a short introduction with the director animation, the evolution of the project, the key features with their images, the availability and what it is built with. It is also lighter on phones and for users who prefer reduced motion, which see still pictures; the timeline can be scrolled from the keyboard, and the page has share tags (canonical and Open Graph).
+
+The quality suite was not run locally: only the page changed, no Rust code changed, and the local environment lacks the ALSA development files that clippy needs. CI runs the suite after the push.
+
+### Changed
+- **Project page** (`github_page/index.html`): rewritten with a 3-line introduction, "Evolution of this project", "Key features" with alternating side images, "Availability" and "Built with"; the GIF images are in `github_page/images/`. The software is unchanged.
+- **Project page, lighter and more accessible**: on phones and with reduced motion the images are still PNG pictures (`<picture>` with six `*-still.png` files in `github_page/images/`); images have width, height and lazy loading; the timeline region is keyboard-scrollable; the page has canonical and Open Graph tags and an empty favicon.
+
 ## 1.4.0 — 2026-11-17 21:16 +0000
 
 Export choices, Clean audio, text boxes that fit their text, and items that can be dragged past the picture edges (REQ-114 to REQ-123; REQ-022, REQ-023, REQ-069, REQ-075, REQ-089, REQ-097, REQ-100, REQ-103, REQ-106 and REQ-111 reworded). Projects saved by this version need version 1.4.0 or later.

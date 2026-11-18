@@ -113,6 +113,19 @@ Line ranges re-checked at the 1.4.0 STATUS (grep -n '^#' + line count); conventi
 - Docs edited (STATUS): business-ui.md (069 Playback += Set POV, 075), business-picture.md (097, 100, 102 text, 103, 106, 117), business-text.md (111, 115, 116 + 2 limitations), business-music.md (114 acceptance measured + NEW Known limitations section), business-export.md (022, 023, 118-122 wording, known 1.4.0 +1 bullet), business-editing.md (123), business-subtitles.md (089), business.md (2 limitation bullets). Index ranges updated (text, music, export).
 - Future work (for Documenter/roadmap): measured best-fit (real font metrics) instead of 0.6 em/char estimate; Clean audio: second strength or per-speech tuning if users complain, measure preview CPU on weak computers; 360 video export ignores video presets (keeps sphere size); project-level export choices out of scope (session only); 1.3.0 text migration can shrink big multi-line texts (review after user feedback).
 
+## 1.4.1 PLAN+STATUS (target 1.4.1, Andrea request 2026-11-17) — project page only, no app REQ
+- Scope: github_page/index.html (static, not a docs/ file, not in feature-coverage). No app code, no REQ-NNN added or changed. Next free ID stays REQ-124.
+- Decision: project page requirements are NOT REQs (REQ = app behaviour tested with covers:; a static page has no test). Page requirements, for the record:
+  - PG-1 intro first: max 3 lines on desktop, easy to use + oriented to social media + eye to 360 video; director.gif on its right side.
+  - PG-2 section "Evolution of this project" (was "The story"): horizontal timeline of every version, dates UTC from changelog headers; 1.2.3..1.4.1 cards added; "today" dot on 1.4.1.
+  - PG-3 "Key features": subtitle, 360 videos, fast processing, clearer audio (Clean audio), easy to use; each short, with its image.
+  - PG-4 images alternate sides: intro right; subtitle left; 360 right; fast left; audio right; easy left. Reason: zigzag eye path; the caricatures' gaze points into the text (360 camera and audio mic look left, easy looks right at laptop). Phones: text first, picture below.
+  - PG-5 after features: "Availability" (platforms, unsigned installers note, Releases + build page links), "Built with" (adds fontdb 0.24 MIT and ffmpeg 9.0.2 bundled, GPL-3.0-or-later builds), copyright footer unchanged.
+  - PG-6 version badge and "1.4.1" card = this development's version; latest build badge kept (live CI status).
+- Accuracy basis: features checked against README, changelog 1.2.0-1.4.0, REQ-020/025/038/041/045/056/072/084/112/114.
+- OPEN (for command): the 1.4.1 timeline card shows "2026-11-17" without time; set it to the time of the 1.4.1 changelog header (`date '+%Y-%m-%d %H:%M %z'`) in github_page/index.html, card `.today .when`.
+- Human docs (docs/business*.md): unchanged in this development.
+
 ## Decisions from REFINE (1.3.0, Andrea answers)
 - Q1 = C: for projects WITH 360 clips, Export asks "360 video" or "Flat camera view" (1.2.6 export) each time. Explicit exception to D2, only for these projects. 360 video = full sphere, camera not applied, subtitles/text at their sphere points; flat = 1.2.6 rules (360 counts 1920x1080). Mixed 360+flat projects: flat only (360 choice refused with message).
 - Q2 = B: text fonts = fonts installed on the computer; look may differ per computer (stated in docs). Default font = bundled subtitle font (assumption). Missing font -> default there (ASSUMPTION, check at build).

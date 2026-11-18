@@ -4,8 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>videolore — project page</title>
-<meta name="description" content="videolore: a simple, offline desktop video editor for short clips made for social media. Its brief, its story as a timeline, and its licence.">
+<meta name="description" content="videolore: an easy-to-use, offline desktop video editor for short clips made for social media, with an eye to 360° video. Its key features, its evolution as a timeline, and its licence.">
 <meta name="robots" content="index, follow">
+<link rel="canonical" href="https://andrealorenzani.github.io/videolore/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="videolore — project page">
+<meta property="og:description" content="An easy-to-use, offline desktop video editor for short clips made for social media, with an eye to 360° video.">
+<meta property="og:url" content="https://andrealorenzani.github.io/videolore/">
+<link rel="icon" href="data:,">
 <style>
   :root {
     --bg: #f7f7f5; --fg: #1d1d1f; --muted: #5d5d63; --card: #ffffff; --line: #c9c9cf;
@@ -33,13 +39,37 @@
   main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 48px; }
   h1 { margin: 0 0 4px; font-size: 2.2rem; letter-spacing: -0.01em; }
   h2 { margin: 40px 0 12px; font-size: 1.4rem; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
-  .tagline { margin: 0; color: var(--muted); }
   .badge {
     display: inline-block; margin-top: 10px; padding: 2px 10px; border-radius: 999px;
     background: var(--accent-soft); color: var(--accent); font-size: 0.9rem; font-weight: 600;
   }
-  .brief p { margin: 0 0 12px; max-width: 72ch; }
   a { color: var(--accent); }
+  .hint { color: var(--muted); font-size: 0.85rem; margin: 6px 0 0; }
+  .small { font-size: 0.8rem; color: var(--muted); }
+  .links { margin: 12px 0 0; font-size: 0.95rem; }
+  .links span { color: var(--muted); }
+
+  /* Introduction: text on the left, the picture on the right */
+  .intro { display: flex; gap: 24px; align-items: center; margin-top: 8px; }
+  .intro .text { flex: 1 1 auto; min-width: 0; }
+  .intro p { margin: 0; font-size: 1.15rem; }
+
+  /* Key features: the picture alternates sides (right, left, right, ...), and turns
+     towards the text, so the eye zigzags down the page */
+  .feature { display: flex; gap: 24px; align-items: center; margin: 0 0 28px; }
+  .feature .text { flex: 1 1 auto; min-width: 0; }
+  .feature h3 { margin: 0 0 6px; font-size: 1.15rem; }
+  .feature p { margin: 0; max-width: 64ch; }
+  figure { margin: 0; flex: 0 0 300px; }
+  figure img { display: block; width: 100%; height: auto; }
+  .intro figure { flex-basis: 260px; }
+
+  /* Narrow screens: the text comes first, the picture below it */
+  @media (max-width: 640px) {
+    .intro, .feature { flex-direction: column; align-items: stretch; }
+    .intro figure, .feature figure { flex-basis: auto; width: 100%; max-width: 300px; margin: 0 auto; order: 1; }
+    .intro .text, .feature .text { order: 0; }
+  }
 
   /* Horizontal timeline: scrolls sideways on narrow screens */
   .timeline-wrap {
@@ -52,14 +82,11 @@
   .timeline-wrap::-webkit-scrollbar-track { background: var(--line); border-radius: 7px; }
   .timeline-wrap::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 7px; border: 3px solid var(--line); }
   .platforms { margin: 16px 0 0; }
-  .links { margin: 12px 0 0; font-size: 0.95rem; }
-  .links span { color: var(--muted); }
   .libs { width: 100%; border-collapse: separate; border-spacing: 0 8px; font-size: 0.95rem; }
   .libs th { text-align: left; color: var(--muted); font-weight: 600; padding: 0 12px; }
   .libs td { background: var(--card); border: 1px solid var(--line); padding: 10px 12px; vertical-align: top; }
   .libs td:first-child { border-radius: 10px 0 0 10px; white-space: nowrap; font-weight: 600; }
   .libs td:last-child { border-radius: 0 10px 10px 0; }
-  .small { font-size: 0.8rem; color: var(--muted); }
   .timeline {
     list-style: none; margin: 0; padding: 0; position: relative;
     display: flex; gap: 20px; min-width: max-content;
@@ -81,7 +108,6 @@
   .version { font-weight: 700; font-size: 1.05rem; }
   .when { color: var(--muted); font-size: 0.85rem; margin-bottom: 6px; }
   .event p { margin: 0; font-size: 0.95rem; }
-  .hint { color: var(--muted); font-size: 0.85rem; margin: 6px 0 0; }
 
   footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); font-size: 0.95rem; }
   footer p { margin: 0 0 8px; }
@@ -91,23 +117,26 @@
 <main>
   <header>
     <h1>videolore</h1>
-    <p class="tagline">A simple, offline desktop video editor for short social media clips.</p>
-    <span class="badge">version 1.2.2</span>
+    <span class="badge">version 1.4.1</span>
     <p class="links">
       <span>Source:</span> <a href="https://github.com/andrealorenzani/videolore">github.com/andrealorenzani/videolore</a><br>
       <span>Latest build:</span> <a href="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml?query=branch%3Amain"><img src="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status of the latest build on main" style="vertical-align: middle"></a>
     </p>
   </header>
 
-  <section class="brief" aria-labelledby="brief-title">
-    <h2 id="brief-title">The brief</h2>
-    <p><code>videolore</code> is a simple, offline desktop video editor for short clips made for social media. Import video and audio files, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps by itself. Add fades through black between clips and a music track with its own volume. Subtitles are generated on your computer from the speech, or taken from a video's own subtitles, in ready-made styles, including word-by-word highlight. Watch the result with sound in the preview and export it to one file with progress and cancel, optionally using your computer's video hardware for a faster export. Editing is non-destructive: your source files are never modified, and projects can be saved, reopened and double-clicked. ffmpeg is included, so there is nothing else to install, and videolore sets itself up for your computer the first time it starts. Nothing is uploaded and no account is needed; the only network access is the download of the speech model you choose, which you approve. It is made for content creators who want to go from raw footage to a publishable clip quickly, and for anyone editing personal videos. Multitrack editing and color grading are out of scope.</p>
+  <section class="intro" aria-label="Introduction">
+    <div class="text">
+      <p>An easy-to-use, offline desktop video editor for short clips made for social media, with an eye to 360° video. Everything it needs comes in its installer, and no account is needed.</p>
+    </div>
+    <figure>
+      <picture><source media="(prefers-reduced-motion: reduce)" srcset="images/director-still.png"><img src="images/director.gif" width="363" height="505" alt="Illustration of a film director with a clapperboard and a megaphone"></picture>
+    </figure>
   </section>
 
   <section aria-labelledby="story-title">
-    <h2 id="story-title">The story</h2>
-    <p class="hint">From the first commit on 13 November 2026 to today. Every released version, with its date and time (UTC).</p>
-    <div class="timeline-wrap">
+    <h2 id="story-title">Evolution of this project</h2>
+    <p class="hint">From the first commit on 13 November 2026 to today. Every version, with its date and time (UTC).</p>
+    <div class="timeline-wrap" tabindex="0" role="region" aria-label="Timeline of versions">
       <ol class="timeline">
         <li class="event start">
           <div class="card">
@@ -249,16 +278,138 @@
             <p>Workflow only: lighter checks for each development. The app is unchanged.</p>
           </div>
         </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.2</div>
+            <div class="when">2026-11-15 21:59 +0000</div>
+            <p>The first project page: the brief, a story of every version, and the copyright and licence.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.3</div>
+            <div class="when">2026-11-15 22:01 +0000</div>
+            <p>Workflow only: the project page is published on GitHub Pages after each change to it.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.4</div>
+            <div class="when">2026-11-15 22:02 +0000</div>
+            <p>Workflow only: the Pages deployment is fixed; turning Pages on is a one-time step done by hand.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.5</div>
+            <div class="when">2026-11-16 22:40 +0000</div>
+            <p>Workflow only: the development notes are indexed, so that each step reads only what it needs.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.6</div>
+            <div class="when">2026-11-16 23:30 +0000</div>
+            <p>Boxes on the picture to move and resize subtitle lines, Align and Reset commands, and 360° videos that can be looked around in and exported as a flat video along a camera path.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.7</div>
+            <div class="when">2026-11-17 18:55 +0000</div>
+            <p>Workflow only: the planning and documentation steps run on a lighter model.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.2.8</div>
+            <div class="when">2026-11-17 18:59 +0000</div>
+            <p>Workflow only: a commit message may carry the co-author line.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.3.0</div>
+            <div class="when">2026-11-17 19:08 +0000</div>
+            <p>Titles and captions as text items with their own effects and lane, texts and subtitle lines on 360° video that stay at their point of the sphere, and a 360 video export that keeps the whole sphere.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">1.4.0</div>
+            <div class="when">2026-11-17 21:16 +0000</div>
+            <p>An Export dialog with the file, the mode and the formats, Clean audio for the sound of a video, text boxes that fit their text, and items that can be dragged past the picture edges.</p>
+          </div>
+        </li>
         <li class="event today">
           <div class="card">
-            <div class="version">1.2.2 · today</div>
-            <div class="when">2026-11-15 21:59 +0000</div>
-            <p>This project page: the brief, this story, and the copyright and licence.</p>
+            <div class="version">1.4.1 · today</div>
+            <div class="when">2026-11-18 00:01 +0000</div>
+            <p>This project page: the introduction, the evolution of the project, the key features, and the copyright and licence.</p>
           </div>
         </li>
       </ol>
     </div>
-    <p class="platforms"><strong>Available for Windows (64-bit), Linux (64-bit) and macOS (Apple Silicon).</strong> Installers and programs are built on GitHub for each platform.</p>
+  </section>
+
+  <section aria-labelledby="features-title">
+    <h2 id="features-title">Key features</h2>
+
+    <article class="feature image-left">
+      <figure>
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="images/subtitle-still.png"><img src="images/subtitle.gif" width="458" height="502" loading="lazy" decoding="async" alt="Illustration of a man lifting a stone block that reads SUBTITLE"></picture>
+      </figure>
+      <div class="text">
+        <h3>Subtitles made on your computer</h3>
+        <p>Subtitles are written from the speech on your computer, with no upload, in ready-made styles including word-by-word highlight. A video's own subtitles can be reused, each line can be moved on the picture, and the lines can be saved as an .srt file.</p>
+      </div>
+    </article>
+
+    <article class="feature image-right">
+      <div class="text">
+        <h3>360° videos</h3>
+        <p>A 360° video (a single picture, in the usual equirectangular format) is shown through a camera you turn by dragging, and you can set points of view that the camera moves between. Texts and subtitle lines added on it stay at their point of the sphere. For a project made of 360 clips, Export makes either a 360 video that keeps the whole sphere, or a flat video that follows the camera.</p>
+      </div>
+      <figure>
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="images/360-still.png"><img src="images/360.gif" width="424" height="486" loading="lazy" decoding="async" alt="Illustration of a man with a camera in front of a wireframe sphere marked 360 degrees"></picture>
+      </figure>
+    </article>
+
+    <article class="feature image-left">
+      <figure>
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="images/fast-still.png"><img src="images/fast.gif" width="317" height="507" loading="lazy" decoding="async" alt="Illustration of a smiling racer in a red suit giving a thumbs up"></picture>
+      </figure>
+      <div class="text">
+        <h3>Fast processing</h3>
+        <p>Large videos get a lighter copy for the preview, made in the background, and the window stays responsive while a video is exported or its subtitles are made. For a quicker export, Faster uses your computer's video hardware (NVIDIA, Intel, AMD or Apple) when it can; every such file is checked, and if the hardware is not usable the normal method is used. Faster is not always quicker, so Best quality stays the default.</p>
+      </div>
+    </article>
+
+    <article class="feature image-right">
+      <div class="text">
+        <h3>Clearer audio</h3>
+        <p>Clean audio reduces background noise in a video's sound, such as wind, music or people talking, on one clip or on the whole video, in the preview and in the export. It reduces the noise but does not remove it completely. The music track has its own volume and mute, separate from the video's sound.</p>
+      </div>
+      <figure>
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="images/audio-still.png"><img src="images/audio.gif" width="432" height="511" loading="lazy" decoding="async" alt="Illustration of a man on a stepladder holding a boom microphone and headphones"></picture>
+      </figure>
+    </article>
+
+    <article class="feature image-left">
+      <figure>
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="images/easy-still.png"><img src="images/easy.gif" width="512" height="512" loading="lazy" decoding="async" alt="Illustration of a man at a laptop, with an EASY sticker on the screen"></picture>
+      </figure>
+      <div class="text">
+        <h3>Easy to use</h3>
+        <p>Import, cut, fade, add music, subtitles and texts, then export. Every action is in the menus with its shortcut, and a greyed-out action says why. Each installer includes ffmpeg, the first start sets the program up for your computer, and projects are files you can double-click. There is no account, and nothing needs to be configured to make a first video.</p>
+      </div>
+    </article>
+  </section>
+
+  <section aria-labelledby="avail-title">
+    <h2 id="avail-title">Availability</h2>
+    <p class="platforms"><strong>Available for Windows (64-bit), Linux (64-bit) and macOS (Apple Silicon).</strong> Each release has one installer per system, with ffmpeg included. The installers of each released version are on the <a href="https://github.com/andrealorenzani/videolore/releases">Releases</a> page, and the latest build on main, with its installers, is on the <a href="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml?query=branch%3Amain">build page</a>.</p>
+    <p class="hint">The installers are not code-signed yet, so each system asks for a one-time confirmation the first time videolore is opened; the README explains the steps.</p>
   </section>
 
   <section aria-labelledby="libs-title">
@@ -275,6 +426,8 @@
         <tr><td>whisper-rs 0.16</td><td>Speech recognition for subtitles</td><td>(tazz4843, Unlicense)</td></tr>
         <tr><td>ureq 3.5</td><td>Downloads the speech model you approve</td><td>(Copyright (c) 2019 Martin Algesten, MIT OR Apache-2.0)</td></tr>
         <tr><td>serde 1</td><td>Reads and writes project files</td><td>(authors: Erick Tryzelaar and David Tolnay, MIT OR Apache-2.0)</td></tr>
+        <tr><td>fontdb 0.24</td><td>Finds the fonts installed on the computer for texts</td><td>(authors: Yevhenii Reizner, MIT)</td></tr>
+        <tr><td>ffmpeg 9.0.2</td><td>Reads, encodes and renders video, sound and subtitles (bundled in the installers)</td><td>(the FFmpeg developers, GPL-3.0-or-later builds)</td></tr>
       </tbody>
     </table>
   </section>
