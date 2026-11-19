@@ -41,6 +41,14 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Aspect ratio per clip** — Change aspect applies to the whole video, one frame size per project; let each clip have its own frame where the edit needs it. (source: 1.5.0, out of scope of the 1.5.0 request)
 - **Whole-video keyframes follow cuts at the start** — whole-video Scale and Move keyframes are in timeline time and do not move when the start of the video is cut, unlike clip keyframes in source time; let them move with the cut. (source: 1.5.0, known limitation)
 - **Copy keyframes between clips** — keyframes are made by hand for each clip; copy a clip's Scale and Move keys to other clips. (source: 1.5.0, known limitation)
+- **LUT strength setting** — mix the LUT with the source picture so the user can set how strong it is; Apply LUT is at full strength today. (source: 1.6.0, out of scope of the 1.6.0 request)
+- **Other LUT formats** — read `.3dl` and `.csp` files as well as `.cube`; 1.6.0 reads `.cube` only. (source: 1.6.0, known limitation)
+- **LUT copied into the project** — keep a copy of the LUT file in the project, so a moved or deleted file does not break it; the project stores the path only today. (source: 1.6.0, out of scope of the 1.6.0 request)
+- **Missing LUT file on export** — export stops with a message while a LUT file is missing; offer to find the file, or to export without the LUT with a warning. (source: 1.6.0, known limitation)
+- **Colour management for LUTs** — apply a LUT in the colour space its author made it for, so a LUT made for another workflow looks as intended. (source: 1.6.0, known limitation)
+- **LUT input ranges other than 0 to 1** — a `.cube` file whose `DOMAIN_MIN` and `DOMAIN_MAX` are not 0 and 1 is refused; read such files by scaling the input range. (source: 1.6.0, known limitation)
+- **LUT libraries** — keep a list of favourite LUT files, or a folder to pick them from, without browsing each time. (source: 1.6.0, out of scope of the 1.6.0 request)
+- **LUT order with the frame effect** — the LUT is applied to the fitted picture before the frame effect, so the blurred or coloured fill of Change aspect is not graded; decide whether the LUT should cover the fill too. (source: 1.6.0, accepted deviation)
 
 ## 360 video
 - **Automatic subtitles keep their preset place in 360 video export** — in a 360 video export, automatic subtitle lines stay at the preset place (the lower third, about 30° below the front) and do not follow the view; let the user anchor them or choose the place. (source: 1.3.0, known limitation)
@@ -135,6 +143,8 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Items half outside the picture** — a text or a subtitle line dragged partly past the picture edge is cut in the preview and in the export; check that users notice the cut and can find the item again, and add a hint or a way back if not. (source: 1.4.0, product risk)
 - **Keyframe popup usability** — in the small Scale and Move popup keyframes are harder to pick and edit; the timeline has a minimum width, so check the popup in real use and rework it if users struggle. (source: 1.5.0, product risk)
 - **Picture handles for every effect** — the picture handles show only one effect per kind (the clip's, else the whole video's); show the handles of both when a clip and the whole video both have Scale or Move. (source: 1.5.0, known limitation)
+- **Icon set and icon size choice** — the icon set is fixed in 1.6.0; let the user choose another set or the icon size. (source: 1.6.0, known limitation)
+- **Change aspect row tooltip and drag** — the Change aspect row in the Effects list has no tooltip and cannot be dragged onto a clip, unlike the other rows; add both. (source: 1.6.0, accepted deviation)
 
 ## Performance
 - **Faster test suite** — tests got 25% faster in 0.3.0 against a 30% goal; most of the remaining time is the two real speech-recognition tests. (source: 0.3.0, QG-03 result)
@@ -154,13 +164,14 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Measure Clean audio in the preview on weak computers** — the processor cost of Clean audio in the preview has not been measured on a weak computer; measure it, and use the lighter values above if it causes underruns. (source: 1.4.0, measurement to do)
 - **Faster blurred fill and Scale in the preview** — with a blurred fill or Scale, the preview renders the whole still again on every change of the picture state, so dragging is slow; render only the changed part, or keep the blurred background. (source: 1.5.0, known limitation)
 - **Measured quality goals** — the numbers of the quality goals (detection time, regressions, speed) are assumptions to confirm with measurements. (source: 0.3.0, assumption)
+- **Measure the Apply LUT cost** — the targets (a 1080p preview within 20% of the playback rate without a LUT, an export at most 1.5 times the re-encode without one) are assumptions; measure them on real clips and a 33-point and a 65-point LUT. (source: 1.6.0, measurement to do)
 
 ## Quality
 - **Check the installer configuration on every push** — install cargo-packager 0.11.8 in a Linux job, run `scripts/package.sh <target> --config-only` and build the deb and app formats from stub binaries, so packaging errors are not found only at release time. (source: 0.4.3, release of 0.4.2)
 - **Split the hardware developer document** — [code-hardware](code-hardware.md) is 237 lines and mixes the check, the export, the tests and the QG-05 results; split it into smaller documents. (source: 0.4.2, documentation size)
 - **Large-file memory test** — the memory acceptance test runs on a few minutes of video, not 4 GB; add a run on a large file. (source: 0.4.2, assumption in the product documentation)
 - **Stable computer identity on virtual machines** — a virtual machine or container whose number of cores changes between starts is treated as a new computer; with custom settings this only shows a notice. (source: 0.3.0, known limitation)
-- **Split the application module** — `src/app.rs` (about 2,900 lines) mixes the editing state with popups, recent projects, drops and the effect and subtitle commands; move them into their own submodules. (source: 1.1.0, size of the module; grown in 1.2.0)
+- **Split the application module** — `src/app.rs` (3,515 lines) mixes the editing state with popups, recent projects, drops and the effect and subtitle commands, and `src/render.rs` (3,227 lines) holds the graph builders; move them into their own submodules when they are next changed. (source: 1.1.0, size of the modules; app.rs grown since 1.2.0, render.rs noted in 1.6.0)
 - **Robust preview test under load** — the test `preview_delivers_rgba_frames_of_expected_size` failed once under heavy parallel load; make it independent of the load on the machine. (source: 1.1.0, test failure seen once)
 - **Timing gates in interface tests** — some interface tests in `src/ui/tests.rs` compare timings with fixed limits; one run on a busy desktop measured 212 ms against the 200 ms limit of REQ-104. Make them independent of the load on the machine. (source: 1.2.6, test failure seen once)
 - **Re-measure the 360 camera on each bundled ffmpeg 9.x** — the behaviour of the `v360` filter and its `reset_rot` option is measured on the bundled ffmpeg; measure it again after each ffmpeg update. (source: 1.2.6, measurement to do)
@@ -171,7 +182,11 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Click the Export dialog's dropdowns in UI tests** — the interface tests set the dialog's dropdowns without opening them; add clicks so that the menus themselves are tested. (source: 1.4.0, test gap found in the code part)
 - **One keyframe module for the 360 camera and the picture** — `camera.rs` (360 points of view) and `keyframes.rs` (Scale and Move) share the same rules (hold at the edges, linear between keys); move the camera onto `keyframes.rs`, with the 360 tests as the safety net. (source: 1.5.0, architecture debt)
 - **Pointer tests of the colour picker and keyframe timeline** — the colour picker of Change aspect and a click on the keyframe timeline are tested in code only, not with a pointer; add interface tests that click them. (source: 1.5.0, check to do)
-- **Frame expressions on the bundled ffmpeg 9.x** — the Scale and Move expressions were checked with ffmpeg 6.1.1 only; check them on the bundled 9.x build in CI. (source: 1.5.0, check to do)
+- **Frame and LUT filters on the bundled ffmpeg 9.x** — the Scale and Move expressions were checked with ffmpeg 6.1.1 only; check them on the bundled 9.x build in CI. The Apply LUT graph (`lut3d` with format=gbrp and interp=tetrahedral) is not yet verified on the bundled build. (source: 1.5.0 and 1.6.0, check to do)
+- **Shared core crate** — if a third program is planned, move the engine (preview, export and the ffmpeg graphs) out of the editor's library into a `videolore-core` crate; the player uses the library without the speech feature today. (source: 1.6.0, architecture decision: not needed for two programs)
+- **Run the 1.6.0 ffmpeg integration tests on the bundled ffmpeg 9.x** — the tests in `tests/ffmpeg_integration/v16.rs` are checked on the development ffmpeg only; run them on the bundled 9.x build before the 1.6.0 release. (source: 1.6.0, check before release)
+- **Widen the hardware probe timeouts** — two hardware tests use 30 ms probe timeouts and can fail under heavy load; make them independent of the load on the machine. (source: 1.6.0, test failure risk)
+- **Check that 1.5.x refuses project format 8** — with the real 1.5.0 build, open a project saved with 1.6.0 (it uses a LUT) and confirm it is refused with the newer-version message and left untouched. (source: 1.6.0, check before release)
 
 ## Packaging
 - **Run the installer job before each release** — a manual run, or on pull requests that touch `scripts/package.sh`, `packaging/` or `assets/icon/`; the 0.4.2 macOS and Windows failures were found only at release time. (source: 0.4.3, release of 0.4.2)
@@ -186,6 +201,25 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Weekly security-advisory check** — a scheduled CI run of the dependency advisory check, not only on pushes. (source: 0.3.0, skipped item)
 - **Other systems** — builds exist for Windows and Linux on x86-64 and for macOS on Apple Silicon only; Intel Macs and ARM Windows or Linux are not built. (source: 0.4.0, scope decision)
 - **Bundled ffmpeg 9.x Clean audio and MP3 output** — the `afftdn` filter and the `libmp3lame` encoder are checked only by the CI smoke test, which checks that they exist; their output on the bundled ffmpeg 9.x build has not been checked by hand. (source: 1.4.0, check to do)
+- **Player builds on real systems** — the player's Windows and macOS builds were only checked with clippy, and its installers only with the configuration check; build and run them on real systems. (source: 1.6.0, check before release)
+
+## Player
+- **File association for the player** — double-clicking a video in the file manager opens it in the player; needs a registration in each installer. (source: 1.6.0, known limitation)
+- **Opening a file between the editor and the player** — send a project's video to the player, or open a clip from the player in the editor. (source: 1.6.0, known limitation)
+- **Bitmap subtitle tracks in the player** — list and show subtitles drawn as pictures (Blu-ray, DVB); 1.6.0 lists text tracks only. (source: 1.6.0, known limitation)
+- **Subtitle positions kept in the player** — positions are lost when the player closes; keep them for the session, or in a settings file that is never written next to the video. (source: 1.6.0, known limitation)
+- **Player preferences** — the player keeps no settings in 1.6.0: it starts with the detected computer and the recommended levels every time. Remember preferences such as quality and the last folder in a settings file that is never written next to the video. (source: 1.6.0, known limitation)
+- **Playlist in the player** — play several videos in order, instead of one file at a time. (source: 1.6.0, out of scope of the 1.6.0 request)
+- **Lighter ffmpeg build for the player** — the player's installers carry their own copy of the pinned `ffmpeg` and `ffprobe`, and their size is not measured yet; measure it and build a smaller `ffmpeg` for the player if it is large. (source: 1.6.0, measurement to do)
+- **Player sound for very large videos** — very large videos play from a silent preview copy in the player; keep the sound, or make the preview copy with sound. (source: 1.6.0, accepted deviation)
+- **Player's own third-party list** — the player's About screen shows the editor's third-party notices; give the player a list of its own bundled components. (source: 1.6.0, known limitation)
+
+## Splash screen
+- **Do not show again** — an option to turn the splash off, or to show it only once per version. (source: 1.6.0, out of scope of the 1.6.0 request)
+- **Splash summary from the changelog** — the summary is written by hand for each release; take it from the changelog entry so it is not written twice. (source: 1.6.0, known limitation)
+- **Missing splash image or summary** — the image must be in the repository before a version is built; decide what the splash shows when the image or the summary is missing. (source: 1.6.0, open question)
+- **Animated splash image** — the 1.6.0 image is a static GIF, kept as supplied; a multi-frame GIF would animate with no code change. Decide whether to ship an animated one. (source: 1.6.0, decision: static in 1.6.0)
+- **Splash image origin and licence** — the origin and licence of the splash image are not yet recorded in the notices; confirm them and record them before the 1.6.0 release. (source: 1.6.0, check before release)
 
 ## Project page
 - **Smaller project page images** — the page's GIF images total about 341 KB; animated WebP or AV1 would cut that weight, but browser support must be checked first and a second set of image files would be needed. (source: 1.4.1, project page image review)

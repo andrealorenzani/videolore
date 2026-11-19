@@ -58,6 +58,13 @@ impl Dialogs for NativeDialogs {
             .pick_file()
     }
 
+    fn pick_lut(&mut self) -> Option<PathBuf> {
+        rfd::FileDialog::new()
+            .add_filter("LUT file", &["cube"])
+            .add_filter("All files", &["*"])
+            .pick_file()
+    }
+
     fn pick_subtitles_save(&mut self, default_name: &str) -> Option<PathBuf> {
         rfd::FileDialog::new()
             .add_filter("Subtitles", &["srt"])

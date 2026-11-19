@@ -3,12 +3,12 @@
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
 ## Index (human docs, one line per heading; read a range with sed -n 'A,Bp')
-- docs/business.md § (title, purpose, users) — L1-13 (13 lines)
-- docs/business.md § Documents — L14-25 (12 lines)
-- docs/business.md § Constraints — L26-30 (5 lines)
-- docs/business.md § Key decisions (general) — L31-54 (24 lines)
-- docs/business.md § Known limitations (1.2.0, 1.3.0, 1.4.0, 1.5.0) — L55-82 (28 lines)
-- docs/business.md § Out of scope — L83-93 (11 lines)
+- docs/business.md § (title, purpose, users) — L1-15 (15 lines; 1.6.0 player para L8)
+- docs/business.md § Documents — L16-31 (16 lines; 1.6.0 LUT, splash, player, icons L24-27)
+- docs/business.md § Constraints — L32-36 (5 lines)
+- docs/business.md § Key decisions (general) — L37-63 (27 lines; 1.6.0 x3 L57-59)
+- docs/business.md § Known limitations (1.2.0 … 1.6.0) — L64-92 (29 lines; 1.6.0 L65)
+- docs/business.md § Out of scope — L93-104 (12 lines; 1.6.0 L102-103)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
@@ -17,9 +17,9 @@
 - docs/business-editing.md § Preview — L42-46 (5 lines)
 - docs/business-editing.md § Layout and commands — L47-49 (3 lines)
 - docs/business-editing.md § Responsiveness and performance — L50-55 (6 lines)
-- docs/business-editing.md § Key decisions — L56-72 (17 lines; 1.5.0 format line added)
-- docs/business-editing.md § Known limitations — L73-80 (8 lines)
-- docs/business-editing.md § Out of scope — L81-84 (4 lines)
+- docs/business-editing.md § Key decisions — L56-73 (18 lines; 1.5.0 and 1.6.0 format lines L67-68)
+- docs/business-editing.md § Known limitations — L74-81 (8 lines)
+- docs/business-editing.md § Out of scope — L82-85 (4 lines)
 - docs/business-ui.md § intro — L1-6 (6 lines)
 - docs/business-ui.md § Features — L7-23 (17 lines)
 - docs/business-ui.md § Requirements — L24-25 (2 lines)
@@ -34,8 +34,9 @@
 - docs/business-ui.md § Changed in 1.3.0 — L106-114 (9 lines)
 - docs/business-ui.md § Changed in 1.4.0 (REQ-069, 075, 100, 106, 114, 118) — L115-121 (7 lines)
 - docs/business-ui.md § Changed in 1.5.0 (REQ-069, 075, 076, 077, 079, 082) — L122-127 (6 lines)
-- docs/business-ui.md § Known limitations — L128-134 (7 lines)
-- docs/business-ui.md § Out of scope — L135-144 (10 lines)
+- docs/business-ui.md § Changed in 1.6.0 (REQ-069, 075, 077, 079, 082, 142, 143) — L128-133 (6 lines)
+- docs/business-ui.md § Known limitations — L134-140 (7 lines)
+- docs/business-ui.md § Out of scope — L141-150 (10 lines)
 - docs/business-text.md § intro — L1-8 (8 lines)
 - docs/business-text.md § Features — L9-16 (8 lines)
 - docs/business-text.md § Requirements (REQ-108..111, 115, 116) — L17-18 (2 lines)
@@ -104,7 +105,58 @@
 - docs/business-performance.md § Key decisions — L70-83 (14 lines)
 - docs/business-performance.md § Known limitations — L84-89 (6 lines)
 - docs/business-performance.md § Out of scope — L90-96 (7 lines)
+- docs/business-splash.md § intro — L1-5 (5 lines; NEW 1.6.0)
+- docs/business-splash.md § Features — L7-11 (5 lines)
+- docs/business-splash.md § Requirements / Splash screen (REQ-133, 134) — L12-17 (6 lines)
+- docs/business-splash.md § Key decisions — L18-22 (5 lines)
+- docs/business-splash.md § Known limitations — L23-27 (5 lines; 1.6.0 STATUS +2 bullets)
+- docs/business-splash.md § Out of scope — L28-29 (2 lines)
+- docs/business-lut.md § intro — L1-5 (5 lines; NEW 1.6.0)
+- docs/business-lut.md § Features — L7-12 (6 lines)
+- docs/business-lut.md § Requirements / Apply LUT (REQ-135) — L13-17 (5 lines)
+- docs/business-lut.md § LUT files and export (REQ-136) — L18-20 (3 lines)
+- docs/business-lut.md § Project file (REQ-137) — L21-23 (3 lines)
+- docs/business-lut.md § Key decisions — L24-28 (5 lines)
+- docs/business-lut.md § Known limitations — L29-33 (5 lines)
+- docs/business-lut.md § Out of scope — L34-35 (2 lines)
+- docs/business-player.md § intro — L1-5 (5 lines; NEW 1.6.0)
+- docs/business-player.md § Features — L7-13 (7 lines)
+- docs/business-player.md § Requirements / The program (REQ-138) — L14-18 (5 lines)
+- docs/business-player.md § 360 video (REQ-139) — L19-21 (3 lines)
+- docs/business-player.md § Subtitles (REQ-140) — L22-24 (3 lines)
+- docs/business-player.md § Full screen (REQ-141) — L25-27 (3 lines)
+- docs/business-player.md § Key decisions — L28-32 (5 lines)
+- docs/business-player.md § Known limitations — L33-39 (7 lines; 1.6.0 STATUS +1 bullet)
+- docs/business-player.md § Out of scope — L40-42 (3 lines)
+- docs/business-icons.md § intro — L1-5 (5 lines; NEW 1.6.0)
+- docs/business-icons.md § Features — L7-13 (7 lines)
+- docs/business-icons.md § Requirements / Icons (REQ-142, 143) — L14-19 (6 lines)
+- docs/business-icons.md § Key decisions — L20-24 (5 lines)
+- docs/business-icons.md § Known limitations — L25-27 (3 lines)
+- docs/business-icons.md § Out of scope — L28-29 (2 lines)
 Line ranges re-checked at the 1.4.0 STATUS (grep -n '^#' + line count); convention: heading to the line before the next heading; re-check with grep -n '^#' after any edit.
+
+## 1.6.0 STATUS (target 1.6.0, PE report 2026-11-19)
+- IMPLEMENTED: 133-143 (new docs business-splash/lut/player/icons) + 069, 075 reworded. PE flipped them to (implemented); wording checked; no stale "planned" text left in docs/business*.md. Next free ID REQ-144.
+- Doc edits: REQ-075 "Each row shows only its name" -> "shows its icon (REQ-142) and its name" (conflict with REQ-142 found). Business-lut: REQ-135 + limitation: blurred background takes LUT colours; solid fill and bars unchanged. REQ-136: missing LUT reported in the existing notice "Some files could not be found or were repaired" (damaged entry: "removed" line in same notice). Business-splash Known limitations: per version image `<version>.gif` + summary `<version>.txt` (heading + max 5 lines) must exist, build fails without; splash image origin/licence unconfirmed. Business-player Known limitations: big videos play from a silent preview copy made without a status message.
+- Accepted deviations (Andrea, from ai-docs/code.md 1.6.0) written as fact: ADR-110 LUT before frame composition (blurred background coloured), ADR-111/112 notice wording, preview copies silent in player.
+- OPEN (not decided, goes to Andrea via command): REQ-134 says the GIF plays as it is; architecture-splash, changelog 1.6.0 and code notes say the splash image is static (one frame). REQ-134 kept as written; build or requirement must change. Acceptance does not test animation.
+- Index refreshed: business-splash Known limitations L23-27, Out of scope L28-29; business-player Known limitations L33-39, Out of scope L40-42. Other ranges unchanged (in-line edits in business-lut/ui).
+
+## 1.6.0 PLAN (target 1.6.0, Andrea request 2026-11-19) — no SEVERE, all MINOR
+- NEW docs: business-splash.md (133, 134), business-lut.md (135-137: effect, files/export, project format), business-player.md (138-141: program, 360, subtitles, full screen), business-icons.md (142, 143). Index refreshed (new docs at end of list; business.md/ui/editing ranges re-counted).
+- REWORDED (set planned, were implemented): 069 (Effects menu + submenus gain Apply LUT), 075 (9 rows, LUT row after Move, drag tooltip list). Impact notes only: 077 (LUT clip marker), 079/082 (LUT in Effects ▸ and drag), 023 (LUT forces re-encode, in 136), 031 (icon set in notices, 143), 029/057 (137), 072 (tooltips for LUT row and icons).
+- MINOR defaults (Andrea can overrule): D1 splash at every editor start (not once per version), non-blocking, on top until closed; closes by Close, Esc, window close; no splash in the player; second window no splash; REQ-045 notice after it. D2 splash = image left + popup 400 px right, same height; text "Version X.Y" from full version, largest fit in rectangle x 74-408, y 381-465; GIF plays; scaled together if screen too small (ASSUMPTION). D3 summary text = hand-written per release, bundled. D4 LUT: one per clip, one per whole video, whole first then clip; drag/right-click/double-click like other effects; marker at clip start only. D5 LUT .cube 3D and 1D; path stored, no copy (like media); missing file -> export stops with message naming file (ASSUMPTION); broken file refused on choice. D6 no strength setting, no colour management. D7 LUT applies to picture only (not frame background/subtitles/text); applied after Scale/Move, before fades; 360 video export applies it (colour not geometry, ASSUMPTION); hw export same rules as other picture effects. D8 project format 1.6.0 bump (like 132). D9 player = separate program, own executable and own installers per OS (not in editor installer); opens one video file; refuses .vlproj; no save/edit/export. D10 player name "videolore player" (working name). D11 player subtitles: None / embedded text tracks / Open .srt; bitmap subtitles not listed (limitation); positions session-only (not saved), drawn on picture; on 360 fixed on screen. D12 player full screen: F11/F toggle, Esc exit (closes popup first), hides menu + title + status info, controls auto-hide after 2 s (ASSUMPTION), popup "Press Esc to exit full screen" closes by OK or 5 s; shows at each entry. D13 player transport: Play/Pause Space, seek, volume/mute (assumed basic). D14 player 360 drag = shared code with editor look-around (Andrea asked reuse). D15 icons: free set, licence MIT/ISC/BSD/Apache-2.0 (GPL-compatible), bundled, in notices; choice of set = Architect; icons beside text, tooltips kept. D16 player: no file association in 1.6.0 (limitation/future).
+- Rejected/considered: splash once per version; blocking splash; player opening projects or editing; LUT copy into project; LUT strength slider; LUT on frame background; icon-only controls; separate icon-size setting; bitmap subtitle support in player (postponed, needs decoder work).
+- Product risks 1.6.0: summary text not updated per release (stale splash); splash image missing for a release (build should catch, Architect); LUT path lost when file moves (missing-file export stop); LUT colour differs from other tools (no colour management); player subtitle positions lost on close; player scope creep (users expect a playlist/file association); icon licence mistakes (check notices); 360 export ignores nothing new but applies LUT (may surprise users who expect none — the notes say colour applied).
+- Next free ID: REQ-144. QG next: QG-06 (unchanged). Target version 1.6.0 (PM does not decide version beyond the command).
+- Notes for PE/Architect (facts from request): assets/splash/ is untracked in git (must be committed with the code); the image rectangle is in image pixels with origin top-left.
+
+## 1.6.0 REFINE (target 1.6.0, Andrea answers 2026-11-19) — no SEVERE
+- DECIDED: no splash when a project or video path is on the command line (covers a second window from a double-click on a project and a double-click first start). Splash only at a start without a path. Build hint: check the command-line arguments before showing the splash.
+- DECIDED: no single-instance detection (a second window is a normal start, no IPC, no lock).
+- REQ-133 text and docs/business-splash.md (intro L5, REQ-133 L15, decision L19) aligned. Line counts unchanged, index ranges still valid. REQ-134 unchanged. Next free ID still REQ-144.
+- Impact: the 1.6.0 PLAN D1 "second window no splash" remains true; "video path" is added to the rule.
 
 ## 1.5.0 STATUS (target 1.5.0, PE report 2026-11-19)
 - IMPLEMENTED (flipped in docs): 124-132 all planned -> implemented (business-frame, business-ui 075, business-export 022/023, business-picture, business-text, business-editing, business.md). `grep planned docs/business*.md` leaves only unrelated lines (0.3.0 speech fallback, 0.4.0 drop). Next free ID REQ-133.

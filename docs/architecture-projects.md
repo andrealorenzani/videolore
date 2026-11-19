@@ -14,6 +14,7 @@ Projects are JSON files (`.vlproj`) with a format version number.
 | 5 | 1.3.0 | Text items (their text, times, effects, colour, font, box and size) and the 360 anchors of text items and subtitle lines. |
 | 6 | 1.4.0 | Clean audio on each video clip; the text width replaces the text size (the size follows from the box); 360 anchors of text store width and height. The "Treat as 360° video" choice is no longer written (the flag is read only to be dropped). |
 | 7 | 1.5.0 | Change aspect of the whole video; Scale and Move with their keyframes for the whole video and for each clip (clip keyframes in source time). Format 6 files open with no picture effects; 1.4.x refuses format 7. See [frame](architecture-frame.md#project-format). |
+| 8 | 1.6.0 (planned) | Apply LUT: the path of one `.cube` file for the whole video and one per clip (no copy of the file). Format 7 files open with no LUT; 1.5.x refuses format 8. Damaged paths are cleared with a note. See [LUT](architecture-lut.md#storage-and-project-format-8). |
 
 - 0.3.0, 0.4.0 and 1.1.0 did not change the format (1.1.0 timeline markers are computed from the existing data; the layout and recent projects are program settings, never stored in a project).
 - **Opening older files:** version 1 and 2 files are converted in memory when opened and give exactly the same picture, sound and export as before: fades only where they were, every clip at 100% volume, every subtitle line in its style's usual place. Automated tests compare the export commands of a 0.1 and a 1.1 project before and after the change.

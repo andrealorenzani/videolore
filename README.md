@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.5.0-blue)
+![version](https://img.shields.io/badge/version-1.6.0-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-95.7%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-95.5%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -17,11 +17,12 @@
 ![sha2](https://img.shields.io/badge/sha2-0.11-blue)
 ![sysinfo](https://img.shields.io/badge/sysinfo-0.40-blue)
 ![fontdb](https://img.shields.io/badge/fontdb-0.24-blue)
+![image](https://img.shields.io/badge/image-0.25-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-9.0.2%20bundled-informational)
 [![build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg)](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml)
 
 ## What it is
-`videolore` is an offline desktop video editor for short clips made for social media. Import video and audio, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps itself. Add fades through black between clips and a music track with its own volume. Set the whole video's shape (4:3, 16:9 or 9:16), and zoom and move pictures with keyframes. Add titles and captions as text items, with fades, blinking and sliding effects. Subtitles are generated on your computer from the speech, or taken from the video, in styles with word-by-word highlight. Watch the result with sound, clean up background noise with Clean audio, and export one file, its sound or its subtitles, optionally with your computer's video hardware. Source files are never modified; projects can be saved, reopened and double-clicked. ffmpeg is included and set up on first start. Nothing is uploaded, and no account is needed; the only download is the speech model you choose, which you approve. Made for content creators who go from raw footage to a publishable clip. 360° videos can be explored and exported flat or as 360 video. Multitrack editing and color grading are out of scope.
+`videolore` is an offline desktop video editor for short clips made for social media. Import video and audio, then cut, copy, paste, merge, trim and move pieces on one timeline that closes its gaps itself. Add fades through black between clips and a music track with its own volume. Set the video's shape (4:3, 16:9 or 9:16), zoom and move pictures with keyframes, and colour them with a `.cube` LUT. Add titles and captions as text items, with fades, blinking and sliding effects. Subtitles are generated on your computer from the speech, or taken from the video, in styles with word-by-word highlight. Watch the result with sound, clean up background noise with Clean audio, and export one file, its sound or its subtitles, optionally with your computer's video hardware. Source files are never modified; projects can be saved, reopened and double-clicked. ffmpeg is included and set up on first start. Nothing is uploaded and no account is needed; the only download is the speech model you approve. 360° videos can be explored and exported flat or as 360 video. A separate player watches videos with sound and subtitles. Multitrack editing and colour grading beyond LUTs are out of scope.
 
 ## System requirements
 - **Windows** (64-bit, x86_64) and **Linux** (64-bit, x86_64; current Ubuntu LTS and Fedora).
@@ -33,6 +34,8 @@
 Each release has one installer per system, with ffmpeg included. Download it from the [Releases](https://github.com/andrealorenzani/videolore/releases) page (tagged versions), or from the artifacts of the latest [Build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml) run.
 
 The installers are not code-signed yet, so your system asks for a one-time confirmation the first time you open videolore. The steps are below.
+
+The **videolore player** (for watching videos) is a separate download, with the same installer formats and names as videolore but `videolore-player` in place of `videolore`. Its steps are the same as below.
 
 ### Windows (x86_64)
 1. Run `videolore-<version>-windows-x86_64-setup.exe`. The installer needs no administrator rights and installs for your user only.
@@ -60,9 +63,10 @@ git clone git@github.com:andrealorenzani/videolore.git
 cd videolore
 cargo build --release --locked
 ```
+The player is built with `cargo build --release --locked -p videolore-player`.
 
 ## Usage
-Start videolore from the menu, the Applications folder, the AppImage or the extracted folder. The window has a menu bar (File, Edit, Playback, Effects, View, Help) and a toolbar at the top, four sections in the middle (Media and Preview on top, Timeline and Effects below) and a status bar at the bottom, which shows the latest message and the progress of background work, with Cancel where it applies. Drag the borders between the sections to resize them; View > Reset layout restores the default. Every action is in the menus with its shortcut, and a greyed-out action says why in a tooltip. Press F1 for the list of shortcuts.
+Start videolore from the menu, the Applications folder, the AppImage or the extracted folder. The window has a menu bar (File, Edit, Playback, Effects, View, Help) and a toolbar at the top, four sections in the middle (Media and Preview on top, Timeline and Effects below) and a status bar at the bottom, which shows the latest message and the progress of background work, with Cancel where it applies. Drag the borders between the sections to resize them; View > Reset layout restores the default. Every action is in the menus with its shortcut, and a greyed-out action says why in a tooltip. Press F1 for the list of shortcuts. A splash screen with the release summary opens at each start of the editor, unless a project or video is given on the command line; close it with its Close button or Esc. Buttons, menu items and list rows show icons (Phosphor Icons, MIT licence).
 
 1. **Import** video or audio files with File > Import media… (Ctrl/Cmd+I), or drop them onto the window (Windows, macOS and Linux with X11). Each file shows "analysing" while it is read, then its name and duration; unreadable files are rejected with a message. Importing never blocks the window.
 2. **Build the clip** by appending media to the timeline, then split, cut, copy, paste, merge, trim or move the pieces. Double-click a clip to open its Clip details, or right-click it for its menu.
@@ -77,6 +81,8 @@ Start videolore from the menu, the Applications folder, the AppImage or the extr
 11. **Boxes on the picture**: everything you can move on the picture, the subtitle lines and the text items, has a thin box in the preview. Drag the box to move it; drag a corner to make a subtitle line bigger or smaller (its text size is 25% to 400% of its style), or drag the right edge of a text item to change its width. Items can be dragged partly past the picture edge; the centre of the box stays on the picture. The Context Menu group of the toolbar has **Align horizontally**, **Align vertically** and **Reset** for subtitle lines and text items; Reset puts a line back in its place at its usual size. Hide the boxes with View > Show boxes on the picture. The boxes never appear in the export.
 12. **360 video**: a video recorded as a full 360° sphere is recognised from its file's own information and shown as a 360 clip; a video without that information stays flat. Drag the picture to look around, and use the mouse wheel to zoom, during playback too. **Set POV** saves the current view at the playhead; between two saved views the camera moves in a straight line. On export, a project whose clips are all 360 offers in the Export dialog a 360 video, which keeps the whole sphere, or a flat video that follows this camera path (a project that mixes 360 and flat clips exports as a flat camera view); a moving camera exports at about one third of real time. A text or subtitle line added on a 360 clip stays at its point of the sphere.
 13. **Titles and captions**: choose **Add Text** in the Effects list, or Effects > Add text at playhead, to write a multiline text at the playhead. Choose its effects (Fade IN, Fade OUT, Blink and Slide in, in any combination), its time to live, colour and font (the fonts installed on your computer). The text has a bar on the Text lane of the timeline: drag the bar to move it, or drag its right end to change how long it is shown. Drag its box in the preview to move it, or its right edge to change its width; the text size follows the width. Texts are burned into the exported video.
+14. **Colour with a LUT**: drag **Apply LUT** from the Effects list onto a clip, or double-click it to apply it to the whole video. **Choose file…** opens a `.cube` file (3D or 1D LUT); a file that is not a valid LUT is refused with a message. The project keeps the file's path, not a copy, so keep the file where it is. **Remove effect** takes the LUT off. A missing or damaged LUT file is reported in the notice that lists items which could not be found or were repaired.
+15. **Video player**: videolore player (`videolore-player`) is a separate program with its own download (see Installation). It opens one video at a time, with File > Open… or by dropping a video onto its window where drag and drop works, and plays it with sound. Drag a 360 picture to look around. The Subtitles menu lists None, the video's text subtitle tracks and any `.srt` file you open with Subtitles > Open .srt…. View > Full screen, F11 or F switches full screen on and off. The player keeps no settings and has no playlist.
 
 The About screen lists every bundled third-party component with its version, licence and where to get its source code.
 
@@ -103,7 +109,7 @@ The About screen lists every bundled third-party component with its version, lic
 
 ### Known limitations
 - Installers are not code-signed: each system asks for a one-time confirmation (see Installation).
-- The 0.4.2 release has only the Linux installers; the macOS and Windows installers are provided with the next release.
+- The 0.4.2 release has only the Linux installers on its GitHub release; its macOS and Windows installers are missing there. Version 0.4.3 fixed the macOS and Windows installers.
 - On Windows and Linux, generating subtitles needs a processor with AVX2, FMA and F16C (see System requirements). On older processors it is not available and a message says so; this check was tested with simulated processors, not on old hardware.
 - **Faster export** needs NVIDIA graphics driver 610 or newer; with an older driver the normal method is used, and Settings → Advanced says why.
 - **Faster export on Linux** (Intel and AMD) needs the system's video acceleration library (libva) and the graphics driver. With the bundled ffmpeg it needs libva 2.21 or newer: Ubuntu 24.04 has 2.20, so the hardware is skipped there and the normal method is used. A system ffmpeg chosen in Advanced can still use the hardware.
@@ -151,14 +157,17 @@ The About screen lists every bundled third-party component with its version, lic
 - Subtitle lines and text items keep their place in the frame and do not follow Scale or Move.
 - The Scale corners and the Move target show one effect per kind: the clip's own, otherwise the whole video's.
 - The blur of Fit empty with blurred video has one fixed strength.
+- Apply LUT reads `.cube` files only, at full strength. The project keeps the LUT's path, not a copy, so a moved LUT file stops the export until it is found again.
+- Apply LUT is applied before the frame effect of Change aspect, so the blurred or coloured fill is not graded.
+- The Change aspect row in the Effects list has no tooltip and cannot be dragged.
+- The player has no settings, no playlist and no file association, lists text subtitle tracks only (no bitmap subtitles such as Blu-ray or DVB), plays very large videos from a silent preview copy, and its About screen shows the editor's list of third-party components.
 
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **1.6.0** — A separate video player, `videolore-player`, with its own download, for watching videos with sound, 360 look-around and subtitles. Apply LUT gives a clip or the whole video a colour look from a `.cube` file. A splash screen with the release summary opens at each start of the editor, and buttons, menus and lists show icons. Projects saved by this version need version 1.6.0 or later.
 - **1.5.0** — Change aspect sets the shape of the whole video (4:3, 16:9 or 9:16), with the picture fitted by width or by height, and fills the empty space with a colour you choose or a blurred copy of the video. Scale and Move zoom and shift a clip's picture or the whole video's picture, with keyframes in a popup timeline and corner and centre handles in the preview. Projects saved by this version need version 1.5.0 or later.
 - **1.4.0** — An Export dialog with the file, a mode (full video, only audio or only subtitles), video formats (12 presets, H.264 or HEVC, MP4 or MOV) and audio formats (aac or mp3), and a 360 choice for projects made of 360 clips. Clean audio reduces background noise in a clip's sound. A text item's box changes width only, and its text size fits the box. Texts and subtitle lines can be dragged past the picture edges, and text items have the Align and Reset actions. The 360° switch of Clip details is removed: a video is 360 only when its file says so. Projects saved by this version need version 1.4.0 or later.
-- **1.3.0** — Titles and captions as text items: written at the playhead, with Fade IN, Fade OUT, Blink and Slide in effects, a time to live shown on their own lane of the timeline, and fonts installed on your computer. Text items and subtitle lines can be selected and moved together. A text or subtitle line added on a 360° video stays at its point of the sphere, and Export can make a 360 video that keeps the whole sphere. The Context Menu group appears in the toolbar only when it has something to act on, and "Fade through black" is now named "Fade IN/OUT". Projects saved by this version need version 1.3.0 or later.
-
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
 ## License

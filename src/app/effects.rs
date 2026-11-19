@@ -81,6 +81,13 @@ impl AppState {
             EffectKind::ChangeAspect | EffectKind::Scale | EffectKind::Move => {
                 self.apply_frame_effect(effect, clip, now)
             }
+            EffectKind::ApplyLut => {
+                // nothing is set until a file is chosen: the popup asks for it
+                self.show_instance(Instance::Lut(
+                    clip.map_or(FrameTarget::Whole, FrameTarget::Clip),
+                ));
+                Ok(())
+            }
             EffectKind::CleanAudio => {
                 self.set_clean_audio(shown, true, now)?;
                 match clip {
@@ -114,6 +121,7 @@ impl AppState {
             (Popup::Instance, Some(Instance::Aspect)) => "Change aspect",
             (Popup::Instance, Some(Instance::Scale(t))) => return self.frame_title("Scale", t),
             (Popup::Instance, Some(Instance::Move(t))) => return self.frame_title("Move", t),
+            (Popup::Instance, Some(Instance::Lut(t))) => return self.frame_title("Apply LUT", t),
             _ => p.title(),
         };
         match self.popups.target(p) {
@@ -427,5 +435,6 @@ fn effect_label(effect: EffectKind) -> &'static str {
         EffectKind::ChangeAspect => "Change aspect",
         EffectKind::Scale => "Scale",
         EffectKind::Move => "Move",
+        EffectKind::ApplyLut => "Apply LUT",
     }
 }

@@ -120,6 +120,9 @@ pub const DIFFERENT_CLEAN_AUDIO: &str = "The clips have different clean audio se
 /// Why two clips cannot be merged: their Scale or Move keyframes differ (1.5.0).
 pub const DIFFERENT_FRAMES: &str = "The clips have different frame settings";
 
+/// Why two clips cannot be merged: their Apply LUT files differ (1.6.0).
+pub const DIFFERENT_LUTS: &str = "The clips have different colour effects";
+
 /// What a Scale or Move is applied to (REQ-130).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FrameTarget {
@@ -136,6 +139,13 @@ pub struct ClipFrames {
     pub scale: Vec<Key<Scale>>,
     #[serde(default)]
     pub moved: Vec<Key<Pos>>,
+}
+
+/// The Apply LUT file of one clip (1.6.0, ADR-111): the path of a `.cube` file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipLut {
+    pub clip: ClipId,
+    pub path: String,
 }
 
 /// The video track.
@@ -168,6 +178,12 @@ pub struct Timeline {
     /// Scale and Move keyframes of the clips, sorted by clip id; empty entries are removed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clip_frames: Vec<ClipFrames>,
+    /// Apply LUT of the whole video (1.6.0, REQ-135): path of a `.cube` file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub whole_lut: Option<String>,
+    /// Apply LUT of the clips, sorted by clip id; empty entries are removed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clip_luts: Vec<ClipLut>,
 }
 
 impl Timeline {
@@ -295,6 +311,10 @@ impl Timeline {
         if let Some(f) = self.frames_of(c.id).cloned() {
             self.put_frames(ClipFrames { clip: id, ..f });
         }
+        // and the colour effect
+        if let Some(p) = self.lut_of(FrameTarget::Clip(c.id)).map(str::to_string) {
+            self.put_lut(FrameTarget::Clip(id), Some(p));
+        }
         Ok(id)
     }
 
@@ -304,6 +324,7 @@ impl Timeline {
         let c = self.clips.remove(i);
         self.prune_fades();
         self.clip_frames.retain(|f| f.clip != id);
+        self.clip_luts.retain(|l| l.clip != id);
         Ok(c)
     }
 
@@ -369,6 +390,8 @@ impl Timeline {
             Some(DIFFERENT_CLEAN_AUDIO)
         } else if self.keys_of(a.id) != self.keys_of(b.id) {
             Some(DIFFERENT_FRAMES)
+        } else if self.lut_of(FrameTarget::Clip(a.id)) != self.lut_of(FrameTarget::Clip(b.id)) {
+            Some(DIFFERENT_LUTS)
         } else {
             None
         }
@@ -386,6 +409,7 @@ impl Timeline {
         self.rename_fade_left(b.id, id);
         self.prune_fades();
         self.clip_frames.retain(|f| f.clip != b.id);
+        self.clip_luts.retain(|l| l.clip != b.id);
         Ok(())
     }
 
@@ -498,6 +522,48 @@ impl Timeline {
         self.fades.clear();
         self.start_fade = false;
         self.end_fade = false;
+    }
+
+    // ---- Apply LUT (1.6.0) ----
+
+    /// The LUT file path of the whole video or of a clip.
+    pub fn lut_of(&self, t: FrameTarget) -> Option<&str> {
+        match t {
+            FrameTarget::Whole => self.whole_lut.as_deref(),
+            FrameTarget::Clip(id) => self
+                .clip_luts
+                .iter()
+                .find(|l| l.clip == id)
+                .map(|l| l.path.as_str()),
+        }
+    }
+
+    /// Sets (`Some`) or removes (`None`) the LUT of a target; an unknown clip is refused.
+    pub fn set_lut(&mut self, t: FrameTarget, path: Option<String>) -> Result<(), EditError> {
+        if let FrameTarget::Clip(id) = t {
+            self.get(id).ok_or(EditError::NoSuchClip)?;
+        }
+        self.put_lut(t, path);
+        Ok(())
+    }
+
+    fn put_lut(&mut self, t: FrameTarget, path: Option<String>) {
+        let path = path.filter(|p| !p.is_empty());
+        match t {
+            FrameTarget::Whole => self.whole_lut = path,
+            FrameTarget::Clip(id) => {
+                self.clip_luts.retain(|l| l.clip != id);
+                if let Some(path) = path {
+                    self.clip_luts.push(ClipLut { clip: id, path });
+                    self.clip_luts.sort_by_key(|l| l.clip);
+                }
+            }
+        }
+    }
+
+    /// True when any Apply LUT exists (the export is then a re-encode, REQ-136).
+    pub fn any_lut(&self) -> bool {
+        self.whole_lut.is_some() || !self.clip_luts.is_empty()
     }
 
     // ---- Change aspect, Scale and Move (1.5.0) ----
@@ -1129,6 +1195,50 @@ pub(crate) mod tests {
         );
         t.set_clip_volume(right, 50, true).unwrap();
         t.merge(a).unwrap();
+    }
+
+    // covers: REQ-135
+    #[test]
+    fn lut_rules_set_remove_split_merge_and_remove_clip() {
+        let mut t = track();
+        let a = t.clips[0].id;
+        assert!(!t.any_lut());
+        assert_eq!(
+            t.set_lut(FrameTarget::Clip(ClipId(99)), Some("x.cube".into())),
+            Err(EditError::NoSuchClip)
+        );
+        t.set_lut(FrameTarget::Clip(a), Some("/l/a.cube".into()))
+            .unwrap();
+        t.set_lut(FrameTarget::Whole, Some("/l/w.cube".into()))
+            .unwrap();
+        assert!(t.any_lut());
+        assert_eq!(t.lut_of(FrameTarget::Clip(a)), Some("/l/a.cube"));
+        assert_eq!(t.lut_of(FrameTarget::Whole), Some("/l/w.cube"));
+        // split: both halves have it, and can merge back
+        let right = t.split(s(2), F).unwrap();
+        assert_eq!(t.lut_of(FrameTarget::Clip(right)), Some("/l/a.cube"));
+        assert!(t.can_merge(a));
+        // different files block the merge, with the reason
+        t.set_lut(FrameTarget::Clip(right), Some("/l/b.cube".into()))
+            .unwrap();
+        assert_eq!(t.merge_block_reason(a), Some(DIFFERENT_LUTS));
+        t.set_lut(FrameTarget::Clip(right), None).unwrap();
+        assert_eq!(t.merge_block_reason(a), Some(DIFFERENT_LUTS));
+        t.set_lut(FrameTarget::Clip(a), None).unwrap();
+        t.merge(a).unwrap();
+        assert!(t.clip_luts.is_empty(), "empty entries are removed");
+        // removing a clip drops its entry; an empty path removes
+        t.set_lut(FrameTarget::Clip(a), Some("/l/a.cube".into()))
+            .unwrap();
+        t.set_lut(FrameTarget::Clip(a), Some(String::new()))
+            .unwrap();
+        assert!(t.clip_luts.is_empty());
+        t.set_lut(FrameTarget::Clip(a), Some("/l/a.cube".into()))
+            .unwrap();
+        t.remove(a).unwrap();
+        assert!(t.clip_luts.is_empty());
+        t.set_lut(FrameTarget::Whole, None).unwrap();
+        assert!(!t.any_lut());
     }
 
     // covers: REQ-114

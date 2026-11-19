@@ -2,8 +2,9 @@
 
 ## Release assets
 
-Every release gets five files (names checked by a test against `scripts/package.sh` and the
-workflow):
+Every release gets nine files: the five below for the editor and, since 1.6.0, the same four installers for videolore player
+named `videolore-player-<ver>-...` (see [code-player.md](code-player.md)). Names are checked by a test against
+`scripts/package.sh` and the workflow. The editor's files:
 
 | File | Made by |
 |---|---|

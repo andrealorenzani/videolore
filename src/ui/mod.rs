@@ -14,8 +14,10 @@ pub mod effects;
 pub mod export_dialog;
 pub mod frame_handles;
 pub mod frame_popups;
+pub mod icons;
 pub mod keymap;
 pub mod layout;
+pub mod lut_popup;
 pub mod markers;
 pub mod media;
 pub mod menu;
@@ -25,6 +27,7 @@ pub mod placement;
 pub mod popups;
 pub mod ruler;
 pub mod settings;
+pub mod splash_ui;
 pub mod status;
 pub mod text_popup;
 pub mod timeline;
@@ -106,6 +109,10 @@ pub struct UiCache {
     pub text_draft: Option<(crate::text::TextItem, String)>,
     /// The text of an existing item while it is being typed.
     pub text_edit: Option<(crate::text::TextId, String)>,
+    /// The splash image as textures, loaded when the splash first opens.
+    pub splash: Option<splash_ui::Loaded>,
+    /// Where the splash was drawn this frame.
+    pub splash_rects: Option<splash_ui::SplashRects>,
 }
 
 impl UiCache {
@@ -136,6 +143,7 @@ pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Ins
     let ctx = root.ctx().clone();
     let ctx = &ctx;
     register_subtitle_font(ctx);
+    icons::install(ctx);
     app.tick(now);
     // Ctrl/Cmd +, - and 0 zoom the timeline, not the whole interface
     if ctx.options(|o| o.zoom_with_keyboard) {
@@ -533,7 +541,7 @@ pub fn register_subtitle_font(ctx: &Context) {
 }
 
 /// The subtitle font at `size`, or the normal one while it is not loaded yet.
-pub(super) fn subtitle_font(ctx: &Context, size: f32) -> egui::FontId {
+pub fn subtitle_font(ctx: &Context, size: f32) -> egui::FontId {
     let family = egui::FontFamily::Name(SUBTITLE_FAMILY.into());
     let loaded = ctx.fonts(|f| f.definitions().families.contains_key(&family));
     egui::FontId::new(
@@ -558,7 +566,13 @@ pub fn action_tooltip(ctx: &Context, app: &AppState, id: actions::ActionId) -> S
 #[cfg(test)]
 mod frame_ux_tests;
 #[cfg(test)]
+mod icon_ux_tests;
+#[cfg(test)]
+mod lut_ux_tests;
+#[cfg(test)]
 mod sphere_ux_tests;
+#[cfg(test)]
+mod splash_ux_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

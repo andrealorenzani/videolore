@@ -54,6 +54,7 @@ It then refreshes the desktop and file-type databases if those tools exist (fail
 - An original icon, drawn as SVG in `assets/icon/videolore.svg`.
 - The PNG, Windows `.ico`, macOS `.icns` and a raw 256x256 image for the window icon are generated once by `scripts/icons.sh` and committed, so building needs no image tools or image crates.
 - The Windows executable itself carries no embedded icon; shortcut, installer and taskbar show it.
+- The player (1.6.0) uses the same icon files as the editor (decided 2026-11-19); no separate player icon.
 
 ## Release pipeline
 - A `package` job runs on each version tag (and on manual request) for Windows, macOS and Linux, after the check and MSRV jobs pass:
@@ -88,6 +89,13 @@ Since 0.3.0, to remove GitHub's deprecation warnings and make builds reproducibl
 - FFmpeg 9.0.2 is still the latest release. macOS keeps the Martin Riedl 9.0.2 build already pinned.
 - Linux and Windows move to the newest BtbN build of the 9.0 branch (2026-11-13, version 9.0.2-57), pinned by SHA-256 in `packaging/ffmpeg.lock`.
 - That is a daily build, kept by BtbN for a shorter time than month-end builds: if it disappears before a later re-package, the package job fails loudly and the pin moves to the 2026-11-30 month-end build.
+
+## Two products (1.6.0, planned)
+- `scripts/package.sh <target> [editor|player]`: the default is the editor, so existing calls are unchanged. The player is built from the workspace member `player/` (see [build](architecture-build.md)).
+- Editor: `videolore-<version>-…` (unchanged names). Player: `videolore-player-<version>-…` with the same kinds of file (AppImage and tar.gz on Linux, NSIS setup on Windows, disk image on macOS).
+- Identifiers: `io.github.andrealorenzani.videolore` (editor) and `io.github.andrealorenzani.videolore-player` (player), so both install side by side. The player has no file association and no Linux menu entry written by the program.
+- Both carry the same pinned `ffmpeg` and `ffprobe` (`packaging/ffmpeg.lock`), so the player's smoke test is the editor's list without the editing-only filters. Each installer has its own Rust notices: `rust-crates.txt` (editor) and `rust-crates-player.txt` (player); the third-party notices and the source archive are shared.
+- Release: the package job runs both products on each runner; the release globs already attach both sets of files.
 
 ## Risks
 - First launch of unsigned packages, the macOS launch-time "open document" event and Linux file-manager behaviour can only be checked by hand; a manual checklist is kept in [code packaging](code-packaging.md). If the macOS event fails, opening the project from inside the app still works.

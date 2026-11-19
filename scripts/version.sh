@@ -5,19 +5,22 @@
 #   scripts/version.sh next-major     next major release            (0.1.2 -> 1.0.0)
 #   scripts/version.sh set X.Y.Z      write X.Y.Z everywhere, then check
 #   scripts/version.sh check          fail if any location disagrees
-# Locations: Cargo.toml [package] version, Cargo.lock (own package), README.md version badge.
+# Locations: Cargo.toml [package] version, player/Cargo.toml [package] version (videolore
+# player, 1.6.0), Cargo.lock (both packages), README.md version badge.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 name=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)
+player_name=$(sed -n 's/^name = "\(.*\)"/\1/p' player/Cargo.toml | head -1)
 get() { sed -n '/^\[package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' Cargo.toml | head -1; }
-lock_version() { awk -v n="$name" '$0=="name = \""n"\"" {getline; gsub(/version = |"/,""); print; exit}' Cargo.lock; }
+player_get() { sed -n '/^\[package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' player/Cargo.toml | head -1; }
+lock_version() { awk -v n="$1" '$0=="name = \""n"\"" {getline; gsub(/version = |"/,""); print; exit}' Cargo.lock; }
 readme_version() { sed -n 's/.*badge\/version-\([0-9][0-9.]*\)-.*/\1/p' README.md | head -1; }
 
 check() {
-  local c l r; c=$(get); l=$(lock_version); r=$(readme_version)
-  if [[ "$c" == "$l" && "$c" == "$r" ]]; then echo "version $c consistent"; return 0; fi
-  echo "version mismatch: Cargo.toml=$c Cargo.lock=$l README badge=$r" >&2; return 1
+  local c p l pl r; c=$(get); p=$(player_get); l=$(lock_version "$name"); pl=$(lock_version "$player_name"); r=$(readme_version)
+  if [[ "$c" == "$p" && "$c" == "$l" && "$c" == "$pl" && "$c" == "$r" ]]; then echo "version $c consistent"; return 0; fi
+  echo "version mismatch: Cargo.toml=$c player/Cargo.toml=$p Cargo.lock=$l / $pl README badge=$r" >&2; return 1
 }
 
 case "${1:-}" in
@@ -30,11 +33,12 @@ case "${1:-}" in
     # All-or-nothing: back up every location, restore them all if any step fails.
     backup=$(mktemp -d)
     cp Cargo.toml Cargo.lock README.md "$backup/"
-    restore() { cp "$backup/Cargo.toml" "$backup/Cargo.lock" "$backup/README.md" .; rm -rf "$backup"; echo "version.sh: failed, nothing changed" >&2; }
+    cp player/Cargo.toml "$backup/player-Cargo.toml"
+    restore() { cp "$backup/Cargo.toml" "$backup/Cargo.lock" "$backup/README.md" .; cp "$backup/player-Cargo.toml" player/Cargo.toml; rm -rf "$backup"; echo "version.sh: failed, nothing changed" >&2; }
     trap 'restore; exit 1' ERR
-    sed -i "/^\[package\]/,/^\[/ s/^version = \".*\"/version = \"$v\"/" Cargo.toml
+    sed -i "/^\[package\]/,/^\[/ s/^version = \".*\"/version = \"$v\"/" Cargo.toml player/Cargo.toml
     sed -i "s/badge\/version-[0-9][0-9.]*-/badge\/version-$v-/" README.md
-    # Rewrite only this package's entry in Cargo.lock: no build, no system libraries needed.
+    # Rewrite only the entries of our packages in Cargo.lock: no build, no system libraries needed.
     cargo update --workspace --offline -q 2>/dev/null || cargo update --workspace -q
     check
     trap - ERR

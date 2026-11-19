@@ -18,6 +18,8 @@ pub const CLEAN_OFFSET: f32 = 12.0;
 /// Pixels from a clip's start to its Scale marker, and to its Move marker.
 pub const SCALE_OFFSET: f32 = 24.0;
 pub const MOVE_OFFSET: f32 = 36.0;
+/// Pixels from a clip's start to its Apply LUT marker.
+pub const LUT_OFFSET: f32 = 48.0;
 /// Characters of a line's text shown in its tooltip.
 const TOOLTIP_TEXT: usize = 40;
 
@@ -35,6 +37,8 @@ pub enum MarkerKind {
     Scale,
     /// A clip with Move (1.5.0).
     Move,
+    /// A clip with Apply LUT (1.6.0); the whole video's has no marker.
+    Lut,
     /// A boundary without a fade: clicking adds one.
     AddFade,
     /// A point of view of a 360 clip.
@@ -51,6 +55,35 @@ pub struct Marker {
     /// End of a line's bar (= `x` for fades).
     pub x_end: f32,
     pub tooltip: String,
+}
+
+/// The icon drawn on a marker (REQ-142).
+pub fn icon_of(kind: MarkerKind) -> &'static str {
+    use super::icons as i;
+    match kind {
+        MarkerKind::Fade | MarkerKind::EdgeFade => i::CIRCLE_HALF,
+        MarkerKind::Line => i::SUBTITLES,
+        MarkerKind::ClipVolume => i::SPEAKER_HIGH,
+        MarkerKind::CleanAudio => i::WAVEFORM,
+        MarkerKind::Scale => i::ARROWS_OUT,
+        MarkerKind::Move => i::ARROWS_OUT_CARDINAL,
+        MarkerKind::Lut => i::PALETTE,
+        MarkerKind::AddFade => i::PLUS,
+        MarkerKind::Pov => i::VIDEO_CAMERA,
+    }
+}
+
+/// Where the icon sits relative to the marker's x and the lane's middle (pixels).
+pub fn icon_offset(kind: MarkerKind) -> (f32, f32) {
+    match kind {
+        MarkerKind::ClipVolume
+        | MarkerKind::CleanAudio
+        | MarkerKind::Scale
+        | MarkerKind::Move
+        | MarkerKind::Lut => (5.0, 0.0),
+        MarkerKind::Line => (10.0, -4.0),
+        _ => (0.0, 0.0),
+    }
 }
 
 fn short(text: &str) -> String {
@@ -194,6 +227,20 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
                 x,
                 x_end: x,
                 tooltip: keys(moved, "Move"),
+            });
+        }
+        if let Some(path) = tl.lut_of(crate::timeline::FrameTarget::Clip(c.id)) {
+            let x = x_of(start) + LUT_OFFSET;
+            out.push(Marker {
+                kind: MarkerKind::Lut,
+                instance: Instance::Lut(crate::timeline::FrameTarget::Clip(c.id)),
+                x,
+                x_end: x,
+                tooltip: format!(
+                    "Apply LUT on \"{}\": {}. Click for its settings.",
+                    name(i),
+                    crate::lut::display_name(path)
+                ),
             });
         }
         start = start + c.len();

@@ -6,6 +6,7 @@
 //! run (with the reason as tooltip). A menu taller than the window scrolls.
 
 use super::actions::ActionId;
+use super::icons;
 use super::{UiCache, keymap, scroll_body};
 use crate::app::{AppState, Command};
 use eframe::egui::{self, Button, ScrollArea, Ui};
@@ -29,6 +30,7 @@ pub const APPLY_TO_CLIP: &[ActionId] = &[
     ActionId::ApplyClipCleanAudio,
     ActionId::ApplyClipScale,
     ActionId::ApplyClipMove,
+    ActionId::ApplyClipLut,
 ];
 /// Effects > Apply to whole video ▸
 pub const APPLY_TO_VIDEO: &[ActionId] = &[
@@ -39,6 +41,7 @@ pub const APPLY_TO_VIDEO: &[ActionId] = &[
     ActionId::ApplyWholeChangeAspect,
     ActionId::ApplyWholeScale,
     ActionId::ApplyWholeMove,
+    ActionId::ApplyWholeLut,
 ];
 
 /// The menus and their items, in order.
@@ -116,6 +119,7 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(ChangeAspect),
                 A(Scale),
                 A(Move),
+                A(ApplyLut),
                 A(AddText),
                 S,
                 Submenu("Apply to selected clip", APPLY_TO_CLIP),
@@ -141,7 +145,7 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
 pub fn action_item(ui: &mut Ui, app: &AppState, id: ActionId, cmds: &mut Vec<Command>) {
     let cmd = id.command(app);
     let reason = app.disabled_reason(&cmd);
-    let mut b = Button::new(id.label(app));
+    let mut b = Button::new(icons::label(id.icon(), &id.label(app)));
     if let Some(s) = keymap::shortcut_text(ui.ctx(), id) {
         b = b.shortcut_text(s);
     } else if id == ActionId::ToggleBoxes {
@@ -247,6 +251,7 @@ mod tests {
             ChangeAspect,
             Scale,
             Move,
+            ApplyLut,
             AddText,
         ] {
             assert!(effects.contains(&Item::Action(id)), "{id:?}");

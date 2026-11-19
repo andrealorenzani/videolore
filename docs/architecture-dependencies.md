@@ -42,6 +42,8 @@ No new crate was added in 1.5.0 (frame effects use the existing `egui` colour pi
 
 **1.2.0.** No crate is added. Dragging effects uses egui's built-in drag and drop; subtitle text is measured with egui's text layout and the bundled font. The SRT reader and writer, the word matching (sequence alignment and edit distance) and the table of language codes are small in-house modules; the crates `srtparse`, `subparse`, `strsim` and `isolang`, Rust MKV/MP4 readers, font crates (`ab_glyph`, `fontdue`) and separate forced-alignment tools were considered and not chosen. Subtitle tracks are read with the bundled `ffmpeg`. See [subtitle tracks](architecture-subtitle-tracks.md).
 
+**1.6.0 (planned).** One crate is added: `image` 0.25.10 with only its `gif` feature (`default-features = false`), to decode the splash image; it is already in the tree through `eframe`, and its GIF decoder adds the `gif` and `weezl` crates (MIT/Apache-2.0 or MIT, checked by `cargo-deny`). `ttf-parser` (already in the tree through `fontdb`) is declared as a development dependency only, to check that every icon exists in the font. Rejected: `egui-phosphor` 0.14.0 (requires egui 0.36, not the 0.37 in use), `egui-pop-phosphor` (fork), `egui_extras` (its image loaders are not needed; its `gif` feature gives no animation). The `.cube` reader and the icon constants are in-house. The player is a second member of the workspace that uses the same libraries without the speech feature, so it adds no crate. See [LUT](architecture-lut.md), [splash](architecture-splash.md), [icons](architecture-icons.md) and [player](architecture-player.md).
+
 Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDLA-Permissive-2.0). Both are listed in the notices and allowed by the CI licence check.
 
 ## Bundled with the installers (not Rust)
@@ -49,6 +51,8 @@ Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDL
 |---|---|---|
 | `ffmpeg`, `ffprobe` (GPL builds: BtbN for Windows/Linux, Martin Riedl for macOS) | GPL-3.0-or-later (includes x264, x265: GPL-2.0-or-later; libass and others) | All media decoding, encoding and subtitle rendering. See [ffmpeg](architecture-ffmpeg.md). |
 | Noto Sans Bold | SIL Open Font License 1.1 | Subtitle font. |
+| Phosphor Icons, Regular weight (1.6.0) | MIT | Icons of the whole interface, bundled as one font file. See [icons](architecture-icons.md). |
+| Release image `assets/splash/<version>.gif` (1.6.0) | To be recorded before release (origin open) | Splash screen. See [splash](architecture-splash.md). |
 
 Downloaded after consent, not bundled: the whisper models of the three subtitle quality levels (`ggml-tiny-q5_1.bin`, `ggml-small-q5_1.bin`, `ggml-large-v3-turbo-q5_0.bin`, all MIT). See [subtitles](architecture-subtitles.md#subtitle-quality-levels-030).
 

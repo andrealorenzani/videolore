@@ -3,7 +3,9 @@
 videolore is a Rust desktop application (edition 2024, MSRV 1.100) built on egui/eframe 0.37. It
 never decodes video itself: every read and render is done by the `ffmpeg` and `ffprobe` programs,
 started as child processes (at most three at a time by default, up to six at "Maximum speed"). The installers ship their own copy of
-ffmpeg; speech recognition for subtitles is compiled in (whisper.cpp).
+ffmpeg; speech recognition for subtitles is compiled in (whisper.cpp). Since 1.6.0 the repository is a Cargo
+workspace with a second program, **videolore player** (`player/`, no speech engine and no network code), that shares the
+editor's engine.
 
 This page covers building and running; the details are in the sub-documents:
 
@@ -15,6 +17,9 @@ This page covers building and running; the details are in the sub-documents:
 | [code-text.md](code-text.md) | Text items and their effects, one selection for lines and texts, the Context Menu group, texts fixed to the 360° sphere, the "360 video" export and its spherical marker, project format 5 (all since 1.3.0) |
 | [code-export.md](code-export.md) | The Export dialog (names, formats, presets, only audio, session memory), Clean audio, text boxes with best-fit size, project format 6 (all since 1.4.0) |
 | [code-frame.md](code-frame.md) | Change aspect, Scale and Move with keyframes: frame size, expressions and graph, popups and handles, project format 7 (all since 1.5.0) |
+| [code-lut.md](code-lut.md) | Apply LUT: the `.cube` parser, the filter graph, missing files, project format 8 (1.6.0) |
+| [code-splash-icons.md](code-splash-icons.md) | The splash screen and the icons (Phosphor), with the list of controls and their icons (1.6.0) |
+| [code-player.md](code-player.md) | The Cargo workspace, videolore player (open rules, playback, 360, subtitles, full screen) and its packaging (1.6.0) |
 | [code-ui.md](code-ui.md) | The window: menus, toolbar, resizable sections, shortcuts, popups, timeline markers, status bar, recent projects, drag and drop |
 | [code-testing.md](code-testing.md) | Unit, UI and integration tests, coverage, CI jobs |
 | [code-packaging.md](code-packaging.md) | Installers, bundled ffmpeg, notices, release assets, manual checklist per OS, known limitations |
@@ -24,17 +29,17 @@ This page covers building and running; the details are in the sub-documents:
 
 | What | Command |
 |---|---|
-| Build | `cargo build` (release: `cargo build --release --locked`) |
-| Run | `cargo run` (or `cargo run -- path/to/project.vlproj`) |
-| Tests | `cargo test` (integration fixtures are generated once and reused from `target/tmp/fixtures`) |
-| Format / lint | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (CI also lints with `--no-default-features` and `--all-features`) |
-| Line coverage (>= 85%) | `scripts/coverage.sh --fail-under 85` (needs `cargo-llvm-cov` and `rustup component add llvm-tools-preview`); CI runs the tests once, instrumented, with `cargo llvm-cov --fail-under-lines 85` |
+| Build | `cargo build` (editor only, the default member); `cargo build --workspace` also builds videolore player (release: `cargo build --release --locked --workspace`) |
+| Run | `cargo run` (or `cargo run -- path/to/project.vlproj`); the player: `cargo run -p videolore-player -- video.mp4` |
+| Tests | `cargo test --workspace` (integration fixtures are generated once and reused from `target/tmp/fixtures`) |
+| Format / lint | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` (CI also lints with `--no-default-features` and `--all-features`) |
+| Line coverage (>= 85%) | `scripts/coverage.sh --fail-under 85` over the whole workspace (needs `cargo-llvm-cov` and `rustup component add llvm-tools-preview`); CI runs the tests once, instrumented, with `cargo llvm-cov --workspace --fail-under-lines 85` |
 | Feature coverage (100%) | `scripts/feature-coverage.sh` |
 | CI failure annotations | `scripts/test-annotations.sh <saved cargo test output>` (used by CI; prints `::error` lines) |
 | Licences and advisories | `cargo deny check` (cargo-deny 0.20.2, config in `deny.toml`) |
-| Rust crate notices | `scripts/notices.sh` (rewrite) / `scripts/notices.sh --check` (CI); needs `cargo install --locked cargo-about --version 0.9.3 --features cli` |
+| Rust crate notices | `scripts/notices.sh` (rewrites `rust-crates.txt` and `rust-crates-player.txt`) / `scripts/notices.sh --check` (CI); needs `cargo install --locked cargo-about --version 0.9.3 --features cli` |
 | Icons | `scripts/icons.sh` (only after changing `assets/icon/videolore.svg`) |
-| Installers | `scripts/fetch-ffmpeg.sh <target> <dir>` and `scripts/package.sh <target>`, see [code-packaging.md](code-packaging.md) |
+| Installers | `scripts/fetch-ffmpeg.sh <target> <dir>` and `scripts/package.sh <target> [player]`, see [code-packaging.md](code-packaging.md) |
 
 ### System requirements for building
 
@@ -105,6 +110,8 @@ is raised together with the toolchain, and dependencies are kept on their newest
 | whisper-rs | 0.16 | Speech recognition (optional, `stt`) |
 | ureq | 3.5 (`rustls` only) | Speech model download (optional, `stt`) |
 | objc2, objc2-foundation | 0.6, 0.3 | macOS only: opening double-clicked projects |
+| image | 0.25 (`gif` only) | Decoding the splash image |
+| Phosphor Icons | 2.1.2 (font file, MIT) | The icons (bundled in `assets/icons`, not a crate) |
 | fontdb | 0.24 | Installed font families for the text font choice (default features: fontconfig directories, memory-mapped files) |
 | winit | 0.30 | macOS only: switching off the default menu so Cmd+Q asks about unsaved changes |
 

@@ -22,10 +22,41 @@ pub fn windows(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
         cache.text_draft = None;
         cache.text_edit = None;
     }
+    if !app.popups.is_open(Popup::Splash) {
+        cache.splash_rects = None;
+    }
     for (n, p) in open.into_iter().enumerate() {
         window(ctx, app, cache, cmds, p, n);
     }
     chooser(ctx, app, cache, cmds);
+}
+
+/// The icon in the title of a popup (REQ-142).
+pub fn popup_icon(app: &AppState, p: Popup) -> &'static str {
+    use super::icons as i;
+    match p {
+        Popup::Settings => i::GEAR,
+        Popup::Fades => i::CIRCLE_HALF,
+        Popup::Subtitles => i::SUBTITLES,
+        Popup::Volume => i::SPEAKER_HIGH,
+        Popup::CleanAudio => i::WAVEFORM,
+        Popup::ClipDetails => i::SLIDERS,
+        Popup::Shortcuts => i::KEYBOARD,
+        Popup::Text => i::TEXT_T,
+        Popup::Splash => i::INFO,
+        Popup::Instance => match app.popups.instance {
+            Some(Instance::Fade(..) | Instance::FadeStart | Instance::FadeEnd) => i::CIRCLE_HALF,
+            Some(Instance::Line(..)) => i::SUBTITLES,
+            Some(Instance::ClipVolume(_)) => i::SPEAKER_HIGH,
+            Some(Instance::CleanAudio(_)) => i::WAVEFORM,
+            Some(Instance::Pov(..)) => i::VIDEO_CAMERA,
+            Some(Instance::Aspect) => i::FRAME_CORNERS,
+            Some(Instance::Scale(_)) => i::ARROWS_OUT,
+            Some(Instance::Move(_)) => i::ARROWS_OUT_CARDINAL,
+            Some(Instance::Lut(_)) => i::PALETTE,
+            None => i::LIST,
+        },
+    }
 }
 
 fn window(
@@ -36,13 +67,17 @@ fn window(
     p: Popup,
     n: usize,
 ) {
+    if p == Popup::Splash {
+        super::splash_ui::show(ctx, app, cache, cmds);
+        return;
+    }
     let screen = ctx.content_rect();
     let mut open = true;
     let width = if p == Popup::Settings { 460.0 } else { WIDTH };
     let width = width.min(screen.width() - 24.0).max(120.0);
     let max_h = (screen.height() - 90.0).max(80.0);
     let offset = egui::vec2(24.0, 24.0) * (n % 5) as f32;
-    egui::Window::new(app.popup_title(p))
+    egui::Window::new(super::icons::label(popup_icon(app, p), &app.popup_title(p)))
         .id(keymap::popup_id(p))
         .open(&mut open)
         .collapsible(false)
@@ -67,6 +102,7 @@ fn window(
                 Popup::Instance => instance_body(ui, app, cache, cmds),
                 Popup::Shortcuts => shortcuts_body(ui),
                 Popup::Text => super::text_popup::text_body(ui, app, cache, cmds),
+                Popup::Splash => {}
             });
         });
     if !open {
@@ -111,6 +147,7 @@ pub fn instance_label(app: &AppState, i: Instance) -> String {
         Instance::Aspect => "Change aspect".into(),
         Instance::Scale(t) => format!("Scale of {}", target_name(app, t)),
         Instance::Move(t) => format!("Move of {}", target_name(app, t)),
+        Instance::Lut(t) => format!("Apply LUT of {}", target_name(app, t)),
         Instance::Pov(m, t) => {
             let at = app.pov_position(m, t).map(timecode).unwrap_or_default();
             format!("360° point of view {at}")
@@ -206,6 +243,7 @@ pub fn instance_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mu
         Some(Instance::Move(t)) => {
             super::frame_popups::key_body(ui, app, cache, t, crate::app::FrameFx::Move, cmds)
         }
+        Some(Instance::Lut(t)) => super::lut_popup::lut_body(ui, app, t, cmds),
     }
 }
 

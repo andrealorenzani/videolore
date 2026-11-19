@@ -2,6 +2,20 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.6.0 — 2026-11-19 21:27 +0000
+
+A splash screen at every start of the editor, a separate video player (videolore-player) for watching videos, the Apply LUT colour effect, and icons across the interface. Projects saved by this version (project format 8) need version 1.6.0 or later.
+
+### Added
+- **Requirements (business)**: new `docs/business-splash.md` (REQ-133, REQ-134), `docs/business-lut.md` (REQ-135 to REQ-137), `docs/business-player.md` (REQ-138 to REQ-141) and `docs/business-icons.md` (REQ-142, REQ-143), all implemented; `docs/business.md` index and the Video player and Apply LUT sections linked from it.
+- **Code**: the splash screen (`assets/splash/<version>.gif` and `.txt`, no splash when a file is given on the command line); Apply LUT with a `.cube` reader for 3D and 1D LUTs (project format 8); the videolore player as a second program in a workspace (`player` crate), with its own build and installers (`scripts/package.sh <target> player`) and its own notices; Phosphor Icons (MIT licence, bundled as a font) across the editor and the player; `image` 0.25.10 (GIF only) and `rfd` 0.18.0 added as dependencies.
+
+### Changed
+- **Requirements (business)**: REQ-069 and REQ-075 are implemented again, reworded for the Apply LUT effect and the new icons; impact notes in the UI, editing and business documents for the LUT, the markers, the drag and the icons.
+- **Architecture**: `docs/architecture.md` is an index with sub-documents for the splash screen, Apply LUT, the videolore player (second program with its own installers, reusing the preview engine), icons and build, CI and versions (two-product workspace); the player uses the editor's icon artwork; the splash image stays static.
+- **Accepted deviations (code)**: the LUT is applied to the fitted picture before the frame effect; a missing or damaged LUT is reported in the "could not be found or were repaired" notice; the Change aspect row in the Effects list has no tooltip and cannot be dragged (not fixed); the player plays very large videos from a silent preview copy.
+- **Workflow**: every version bump needs its own `assets/splash/<version>.gif` and `assets/splash/<version>.txt`.
+
 ## 1.5.0 — 2026-11-19 19:02 +0000
 
 Change the aspect of the whole video, scale and move pictures with keyframes, and fill the empty space with a colour or a blurred copy of the video. Projects saved by this version need version 1.5.0 or later (project format 7); 1.4.x refuses them and leaves them untouched.

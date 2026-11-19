@@ -762,10 +762,10 @@ pub fn unmatched_message(unmatched: usize, total: usize) -> String {
     )
 }
 
-/// Reads the text subtitle track `ordinal` of `source` (cues overlapping `range`, kept
-/// inside it).
-fn read_track(
-    job: &SttJob,
+/// Reads the text subtitle track `ordinal` of `source` with `ffmpeg` (cues overlapping
+/// `range`, kept inside it). Shared by the speech matching and by the video player.
+pub fn read_track(
+    ffmpeg: &Path,
     runner: &dyn Runner,
     work: &Path,
     source: &Path,
@@ -776,7 +776,7 @@ fn read_track(
     let file = work.join(TRACK_FILE);
     let failed = || SttError::Track(name.clone());
     let out = runner
-        .run(&job.ffmpeg, &track_args(source, ordinal, &file))
+        .run(ffmpeg, &track_args(source, ordinal, &file))
         .map_err(|e| match e.kind() {
             io::ErrorKind::Interrupted => SttError::Cancelled,
             _ => failed(),
@@ -903,12 +903,12 @@ pub fn run(
                 words_to_lines(r.media, &words)
             }
             Mode::Spread { track } => {
-                let cues = read_track(job, runner, work.path(), &r.path, *track, r.range)?;
+                let cues = read_track(&job.ffmpeg, runner, work.path(), &r.path, *track, r.range)?;
                 progress(1.0);
                 crate::align::spread(r.media, &cues)
             }
             Mode::Align { track } => {
-                let cues = read_track(job, runner, work.path(), &r.path, *track, r.range)?;
+                let cues = read_track(&job.ffmpeg, runner, work.path(), &r.path, *track, r.range)?;
                 result.unmatched.1 += cues.len();
                 let mut language = job.language.clone().or_else(|| {
                     r.track_language

@@ -126,6 +126,18 @@ See [code-360.md](code-360.md) (section "Tests and fixtures"). Real-ffmpeg tests
 with the 1.2.5 code). The four responsiveness gates in `src/ui/tests.rs` run one at a time
 (`one_gate_at_a_time`) because each keeps every core busy.
 
+### 1.6.0 tests
+
+Apply LUT, the splash and the icons are described in [code-lut.md](code-lut.md) and
+[code-splash-icons.md](code-splash-icons.md) (section "Tests"), the player in [code-player.md](code-player.md).
+`tests/ffmpeg_integration/v16.rs` uses flat colour clips and 2x2x2 cubes that move whole colours (channel swaps, inversion).
+`player/tests/ffmpeg.rs` runs the player with the real ffmpeg (play, pause, seek, volume, an embedded track, an `.srt`, a 360
+drag) and compares the video's folder before and after; `player/src/tests.rs` uses a scripted `Runner` (ffprobe answers by
+file name, ffmpeg writes a subtitle track, spawned processes hold their output until killed). The UI test harnesses of both
+programs read egui's accessibility tree; the editor's strips the leading icon from labels (`Node::label`, with the raw one in
+`Node::raw`). CI runs fmt, clippy, tests and coverage with `--workspace`, and greps the player's `cargo tree` for network and
+speech crates.
+
 ### 1.5.0 tests
 
 See [code-frame.md](code-frame.md) (section "Tests"). `tests/ffmpeg_integration/v15.rs` uses flat

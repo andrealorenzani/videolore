@@ -46,6 +46,7 @@ pub enum ActionId {
     ChangeAspect,
     Scale,
     Move,
+    ApplyLut,
     ToggleFadeAtPlayhead,
     GenerateSubtitles,
     AddSubtitleLine,
@@ -56,6 +57,7 @@ pub enum ActionId {
     ApplyClipCleanAudio,
     ApplyClipScale,
     ApplyClipMove,
+    ApplyClipLut,
     ApplyWholeFade,
     ApplyWholeSubtitles,
     ApplyWholeVolume,
@@ -63,6 +65,7 @@ pub enum ActionId {
     ApplyWholeChangeAspect,
     ApplyWholeScale,
     ApplyWholeMove,
+    ApplyWholeLut,
     AlignHorizontal,
     AlignVertical,
     ResetObjects,
@@ -281,6 +284,12 @@ pub const ACTIONS: &[Action] = &[
         "Move the picture in the frame, with keyframes"
     ),
     action!(
+        ApplyLut,
+        "Apply LUT…",
+        [],
+        "Change the colours of the picture with a LUT file"
+    ),
+    action!(
         ToggleFadeAtPlayhead,
         "Add/remove fade at playhead",
         [],
@@ -341,6 +350,12 @@ pub const ACTIONS: &[Action] = &[
         "Move the picture of the selected clip in the frame"
     ),
     action!(
+        ApplyClipLut,
+        "Apply LUT",
+        [],
+        "Change the colours of the selected clip with a LUT file"
+    ),
+    action!(
         ApplyWholeFade,
         "Fade IN/OUT",
         [],
@@ -381,6 +396,12 @@ pub const ACTIONS: &[Action] = &[
         "Move",
         [],
         "Move the picture of the whole video in the frame"
+    ),
+    action!(
+        ApplyWholeLut,
+        "Apply LUT",
+        [],
+        "Change the colours of the whole video with a LUT file"
     ),
     action!(
         AlignHorizontal,
@@ -511,6 +532,7 @@ impl ActionId {
             ChangeAspect => Command::OpenFrameEffect(EffectKind::ChangeAspect),
             Scale => Command::OpenFrameEffect(EffectKind::Scale),
             Move => Command::OpenFrameEffect(EffectKind::Move),
+            ApplyLut => Command::OpenFrameEffect(EffectKind::ApplyLut),
             ToggleFadeAtPlayhead => Command::ToggleFadeAtPlayhead,
             GenerateSubtitles => Command::GenerateSubtitles,
             AddSubtitleLine => Command::AddSubtitle,
@@ -521,6 +543,8 @@ impl ActionId {
             ApplyClipCleanAudio => apply(EffectKind::CleanAudio, Target::Selected),
             ApplyClipScale => apply(EffectKind::Scale, Target::Selected),
             ApplyClipMove => apply(EffectKind::Move, Target::Selected),
+            ApplyClipLut => apply(EffectKind::ApplyLut, Target::Selected),
+            ApplyWholeLut => apply(EffectKind::ApplyLut, Target::WholeVideo),
             ApplyWholeChangeAspect => apply(EffectKind::ChangeAspect, Target::WholeVideo),
             ApplyWholeScale => apply(EffectKind::Scale, Target::WholeVideo),
             ApplyWholeMove => apply(EffectKind::Move, Target::WholeVideo),
@@ -539,6 +563,63 @@ impl ActionId {
             ResetLayout => Command::ResetLayout,
             Shortcuts => Command::OpenPopup(Popup::Shortcuts),
             About => Command::ShowAbout,
+        }
+    }
+
+    /// The icon of the action (REQ-142): every action has one, so the menus and the toolbar
+    /// never show an item without it (the match is exhaustive).
+    pub fn icon(self) -> &'static str {
+        use super::icons as i;
+        use ActionId::*;
+        match self {
+            New => i::FILE_PLUS,
+            Open => i::FOLDER_OPEN,
+            Save => i::FLOPPY_DISK,
+            SaveAs => i::FLOPPY_DISK_BACK,
+            Import => i::DOWNLOAD_SIMPLE,
+            Export => i::EXPORT,
+            ExportSubtitles => i::SUBTITLES,
+            Quit => i::SIGN_OUT,
+            Undo => i::ARROW_U_UP_LEFT,
+            Redo => i::ARROW_U_UP_RIGHT,
+            Cut => i::SCISSORS,
+            Copy => i::COPY,
+            Paste => i::CLIPBOARD,
+            Delete => i::TRASH,
+            Split => i::SPLIT_HORIZONTAL,
+            Merge => i::ARROWS_MERGE,
+            MoveLeft => i::ARROW_LEFT,
+            MoveRight => i::ARROW_RIGHT,
+            AddToTimeline => i::FILM_STRIP,
+            AddMusic => i::MUSIC_NOTE,
+            ClipDetails => i::SLIDERS,
+            Settings => i::GEAR,
+            PlayPause => i::PLAY,
+            GoStart => i::SKIP_BACK,
+            GoEnd => i::SKIP_FORWARD,
+            PrevFrame => i::CARET_LEFT,
+            NextFrame => i::CARET_RIGHT,
+            Fades | ApplyClipFade | ApplyWholeFade | ToggleFadeAtPlayhead => i::CIRCLE_HALF,
+            Subtitles | ApplyClipSubtitles | ApplyWholeSubtitles | AddSubtitleLine => i::SUBTITLES,
+            Volume | ApplyClipVolume | ApplyWholeVolume => i::SPEAKER_HIGH,
+            CleanAudio | ApplyClipCleanAudio | ApplyWholeCleanAudio => i::WAVEFORM,
+            ChangeAspect | ApplyWholeChangeAspect => i::FRAME_CORNERS,
+            Scale | ApplyClipScale | ApplyWholeScale => i::ARROWS_OUT,
+            Move | ApplyClipMove | ApplyWholeMove => i::ARROWS_OUT_CARDINAL,
+            ApplyLut | ApplyClipLut | ApplyWholeLut => i::PALETTE,
+            GenerateSubtitles => i::MAGIC_WAND,
+            AddText => i::TEXT_T,
+            AlignHorizontal => i::ALIGN_CENTER_HORIZONTAL,
+            AlignVertical => i::ALIGN_CENTER_VERTICAL,
+            ResetObjects => i::ARROW_COUNTER_CLOCKWISE,
+            SetPov => i::CROSSHAIR,
+            ToggleBoxes => i::BOUNDING_BOX,
+            ZoomIn => i::MAGNIFYING_GLASS_PLUS,
+            ZoomOut => i::MAGNIFYING_GLASS_MINUS,
+            ZoomFit => i::CORNERS_OUT,
+            ResetLayout => i::SIDEBAR,
+            Shortcuts => i::KEYBOARD,
+            About => i::INFO,
         }
     }
 

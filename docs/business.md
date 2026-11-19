@@ -5,6 +5,8 @@ videolore is a simple, offline desktop video editor for people who make short cl
 
 All edits are non-destructive: source files are never modified.
 
+Since 1.6.0 a second program, the videolore player, plays one video for watching (360 view, subtitles, full screen). It never edits; see [Video player](business-player.md).
+
 ## Users
 - **Social content creators** who are not editing experts and want to go from raw footage to a publishable clip quickly, often with captions and music.
 - **Hobbyists** editing personal videos.
@@ -20,12 +22,16 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [Text](business-text.md) — 1.3.0: "Add Text" in the Effects list, multiline texts with the effects Fade IN, Fade OUT, Blink and Slide in, time to live on the timeline, colour, font installed on the computer, text on the picture and in the export. 1.4.0: the box changes its width only and the text size fits it; Align and Reset as for subtitle lines; text can be dragged past the picture edges.
 - [Boxes on the picture and 360 video](business-picture.md) — 1.2.6: visible boxes to move and enlarge what sits on the picture, effect commands (align horizontally, align vertically, reset) in the toolbar, 360° videos with look-around and points of view (POV) the camera moves between in a straight line. 1.3.0: the toolbar group becomes the Context Menu, Export of a 360 project asks for a 360 video or the flat camera view, text and subtitles on a 360 clip stay at their place in the sphere. 1.4.0: the "360°" switch is removed (a clip is 360 only from its file's information); the 360 choice is in the Export dialog.
 - [Frame](business-frame.md) — added in 1.5.0: Change aspect (4:3, 16:9, 9:16 with fit on width or height and an empty space filled with a colour or a blurred video), Scale and Move of a clip or of the whole video, with keyframes for Scale and Move.
+- [Apply LUT](business-lut.md) — added in 1.6.0: colour effect that applies a `.cube` LUT file chosen from the disk to a clip or to the whole video; the project keeps the file's path.
+- [Splash screen](business-splash.md) — added in 1.6.0: the splash at every start of the editor, with the release image, "Version X.Y" and a summary of the version's change.
+- [Video player](business-player.md) — added in 1.6.0: the separate videolore player, with its own build: opens one video, 360 view by dragging, subtitles from the video or a `.srt` file (moved on screen), full screen.
+- [Icons](business-icons.md) — added in 1.6.0: meaningful icons from a free, GPL-compatible set across the editor and the player.
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, third-party notices, first-launch steps.
 - [Settings, performance and safety](business-performance.md) — automatic setup at first start, the Settings window (preview quality, subtitle quality, how hard videolore works, export speed), more accurate speech models, older processors, responsiveness, safe handling of files and downloads, private temporary files, quality goals (including the real-hardware check of faster export).
 
 ## Constraints
 - **ffmpeg is bundled** in every installer (since 0.2.0; before, it had to be installed by the user). A user-chosen ffmpeg can still be configured instead.
-- **The product works fully offline.** The only network access is the one-time, user-approved download of the speech model of the chosen subtitle quality level (each model has its own consent), from fixed secure addresses and checked before use; a model can also be provided as a local file. There is no telemetry and no update check.
+- **The product works fully offline** (editor and video player alike). The only network access is the one-time, user-approved download of the speech model of the chosen subtitle quality level (each model has its own consent), from fixed secure addresses and checked before use; a model can also be provided as a local file. There is no telemetry and no update check.
 - **Settings belong to the program, never to a project**, and the main part of Settings uses plain words only; technical details stay in a collapsed "Advanced" section.
 
 ## Key decisions (general)
@@ -48,11 +54,15 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (1.4.0) Text and subtitle lines can be dragged past the picture edges; a text item's box changes its width only, and its text size fits the box.
 - (1.4.0) A clip is treated as 360 only from its file's own information; the manual "360°" switch is removed.
 - (1.5.0) Change aspect applies to the whole video only, because a video has one frame size. Scale and Move are the first effects with keyframes; the change between keyframes is a straight line, with no easing. Subtitle lines and text items keep their place in the frame when the picture moves or scales.
+- (1.6.0) The video player is a separate program with its own build, for watching only; the editor is unchanged in what it edits. Its 360 view and subtitle moving reuse the editor's code.
+- (1.6.0) Apply LUT is the only colour effect; it uses the same one-per-clip or whole-video rules as the other effects, and the project keeps the file's path, not a copy.
+- (1.6.0) The splash screen shows at every start of the editor and does not block it; it is not shown by the player. The interface gets icons from a free set with a GPL-compatible licence, bundled with the program.
 - (0.4.0) Export can use the computer's video hardware (NVIDIA, Intel, AMD, Apple) when the user chooses "Export: Faster" in Settings. Best quality stays the default. Every hardware result is checked, and on any problem the export is silently redone with the normal method, so the user always gets a correct file.
 
 Topic-specific decisions are in each document.
 
-## Known limitations (1.2.0, 1.3.0, 1.4.0, 1.5.0)
+## Known limitations (1.2.0, 1.3.0, 1.4.0, 1.5.0, 1.6.0)
+- (1.6.0) The video player keeps subtitle positions only while it is open, lists only text subtitle tracks, and opens video files only (see [Video player](business-player.md)). Apply LUT reads `.cube` files only, has no colour management, and stops an export while a LUT file is missing (see [Apply LUT](business-lut.md)). The splash summary is written by hand for each release.
 - (1.5.0) A 360 video export ignores Change aspect, Scale and Move; the longer side of an output frame is capped at 4096 px (assumption); keyframes are straight lines only; subtitle lines and text items do not follow Scale or Move (see [Frame](business-frame.md)).
 - (1.4.0) Clean audio reduces background noise but does not remove it completely (about 9 dB less noise on the reference clip; quiet speech can lose up to about 2.5 dB; its cost on weak computers is not measured); it works on the video's sound, not on the music track.
 - (1.4.0) Text and subtitle lines dragged past an edge of the picture are cut in the preview and in the export.
@@ -82,7 +92,8 @@ Topic-specific decisions are in each document.
 
 ## Out of scope
 - Multiple video tracks, overlays, picture-in-picture.
-- Color grading, keyframe animation other than Scale and Move (1.5.0), transitions other than fade through black.
+- Color grading other than applying a LUT file (1.6.0), keyframe animation other than Scale and Move (1.5.0), transitions other than fade through black.
+- Editing, saving or exporting in the video player (1.6.0).
 - Accounts, cloud storage, sync, collaboration, direct upload to social networks.
 - Mobile versions.
 - Technical export settings beyond the fixed presets of the Export dialog (1.4.0).

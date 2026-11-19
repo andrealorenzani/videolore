@@ -44,7 +44,7 @@ pub fn export_dialog(
     let mut c = choice.clone();
     let modal = egui::Modal::new(egui::Id::unique("videolore-export-dialog")).show(ctx, |ui| {
         ui.set_max_width(520.0);
-        ui.heading(TITLE);
+        ui.heading(super::icons::label(super::icons::EXPORT, TITLE));
         egui::Grid::new("export-grid")
             .num_columns(2)
             .spacing([10.0, 8.0])
@@ -187,7 +187,7 @@ pub fn overwrite_dialog(
     let target = choice::target_path(choice, &app.export_context());
     let modal =
         egui::Modal::new(egui::Id::unique("videolore-export-replace")).show(ctx, |ui: &mut Ui| {
-            ui.heading(REPLACE_TITLE);
+            ui.heading(super::icons::label(super::icons::WARNING, REPLACE_TITLE));
             ui.label(format!("{} already exists.", target.display()));
             ui.horizontal(|ui| {
                 if ui.button(REPLACE).clicked() {

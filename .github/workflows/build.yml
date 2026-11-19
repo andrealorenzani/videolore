@@ -62,25 +62,35 @@ jobs:
           ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb  .stt-model/ggml-small-q5_1.bin
           394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2  .stt-model/ggml-large-v3-turbo-q5_0.bin
           SUMS
-      - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
-      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      - name: cargo test --locked, with code coverage >= 85% (one instrumented run)
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: cargo test --locked (both programs), with code coverage >= 85% (one instrumented run)
         # The tests run once, instrumented: the same pass gives the results and the line
-        # coverage (src/main.rs excluded, as in scripts/coverage.sh). On failure the failing
+        # coverage of the whole workspace (src/main.rs and player/src/main.rs excluded, as
+        # in scripts/coverage.sh). On failure the failing
         # tests and their panic messages also become error annotations (readable without
         # logging in, through the public check-run annotations).
         run: |
           set -o pipefail
-          cargo llvm-cov --locked --ignore-filename-regex 'src/main\.rs$' \
+          cargo llvm-cov --locked --workspace --ignore-filename-regex 'src/main\.rs$' \
             --fail-under-lines 85 --summary-only 2>&1 | tee "$RUNNER_TEMP/cargo-test.txt" || {
             scripts/test-annotations.sh "$RUNNER_TEMP/cargo-test.txt"
             exit 1
           }
+      - name: videolore player has no network and no speech code
+        # The player's dependency graph must not contain the speech engine or the HTTP
+        # client (the editor's only network use): the no-network rule is checked here.
+        run: |
+          tree=$(cargo tree --locked -p videolore-player -e normal --prefix none)
+          if grep -E '^(ureq|whisper-rs|whisper-rs-sys|rustls) ' <<<"$tree"; then
+            echo "videolore player must not depend on network or speech crates" >&2
+            exit 1
+          fi
       - name: Licences, advisories and crate sources (cargo-deny)
         run: cargo deny --locked check
-      - name: Rust crate notices are up to date
+      - name: Rust crate notices are up to date (editor and player)
         run: |
           cargo install --locked cargo-about --version 0.9.3 --features cli
           scripts/notices.sh --check
@@ -115,7 +125,7 @@ jobs:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
           prefix-key: v1-rust-ggml-portable
-      - run: cargo build --locked --all-targets
+      - run: cargo build --locked --workspace --all-targets
 
   build:
     # Bare executables on every push and pull request (artifacts only; releases get the
@@ -150,19 +160,25 @@ jobs:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
           prefix-key: v1-rust-ggml-portable
-      - name: Build release executable
-        run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Name the executable
+      - name: Build release executables (the editor and videolore player)
+        run: cargo build --release --locked --workspace --target ${{ matrix.target }}
+      - name: Name the executables
         run: |
-          name=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')
-          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
-          out="${name}-${version}-${{ matrix.target }}${{ matrix.ext }}"
-          cp "target/${{ matrix.target }}/release/${name}${{ matrix.ext }}" "$out"
-          echo "ASSET=$out" >> "$GITHUB_ENV"
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "videolore") | .version')
+          for name in videolore videolore-player; do
+            out="${name}-${version}-${{ matrix.target }}${{ matrix.ext }}"
+            cp "target/${{ matrix.target }}/release/${name}${{ matrix.ext }}" "$out"
+          done
+          echo "ASSET=videolore-${version}-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
+          echo "PLAYER_ASSET=videolore-player-${version}-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.ASSET }}
           path: ${{ env.ASSET }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.PLAYER_ASSET }}
+          path: ${{ env.PLAYER_ASSET }}
 
   package:
     # Installers with the bundled ffmpeg, on release tags (v*) and on demand.
@@ -203,10 +219,12 @@ jobs:
         run: cargo install cargo-packager --locked --version 0.11.8
       - name: Fetch the pinned ffmpeg (SHA-256 checked)
         run: scripts/fetch-ffmpeg.sh ${{ matrix.target }} dist/ffmpeg-${{ matrix.target }}
-      - name: Build release executable
-        run: cargo build --release --locked
-      - name: Build the installers (with the ffmpeg smoke test)
+      - name: Build release executables (the editor and videolore player)
+        run: cargo build --release --locked --workspace
+      - name: Build the installers of the editor (with the ffmpeg smoke test)
         run: scripts/package.sh ${{ matrix.target }}
+      - name: Build the installers of videolore player (same pinned ffmpeg, own name and identifier)
+        run: scripts/package.sh ${{ matrix.target }} player
       - name: Third-party source archive
         if: runner.os == 'Linux'
         run: scripts/package.sh sources

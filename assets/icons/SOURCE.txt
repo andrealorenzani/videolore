@@ -1,0 +1,5 @@
+Phosphor Icons, Regular weight (font file Phosphor.ttf).
+Version:  2.1.2 (npm package @phosphor-icons/web 2.1.2, repository https://github.com/phosphor-icons/web, tag v2.1.2)
+URL:      https://registry.npmjs.org/@phosphor-icons/web/-/web-2.1.2.tgz  (package/src/regular/Phosphor.ttf)
+Licence:  MIT (see LICENSE-Phosphor.txt)
+SHA-256:  06b91e022b7ee899a63efced879392a74f0bacbda54e4467e9f663220d173a10  Phosphor-Regular.ttf

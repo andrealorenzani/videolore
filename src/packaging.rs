@@ -80,15 +80,23 @@ pub fn current_target() -> &'static str {
     }
 }
 
-/// The files attached to the release of `version`.
+/// The files attached to the release of `version`: the editor's installers, the third-party
+/// source archive, and the installers of videolore player (1.6.0).
 pub fn release_assets(version: &str) -> Vec<String> {
-    vec![
+    let mut v = vec![
         format!("videolore-{version}-windows-x86_64-setup.exe"),
         format!("videolore-{version}-macos-aarch64.dmg"),
         format!("videolore-{version}-linux-x86_64.AppImage"),
         format!("videolore-{version}-linux-x86_64.tar.gz"),
         format!("videolore-{version}-third-party-source.tar.xz"),
-    ]
+    ];
+    v.extend([
+        format!("videolore-player-{version}-windows-x86_64-setup.exe"),
+        format!("videolore-player-{version}-macos-aarch64.dmg"),
+        format!("videolore-player-{version}-linux-x86_64.AppImage"),
+        format!("videolore-player-{version}-linux-x86_64.tar.gz"),
+    ]);
+    v
 }
 
 /// True for a lower-case 64-digit hex SHA-256.
@@ -148,19 +156,42 @@ mod tests {
         assert_eq!(get("cargo-packager").get("version"), Some("0.11.8"));
     }
 
-    // covers: REQ-042, REQ-040
+    // covers: REQ-042, REQ-040, REQ-138
     #[test]
-    fn release_has_three_installers_plus_archive_and_sources() {
+    fn release_has_three_installers_per_program_plus_archive_and_sources() {
         let a = release_assets("1.2.3");
-        assert_eq!(a.len(), 5);
-        assert!(a.iter().all(|n| n.starts_with("videolore-1.2.3-")));
-        assert_eq!(a.iter().filter(|n| n.ends_with("setup.exe")).count(), 1);
-        assert_eq!(a.iter().filter(|n| n.ends_with(".dmg")).count(), 1);
-        assert_eq!(a.iter().filter(|n| n.ends_with(".AppImage")).count(), 1);
-        // the packaging script and the workflow produce/publish exactly these names
+        assert_eq!(a.len(), 9);
+        let editor: Vec<_> = a
+            .iter()
+            .filter(|n| n.starts_with("videolore-1.2.3-"))
+            .collect();
+        let player: Vec<_> = a
+            .iter()
+            .filter(|n| n.starts_with("videolore-player-1.2.3-"))
+            .collect();
+        assert_eq!((editor.len(), player.len()), (5, 4));
+        for set in [&editor, &player] {
+            assert_eq!(set.iter().filter(|n| n.ends_with("setup.exe")).count(), 1);
+            assert_eq!(set.iter().filter(|n| n.ends_with(".dmg")).count(), 1);
+            assert_eq!(set.iter().filter(|n| n.ends_with(".AppImage")).count(), 1);
+        }
+        // the packaging script and the workflow produce/publish exactly these names (the
+        // script writes the product's name as ${pname})
         let script = include_str!("../scripts/package.sh");
         for name in release_assets("${VERSION}") {
-            assert!(script.contains(&name), "package.sh does not make {name}");
+            let in_script = if name.contains("third-party-source") {
+                name.clone()
+            } else {
+                name.replacen("videolore-player", "${pname}", 1).replacen(
+                    "videolore-${VERSION}",
+                    "${pname}-${VERSION}",
+                    1,
+                )
+            };
+            assert!(
+                script.contains(&in_script),
+                "package.sh does not make {name}"
+            );
         }
         let ci = include_str!("../.github/workflows/build.yml");
         for glob in [
@@ -308,7 +339,7 @@ mod tests {
     /// values that cargo-packager 0.11.8 accepts (it rejects unknown keys and enum values
     /// are case-sensitive), and only absolute paths that exist: cargo-packager reads
     /// relative paths from the folder of the configuration file, not the repository.
-    // covers: REQ-040, REQ-041, REQ-042
+    // covers: REQ-040, REQ-041, REQ-042, REQ-138
     #[cfg(unix)]
     #[test]
     fn packager_config_is_valid_for_cargo_packager() {
@@ -344,10 +375,32 @@ mod tests {
         ];
         let nsis = ["installMode", "installer-mode", "installer_mode"];
         let macos = ["minimum-system-version"];
-        for (target, format) in [("windows-x86_64", "nsis"), ("macos-aarch64", "app")] {
+        // (product, package name, identifier, stage folder suffix, has the .vlproj association)
+        let products = [
+            (
+                "editor",
+                "videolore",
+                "io.github.andrealorenzani.videolore",
+                "",
+                true,
+            ),
+            (
+                "player",
+                "videolore-player",
+                "io.github.andrealorenzani.videolore-player",
+                "-player",
+                false,
+            ),
+        ];
+        let mut identifiers = Vec::new();
+        for ((target, format), (product, name, ident, suffix, assoc)) in
+            [("windows-x86_64", "nsis"), ("macos-aarch64", "app")]
+                .into_iter()
+                .flat_map(|t| products.map(|p| (t, p)))
+        {
             let out = std::process::Command::new("bash")
                 .arg(root.join("scripts/package.sh"))
-                .args([target, "--config-only"])
+                .args([target, product, "--config-only"])
                 .current_dir(root)
                 .output()
                 .expect("bash runs");
@@ -356,7 +409,7 @@ mod tests {
                 "{}",
                 String::from_utf8_lossy(&out.stderr)
             );
-            let file = root.join(format!("dist/stage-{target}/Packager.toml"));
+            let file = root.join(format!("dist/stage-{target}{suffix}/Packager.toml"));
             let text = std::fs::read_to_string(&file).unwrap();
             let keys = toml_keys(&text);
             let allowed: [(&str, &[&str]); 4] = [
@@ -380,17 +433,23 @@ mod tests {
             };
             // enum values: BundleTypeRole and NSISInstallerMode are camelCase
             let roles = get("{}", "role");
-            assert_eq!(roles.len(), 1);
-            assert!(
-                ["editor", "viewer", "shell", "qLGenerator", "none"].contains(&unquote(&roles[0])),
-                "{target}: role {}",
-                roles[0]
-            );
+            assert_eq!(roles.len(), usize::from(assoc), "{product} on {target}");
+            for r in &roles {
+                assert!(
+                    ["editor", "viewer", "shell", "qLGenerator", "none"].contains(&unquote(r)),
+                    "{target}: role {r}"
+                );
+            }
             let mode = get("nsis", "installMode");
             assert_eq!(mode.len(), 1);
             assert_eq!(unquote(&mode[0]), "currentUser", "per-user install");
             // without a name cargo-packager looks for a Cargo.toml inside the config file
-            assert_eq!(get("", "name"), ["\"videolore\""]);
+            assert_eq!(get("", "name"), [format!("\"{name}\"")]);
+            assert_eq!(unquote(&get("", "identifier")[0]), ident);
+            identifiers.push(ident);
+            // the executable of the product is the main binary
+            let bins = get("{}", "path");
+            assert_eq!(bins[0], format!("\"{name}\""));
             assert_eq!(get("", "formats"), [format!("[\"{format}\"]")]);
             assert_eq!(unquote(&get("", "version")[0]), env!("CARGO_PKG_VERSION"));
             // paths: absolute, and the ones from the repository exist
@@ -419,8 +478,22 @@ mod tests {
             for icon in ["icon.png", "icon.ico", "icon.icns"] {
                 assert!(paths.iter().any(|p| p.ends_with(icon)), "{target}: {icon}");
             }
-            // the .vlproj association (REQ-041)
-            assert_eq!(get("{}", "extensions"), ["[\"vlproj\"]"]);
+            // the .vlproj association (REQ-041): only the editor has it (REQ-138)
+            if assoc {
+                assert_eq!(get("{}", "extensions"), ["[\"vlproj\"]"]);
+                assert!(text.contains("file-associations"));
+            } else {
+                assert!(get("{}", "extensions").is_empty());
+                assert!(!text.contains("file-associations") && !text.contains("vlproj"));
+            }
+            // the icons of both programs are the editor's
+            for icon in ["icon.png", "icon.ico", "icon.icns"] {
+                assert!(text.contains(&format!("assets/icon/{icon}")));
+            }
         }
+        // the two installers have different identifiers (they can be installed together)
+        identifiers.sort();
+        identifiers.dedup();
+        assert_eq!(identifiers.len(), 2);
     }
 }

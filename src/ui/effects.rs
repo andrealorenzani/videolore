@@ -55,13 +55,31 @@ pub fn volume_text(m: &Mix) -> String {
     )
 }
 
-/// Tooltip of every row of the Effects section.
+/// Tooltip of the Change aspect row: it applies to the whole video only.
+pub const ASPECT_TOOLTIP: &str = "Sets the frame of the whole video";
+
+/// Tooltip of every other row of the Effects section.
 pub const EFFECT_TOOLTIP: &str =
     "Drag onto a clip to apply it to that clip; double-click to apply it to the whole video";
 
 /// The rows of the Effects section: the effect and its name (nothing else is shown).
-pub fn rows() -> [(EffectKind, &'static str); 7] {
+pub fn rows() -> [(EffectKind, &'static str); 8] {
     EffectKind::ALL.map(|e| (e, e.name()))
+}
+
+/// The icon of an effect's row (REQ-142).
+pub fn effect_icon(effect: EffectKind) -> &'static str {
+    use super::icons as i;
+    match effect {
+        EffectKind::Fade => i::CIRCLE_HALF,
+        EffectKind::Subtitles => i::SUBTITLES,
+        EffectKind::Volume => i::SPEAKER_HIGH,
+        EffectKind::CleanAudio => i::WAVEFORM,
+        EffectKind::ChangeAspect => i::FRAME_CORNERS,
+        EffectKind::Scale => i::ARROWS_OUT,
+        EffectKind::Move => i::ARROWS_OUT_CARDINAL,
+        EffectKind::ApplyLut => i::PALETTE,
+    }
 }
 
 /// The row below the effects that opens the popup of a new text (REQ-075, REQ-108).
@@ -87,6 +105,10 @@ fn row_is_open(app: &AppState, effect: EffectKind) -> bool {
             matches!(app.popups.instance, Some(Instance::Move(_)))
                 && app.popups.is_open(crate::app::Popup::Instance)
         }
+        EffectKind::ApplyLut => {
+            matches!(app.popups.instance, Some(Instance::Lut(_)))
+                && app.popups.is_open(crate::app::Popup::Instance)
+        }
         e => app.popups.is_open(e.popup()),
     }
 }
@@ -97,12 +119,22 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         let popup = effect.popup();
         let r = ui
             .add(
-                Button::selectable(row_is_open(app, effect), name)
-                    .min_size(egui::vec2(w, 0.0))
-                    .sense(egui::Sense::click_and_drag()),
+                Button::selectable(
+                    row_is_open(app, effect),
+                    super::icons::label(effect_icon(effect), name),
+                )
+                .min_size(egui::vec2(w, 0.0))
+                .sense(egui::Sense::click_and_drag()),
             )
-            .on_hover_text(EFFECT_TOOLTIP);
-        r.dnd_set_drag_payload(effect);
+            .on_hover_text(if effect == EffectKind::ChangeAspect {
+                ASPECT_TOOLTIP
+            } else {
+                EFFECT_TOOLTIP
+            });
+        // Change aspect cannot be dropped on a clip (REQ-075, REQ-130)
+        if effect != EffectKind::ChangeAspect {
+            r.dnd_set_drag_payload(effect);
+        }
         if r.dragged() && egui::DragAndDrop::has_payload_of_type::<EffectKind>(ui.ctx()) {
             // what is being dragged follows the pointer
             if let Some(p) = ui.ctx().pointer_interact_pos() {
@@ -132,8 +164,11 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     // not an effect to drop on a clip: only a click
     let r = ui
         .add(
-            Button::selectable(app.popups.is_open(crate::app::Popup::Text), ADD_TEXT_ROW)
-                .min_size(egui::vec2(w, 0.0)),
+            Button::selectable(
+                app.popups.is_open(crate::app::Popup::Text),
+                super::icons::label(super::icons::TEXT_T, ADD_TEXT_ROW),
+            )
+            .min_size(egui::vec2(w, 0.0)),
         )
         .on_hover_text(ADD_TEXT_TOOLTIP);
     if r.clicked() {

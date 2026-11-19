@@ -19,6 +19,17 @@ pub struct Node {
     pub rect: Rect,
     pub disabled: bool,
     pub interactive: bool,
+    /// The label as drawn, with its icon.
+    pub raw: String,
+}
+
+/// A label without the icon (a private-use character and a space) that starts it.
+pub fn without_icon(label: &str) -> String {
+    let mut it = label.chars();
+    match (it.next(), it.next()) {
+        (Some(c), Some(' ')) if ('\u{e000}'..='\u{f8ff}').contains(&c) => it.collect(),
+        _ => label.to_string(),
+    }
 }
 
 /// A window driven frame by frame.
@@ -65,7 +76,8 @@ impl Harness {
                         let b = n.bounds()?;
                         Some(Node {
                             role: n.role(),
-                            label: n.label().or(n.value()).unwrap_or_default().to_string(),
+                            raw: n.label().or(n.value()).unwrap_or_default().to_string(),
+                            label: without_icon(n.label().or(n.value()).unwrap_or_default()),
                             rect: Rect::from_min_max(
                                 pos2(b.x0 as f32, b.y0 as f32),
                                 pos2(b.x1 as f32, b.y1 as f32),
@@ -868,13 +880,19 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
             "Clean audio",
             "Change aspect",
             "Scale",
-            "Move"
+            "Move",
+            "Apply LUT"
         ]
     );
     for (effect, name) in rows.into_iter().take(4) {
-        // the row shows only the name, with the tooltip explaining how to apply it
+        // the row shows only the name (and its icon, REQ-142), with the tooltip explaining
+        // how to apply it
         let n = h.find(name).unwrap_or_else(|| panic!("{name}"));
         assert_eq!(n.label, name);
+        assert!(
+            n.raw.ends_with(&format!(" {name}"))
+                && n.raw.chars().count() == name.chars().count() + 2
+        );
         h.click(n.rect.center());
         assert!(h.app.popups.is_open(effect.popup()), "{name}");
     }

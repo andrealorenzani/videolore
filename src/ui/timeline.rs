@@ -635,6 +635,16 @@ fn marker_lane(
                 let c = pos2(m.x + 5.0, mid);
                 painter.circle(c, 4.0, Color32::from_rgb(170, 90, 190), outline);
             }
+            MarkerKind::Lut => {
+                let c = pos2(m.x + 5.0, mid);
+                painter.rect(
+                    Rect::from_center_size(c, vec2(10.0, 10.0)),
+                    3.0,
+                    Color32::from_rgb(190, 80, 110),
+                    outline,
+                    StrokeKind::Inside,
+                );
+            }
             MarkerKind::Fade | MarkerKind::EdgeFade => {
                 let d = 6.0;
                 painter.add(Shape::convex_polygon(
@@ -686,15 +696,19 @@ fn marker_lane(
                     Color32::from_gray(70),
                     Stroke::new(1.0, Color32::GRAY),
                 );
-                painter.text(
-                    c,
-                    Align2::CENTER_CENTER,
-                    "+",
-                    FontId::proportional(10.0),
-                    Color32::WHITE,
-                );
             }
         }
+    }
+    // every marker type has its icon on its shape (REQ-142)
+    for m in &all {
+        let (dx, dy) = markers::icon_offset(m.kind);
+        painter.text(
+            pos2(m.x + dx, mid + dy),
+            Align2::CENTER_CENTER,
+            markers::icon_of(m.kind),
+            FontId::proportional(9.0),
+            Color32::WHITE,
+        );
     }
     let resp = ui.interact(lane, Id::unique("videolore-marker-lane"), Sense::click());
     let under = |x: f32| markers::hits(&all, x, HIT_TOLERANCE);
@@ -807,6 +821,7 @@ fn marker_lane(
                             effect: crate::app::FrameFx::Move,
                         },
                     ),
+                    Instance::Lut(target) => ("Remove effect", Command::RemoveLut(target)),
                 };
                 entry(ui, app.is_enabled(&cmd), label, cmds, vec![cmd]);
                 if let Instance::Line(id, _) = i {

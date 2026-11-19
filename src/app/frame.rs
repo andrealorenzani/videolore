@@ -66,16 +66,20 @@ impl AppState {
             EffectKind::ChangeAspect => self.show_instance(Instance::Aspect),
             EffectKind::Scale => self.show_instance(Instance::Scale(FrameTarget::Whole)),
             EffectKind::Move => self.show_instance(Instance::Move(FrameTarget::Whole)),
+            EffectKind::ApplyLut => self.show_instance(Instance::Lut(FrameTarget::Whole)),
             _ => {}
         }
     }
 
-    fn show_instance(&mut self, i: Instance) {
+    pub(super) fn show_instance(&mut self, i: Instance) {
         self.popups.chooser = None;
         self.popups.instance = Some(i);
         self.popups.key = None;
         self.popups.show(Popup::Instance);
-        if let Instance::Scale(FrameTarget::Clip(c)) | Instance::Move(FrameTarget::Clip(c)) = i {
+        if let Instance::Scale(FrameTarget::Clip(c))
+        | Instance::Move(FrameTarget::Clip(c))
+        | Instance::Lut(FrameTarget::Clip(c)) = i
+        {
             self.selected_clip = Some(c);
         }
     }

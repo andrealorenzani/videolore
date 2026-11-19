@@ -20,6 +20,7 @@ pub struct FakeDialogs {
     pub export: Option<PathBuf>,
     pub ffmpeg: Option<PathBuf>,
     pub model: Option<PathBuf>,
+    pub lut: Option<PathBuf>,
     /// The folder "..." in the Export dialog chooses.
     pub folder: Option<PathBuf>,
     /// Where "Export subtitles" saves, and the name it proposed.
@@ -51,6 +52,9 @@ impl Dialogs for FakeDialogs {
     }
     fn pick_model_file(&mut self) -> Option<PathBuf> {
         self.model.clone()
+    }
+    fn pick_lut(&mut self) -> Option<PathBuf> {
+        self.lut.clone()
     }
     fn pick_subtitles_save(&mut self, default_name: &str) -> Option<PathBuf> {
         *self.srt_name.lock().unwrap() = default_name.to_string();

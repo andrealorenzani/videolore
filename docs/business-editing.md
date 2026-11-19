@@ -65,6 +65,7 @@ The window layout (REQ-024), how commands are reached (REQ-025), menus, toolbar,
 - (1.3.0) The project format changes again (REQ-113): a project saved with 1.3.0 cannot be opened by 1.2.6 or earlier.
 - (1.4.0) The project format changes again (REQ-123): a project saved with 1.4.0 cannot be opened by 1.3.0 or earlier.
 - (1.5.0) The project format changes again (REQ-132): a project saved with 1.5.0 cannot be opened by 1.4.1 or earlier.
+- (1.6.0) The project format changes once more (REQ-137, Apply LUT paths): a project saved with 1.6.0 cannot be opened by 1.5.x or earlier.
 - (1.2.0) Start and end fades belong to the edges of the video, not to the first or last clip, so "the video starts from black" stays true whatever is edited.
 - On macOS, Cmd+Q also goes through the unsaved-changes prompt (Ctrl+Q elsewhere).
 - Default shortcuts follow common conventions (Ctrl/Cmd+X/C/V/Z, Space for play/pause, Ctrl/Cmd+B for split, Ctrl/Cmd+S to save, Ctrl/Cmd+Q to quit); exact bindings are an engineering choice. The full list since 1.1.0 is REQ-071 in [Window, menus and effects](business-ui.md).

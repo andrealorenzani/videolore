@@ -78,10 +78,12 @@ pub enum EffectKind {
     Scale,
     /// Moves the picture, with keyframes (REQ-128, REQ-129).
     Move,
+    /// Changes the colours of the picture with a LUT file (1.6.0, REQ-135).
+    ApplyLut,
 }
 
 impl EffectKind {
-    pub const ALL: [EffectKind; 7] = [
+    pub const ALL: [EffectKind; 8] = [
         EffectKind::Fade,
         EffectKind::Subtitles,
         EffectKind::Volume,
@@ -89,13 +91,14 @@ impl EffectKind {
         EffectKind::ChangeAspect,
         EffectKind::Scale,
         EffectKind::Move,
+        EffectKind::ApplyLut,
     ];
 
     /// True for the effects of the picture frame (1.5.0).
     pub fn is_frame(self) -> bool {
         matches!(
             self,
-            EffectKind::ChangeAspect | EffectKind::Scale | EffectKind::Move
+            EffectKind::ChangeAspect | EffectKind::Scale | EffectKind::Move | EffectKind::ApplyLut
         )
     }
 
@@ -108,6 +111,7 @@ impl EffectKind {
             EffectKind::ChangeAspect => "Change aspect",
             EffectKind::Scale => "Scale",
             EffectKind::Move => "Move",
+            EffectKind::ApplyLut => "Apply LUT",
         }
     }
 
@@ -118,7 +122,10 @@ impl EffectKind {
             EffectKind::Subtitles => Popup::Subtitles,
             EffectKind::Volume => Popup::Volume,
             EffectKind::CleanAudio => Popup::CleanAudio,
-            EffectKind::ChangeAspect | EffectKind::Scale | EffectKind::Move => Popup::Instance,
+            EffectKind::ChangeAspect
+            | EffectKind::Scale
+            | EffectKind::Move
+            | EffectKind::ApplyLut => Popup::Instance,
         }
     }
 }
@@ -251,10 +258,12 @@ pub enum Popup {
     Shortcuts,
     /// A new text, or the settings of one text item ([`Popups::text`]).
     Text,
+    /// The splash screen shown at the start of the editor (1.6.0, REQ-133).
+    Splash,
 }
 
 impl Popup {
-    pub const ALL: [Popup; 9] = [
+    pub const ALL: [Popup; 10] = [
         Popup::Settings,
         Popup::Fades,
         Popup::Subtitles,
@@ -264,6 +273,7 @@ impl Popup {
         Popup::Instance,
         Popup::Shortcuts,
         Popup::Text,
+        Popup::Splash,
     ];
 
     pub fn title(self) -> &'static str {
@@ -277,6 +287,7 @@ impl Popup {
             Popup::Instance => "Selected effect",
             Popup::Shortcuts => "Keyboard shortcuts",
             Popup::Text => "Text",
+            Popup::Splash => "videolore",
         }
     }
 }
@@ -304,6 +315,8 @@ pub enum Instance {
     Scale(FrameTarget),
     /// Move of a clip or of the whole video (1.5.0).
     Move(FrameTarget),
+    /// Apply LUT of a clip or of the whole video (1.6.0).
+    Lut(FrameTarget),
 }
 
 /// Scale or Move, as the commands of the keyframes name them.
@@ -572,6 +585,15 @@ pub enum Command {
     },
     /// Opens the popup of a picture effect of the whole video (a click on its row).
     OpenFrameEffect(EffectKind),
+    /// Asks for a LUT file and applies it to a clip or the whole video (REQ-135).
+    PickLut(FrameTarget),
+    /// Applies the LUT file at `path` (the file chosen in the dialog).
+    SetLut {
+        target: FrameTarget,
+        path: PathBuf,
+    },
+    /// Removes the Apply LUT of a clip or the whole video.
+    RemoveLut(FrameTarget),
     /// Sets Change aspect of the whole video (REQ-124).
     SetAspect(FrameAspect),
     /// Removes Change aspect.
@@ -791,6 +813,8 @@ impl Command {
                 effect: EffectKind::Move,
                 ..
             } => "Move",
+            Command::SetLut { .. } => "Apply LUT",
+            Command::RemoveLut(_) => "Remove LUT",
             Command::RemoveAspect | Command::RemoveFrameEffect { .. } => "Remove effect",
             Command::AddKey { .. } => "Add keyframe",
             Command::RemoveKey { .. } => "Remove keyframe",
@@ -830,6 +854,8 @@ pub trait Dialogs {
     /// A folder, starting at `start`.
     fn pick_folder(&mut self, start: &Path) -> Option<PathBuf>;
     fn pick_model_file(&mut self) -> Option<PathBuf>;
+    /// A LUT file (`.cube`).
+    fn pick_lut(&mut self) -> Option<PathBuf>;
     /// Where to save the subtitles (`.srt`), proposing `default_name`.
     fn pick_subtitles_save(&mut self, default_name: &str) -> Option<PathBuf>;
 }
@@ -908,6 +934,8 @@ pub struct AppState {
     pub frame_drag: Option<FrameDrag>,
     /// The keyframes of the copied clip (REQ-130: a paste keeps them).
     pub clipboard_frames: Option<crate::timeline::ClipFrames>,
+    /// The LUT of the copied clip (1.6.0).
+    pub clipboard_lut: Option<String>,
     /// Lines whose corner is being dragged in the preview and their new size.
     pub resize_drag: Option<ResizeDrag>,
     /// The camera of each 360 source you looked through (window state: not saved, not
@@ -1013,6 +1041,8 @@ pub struct AppState {
     pub notice: Option<String>,
     /// Non-blocking message at the top of the window.
     pub banner: Option<Banner>,
+    /// The first-start banner (REQ-045) held back while the splash is open (REQ-133).
+    pub banner_after_splash: Option<Banner>,
 }
 
 fn check_ffmpeg(runner: &dyn Runner, settings: &Settings) -> Result<FfmpegInfo, String> {
@@ -1141,6 +1171,7 @@ impl AppState {
             drag_pos: None,
             frame_drag: None,
             clipboard_frames: None,
+            clipboard_lut: None,
             resize_drag: None,
             live: HashMap::new(),
             camera_restart: None,
@@ -1205,6 +1236,7 @@ impl AppState {
             status: String::new(),
             notice: None,
             banner: None,
+            banner_after_splash: None,
         }
     }
 
@@ -1517,6 +1549,11 @@ impl AppState {
             Command::OpenFrameEffect(_) | Command::SetAspect(_) | Command::RemoveAspect => {
                 !tl.clips.is_empty()
             }
+            Command::PickLut(t) | Command::SetLut { target: t, .. } => match t {
+                FrameTarget::Whole => !tl.clips.is_empty(),
+                FrameTarget::Clip(c) => tl.get(*c).is_some(),
+            },
+            Command::RemoveLut(t) => tl.lut_of(*t).is_some(),
             Command::AddKey { target, .. } | Command::RemoveFrameEffect { target, .. } => {
                 match target {
                     FrameTarget::Whole => !tl.clips.is_empty(),
@@ -1715,6 +1752,11 @@ impl AppState {
                     .ok_or(EditError::NothingSelected.to_string())?;
                 self.clipboard = self.project.timeline.get(id).copied();
                 self.clipboard_frames = self.project.timeline.frames_of(id).cloned();
+                self.clipboard_lut = self
+                    .project
+                    .timeline
+                    .lut_of(FrameTarget::Clip(id))
+                    .map(str::to_string);
                 self.status = "Clip copied".into();
                 Ok(())
             }
@@ -1724,12 +1766,18 @@ impl AppState {
                     .ok_or(EditError::NothingSelected.to_string())?;
                 let clip = self.project.timeline.get(id).copied();
                 let frames = self.project.timeline.frames_of(id).cloned();
+                let lut = self
+                    .project
+                    .timeline
+                    .lut_of(FrameTarget::Clip(id))
+                    .map(str::to_string);
                 self.edit(now, label, |e| {
                     e.timeline.remove(id).map(|_| ()).map_err(err)
                 })?;
                 if cmd == Command::Cut {
                     self.clipboard = clip;
                     self.clipboard_frames = frames;
+                    self.clipboard_lut = lut;
                 }
                 self.selected_clip = None;
                 Ok(())
@@ -1745,8 +1793,14 @@ impl AppState {
                 let at = self.playhead;
                 let mut new_id = None;
                 let frames = self.clipboard_frames.clone();
+                let lut = self.clipboard_lut.clone();
                 self.edit(now, label, |e| {
                     let id = e.timeline.insert_at(&clip, at, min).map_err(err)?;
+                    if let Some(p) = lut {
+                        e.timeline
+                            .set_lut(FrameTarget::Clip(id), Some(p))
+                            .map_err(err)?;
+                    }
                     if let Some(f) = frames {
                         e.timeline
                             .put_frames(crate::timeline::ClipFrames { clip: id, ..f });
@@ -2359,6 +2413,9 @@ impl AppState {
                 self.open_frame_effect(effect);
                 Ok(())
             }
+            Command::PickLut(target) => self.pick_lut(target, now),
+            Command::SetLut { target, path } => self.set_lut_file(target, &path, now),
+            Command::RemoveLut(target) => self.remove_lut(target, now),
             Command::SetAspect(a) => self.set_aspect(Some(a), now),
             Command::RemoveAspect => self.set_aspect(None, now),
             Command::AddKey { target, effect } => self.add_key(target, effect, now),
@@ -2518,10 +2575,11 @@ impl AppState {
             Instance::Pov(m, t) => self.pov_position(m, t),
             Instance::Aspect
             | Instance::Scale(FrameTarget::Whole)
-            | Instance::Move(FrameTarget::Whole) => (!tl.clips.is_empty()).then_some(Micros::ZERO),
-            Instance::Scale(FrameTarget::Clip(c)) | Instance::Move(FrameTarget::Clip(c)) => {
-                tl.index_of(c).map(|i| tl.start_of(i))
-            }
+            | Instance::Move(FrameTarget::Whole)
+            | Instance::Lut(FrameTarget::Whole) => (!tl.clips.is_empty()).then_some(Micros::ZERO),
+            Instance::Scale(FrameTarget::Clip(c))
+            | Instance::Move(FrameTarget::Clip(c))
+            | Instance::Lut(FrameTarget::Clip(c)) => tl.index_of(c).map(|i| tl.start_of(i)),
         }
     }
 
@@ -2668,7 +2726,9 @@ impl AppState {
                     .and_then(|c| tl.merge_block_reason(c))
                     .is_some() =>
             {
-                crate::timeline::DIFFERENT_VOLUMES
+                self.target_clip()
+                    .and_then(|c| tl.merge_block_reason(c))
+                    .unwrap_or(crate::timeline::DIFFERENT_VOLUMES)
             }
             Command::Merge => "Only two parts of the same clip, next to each other, can be merged",
             Command::MoveLeft | Command::MoveRight if self.target_clip().is_none() => {
@@ -2704,6 +2764,8 @@ impl AppState {
                 sphere::NOT_A_360
             }
             Command::RemoveKey { .. } => frame::SELECT_A_KEY,
+            Command::RemoveLut(_) => "There is no LUT to remove",
+            Command::PickLut(_) | Command::SetLut { .. } => "Add a clip to the timeline first",
             Command::ApplyEffect {
                 effect: EffectKind::ChangeAspect,
                 ..
@@ -2802,7 +2864,7 @@ impl AppState {
         self.load_project(p, Some(path), now);
         if !missing.is_empty() {
             self.notice = Some(format!(
-                "These source files could not be found:\n{}",
+                "Some files could not be found or were repaired:\n{}",
                 missing.join("\n")
             ));
         }
@@ -3196,8 +3258,21 @@ impl AppState {
     }
 
     /// Per-frame housekeeping: background results, preview frames, playhead, export.
+    /// Opens the splash screen (REQ-133). The first-start banner waits until it is closed.
+    pub fn show_splash(&mut self) {
+        self.popups.show(Popup::Splash);
+        if self.banner.is_some() {
+            self.banner_after_splash = self.banner.take();
+        }
+    }
+
     pub fn tick(&mut self, now: Instant) {
         self.tick_camera(now);
+        if !self.popups.is_open(Popup::Splash)
+            && let Some(b) = self.banner_after_splash.take()
+        {
+            self.banner = Some(b);
+        }
         if let Some(b) = &mut self.banner
             && let Some(life) = b.lifetime
         {
@@ -3227,7 +3302,12 @@ impl AppState {
                 self.launch_hw_probe();
             }
         }
-        for p in (self.open_requests)() {
+        let requests = (self.open_requests)();
+        if !requests.is_empty() {
+            // a file opened by the system (a double-click) makes the splash pointless
+            self.popups.close(Popup::Splash);
+        }
+        for p in requests {
             let _ = self.dispatch(Command::OpenProject(p), now);
         }
         self.tick_probes();
@@ -3492,6 +3572,7 @@ fn preview_config(
 
 mod effects;
 mod frame;
+mod lut;
 mod sphere;
 mod subs_create;
 mod texts;
@@ -3503,6 +3584,8 @@ mod effects_tests;
 mod frame_tests;
 #[cfg(test)]
 mod hw_tests;
+#[cfg(test)]
+mod lut_tests;
 #[cfg(test)]
 mod settings_tests;
 #[cfg(test)]

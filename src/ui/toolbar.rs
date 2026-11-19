@@ -79,6 +79,19 @@ pub fn label(app: &AppState, id: ActionId) -> String {
     }
 }
 
+/// The icon of a toolbar button (Play becomes Pause while playing), REQ-142.
+pub fn icon(app: &AppState, id: ActionId) -> &'static str {
+    match id {
+        ActionId::PlayPause if app.preview.is_playing() => super::icons::PAUSE,
+        _ => id.icon(),
+    }
+}
+
+/// What a toolbar button shows: its icon and its label.
+pub fn text(app: &AppState, id: ActionId) -> String {
+    super::icons::label(icon(app, id), &label(app, id))
+}
+
 /// How many buttons (of widths `widths`, in order) fit in `avail` pixels, keeping room for
 /// the "»" button (`overflow_w`) when not all of them fit.
 pub fn fit(widths: &[f32], avail: f32, overflow_w: f32) -> usize {
@@ -110,7 +123,7 @@ fn tool_button(ui: &mut Ui, app: &AppState, id: ActionId, cmds: &mut Vec<Command
     let cmd = id.command(app);
     let reason = app.disabled_reason(&cmd);
     let r = ui
-        .add_enabled(reason.is_none(), Button::new(label(app, id)))
+        .add_enabled(reason.is_none(), Button::new(text(app, id)))
         .on_hover_text(action_tooltip(ui.ctx(), app, id))
         .on_disabled_hover_text(reason.unwrap_or_default());
     if r.clicked() {
@@ -132,7 +145,7 @@ pub fn toolbar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let all = actions(app);
     let widths: Vec<f32> = all
         .iter()
-        .map(|id| button_width(ui, &label(app, *id)))
+        .map(|id| button_width(ui, &text(app, *id)))
         .collect();
     let n = visible(
         fit(&widths, ui.available_width(), button_width(ui, "»")),

@@ -26,6 +26,7 @@ pub mod history;
 pub mod hwenc;
 pub mod jobs;
 pub mod keyframes;
+pub mod lut;
 pub mod machine;
 pub mod media;
 pub mod music;
@@ -40,6 +41,7 @@ pub mod scratch;
 pub mod selection;
 pub mod settings;
 pub mod spherical;
+pub mod splash;
 pub mod srt;
 pub mod stt;
 pub mod subtitles;
@@ -64,8 +66,11 @@ pub fn real_app(project: Option<PathBuf>) -> ui::VideoloreApp {
         preview::default_sink(),
         settings::Settings::default_path(),
     );
-    if let Some(p) = project {
-        desktop::push_open_request(p);
+    let mut state = state;
+    match project {
+        // a start that opens a file shows no splash (REQ-133)
+        Some(p) => desktop::push_open_request(p),
+        None => state.show_splash(),
     }
     ui::VideoloreApp {
         state,
@@ -73,15 +78,20 @@ pub fn real_app(project: Option<PathBuf>) -> ui::VideoloreApp {
     }
 }
 
+/// The window icon of both programs (they share the artwork, REQ-138).
+pub fn app_icon() -> eframe::egui::IconData {
+    eframe::egui::IconData {
+        rgba: ICON_RGBA.to_vec(),
+        width: 256,
+        height: 256,
+    }
+}
+
 /// Window options: 1280x800 by default, never smaller than 800x500, with the app icon.
 /// On macOS the default menu is disabled so that Cmd+Q goes through the unsaved-changes
 /// prompt.
 pub fn native_options() -> eframe::NativeOptions {
-    let icon = eframe::egui::IconData {
-        rgba: ICON_RGBA.to_vec(),
-        width: 256,
-        height: 256,
-    };
+    let icon = app_icon();
     #[allow(unused_mut)]
     let mut options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()

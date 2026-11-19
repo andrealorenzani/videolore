@@ -59,6 +59,8 @@ pub enum RenderError {
     UnknownMedia,
     #[error("This 360° video is too large to show here. It is still exported.")]
     SphereTooLarge,
+    #[error("The colour LUT file '{0}' cannot be used: {1}")]
+    Lut(String, String),
     #[error("This ffmpeg cannot make the chosen format")]
     NoEncoder,
     #[error(
@@ -124,6 +126,30 @@ pub struct Segment {
     /// Change aspect, Scale and Move that act on this clip (1.5.0); `None`: the clip is
     /// drawn as before (fitted to the output picture with black bars).
     pub frame: Option<SegFrame>,
+    /// Apply LUT of the whole video and of this clip (1.6.0, REQ-135): the whole video's is
+    /// applied first. A LUT that cannot be read is ignored in a preview and stops an export.
+    pub lut_whole: Option<std::sync::Arc<crate::lut::Lut>>,
+    pub lut_clip: Option<std::sync::Arc<crate::lut::Lut>>,
+}
+
+/// The LUT of `target` for a render: `None` without one; a file that cannot be used is an
+/// error for an export (REQ-136: nothing is written) and ignored for a preview.
+fn lut_for(
+    tl: &crate::timeline::Timeline,
+    target: crate::timeline::FrameTarget,
+    src: Source,
+) -> Result<Option<std::sync::Arc<crate::lut::Lut>>, RenderError> {
+    let Some(path) = tl.lut_of(target) else {
+        return Ok(None);
+    };
+    match crate::lut::cached(path) {
+        Ok(l) => Ok(Some(l)),
+        Err(_) if matches!(src, Source::Preview { .. }) => Ok(None),
+        Err(e) => Err(RenderError::Lut(
+            crate::lut::display_name(path),
+            e.to_string(),
+        )),
+    }
 }
 
 /// The picture effects of one clip (1.5.0, REQ-131).
@@ -162,7 +188,11 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 return Err(RenderError::SphereTooLarge);
             }
             let (fade_in, fade_out) = tl.fades_of(i);
+            let lut_whole = lut_for(tl, crate::timeline::FrameTarget::Whole, src)?;
+            let lut_clip = lut_for(tl, crate::timeline::FrameTarget::Clip(c.id), src)?;
             out.push(Segment {
+                lut_whole,
+                lut_clip,
                 media: m.id,
                 path: src.path_of(m),
                 has_audio: m.format.has_audio(),
@@ -535,6 +565,30 @@ fn fades(c: &mut String, filter: &str, s: &Segment, early: Micros) {
     }
 }
 
+/// The Apply LUT filters of a segment (1.6.0, ADR-110) with a leading comma, or an empty
+/// string without a LUT. The whole video's LUT comes first. Each cube is written under a
+/// fixed name into the working folder (`command_files`), so no user text reaches the filter.
+/// The picture goes through planar RGB for the table and back to `pix_fmt`.
+fn lut_chain(s: &Segment, i: usize, pix_fmt: &str, files: &mut Vec<(String, String)>) -> String {
+    let mut c = String::new();
+    let mut add = |name: String, l: &crate::lut::Lut| {
+        c.push_str(&format!(",lut3d=file={name}:interp=tetrahedral"));
+        if !files.iter().any(|f| f.0 == name) {
+            files.push((name, l.to_cube()));
+        }
+    };
+    if let Some(l) = &s.lut_whole {
+        add("lut-whole.cube".to_string(), l);
+    }
+    if let Some(l) = &s.lut_clip {
+        add(format!("lut-clip-{i}.cube"), l);
+    }
+    if c.is_empty() {
+        return c;
+    }
+    format!(",format=gbrp{c},format={pix_fmt}")
+}
+
 /// The frame effect of a segment (1.5.0, REQ-131 stages A-C of ADR-098): `picture` is the
 /// chain that makes the fitted picture (without its output format). Pushes the chains of
 /// the picture, its scale and the background, and returns the chain that overlays them
@@ -666,6 +720,7 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                 Some(f) => frame::camera_size((w, h), f.aspect.as_ref()),
                 None => (w, h),
             };
+            let lut = lut_chain(s, i, spec.pix_fmt, &mut command_files);
             let mut c = if let Some(path) = &s.sphere {
                 // the camera view fills the output picture: no scale, no bars
                 let from = s.src_in + s.skip;
@@ -701,9 +756,16 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                 } else {
                     format!(",format={}", spec.pix_fmt)
                 };
+                // the LUT goes before the texts fixed to the sphere (they keep their colours),
+                // or after the camera cut when there are none (smaller picture)
+                let (lut_before, lut_after) = if s.anchored.is_some() {
+                    (lut.as_str(), "")
+                } else {
+                    ("", lut.as_str())
+                };
                 format!(
-                    "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS,fps={f},{anchored}{send}{v360},\
-                     setsar=1,setpts=PTS+{o}/TB{tail}",
+                    "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS,fps={f}{lut_before},{anchored}{send}{v360},\
+                     setsar=1{lut_after},setpts=PTS+{o}/TB{tail}",
                     v360 = camera::filter(&id, cam, cw, ch),
                     o = s.skip.ff(),
                     f = g.fps.ff(),
@@ -724,14 +786,14 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     // draws the background and places the picture
                     Some(f) => format!(
                         "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB{fit},\
-                         setsar=1,fps={fps}{anchored}",
+                         setsar=1,fps={fps}{lut}{anchored}",
                         fit = frame::fit_filter((w, h), f.aspect.as_ref()),
                         o = s.skip.ff(),
                         fps = g.fps.ff(),
                     ),
                     None => format!(
                         "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB,\
-                         scale={w}:{h}:force_original_aspect_ratio=decrease,\
+                         scale={w}:{h}:force_original_aspect_ratio=decrease{lut},\
                          pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f}{anchored},\
                          format={pf}",
                         o = s.skip.ff(),
@@ -1064,6 +1126,7 @@ pub fn plan_export_choice(
         && preset.is_none()
         && choice.audio == format::AudioChoice::Same
         && !project.timeline.any_clean_audio()
+        && !project.timeline.any_lut()
         && project.timeline.clips.iter().all(|c| !c.has_volume())
         && bed.is_none()
         && subtitles.is_none()
@@ -1538,6 +1601,9 @@ pub struct FrameKey {
     /// Change aspect and the picture's scale and place at this position, in millionths
     /// (1.5.0); `None` with no frame effect.
     pub placement: Option<FramePlacement>,
+    /// Fingerprints of the Apply LUT tables of the whole video and of the clip (1.6.0): a
+    /// changed file re-renders the picture once.
+    pub luts: (Option<String>, Option<String>),
 }
 
 /// The frame effect state of a [`FrameKey`].
@@ -1581,7 +1647,18 @@ pub fn frame_key(
         let q = |v: f64| (v * 1_000_000.0).round() as i64;
         (tl.frame_aspect, (q(p.factor), q(p.ox), q(p.oy)))
     });
+    let hash = |t| {
+        lut_for(tl, t, src)
+            .ok()
+            .flatten()
+            .map(|l| l.hash().to_string())
+    };
+    let luts = (
+        hash(crate::timeline::FrameTarget::Whole),
+        hash(crate::timeline::FrameTarget::Clip(c.id)),
+    );
     Some(FrameKey {
+        luts,
         placement,
         path: src.path_of(m),
         frame: fps.frame_index(c.src_in + offset),
@@ -3223,5 +3300,141 @@ pub(crate) mod tests {
         let r = still_args(&p, Micros::ZERO, &g, FfVersion::Dev, sc, Source::Export).unwrap();
         let script = strs(&r.args).join(" ");
         assert!(script.contains("boxblur") || !r.args.is_empty());
+    }
+
+    fn lut_file(dir: &Path, name: &str) -> String {
+        let p = dir.join(name);
+        std::fs::write(&p, crate::lut::tests::identity(2)).unwrap();
+        p.to_string_lossy().into_owned()
+    }
+
+    fn lut_graph(p: &Project, src: Source) -> Graph {
+        let segs = segments(p, Micros::ZERO, src).unwrap();
+        build_graph(&segs, None, &spec(true, false))
+    }
+
+    // covers: REQ-135
+    // covers: REQ-136
+    #[test]
+    fn the_lut_stages_follow_the_order_whole_then_clip_and_never_use_a_user_name() {
+        use crate::timeline::FrameTarget;
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = project(&[(2, 1280, 720, 30), (2, 1280, 720, 30)]);
+        let plain = lut_graph(&p, Source::Export);
+        assert!(!plain.graph.contains("lut3d") && plain.command_files.is_empty());
+        let a = lut_file(dir.path(), "my warm look; rm.cube");
+        let id = p.timeline.clips[1].id;
+        p.timeline
+            .set_lut(FrameTarget::Whole, Some(a.clone()))
+            .unwrap();
+        p.timeline.set_lut(FrameTarget::Clip(id), Some(a)).unwrap();
+        let g = lut_graph(&p, Source::Export);
+        // before the pad (black bars keep their colour), whole before clip, then back to yuv
+        assert!(
+            g.graph.contains(
+                "decrease,format=gbrp,lut3d=file=lut-whole.cube:interp=tetrahedral,\
+             lut3d=file=lut-clip-1.cube:interp=tetrahedral,format=yuv420p,pad="
+            ),
+            "{}",
+            g.graph
+        );
+        assert!(g.graph.contains("[0:v:0]") && !g.graph.contains("warm"));
+        // the first segment has the whole LUT only; the whole cube is written once
+        assert_eq!(g.graph.matches("lut-whole.cube").count(), 2);
+        assert_eq!(g.graph.matches("lut-clip-1.cube").count(), 1);
+        let names: Vec<&str> = g.command_files.iter().map(|f| f.0.as_str()).collect();
+        assert_eq!(names, ["lut-whole.cube", "lut-clip-1.cube"]);
+        assert!(g.command_files[0].1.starts_with("LUT_3D_SIZE 2\n"));
+        // a frame effect: the LUT acts on the fitted picture before the overlay
+        p.timeline
+            .set_frame_aspect(Some(tall(Fit::Width, Fill::Blur)))
+            .unwrap();
+        let g = lut_graph(&p, Source::Export);
+        let lut = g.graph.find("lut3d").unwrap();
+        assert!(lut < g.graph.find("overlay").unwrap());
+    }
+
+    // covers: REQ-136
+    #[test]
+    fn a_lut_forces_the_reencode_and_the_export_checks_the_file_first() {
+        use crate::timeline::FrameTarget;
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = project(&[(2, 1280, 720, 30), (3, 1280, 720, 30)]);
+        assert!(matches!(
+            plan_export(&p, &enc(), |_, _| true).unwrap(),
+            Plan::StreamCopy { .. }
+        ));
+        let path = lut_file(dir.path(), "a.cube");
+        p.timeline
+            .set_lut(FrameTarget::Whole, Some(path.clone()))
+            .unwrap();
+        assert!(matches!(
+            plan_export(&p, &enc(), |_, _| true).unwrap(),
+            Plan::Reencode { .. }
+        ));
+        // a missing file: the export stops with a message that names it; the preview
+        // ignores the LUT
+        std::fs::remove_file(&path).unwrap();
+        let e = plan_export(&p, &enc(), |_, _| true).unwrap_err();
+        assert!(matches!(e, RenderError::Lut(ref n, _) if n == "a.cube"));
+        assert!(e.to_string().contains("a.cube"));
+        let g = lut_graph(&p, Source::Preview { proxies: false });
+        assert!(!g.graph.contains("lut3d"));
+        // a broken file is refused at the export too
+        std::fs::write(&path, "nonsense").unwrap();
+        assert!(matches!(
+            plan_export(&p, &enc(), |_, _| true),
+            Err(RenderError::Lut(..))
+        ));
+    }
+
+    // covers: REQ-135
+    #[test]
+    fn the_lut_goes_before_texts_fixed_to_the_sphere_and_after_the_camera_otherwise() {
+        use crate::timeline::FrameTarget;
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = sphere_project();
+        let path = lut_file(dir.path(), "s.cube");
+        p.timeline.set_lut(FrameTarget::Whole, Some(path)).unwrap();
+        let g = lut_graph(&p, Source::Export);
+        assert!(
+            g.graph.find("v360").unwrap() < g.graph.find("lut3d").unwrap(),
+            "{}",
+            g.graph
+        );
+        // texts fixed to the sphere: drawn after the table, so they keep their colours
+        let segs = {
+            let mut v = segments(&p, Micros::ZERO, Source::Export).unwrap();
+            v[0].anchored = Some("[Script Info]".into());
+            v
+        };
+        let g = build_graph(&segs, None, &spec(true, false));
+        assert!(
+            g.graph.find("lut3d").unwrap() < g.graph.find("subtitles=f=anc0.ass").unwrap(),
+            "{}",
+            g.graph
+        );
+    }
+
+    // covers: REQ-135
+    #[test]
+    fn a_changed_lut_changes_the_frame_key_once() {
+        use crate::timeline::FrameTarget;
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = project(&[(4, 1280, 720, 30)]);
+        let g = output_geometry(&p, &enc()).unwrap();
+        let key = |p: &Project| frame_key(p, s(1), Source::Export, &g).unwrap();
+        let none = key(&p);
+        assert_eq!(none.luts, (None, None));
+        let path = lut_file(dir.path(), "k.cube");
+        p.timeline
+            .set_lut(FrameTarget::Whole, Some(path.clone()))
+            .unwrap();
+        let with = key(&p);
+        assert_ne!(none, with);
+        assert!(with.luts.0.is_some() && with.luts.1.is_none());
+        assert_eq!(with, key(&p));
+        std::fs::write(&path, crate::lut::tests::identity(3)).unwrap();
+        assert_ne!(with, key(&p));
     }
 }

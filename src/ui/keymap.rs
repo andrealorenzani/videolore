@@ -77,6 +77,10 @@ pub fn popup_id(p: Popup) -> Id {
 /// The popup Esc closes: the frontmost of the open ones (the most recently opened when
 /// that cannot be told).
 pub fn topmost_popup(ctx: &Context, app: &AppState) -> Option<Popup> {
+    // the splash is drawn above every other window
+    if app.popups.is_open(Popup::Splash) {
+        return Some(Popup::Splash);
+    }
     let top = ctx.memory(|m| m.areas().top_layer_id(Order::Middle));
     top.and_then(|l| {
         app.popups

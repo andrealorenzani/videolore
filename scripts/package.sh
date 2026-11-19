@@ -2,22 +2,50 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Andrea Lorenzani
 #
-# Builds the installers of one target from an already built release executable
-# (cargo build --release --locked) and the pinned ffmpeg (scripts/fetch-ffmpeg.sh).
-#   scripts/package.sh linux-x86_64     -> videolore-${VERSION}-linux-x86_64.AppImage
-#                                          videolore-${VERSION}-linux-x86_64.tar.gz
-#   scripts/package.sh windows-x86_64   -> videolore-${VERSION}-windows-x86_64-setup.exe
-#   scripts/package.sh macos-aarch64    -> videolore-${VERSION}-macos-aarch64.dmg
-#   scripts/package.sh sources          -> videolore-${VERSION}-third-party-source.tar.xz
-#   scripts/package.sh windows-x86_64|macos-aarch64 --config-only -> only dist/stage-*/Packager.toml
-# Output goes to dist/. Tools: cargo-packager (Windows, macOS; version in
-# packaging/tools.lock), appimagetool + type2 runtime (Linux, pinned by SHA-256), curl, git.
+# Builds the installers of one product (the editor by default, or videolore player) for one
+# target from an already built release executable (cargo build --release --locked, with
+# -p videolore-player for the player) and the pinned ffmpeg (scripts/fetch-ffmpeg.sh).
+#   scripts/package.sh linux-x86_64 [player]    -> <name>-${VERSION}-linux-x86_64.AppImage
+#                                                  <name>-${VERSION}-linux-x86_64.tar.gz
+#   scripts/package.sh windows-x86_64 [player]  -> <name>-${VERSION}-windows-x86_64-setup.exe
+#   scripts/package.sh macos-aarch64 [player]   -> <name>-${VERSION}-macos-aarch64.dmg
+#   scripts/package.sh sources                  -> videolore-${VERSION}-third-party-source.tar.xz
+#   scripts/package.sh windows-x86_64|macos-aarch64 [player] --config-only
+#                                               -> only dist/stage-*/Packager.toml
+# <name> is videolore (editor) or videolore-player. Output goes to dist/. Tools:
+# cargo-packager (Windows, macOS; version in packaging/tools.lock), appimagetool + type2
+# runtime (Linux, pinned by SHA-256), curl, git.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-target="${1:?usage: package.sh linux-x86_64|windows-x86_64|macos-aarch64|sources}"
+target="${1:?usage: package.sh linux-x86_64|windows-x86_64|macos-aarch64|sources [editor|player] [--config-only]}"
+shift
+product=editor
+config_only=0
+for a in "$@"; do
+    case "$a" in
+    editor | player) product="$a" ;;
+    --config-only) config_only=1 ;;
+    *) echo "unknown argument $a" >&2; exit 2 ;;
+    esac
+done
 VERSION=$(scripts/version.sh get)
 dist=dist
-stage="$dist/stage-$target"
+# One product, one set of names (the two installers differ only by these).
+if [[ "$product" == player ]]; then
+    pname=videolore-player
+    pdisplay="videolore player"
+    pident=io.github.andrealorenzani.videolore-player
+    pdesc="Simple video player with a 360 view and subtitles"
+    pcrates=rust-crates-player.txt
+    stage="$dist/stage-$target-player"
+else
+    pname=videolore
+    pdisplay=videolore
+    pident=io.github.andrealorenzani.videolore
+    pdesc="Non-destructive video editor for short social videos"
+    pcrates=rust-crates.txt
+    stage="$dist/stage-$target"
+fi
 ffdir="$dist/ffmpeg-$target"
 mkdir -p "$dist"
 
@@ -64,7 +92,7 @@ smoke_test() {
     for e in libx264 libx265 libvpx-vp9 libopus libmp3lame $(hw_encoders "$target"); do
         grep -qw "$e" <<<"$enc" || { echo "bundled ffmpeg lacks encoder $e" >&2; exit 1; }
     done
-    for f in subtitles amix alimiter psnr afftdn; do
+    for f in subtitles amix alimiter psnr afftdn lut3d; do
         grep -qw "$f" <<<"$filters" || { echo "bundled ffmpeg lacks filter $f" >&2; exit 1; }
     done
     echo "smoke test passed: $ff"
@@ -72,10 +100,12 @@ smoke_test() {
 
 # Notices and the subtitle font licence shipped with every package.
 stage_notices() {
-    mkdir -p "$1/notices" "$1/fonts"
-    cp packaging/notices/third-party.txt packaging/notices/rust-crates.txt LICENSE "$1/notices/"
+    mkdir -p "$1/notices" "$1/fonts" "$1/icons"
+    cp packaging/notices/third-party.txt LICENSE "$1/notices/"
+    cp "packaging/notices/$pcrates" "$1/notices/"
     cp packaging/ffmpeg.lock "$1/notices/ffmpeg-builds.txt"
     cp assets/fonts/OFL.txt assets/fonts/SOURCE.txt "$1/fonts/"
+    cp assets/icons/LICENSE-Phosphor.txt assets/icons/SOURCE.txt "$1/icons/"
 }
 
 # Absolute path in the form the native tools understand (D:/a/... under Git Bash on
@@ -97,7 +127,7 @@ packager_config() {
     local root res formats dll
     root=$(native_path "$PWD")
     res=$(native_path "$stage/res")
-    local resources='"'"$res/notices"'", "'"$res/fonts"'"'
+    local resources='"'"$res/notices"'", "'"$res/fonts"'", "'"$res/icons"'"'
     if [[ "$target" == windows-x86_64 ]]; then
         # the DLLs of the shared ffmpeg build go next to ffmpeg.exe (the install folder)
         for dll in "$ffdir"/*.dll; do
@@ -108,29 +138,34 @@ packager_config() {
     else
         formats='["app"]'
     fi
+    # only the editor opens projects: the player has no file association
+    local assoc=""
+    if [[ "$product" == editor ]]; then
+        assoc='file-associations = [
+    { extensions = ["vlproj"], name = "videolore project", description = "videolore project", mime-type = "application/x-videolore-project", role = "editor" },
+]'
+    fi
     mkdir -p "$stage"
     cat >"$stage/Packager.toml" <<TOML
-name = "videolore"
-product-name = "videolore"
-identifier = "io.github.andrealorenzani.videolore"
+name = "${pname}"
+product-name = "${pdisplay}"
+identifier = "${pident}"
 version = "${VERSION}"
-description = "Non-destructive video editor for short social videos"
+description = "${pdesc}"
 authors = ["Andrea Lorenzani"]
 publisher = "Andrea Lorenzani"
 license-file = "${root}/packaging/notices/third-party.txt"
 out-dir = "$(native_path "$stage/out")"
 binaries-dir = "$(native_path "$stage/bin")"
 binaries = [
-    { path = "videolore", main = true },
+    { path = "${pname}", main = true },
     { path = "ffmpeg", main = false },
     { path = "ffprobe", main = false },
 ]
 icons = ["${root}/assets/icon/icon.png", "${root}/assets/icon/icon.ico", "${root}/assets/icon/icon.icns"]
 resources = [${resources}]
 formats = ${formats}
-file-associations = [
-    { extensions = ["vlproj"], name = "videolore project", description = "videolore project", mime-type = "application/x-videolore-project", role = "editor" },
-]
+${assoc}
 
 [nsis]
 installMode = "currentUser"
@@ -142,7 +177,7 @@ TOML
 
 # package.sh TARGET --config-only: only writes $stage/Packager.toml (no ffmpeg, no
 # build), so the configuration can be checked on any machine.
-if [[ "${2:-}" == --config-only ]]; then
+if [[ $config_only -eq 1 ]]; then
     case "$target" in
     windows-x86_64 | macos-aarch64) packager_config; echo "$stage/Packager.toml"; exit 0 ;;
     *) echo "--config-only is for windows-x86_64 and macos-aarch64" >&2; exit 2 ;;
@@ -153,7 +188,7 @@ fi
 
 case "$target" in
 linux-x86_64)
-    exe=target/release/videolore
+    exe="target/release/$pname"
     smoke_test "$ffdir/ffmpeg"
     # The video hardware libraries (libva, libcuda, libvpl) come from the system at run
     # time: the bundled ffmpeg must be dynamically linked against glibc to load them.
@@ -164,23 +199,36 @@ linux-x86_64)
     max_glibc="2.39"
     need=$(objdump -T "$exe" | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sed 's/GLIBC_//' | sort -V | tail -1)
     if [[ "$(printf '%s\n%s\n' "$need" "$max_glibc" | sort -V | tail -1)" != "$max_glibc" ]]; then
-        echo "videolore needs glibc $need, newer than $max_glibc" >&2; exit 1
+        echo "$pname needs glibc $need, newer than $max_glibc" >&2; exit 1
     fi
     echo "glibc needed: $need (limit $max_glibc)"
     # --- AppImage: hand-built AppDir + appimagetool with the pinned static runtime
     appdir="$stage/AppDir"
-    rm -rf "$stage" && mkdir -p "$appdir/usr/bin" "$appdir/usr/share/videolore"
-    install -m 0755 "$exe" "$appdir/usr/bin/videolore"
+    rm -rf "$stage" && mkdir -p "$appdir/usr/bin" "$appdir/usr/share/$pname"
+    install -m 0755 "$exe" "$appdir/usr/bin/$pname"
     install -m 0755 "$ffdir/ffmpeg" "$ffdir/ffprobe" "$appdir/usr/bin/"
-    stage_notices "$appdir/usr/share/videolore"
-    cp assets/icon/icon-256.png "$appdir/videolore.png"
-    cat >"$appdir/AppRun" <<'APPRUN'
+    stage_notices "$appdir/usr/share/$pname"
+    # both products use the editor's icon artwork (they differ by name and identifier)
+    cp assets/icon/icon-256.png "$appdir/$pname.png"
+    cat >"$appdir/AppRun" <<APPRUN
 #!/bin/sh
-HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/bin/videolore" "$@"
+HERE="\$(dirname "\$(readlink -f "\$0")")"
+exec "\$HERE/usr/bin/$pname" "\$@"
 APPRUN
     chmod 0755 "$appdir/AppRun"
-    cat >"$appdir/videolore.desktop" <<'DESKTOP'
+    if [[ "$product" == player ]]; then
+        cat >"$appdir/$pname.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=$pdisplay
+Comment=Watch a video, with its 360 view and subtitles
+Exec=$pname %f
+Icon=$pname
+Terminal=false
+Categories=AudioVideo;Player;Video;
+DESKTOP
+    else
+        cat >"$appdir/$pname.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=videolore
@@ -191,19 +239,34 @@ Terminal=false
 Categories=AudioVideo;Video;AudioVideoEditing;
 MimeType=application/x-videolore-project;
 DESKTOP
+    fi
     fetch_tool appimagetool "$stage/appimagetool"
     fetch_tool appimage-runtime "$stage/runtime"
     chmod 0755 "$stage/appimagetool"
     ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$stage/appimagetool" --no-appstream \
-        --runtime-file "$stage/runtime" "$appdir" "$dist/videolore-${VERSION}-linux-x86_64.AppImage"
-    chmod 0755 "$dist/videolore-${VERSION}-linux-x86_64.AppImage"
-    # --- tar.gz: a folder that runs by double-clicking `videolore`
-    top="videolore-${VERSION}-linux-x86_64"
+        --runtime-file "$stage/runtime" "$appdir" "$dist/${pname}-${VERSION}-linux-x86_64.AppImage"
+    chmod 0755 "$dist/${pname}-${VERSION}-linux-x86_64.AppImage"
+    # --- tar.gz: a folder that runs by double-clicking `$pname`
+    top="${pname}-${VERSION}-linux-x86_64"
     folder="$stage/$top"
     mkdir -p "$folder"
     install -m 0755 "$exe" "$ffdir/ffmpeg" "$ffdir/ffprobe" "$folder/"
     stage_notices "$folder"
-    cp assets/icon/icon-256.png "$folder/videolore.png"
+    cp assets/icon/icon-256.png "$folder/$pname.png"
+    if [[ "$product" == player ]]; then
+        # the player does not add itself to the application menu: it says how to start
+        cat >"$folder/README.txt" <<README
+videolore player ${VERSION} for Linux (x86_64)
+
+Double-click "videolore-player" in this folder to start it, or run
+./videolore-player some-video.mp4 from a terminal in this folder.
+
+If double-clicking does not start it, right-click "videolore-player" and choose "Run".
+
+videolore player plays one video at a time. It never changes your files. To uninstall,
+delete this folder.
+README
+    else
     : >"$folder/.videolore-bundle"
     cat >"$folder/README.txt" <<README
 videolore ${VERSION} for Linux (x86_64)
@@ -217,13 +280,14 @@ If double-clicking does not start it, right-click "videolore" and choose "Run", 
 To uninstall: use "Remove from application menu" in videolore's About screen, then delete
 this folder. Your projects are never touched.
 README
-    tar -C "$stage" --owner=0 --group=0 -czf "$dist/videolore-${VERSION}-linux-x86_64.tar.gz" "$top"
+    fi
+    tar -C "$stage" --owner=0 --group=0 -czf "$dist/${pname}-${VERSION}-linux-x86_64.tar.gz" "$top"
     ;;
 windows-x86_64 | macos-aarch64)
     if [[ "$target" == windows-x86_64 ]]; then ext=.exe; else ext=""; fi
     smoke_test "$ffdir/ffmpeg$ext"
     rm -rf "$stage" && mkdir -p "$stage/bin" "$stage/res"
-    cp "target/release/videolore$ext" "$ffdir/ffmpeg$ext" "$ffdir/ffprobe$ext" "$stage/bin/"
+    cp "target/release/$pname$ext" "$ffdir/ffmpeg$ext" "$ffdir/ffprobe$ext" "$stage/bin/"
     stage_notices "$stage/res"
     if [[ "$target" == windows-x86_64 ]] && ! compgen -G "$ffdir/*.dll" >/dev/null; then
         echo "the Windows ffmpeg build has no DLLs in $ffdir: it would not start" >&2; exit 1
@@ -233,7 +297,7 @@ windows-x86_64 | macos-aarch64)
     if [[ "$target" == windows-x86_64 ]]; then
         setup=$(find "$stage/out" -name '*-setup.exe' | head -1)
         [[ -n "$setup" ]] || { echo "cargo-packager made no setup.exe in $stage/out" >&2; exit 1; }
-        cp "$setup" "$dist/videolore-${VERSION}-windows-x86_64-setup.exe"
+        cp "$setup" "$dist/${pname}-${VERSION}-windows-x86_64-setup.exe"
     else
         app=$(find "$stage/out" -maxdepth 2 -name '*.app' -type d | head -1)
         [[ -n "$app" ]] || { echo "cargo-packager made no .app in $stage/out" >&2; exit 1; }
@@ -243,12 +307,12 @@ windows-x86_64 | macos-aarch64)
         smoke_test "$app/Contents/MacOS/ffmpeg"
         dmgroot="$stage/dmg"
         mkdir -p "$dmgroot"
-        cp -R "$app" "$dmgroot/videolore.app"
+        cp -R "$app" "$dmgroot/$pdisplay.app"
         ln -s /Applications "$dmgroot/Applications"
         # hdiutil sometimes fails with "Resource busy" on CI machines: retry a few times
         for attempt in 1 2 3 4 5; do
-            hdiutil create -volname videolore -srcfolder "$dmgroot" -ov -format UDZO \
-                "$dist/videolore-${VERSION}-macos-aarch64.dmg" && break
+            hdiutil create -volname "$pdisplay" -srcfolder "$dmgroot" -ov -format UDZO \
+                "$dist/${pname}-${VERSION}-macos-aarch64.dmg" && break
             [[ $attempt -lt 5 ]] || { echo "hdiutil failed $attempt times" >&2; exit 1; }
             sleep 5
         done
@@ -283,6 +347,7 @@ sources)
     cp packaging/ffmpeg.lock "$src/ffmpeg-builds.txt"
     cp packaging/notices/third-party.txt "$src/"
     cp assets/fonts/OFL.txt assets/fonts/SOURCE.txt "$src/"
+    cp assets/icons/LICENSE-Phosphor.txt "$src/LICENSE-Phosphor-Icons.txt"
     cat >"$src/README.txt" <<README
 Third-party source code for videolore ${VERSION}
 
@@ -292,6 +357,7 @@ Third-party source code for videolore ${VERSION}
   They name and pin the version of every library compiled into ffmpeg (x264, x265,
   libass, ...), and download their sources.
 - SOURCE.txt / OFL.txt: the subtitle font (Noto Sans Bold) and its licence.
+- LICENSE-Phosphor-Icons.txt: the licence of the icons of both programs (MIT).
 - third-party.txt: the notices shown in videolore, including the written offer.
 README
     tar -C "$dist/stage-sources" -cJf "$dist/videolore-${VERSION}-third-party-source.tar.xz" \
@@ -302,4 +368,4 @@ README
     exit 2
     ;;
 esac
-ls -l "$dist"/videolore-"${VERSION}"-*
+ls -l "$dist"/"$pname"-"${VERSION}"-*

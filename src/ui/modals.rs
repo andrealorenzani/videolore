@@ -99,7 +99,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
         && !app.ffmpeg_checking
     {
         egui::Modal::new(egui::Id::unique("ffmpeg-missing")).show(ctx, |ui| {
-            ui.heading("ffmpeg is required");
+            ui.heading(super::icons::label(
+                super::icons::WARNING,
+                "ffmpeg is required",
+            ));
             ui.label(e);
             ui.label(crate::ffmpeg::install_hint());
             ui.label("You can also set VIDEOLORE_FFMPEG / VIDEOLORE_FFPROBE.");
@@ -119,6 +122,7 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
     }
     if let Some(n) = &app.notice {
         egui::Modal::new(egui::Id::unique("notice")).show(ctx, |ui| {
+            ui.heading(super::icons::label(super::icons::INFO, "Notice"));
             ui.label(n);
             if ui.button("OK").clicked() {
                 cmds.push(Command::DismissNotice);
@@ -130,7 +134,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
         None => {}
         Some(Modal::Unsaved(action)) => {
             egui::Modal::new(egui::Id::unique("unsaved")).show(ctx, |ui| {
-                ui.heading("Unsaved changes");
+                ui.heading(super::icons::label(
+                    super::icons::FLOPPY_DISK,
+                    "Unsaved changes",
+                ));
                 ui.label(unsaved_question(app, action));
                 ui.horizontal(|ui| {
                     for (label, choice) in [
@@ -152,7 +159,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
             let text = consent_text(*level, store.spec(*level));
             let choices = consent_choices(app, *level);
             egui::Modal::new(egui::Id::unique("consent")).show(ctx, |ui| {
-                ui.heading("Download a speech recognition file?");
+                ui.heading(super::icons::label(
+                    super::icons::DOWNLOAD_SIMPLE,
+                    "Download a speech recognition file?",
+                ));
                 ui.label(text);
                 ui.horizontal_wrapped(|ui| {
                     for (label, choice) in choices {
@@ -165,7 +175,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
         }
         Some(Modal::ConfirmRemoveSpeechFiles) => {
             egui::Modal::new(egui::Id::unique("remove-speech")).show(ctx, |ui| {
-                ui.heading("Remove the downloaded speech files?");
+                ui.heading(super::icons::label(
+                    super::icons::TRASH,
+                    "Remove the downloaded speech files?",
+                ));
                 ui.label(
                     "Your projects and their subtitles are kept. Generating subtitles again \
                      will ask to download the files again.",
@@ -187,7 +200,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
             let mut container = None;
             egui::Modal::new(egui::Id::unique("subtitle-source")).show(ctx, |ui| {
                 ui.set_max_width(ctx.content_rect().width().min(520.0) - 40.0);
-                ui.heading("Subtitles found");
+                ui.heading(super::icons::label(
+                    super::icons::SUBTITLES,
+                    "Subtitles found",
+                ));
                 ui.label(SOURCE_QUESTION);
                 if labels.len() > 1 {
                     ui.label("Subtitles to use:");
@@ -239,7 +255,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
         }
         Some(Modal::ConfirmRegenerate) => {
             egui::Modal::new(egui::Id::unique("regenerate")).show(ctx, |ui| {
-                ui.heading("Replace the subtitles?");
+                ui.heading(super::icons::label(
+                    super::icons::WARNING,
+                    "Replace the subtitles?",
+                ));
                 ui.label(
                     "You changed some subtitle lines by hand. Creating subtitles again \
                      replaces the lines it covers, including your changes (you can undo it).",
@@ -265,7 +284,7 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                 .clone();
             let mut container = None;
             egui::Modal::new(egui::Id::unique("about")).show(ctx, |ui| {
-                ui.heading("About videolore");
+                ui.heading(super::icons::label(super::icons::INFO, "About videolore"));
                 let h = (ctx.content_rect().height() * 0.6).max(100.0);
                 let area = egui::ScrollArea::vertical().max_height(h);
                 let out = area.show(ui, |ui| {

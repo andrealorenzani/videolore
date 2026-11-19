@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Line coverage of the Rust code (src/main.rs excluded: it only wires lib.rs).
+# Line coverage of the Rust code of the whole workspace (the editor and videolore player;
+# src/main.rs and player/src/main.rs excluded: they only wire their libraries).
 #   scripts/coverage.sh                    print coverage, e.g. 86.2
 #   scripts/coverage.sh --update-readme    also rewrite the README coverage badge
 #   scripts/coverage.sh --fail-under 85    exit 1 if below the threshold
@@ -24,7 +25,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac; shift
 done
-json=$(cargo llvm-cov --quiet --ignore-filename-regex 'src/main\.rs$' --json --summary-only)
+json=$(cargo llvm-cov --quiet --workspace --ignore-filename-regex 'src/main\.rs$' --json --summary-only)
 # Truncate (not round) to one decimal, so 84.96 is reported as 84.9 and never looks like a pass.
 pct=$(python3 -c 'import json,sys,math; t=json.loads(sys.stdin.read())["data"][0]["totals"]["lines"]; p=100.0 if t["count"]==0 else t["percent"]; print(f"{math.floor(p*10)/10:.1f}")' <<<"$json")
 echo "$pct"
