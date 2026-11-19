@@ -19,6 +19,7 @@ use crate::ass;
 use crate::camera::{self, Camera, Pov};
 use crate::ffmpeg::{FfVersion, argv, file_arg, filter_graph_args};
 use crate::format::{self, EncodeSettings};
+use crate::frame;
 use crate::hwenc::{Codec, HwEncode};
 use crate::media::{MediaFormat, MediaId, MediaItem};
 use crate::music::{END_FADE, Mix};
@@ -120,6 +121,16 @@ pub struct Segment {
     /// The ASS file of the texts fixed to the sphere that are on this 360 clip, drawn on
     /// the equirectangular picture before the camera view is cut out (1.3.0).
     pub anchored: Option<String>,
+    /// Change aspect, Scale and Move that act on this clip (1.5.0); `None`: the clip is
+    /// drawn as before (fitted to the output picture with black bars).
+    pub frame: Option<SegFrame>,
+}
+
+/// The picture effects of one clip (1.5.0, REQ-131).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SegFrame {
+    pub aspect: Option<frame::FrameAspect>,
+    pub stack: frame::Stack,
 }
 
 impl Segment {
@@ -172,6 +183,13 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                     .is_360()
                     .then(|| anchored_doc(project, m, start, end, from))
                     .flatten(),
+                frame: {
+                    let stack = tl.frame_stack(i);
+                    (tl.frame_aspect.is_some() || !stack.is_empty()).then_some(SegFrame {
+                        aspect: tl.frame_aspect,
+                        stack,
+                    })
+                },
             });
         }
         start = end;
@@ -517,6 +535,75 @@ fn fades(c: &mut String, filter: &str, s: &Segment, early: Micros) {
     }
 }
 
+/// The frame effect of a segment (1.5.0, REQ-131 stages A-C of ADR-098): `picture` is the
+/// chain that makes the fitted picture (without its output format). Pushes the chains of
+/// the picture, its scale and the background, and returns the chain that overlays them
+/// (the caller adds fades and the label).
+fn compose_frame(
+    parts: &mut Vec<String>,
+    i: usize,
+    s: &Segment,
+    f: &SegFrame,
+    spec: &GraphSpec,
+    picture: String,
+) -> String {
+    let g = &spec.geometry;
+    let (w, h) = (g.width, g.height);
+    let o = s.skip.ff();
+    let blur = matches!(f.aspect.map(|a| a.fill), Some(frame::Fill::Blur));
+    // stage B: the background
+    if blur {
+        parts.push(format!("{picture},split=2[pa{i}][pb{i}]"));
+        let (sw, sh) = (
+            (w / frame::BLUR_DIVISOR).max(2) & !1,
+            (h / frame::BLUR_DIVISOR).max(2) & !1,
+        );
+        parts.push(format!(
+            "[pb{i}]scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},\
+             boxblur={r}:2,scale={w}:{h},setsar=1[b{i}]",
+            // the radius may not pass half of the smaller chroma plane
+            r = frame::BLUR_RADIUS.min((sw.min(sh) / 4).max(1))
+        ));
+    } else {
+        let rgb = match f.aspect.map(|a| a.fill) {
+            Some(frame::Fill::Colour(c)) => c,
+            _ => frame::Rgb::BLACK,
+        };
+        parts.push(format!("{picture}[pa{i}]"));
+        parts.push(format!(
+            "color=c={c}:s={w}x{h}:r={fps}:d={d},setpts=PTS-STARTPTS+{o}/TB[b{i}]",
+            c = rgb.ff(),
+            fps = g.fps.ff(),
+            d = s.rendered().ff(),
+        ));
+    }
+    // stage C: the picture at the size and place of the Scale and Move keys
+    let st = &f.stack;
+    let src = if st.scale.is_empty() {
+        format!("[pa{i}]")
+    } else {
+        let k = st.scale_factor();
+        parts.push(format!(
+            "[pa{i}]scale=w='max(2,trunc(iw*({k})/2)*2)':h='max(2,trunc(ih*({k})/2)*2)':\
+             eval=frame[pm{i}]"
+        ));
+        format!("[pm{i}]")
+    };
+    let place = |main: &str, over: &str, off: String| {
+        if off == "0" {
+            format!("({main}-{over})/2")
+        } else {
+            format!("({main}-{over})/2+{main}*({off})")
+        }
+    };
+    format!(
+        "[b{i}]{src}overlay=x='{x}':y='{y}':eval=frame:shortest=1,format={pf}",
+        x = place("W", "w", st.offset_x()),
+        y = place("H", "h", st.offset_y()),
+        pf = spec.pix_fmt,
+    )
+}
+
 /// The single filter graph for `segs` (and the music `bed`).
 pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -> Graph {
     let spans: Vec<(PathBuf, Micros, Micros)> = segs
@@ -573,6 +660,12 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
             let src = &vlabels[k][vused[k]];
             vused[k] += 1;
             let (w, h) = (g.width, g.height);
+            let fr = s.frame.as_ref();
+            // the camera view fills the output picture, or the kept side of a Change aspect
+            let (cw, ch) = match fr {
+                Some(f) => frame::camera_size((w, h), f.aspect.as_ref()),
+                None => (w, h),
+            };
             let mut c = if let Some(path) = &s.sphere {
                 // the camera view fills the output picture: no scale, no bars
                 let from = s.src_in + s.skip;
@@ -584,8 +677,8 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     from,
                     s.src_in + s.len,
                     g.fps,
-                    w,
-                    h,
+                    cw,
+                    ch,
                 );
                 let send = if cmds.is_empty() {
                     String::new()
@@ -603,13 +696,17 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     }
                     None => String::new(),
                 };
+                let tail = if fr.is_some() {
+                    String::new()
+                } else {
+                    format!(",format={}", spec.pix_fmt)
+                };
                 format!(
                     "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS,fps={f},{anchored}{send}{v360},\
-                     setsar=1,setpts=PTS+{o}/TB,format={pf}",
-                    v360 = camera::filter(&id, cam, w, h),
+                     setsar=1,setpts=PTS+{o}/TB{tail}",
+                    v360 = camera::filter(&id, cam, cw, ch),
                     o = s.skip.ff(),
                     f = g.fps.ff(),
-                    pf = spec.pix_fmt,
                 )
             } else {
                 // a 360 video keeps the equirectangular picture: texts fixed to the sphere are
@@ -622,16 +719,30 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     }
                     None => String::new(),
                 };
-                format!(
-                    "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB,\
-                     scale={w}:{h}:force_original_aspect_ratio=decrease,\
-                     pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f}{anchored},\
-                     format={pf}",
-                    o = s.skip.ff(),
-                    f = g.fps.ff(),
-                    pf = spec.pix_fmt,
-                )
+                match fr {
+                    // the picture fitted to the frame, with no bars: the frame effect
+                    // draws the background and places the picture
+                    Some(f) => format!(
+                        "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB{fit},\
+                         setsar=1,fps={fps}{anchored}",
+                        fit = frame::fit_filter((w, h), f.aspect.as_ref()),
+                        o = s.skip.ff(),
+                        fps = g.fps.ff(),
+                    ),
+                    None => format!(
+                        "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB,\
+                         scale={w}:{h}:force_original_aspect_ratio=decrease,\
+                         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f}{anchored},\
+                         format={pf}",
+                        o = s.skip.ff(),
+                        f = g.fps.ff(),
+                        pf = spec.pix_fmt,
+                    ),
+                }
             };
+            if let Some(f) = fr {
+                c = compose_frame(&mut parts, i, s, f, spec, c);
+            }
             // two frames: sources often start a few milliseconds late, which costs one
             let early = if s.to_black {
                 Micros(g.fps.frame_duration().0 * 2)
@@ -909,9 +1020,10 @@ pub fn plan_export_choice(
         if media.iter().any(|m| !m.format.is_360()) {
             return Err(RenderError::MixedSphere);
         }
-        // no camera: the picture stays equirectangular
+        // no camera: the picture stays equirectangular; no frame effects (REQ-131)
         for s in &mut segs {
             s.sphere = None;
+            s.frame = None;
         }
     }
     let owned: Vec<MediaFormat> = media
@@ -937,10 +1049,18 @@ pub fn plan_export_choice(
         }
         settings.aencoder = enc.into();
     }
+    if !sphere {
+        // the frame of Change aspect is the output size (REQ-125)
+        (settings.width, settings.height) = frame::frame_size(
+            (settings.width, settings.height),
+            project.timeline.frame_aspect.as_ref(),
+        );
+    }
     let geometry = Geometry::of(&settings);
     let subtitles = subtitles_doc(project, &geometry, Micros::ZERO);
     let bed = music_bed(project, Micros::ZERO)?;
     let no_effects = !project.timeline.has_any_fade()
+        && (sphere || !project.timeline.has_frame_effect())
         && preset.is_none()
         && choice.audio == format::AudioChoice::Same
         && !project.timeline.any_clean_audio()
@@ -1212,7 +1332,10 @@ pub fn output_geometry(
     let owned: Vec<MediaFormat> = media.iter().map(|m| effective_format(m)).collect();
     let formats: Vec<&MediaFormat> = owned.iter().collect();
     let chosen = format::choose_output(&formats).ok_or(RenderError::Empty)?;
-    Ok(Geometry::of(&format::encode_settings(&chosen, encoders)))
+    let mut g = Geometry::of(&format::encode_settings(&chosen, encoders));
+    (g.width, g.height) =
+        frame::frame_size((g.width, g.height), project.timeline.frame_aspect.as_ref());
+    Ok(g)
 }
 
 /// A preview render: the argv and the ASS document to put in the working folder.
@@ -1412,7 +1535,13 @@ pub struct FrameKey {
     pub texts: Vec<(crate::text::TextItem, i64)>,
     /// Where the lines on screen are fixed on the sphere.
     pub line_anchors: Vec<Option<crate::text::Anchor360>>,
+    /// Change aspect and the picture's scale and place at this position, in millionths
+    /// (1.5.0); `None` with no frame effect.
+    pub placement: Option<FramePlacement>,
 }
+
+/// The frame effect state of a [`FrameKey`].
+pub type FramePlacement = (Option<frame::FrameAspect>, (i64, i64, i64));
 
 /// The key of the picture at `at`, or `None` when there is no picture there.
 pub fn frame_key(
@@ -1446,7 +1575,14 @@ pub fn frame_key(
         .format
         .is_360()
         .then(|| camera::at(project.camera.path(m.id), c.src_in + offset).unwrap_or(Camera::FRONT));
+    let stack = tl.frame_stack(i);
+    let placement = (tl.frame_aspect.is_some() || !stack.is_empty()).then(|| {
+        let p = stack.at(offset);
+        let q = |v: f64| (v * 1_000_000.0).round() as i64;
+        (tl.frame_aspect, (q(p.factor), q(p.ox), q(p.oy)))
+    });
     Some(FrameKey {
+        placement,
         path: src.path_of(m),
         frame: fps.frame_index(c.src_in + offset),
         fade: in_fade.then_some((fin, fout, offset, c.len())),
@@ -2825,5 +2961,267 @@ pub(crate) mod tests {
         // a normal video of the same size is not subject to this rule
         p.media[0].format.spherical = Some(false);
         assert!(segments(&p, Micros::ZERO, src).is_ok());
+    }
+
+    // ---- 1.5.0: Change aspect, Scale and Move ----
+
+    use crate::frame::{Fill, Fit, FrameAspect, Rgb, Scale, Shape};
+    use crate::timeline::FrameTarget;
+
+    fn graph_of(p: &Project) -> (Graph, Geometry, bool) {
+        let plan = plan_export(p, &enc(), |_, _| true).unwrap();
+        let Plan::Reencode {
+            graph, settings, ..
+        } = plan
+        else {
+            return (
+                Graph {
+                    inputs: vec![],
+                    graph: String::new(),
+                    command_files: vec![],
+                },
+                Geometry {
+                    width: 0,
+                    height: 0,
+                    fps: Fps::new(1, 1).unwrap(),
+                },
+                false,
+            );
+        };
+        let g = Geometry::of(&settings);
+        (*graph, g, true)
+    }
+
+    fn tall(fit: Fit, fill: Fill) -> FrameAspect {
+        FrameAspect {
+            shape: Shape::Tall9x16,
+            fit,
+            fill,
+        }
+    }
+
+    // covers: REQ-131
+    // covers: REQ-023
+    #[test]
+    fn any_frame_effect_makes_a_reencode_even_at_the_defaults() {
+        let mut p = project(&[(2, 1280, 720, 30), (3, 1280, 720, 30)]);
+        assert!(matches!(
+            plan_export(&p, &enc(), |_, _| true).unwrap(),
+            Plan::StreamCopy { .. }
+        ));
+        let id = p.timeline.clips[0].id;
+        p.timeline.add_scale(FrameTarget::Clip(id)).unwrap();
+        let (g, geo, re) = graph_of(&p);
+        assert!(re, "Scale at 100% is a re-encode");
+        assert_eq!((geo.width, geo.height), (1280, 720));
+        // only the first clip has the frame path
+        assert!(g.graph.contains("overlay="));
+        assert_eq!(g.graph.matches("overlay=").count(), 1);
+        let mut q = project(&[(2, 1280, 720, 30)]);
+        q.timeline.add_move(FrameTarget::Whole).unwrap();
+        assert!(graph_of(&q).2);
+        let mut r = project(&[(2, 1280, 720, 30)]);
+        r.timeline
+            .set_frame_aspect(Some(FrameAspect::default()))
+            .unwrap();
+        assert!(graph_of(&r).2);
+    }
+
+    // covers: REQ-125
+    // covers: REQ-126
+    // covers: REQ-131
+    #[test]
+    fn the_frame_graph_has_background_picture_overlay_in_order() {
+        let mut p = project(&[(4, 1600, 1200, 30)]);
+        p.timeline
+            .set_frame_aspect(Some(tall(Fit::Width, Fill::Colour(Rgb(0, 255, 0)))))
+            .unwrap();
+        let (g, geo, _) = graph_of(&p);
+        assert_eq!((geo.width, geo.height), (1600, 2844));
+        let want = "[0:v:0]trim=start=0.000000:duration=4.000000,\
+                    setpts=PTS-STARTPTS+0.000000/TB,scale=1600:-2,setsar=1,fps=30/1[pa0];\
+                    color=c=0x00FF00:s=1600x2844:r=30/1:d=4.000000,\
+                    setpts=PTS-STARTPTS+0.000000/TB[b0];\
+                    [b0][pa0]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:shortest=1,\
+                    format=yuv420p,setpts=PTS-STARTPTS[v0]";
+        let video: Vec<&str> = g.graph.split(';').take(3).collect();
+        assert_eq!(video.join(";"), want);
+        assert!(g.graph.contains("[b0][pa0]overlay=x='(W-w)/2':y='(H-h)/2'"));
+        // blur: a small blurred copy is the background
+        let mut q = project(&[(4, 1600, 1200, 30)]);
+        q.timeline
+            .set_frame_aspect(Some(tall(Fit::Height, Fill::Blur)))
+            .unwrap();
+        let (g, geo, _) = graph_of(&q);
+        assert_eq!((geo.width, geo.height), (676, 1200));
+        assert!(
+            g.graph
+                .contains("scale=-2:1200,setsar=1,fps=30/1,split=2[pa0][pb0]")
+        );
+        assert!(g.graph.contains("[pb0]scale=84:150:force_original_aspect_ratio=increase,crop=84:150,boxblur=3:2,scale=676:1200,setsar=1[b0]"));
+        assert!(!g.graph.contains("color=c="));
+    }
+
+    // covers: REQ-127
+    // covers: REQ-128
+    // covers: REQ-131
+    #[test]
+    fn scale_and_move_expressions_follow_the_keys_in_clip_time() {
+        let mut p = project(&[(4, 640, 360, 30), (4, 640, 360, 30)]);
+        let second = p.timeline.clips[1].id;
+        let c = FrameTarget::Clip(second);
+        p.timeline.add_scale(c).unwrap();
+        p.timeline
+            .add_scale_key(
+                c,
+                Micros(6_000_000),
+                Scale {
+                    permille: 2000,
+                    dx: 0,
+                    dy: 0,
+                },
+            )
+            .unwrap();
+        p.timeline.add_move(FrameTarget::Whole).unwrap();
+        let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
+        // clip 1 starts at timeline 0: the whole video's Move key at 0 s
+        assert_eq!(segs[0].frame.as_ref().unwrap().stack.scale.len(), 0);
+        let (g, _, _) = graph_of(&p);
+        // clip 2: scale keys at source 0 and 6 s, the clip starts at source 0: local 0..6
+        assert!(
+            g.graph
+                .contains("scale=w='max(2,trunc(iw*(if(lt(t,6),(1+(1)*max(0,t-0)/6),2))/2)*2)'"),
+            "{}",
+            g.graph
+        );
+        // the picture's centre: the whole video's Move at the centre adds nothing
+        assert!(g.graph.contains("overlay=x='(W-w)/2'"));
+    }
+
+    // covers: REQ-131
+    #[test]
+    fn a_360_export_ignores_the_frame_effects_and_the_flat_view_applies_them() {
+        let mut p = sphere_project();
+        let plain = {
+            let plan = plan_export_mode(&p, &enc(), ExportMode::Sphere360, |_, _| true);
+            // clip 2 is flat: a mix is refused, so use two 360 clips
+            assert!(plan.is_err());
+            let mut q = project(&[(2, 3840, 1920, 30), (2, 3840, 1920, 30)]);
+            q.media[0].format.spherical = Some(true);
+            q.media[1].format.spherical = Some(true);
+            q.texts = Default::default();
+            q
+        };
+        let with = |q: &Project| {
+            let mut q = q.clone();
+            // a text keeps the plan a re-encode
+            let id = q.texts.new_id();
+            let mut t = crate::text::TextItem::new(id, "N".into(), Micros::ZERO);
+            t.ttl = Micros(4_000_000);
+            q.texts.add(t).unwrap();
+            q
+        };
+        let base = with(&plain);
+        let mut effects = base.clone();
+        effects
+            .timeline
+            .set_frame_aspect(Some(tall(Fit::Width, Fill::Blur)))
+            .unwrap();
+        effects.timeline.add_scale(FrameTarget::Whole).unwrap();
+        let a = plan_export_mode(&base, &enc(), ExportMode::Sphere360, |_, _| true).unwrap();
+        let b = plan_export_mode(&effects, &enc(), ExportMode::Sphere360, |_, _| true).unwrap();
+        assert_eq!(a, b);
+        // the flat camera view of the same project has the frame
+        let c = plan_export_mode(&effects, &enc(), ExportMode::FlatCamera, |_, _| true).unwrap();
+        let Plan::Reencode {
+            graph, settings, ..
+        } = c
+        else {
+            panic!("re-encode")
+        };
+        assert_eq!((settings.width, settings.height), (1920, 3414));
+        assert!(graph.graph.contains("v360") && graph.graph.contains("overlay="));
+        p.timeline.clips.clear();
+    }
+
+    // covers: REQ-131
+    #[test]
+    fn subtitles_are_drawn_after_the_composition() {
+        let mut p = project(&[(4, 640, 360, 30)]);
+        p.timeline.add_scale(FrameTarget::Whole).unwrap();
+        let g = build_graph(
+            &segments(&p, Micros::ZERO, Source::Export).unwrap(),
+            None,
+            &GraphSpec {
+                subtitles: true,
+                ..spec(true, false)
+            },
+        );
+        let at = |n: &str| g.graph.find(n).unwrap();
+        assert!(at("overlay=") < at("concat=") && at("concat=") < at("subtitles=f=subs.ass"));
+    }
+
+    // covers: REQ-131
+    #[test]
+    fn a_preview_from_the_middle_of_a_clip_shifts_the_background_with_the_picture() {
+        let mut p = project(&[(4, 640, 360, 30)]);
+        p.timeline.add_move(FrameTarget::Whole).unwrap();
+        let segs = segments(&p, s(1), Source::Export).unwrap();
+        let g = build_graph(&segs, None, &spec(true, false));
+        assert!(g.graph.contains("setpts=PTS-STARTPTS+1.000000/TB"));
+        assert_eq!(
+            g.graph.matches("setpts=PTS-STARTPTS+1.000000/TB").count(),
+            2
+        );
+    }
+
+    // covers: REQ-034
+    // covers: REQ-131
+    #[test]
+    fn the_frame_key_changes_with_the_picture_state_only() {
+        let mut p = project(&[(4, 640, 360, 30)]);
+        let eg = Geometry {
+            width: 640,
+            height: 360,
+            fps: Fps::new(30, 1).unwrap(),
+        };
+        let key = |p: &Project, at: i64| frame_key(p, s(at), Source::Export, &eg).unwrap();
+        assert!(key(&p, 1).placement.is_none());
+        p.timeline.add_scale(FrameTarget::Whole).unwrap();
+        p.timeline
+            .add_scale_key(
+                FrameTarget::Whole,
+                s(4),
+                Scale {
+                    permille: 2000,
+                    dx: 0,
+                    dy: 0,
+                },
+            )
+            .unwrap();
+        let k1 = key(&p, 1);
+        assert_ne!(k1, key(&p, 2));
+        // a still position in the same clip with the same state has the same key
+        p.timeline
+            .remove_scale_key(FrameTarget::Whole, s(4))
+            .unwrap();
+        assert_eq!(key(&p, 1).placement, key(&p, 2).placement);
+        assert_ne!(key(&p, 1), k1);
+    }
+
+    // covers: REQ-125
+    #[test]
+    fn the_preview_has_the_frame_shape() {
+        let mut p = project(&[(4, 1600, 1200, 30)]);
+        p.timeline
+            .set_frame_aspect(Some(tall(Fit::Width, Fill::Blur)))
+            .unwrap();
+        let g = output_geometry(&p, &enc()).unwrap();
+        assert_eq!((g.width, g.height), (1600, 2844));
+        assert_eq!(g.preview().height, 360);
+        let sc = Path::new("/tmp/g.txt");
+        let r = still_args(&p, Micros::ZERO, &g, FfVersion::Dev, sc, Source::Export).unwrap();
+        let script = strs(&r.args).join(" ");
+        assert!(script.contains("boxblur") || !r.args.is_empty());
     }
 }

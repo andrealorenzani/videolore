@@ -20,10 +20,11 @@ use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-/// Schema written by this version (5 since 1.3.0: text items and 360 anchors; 4 since 1.2.6: subtitle sizes, the 360° switch and
+/// Schema written by this version (7 since 1.5.0: Change aspect, Scale and Move with
+/// keyframes; 6 since 1.4.0: text widths; 5 since 1.3.0: text items and 360 anchors; 4 since 1.2.6: subtitle sizes, the 360° switch and
 /// the camera paths; 3 since 1.2.0: clip volumes, fades at the video's edges, subtitle
 /// positions, subtitle tracks of media).
-pub const SCHEMA_VERSION: u64 = 6;
+pub const SCHEMA_VERSION: u64 = 7;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 16 * 1024 * 1024;
@@ -394,7 +395,7 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
         });
     }
 
-    let timeline = file.timeline;
+    let mut timeline = file.timeline;
     let mut clip_ids = BTreeSet::new();
     for c in &timeline.clips {
         if !clip_ids.insert(c.id) {
@@ -416,6 +417,7 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
             return Err(invalid("fade refers to an unknown clip"));
         }
     }
+    validate_frames(&mut timeline, &media);
     let mut music = file.music;
     validate_music(&mut music, &media)?;
     let mut subs = file.subtitles;
@@ -447,6 +449,51 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
     };
     project.timeline.next_clip_id = project.timeline.next_clip_id.max(max_clip);
     Ok((project, missing))
+}
+
+/// Corrects damaged Change aspect, Scale and Move values without refusing the file
+/// (REQ-132): values are brought inside their limits, keys outside the media (clip keys) or
+/// the video (whole-video keys) are dropped, equal times keep the first key, at most 200
+/// keys per path stay, entries of unknown clips and empty entries are removed.
+fn validate_frames(tl: &mut crate::timeline::Timeline, media: &[MediaItem]) {
+    use crate::keyframes::sanitise;
+    let total = tl.duration();
+    for k in &mut tl.whole_scale {
+        k.v.clamp();
+    }
+    for k in &mut tl.whole_move {
+        clamp_pos(&mut k.v);
+    }
+    sanitise(&mut tl.whole_scale, total);
+    sanitise(&mut tl.whole_move, total);
+    let entries = std::mem::take(&mut tl.clip_frames);
+    let mut seen = BTreeSet::new();
+    for mut e in entries {
+        let Some(c) = tl.get(e.clip).copied() else {
+            continue;
+        };
+        if !seen.insert(e.clip) {
+            continue;
+        }
+        let limit = media
+            .iter()
+            .find(|m| m.id == c.media)
+            .map_or(c.src_out, |m| m.duration);
+        for k in &mut e.scale {
+            k.v.clamp();
+        }
+        for k in &mut e.moved {
+            clamp_pos(&mut k.v);
+        }
+        sanitise(&mut e.scale, limit);
+        sanitise(&mut e.moved, limit);
+        tl.put_frames(e);
+    }
+}
+
+fn clamp_pos(p: &mut crate::subtitles::Pos) {
+    p.x = p.x.min(crate::subtitles::POS_MAX);
+    p.y = p.y.min(crate::subtitles::POS_MAX);
 }
 
 fn validate_music(music: &mut MusicTrack, media: &[MediaItem]) -> Result<(), ProjectError> {
@@ -859,14 +906,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 6"));
+        assert!(text.contains("\"schema_version\": 7"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 7");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 8");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(7));
+        assert_eq!(e, ProjectError::TooNew(8));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -1044,8 +1091,8 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 6"));
-        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(6)));
+        assert!(text.contains("\"schema_version\": 7"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(7)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         assert_eq!(
             opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
@@ -1189,9 +1236,9 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 6"));
+        assert!(text.contains("\"schema_version\": 7"));
         assert!(text.contains("\"camera\"") && !text.contains("\"treat_as_360\""));
-        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(6)));
+        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(7)));
         assert_eq!(load(&file).unwrap().0, q);
         // a project without points of view writes no camera section
         let plain = dir.path().join("plain.vlproj");
@@ -1274,7 +1321,7 @@ pub(crate) mod tests {
         assert!(text.contains("\"texts\"") && text.contains("\"anchor\""));
         assert_eq!(load(&file).unwrap().0, q);
         // 1.2.6 refuses it, untouched
-        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(6)));
+        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(7)));
         // a project of 1.2.6 has no texts
         let old = text.replace("\"schema_version\": 6", "\"schema_version\": 4");
         let mut v: serde_json::Value = serde_json::from_str(&old).unwrap();
@@ -1324,10 +1371,10 @@ pub(crate) mod tests {
         v["subtitles"]["lines"][0]["anchor"]["pitch_cd"] = 99_999.into();
         assert!(from_json(&v.to_string(), dir.path()).is_err());
         // too new
-        let new = text.replace("\"schema_version\": 6", "\"schema_version\": 7");
+        let new = text.replace("\"schema_version\": 7", "\"schema_version\": 8");
         assert_eq!(
             from_json(&new, dir.path()).unwrap_err(),
-            ProjectError::TooNew(7)
+            ProjectError::TooNew(8)
         );
     }
 
@@ -1418,5 +1465,143 @@ pub(crate) mod tests {
         w["texts"][0] = 7.into();
         assert!(from_json(&w.to_string(), dir.path()).is_err());
         let _ = TextId(1);
+    }
+
+    /// What videolore 1.4.1 did with the schema number (`SCHEMA_VERSION` was 6 there).
+    fn opened_by_1_4_1(text: &str) -> Result<(), ProjectError> {
+        let v: serde_json::Value = serde_json::from_str(text).unwrap();
+        match v["schema_version"].as_u64().unwrap() {
+            n if n > 6 => Err(ProjectError::TooNew(n)),
+            _ => Ok(()),
+        }
+    }
+
+    fn framed(dir: &Path) -> Project {
+        use crate::frame::{FrameAspect, Scale};
+        use crate::keyframes::Key;
+        use crate::timeline::FrameTarget;
+        let mut p = sample(dir);
+        let first = p.timeline.clips[0].id;
+        p.timeline
+            .set_frame_aspect(Some(FrameAspect::default()))
+            .unwrap();
+        p.timeline.add_scale(FrameTarget::Clip(first)).unwrap();
+        p.timeline.add_move(FrameTarget::Whole).unwrap();
+        p.timeline
+            .add_scale_key(
+                FrameTarget::Clip(first),
+                Micros(2_000_000),
+                Scale {
+                    permille: 2000,
+                    dx: 5,
+                    dy: -5,
+                },
+            )
+            .unwrap();
+        let _: Option<Key<Scale>> = None;
+        p
+    }
+
+    // covers: REQ-132
+    #[test]
+    fn frame_effects_are_saved_in_format_7_and_reopen_identically() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = framed(dir.path());
+        let file = dir.path().join("f.vlproj");
+        save(&p, &file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.contains("\"schema_version\": 7"));
+        assert!(text.contains("\"frame_aspect\""));
+        assert_eq!(load(&file).unwrap().0, p);
+        // 1.4.1 and earlier refuse it
+        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(7)));
+    }
+
+    // covers: REQ-132
+    #[test]
+    fn a_project_of_1_4_opens_without_picture_effects() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = sample(dir.path());
+        let file = dir.path().join("f.vlproj");
+        save(&p, &file).unwrap();
+        let text = std::fs::read_to_string(&file)
+            .unwrap()
+            .replace("\"schema_version\": 7", "\"schema_version\": 6");
+        assert!(!text.contains("frame_aspect") && !text.contains("clip_frames"));
+        let (q, _) = from_json(&text, dir.path()).unwrap();
+        assert!(!q.timeline.has_frame_effect());
+        assert_eq!(q, p);
+    }
+
+    // covers: REQ-132
+    // covers: REQ-057
+    #[test]
+    fn damaged_frame_values_are_corrected_without_a_crash() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = framed(dir.path());
+        let file = dir.path().join("f.vlproj");
+        save(&p, &file).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let tl = |v: &serde_json::Value| from_json(&v.to_string(), dir.path()).unwrap().0.timeline;
+
+        // a scale of 0% and of 1000% are brought to the limits
+        let mut w = v.clone();
+        w["timeline"]["clip_frames"][0]["scale"][0]["v"]["permille"] = 0.into();
+        w["timeline"]["clip_frames"][0]["scale"][1]["v"]["permille"] = 10_000.into();
+        w["timeline"]["whole_move"][0]["v"]["x"] = 65_000.into();
+        let t = tl(&w);
+        let id = t.clips[0].id;
+        let keys = t.scale_keys(crate::timeline::FrameTarget::Clip(id));
+        assert_eq!((keys[0].v.permille, keys[1].v.permille), (100, 4000));
+        assert_eq!(t.whole_move[0].v.x, 10_000);
+
+        // keys outside the media are dropped; equal times keep the first
+        let mut w = v.clone();
+        let keys = &mut w["timeline"]["clip_frames"][0]["scale"];
+        let first = keys[0].clone();
+        let mut late = first.clone();
+        late["t"] = 999_000_000.into();
+        let mut early = first.clone();
+        early["t"] = (-5).into();
+        keys.as_array_mut().unwrap().extend([first, late, early]);
+        let t = tl(&w);
+        assert_eq!(
+            t.scale_keys(crate::timeline::FrameTarget::Clip(id)).len(),
+            2
+        );
+
+        // more than 200 keys: the extra ones go; entries of unknown clips go
+        let mut w = v.clone();
+        let one = w["timeline"]["whole_move"][0].clone();
+        let many: Vec<serde_json::Value> = (0..300)
+            .map(|i| {
+                let mut k = one.clone();
+                k["t"] = (i * 1000).into();
+                k
+            })
+            .collect();
+        w["timeline"]["whole_move"] = many.into();
+        let mut ghost = w["timeline"]["clip_frames"][0].clone();
+        ghost["clip"] = 777.into();
+        w["timeline"]["clip_frames"]
+            .as_array_mut()
+            .unwrap()
+            .push(ghost);
+        let t = tl(&w);
+        assert_eq!(t.whole_move.len(), 200);
+        assert_eq!(t.clip_frames.len(), 1);
+
+        // an unknown shape reads as no effect
+        let mut w = v.clone();
+        w["timeline"]["frame_aspect"]["shape"] = "3:1".into();
+        assert!(tl(&w).frame_aspect.is_none());
+        // garbage types are refused as damaged files, not crashes
+        let mut w = v.clone();
+        w["timeline"]["whole_move"] = "lots".into();
+        assert!(matches!(
+            from_json(&w.to_string(), dir.path()),
+            Err(ProjectError::Invalid(_))
+        ));
     }
 }

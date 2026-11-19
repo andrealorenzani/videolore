@@ -4,11 +4,11 @@
 
 ## Index (human docs, one line per heading; read a range with sed -n 'A,Bp')
 - docs/business.md § (title, purpose, users) — L1-13 (13 lines)
-- docs/business.md § Documents — L14-24 (11 lines)
-- docs/business.md § Constraints — L25-29 (5 lines)
-- docs/business.md § Key decisions (general) — L30-52 (23 lines)
-- docs/business.md § Known limitations (1.2.0, 1.3.0, 1.4.0) — L53-79 (27 lines)
-- docs/business.md § Out of scope — L80-90 (11 lines)
+- docs/business.md § Documents — L14-25 (12 lines)
+- docs/business.md § Constraints — L26-30 (5 lines)
+- docs/business.md § Key decisions (general) — L31-54 (24 lines)
+- docs/business.md § Known limitations (1.2.0, 1.3.0, 1.4.0, 1.5.0) — L55-82 (28 lines)
+- docs/business.md § Out of scope — L83-93 (11 lines)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
@@ -17,9 +17,9 @@
 - docs/business-editing.md § Preview — L42-46 (5 lines)
 - docs/business-editing.md § Layout and commands — L47-49 (3 lines)
 - docs/business-editing.md § Responsiveness and performance — L50-55 (6 lines)
-- docs/business-editing.md § Key decisions — L56-71 (16 lines)
-- docs/business-editing.md § Known limitations — L72-79 (8 lines)
-- docs/business-editing.md § Out of scope — L80-83 (4 lines)
+- docs/business-editing.md § Key decisions — L56-72 (17 lines; 1.5.0 format line added)
+- docs/business-editing.md § Known limitations — L73-80 (8 lines)
+- docs/business-editing.md § Out of scope — L81-84 (4 lines)
 - docs/business-ui.md § intro — L1-6 (6 lines)
 - docs/business-ui.md § Features — L7-23 (17 lines)
 - docs/business-ui.md § Requirements — L24-25 (2 lines)
@@ -33,8 +33,9 @@
 - docs/business-ui.md § Since 1.2.0 — L99-105 (7 lines)
 - docs/business-ui.md § Changed in 1.3.0 — L106-114 (9 lines)
 - docs/business-ui.md § Changed in 1.4.0 (REQ-069, 075, 100, 106, 114, 118) — L115-121 (7 lines)
-- docs/business-ui.md § Known limitations — L122-128 (7 lines)
-- docs/business-ui.md § Out of scope — L129-138 (10 lines)
+- docs/business-ui.md § Changed in 1.5.0 (REQ-069, 075, 076, 077, 079, 082) — L122-127 (6 lines)
+- docs/business-ui.md § Known limitations — L128-134 (7 lines)
+- docs/business-ui.md § Out of scope — L135-144 (10 lines)
 - docs/business-text.md § intro — L1-8 (8 lines)
 - docs/business-text.md § Features — L9-16 (8 lines)
 - docs/business-text.md § Requirements (REQ-108..111, 115, 116) — L17-18 (2 lines)
@@ -43,18 +44,30 @@
 - docs/business-text.md § On the timeline and on the picture (REQ-110, 111) — L25-28 (4 lines)
 - docs/business-text.md § Box, size and Context Menu (REQ-115, 116) — L29-32 (4 lines)
 - docs/business-text.md § Key decisions — L33-40 (8 lines)
-- docs/business-text.md § Impact on existing features — L41-51 (11 lines)
-- docs/business-text.md § Known limitations — L52-61 (10 lines)
-- docs/business-text.md § Out of scope — L62-66 (5 lines)
-- docs/business-picture.md § intro — L1-10 (10 lines)
-- docs/business-picture.md § Features — L11-19 (9 lines)
-- docs/business-picture.md § Requirements — L20-21 (2 lines)
-- docs/business-picture.md § Boxes, size and Context Menu (REQ-096..099, 106, 117) — L22-29 (8 lines)
-- docs/business-picture.md § 360 video (REQ-100..105, 112) — L30-38 (9 lines)
-- docs/business-picture.md § Key decisions — L39-48 (10 lines)
-- docs/business-picture.md § Impact on existing features — L49-61 (13 lines)
-- docs/business-picture.md § Known limitations — L62-75 (14 lines)
-- docs/business-picture.md § Out of scope — L76-80 (5 lines)
+- docs/business-text.md § Impact on existing features — L41-52 (12 lines)
+- docs/business-text.md § Known limitations — L53-62 (10 lines)
+- docs/business-text.md § Out of scope — L63-67 (5 lines)
+- docs/business-picture.md § intro (1.5.0 para added) — L1-12 (12 lines)
+- docs/business-picture.md § Features — L13-21 (9 lines)
+- docs/business-picture.md § Requirements — L22-23 (2 lines)
+- docs/business-picture.md § Boxes, size and Context Menu (REQ-096..099, 106, 117) — L24-31 (8 lines)
+- docs/business-picture.md § 360 video (REQ-100..105, 112) — L32-40 (9 lines)
+- docs/business-picture.md § Key decisions — L41-50 (10 lines)
+- docs/business-picture.md § Impact on existing features — L51-64 (14 lines)
+- docs/business-picture.md § Known limitations — L65-79 (15 lines)
+- docs/business-picture.md § Out of scope — L80-84 (5 lines)
+- docs/business-frame.md § intro — L1-6 (6 lines)
+- docs/business-frame.md § Features — L7-13 (7 lines)
+- docs/business-frame.md § Requirements (intro line) — L14-15 (2 lines)
+- docs/business-frame.md § Change aspect (REQ-124..126) — L16-20 (5 lines)
+- docs/business-frame.md § Scale and Move (REQ-127..129) — L21-25 (5 lines)
+- docs/business-frame.md § Effects list, menus and markers (REQ-130) — L26-28 (3 lines)
+- docs/business-frame.md § Picture rules and export (REQ-131) — L29-31 (3 lines)
+- docs/business-frame.md § Project file (REQ-132) — L32-34 (3 lines)
+- docs/business-frame.md § Key decisions — L35-42 (8 lines)
+- docs/business-frame.md § Impact on existing features — L43-51 (9 lines)
+- docs/business-frame.md § Known limitations — L52-60 (9 lines; 1.5.0 STATUS +2 bullets)
+- docs/business-frame.md § Out of scope — L62-65 (4 lines)
 - docs/business-subtitles.md § intro — L1-4 (4 lines)
 - docs/business-subtitles.md § Features — L5-18 (14 lines)
 - docs/business-subtitles.md § Requirements — L19-20 (2 lines)
@@ -72,7 +85,7 @@
 - docs/business-export.md § Faster export (0.4.0) — L29-39 (11 lines)
 - docs/business-export.md § Key decisions — L40-56 (17 lines)
 - docs/business-export.md § Known limitations (0.4.0) — L57-68 (12 lines)
-- docs/business-export.md § Known limitations (1.4.0) — L69-72 (4 lines)
+- docs/business-export.md § Known limitations (1.4.0) — L69-73 (5 lines)
 - docs/business-export.md § Out of scope — L74-85 (12 lines)
 - docs/business-music.md § intro — L1-4 (4 lines)
 - docs/business-music.md § Features — L5-11 (7 lines)
@@ -92,6 +105,25 @@
 - docs/business-performance.md § Known limitations — L84-89 (6 lines)
 - docs/business-performance.md § Out of scope — L90-96 (7 lines)
 Line ranges re-checked at the 1.4.0 STATUS (grep -n '^#' + line count); convention: heading to the line before the next heading; re-check with grep -n '^#' after any edit.
+
+## 1.5.0 STATUS (target 1.5.0, PE report 2026-11-19)
+- IMPLEMENTED (flipped in docs): 124-132 all planned -> implemented (business-frame, business-ui 075, business-export 022/023, business-picture, business-text, business-editing, business.md). `grep planned docs/business*.md` leaves only unrelated lines (0.3.0 speech fallback, 0.4.0 drop). Next free ID REQ-133.
+- Deviation accepted by Andrea, written as fact: Fit on height for 1600x1200 to 9:16 gives 676x1200 (675 rounded to even); REQ-125 acceptance + Features updated.
+- Decision (PE-reported, recorded as limitation): the frame, not the base size, is what the picture is fitted to (no effect on user-visible numbers for the examples). Not a product change.
+- Limitations added: whole-video keys do not follow timeline trims (clip keys kept through trims, REQ-129); picture handles show one effect per kind (clip's own, else whole video's).
+- Open for later (Future work): blur strength fixed (no setting, by design); whole-video keys vs trims (consider to follow timeline edits); export time for large frames not measured; 4096 px cap assumption not checked by a user; picture handles one per kind (a UX gap for stacked effects); keyframes not copyable between clips; ease curves out of scope.
+- Index: business-frame Known limitations L52-60, Out of scope L62-65. No other line ranges changed (edits were in-line word changes).
+
+## 1.5.0 PLAN (target 1.5.0, Andrea request 2026-11-19) — no SEVERE, all MINOR
+- NEW (planned, doc business-frame.md): 124 Change aspect popup (3 dropdowns, whole video, one per project; default 16:9/Fit on width/black); 125 frame size (base = REQ-022 or REQ-120 preset; Fit on width keeps width, Fit on height keeps height; other side: longer = cut evenly, shorter = empty centred; even sides; longer side cap 4096 ASSUMPTION); 126 blurred fill (fixed blur, no setting) and colour fill; 127 Scale box (corner handles, uniform, 10-400% ASSUMPTION, empty = frame background); 128 Move target (picture centre, not past frame edge ASSUMPTION, stored as frame fraction); 129 keyframes (popup non-modal, Add/Remove, linear, constant before first/after last, edit on picture at playhead selects or creates key ASSUMPTION, split/trim like POVs REQ-102, max 200 ASSUMPTION, last key kept, Remove effect button); 130 Effects list 8 rows, menus, drag (Scale/Move only), markers at clip start, clip+whole stack (clip acts on top: scales multiply, moves add ASSUMPTION); 131 composition order (background, fit, whole then clip Scale/Move, fades, text/subs at frame fractions ASSUMPTION), any of the three forces re-encode even at defaults, 360 video export ignores them; 132 project format 1.5.0 (1.4.1 refuses).
+- REWORDED (set planned, were implemented): 022 (frame from aspect), 023 (three effects in the no-effects list), 075 (8 rows, tooltips).
+- MINOR defaults (Andrea can overrule): D1 Change aspect whole video only (one frame size). D2 Scale/Move on clip or whole video, one each per clip. D3 "Fit on height" = picture height fills frame, sides cut evenly (Andrea's "675:1200" read as frame size); alternative "smaller picture with bars" NOT chosen (name "fit on height" would be false). D4 Scale/Move empty space = frame background (black unless Change aspect colour/blur). D5 4096 px cap (H.264/HEVC limits, Architect checks). D6 picture edit with no key at playhead creates one. D7 subtitles/text = frame fractions, not moved by Scale/Move. D8 effect present -> re-encode even at defaults. D9 360 video export ignores the three. D10 stacking clip over whole video.
+- Rejected/considered: crop-to-fill for both modes; free aspect ratios; per-clip aspect; keyframes for other effects; easing; blur strength setting; colour for Scale empty space.
+- Product risks 1.5.0: huge frames (1600x2844 example; 4K 9:16 much bigger) -> slow export and codec limits; silent cut of sides in fit on height; subtitles off the picture after Scale/Move; keyframes in a small popup (usability); blur cost unmeasured; 360 export shows no effect (may confuse).
+- Impact notes (business-ui "Changed in 1.5.0"): 069, 075, 076, 077, 079, 082; 004 undo; 089/111/117 unchanged unless frame differs; 100-104 (text 1.5.0 line, picture 1.5.0 + limitation); 029/057 (REQ-132 in frame doc); 062/063 hw export covered by 131.
+- Docs edited: business.md (Documents line, 1.2.6 keyframe decision superseded note, 1.5.0 key decision, 1.5.0 limitation, OOS keyframes), business-frame.md NEW (124-132), business-ui.md (075, Menus Effects item, Changed in 1.5.0), business-export.md (022, 023 planned), business-picture.md (intro 1.5.0, impact, limitation), business-editing.md (1.5.0 format key decision), business-text.md (impact 131).
+- REFINE 2026-11-19 (Architect flag, ADR-094/104): REQ-132 wording aligned. Clip keyframes are in source time; trims/cuts hide them, never delete them. Only keyframes outside the media are dropped on load (was wrongly "outside the clip"). Decision recorded in docs/business-frame.md § Project file (L32-34, same length).
+- Next free ID: REQ-133. QG next: QG-06 (unchanged). Index ranges re-counted at this PLAN (grep -n '^#' + grep -c '^').
 
 ## 1.4.0 PLAN (target 1.4.0, Andrea request 2026-11-17) — no SEVERE, all MINOR
 - NEW (planned): 114 Clean audio effect (video sound, clip or whole, on/off, preview+export, >=6 dB noise drop / speech within 3 dB ASSUMPTION; doc business-music.md); 115 text Context Menu Align H/V + Reset; 116 text box width-only handle + best-fit size (10-100% width, min 2% height, default box 80%x20%, ASSUMPTIONS); 117 text+subtitle drag past edges (centre stays on picture); 118 Export dialog (File/toolbar/E, file+"..." , overwrite confirm, session memory); 119 mode Full/Only audio/Only srt; 120 video format dropdown + Same as source reset (presets, always re-encode); 121 audio format dropdown (Same as source, aac, mp3 if bundled); 122 360 choice only for all-360 projects; 123 project format 1.4.0 (360 switch dropped, new fields).

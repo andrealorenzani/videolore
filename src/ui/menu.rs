@@ -27,6 +27,8 @@ pub const APPLY_TO_CLIP: &[ActionId] = &[
     ActionId::ApplyClipSubtitles,
     ActionId::ApplyClipVolume,
     ActionId::ApplyClipCleanAudio,
+    ActionId::ApplyClipScale,
+    ActionId::ApplyClipMove,
 ];
 /// Effects > Apply to whole video ▸
 pub const APPLY_TO_VIDEO: &[ActionId] = &[
@@ -34,6 +36,9 @@ pub const APPLY_TO_VIDEO: &[ActionId] = &[
     ActionId::ApplyWholeSubtitles,
     ActionId::ApplyWholeVolume,
     ActionId::ApplyWholeCleanAudio,
+    ActionId::ApplyWholeChangeAspect,
+    ActionId::ApplyWholeScale,
+    ActionId::ApplyWholeMove,
 ];
 
 /// The menus and their items, in order.
@@ -108,6 +113,9 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(Subtitles),
                 A(Volume),
                 A(CleanAudio),
+                A(ChangeAspect),
+                A(Scale),
+                A(Move),
                 A(AddText),
                 S,
                 Submenu("Apply to selected clip", APPLY_TO_CLIP),
@@ -231,7 +239,16 @@ mod tests {
     fn the_effects_menu_holds_the_effects_and_the_commands_on_objects_are_in_edit() {
         use ActionId::*;
         let effects = items_of("Effects");
-        for id in [Fades, Subtitles, Volume, CleanAudio, AddText] {
+        for id in [
+            Fades,
+            Subtitles,
+            Volume,
+            CleanAudio,
+            ChangeAspect,
+            Scale,
+            Move,
+            AddText,
+        ] {
             assert!(effects.contains(&Item::Action(id)), "{id:?}");
         }
         assert!(effects.contains(&Item::Submenu("Apply to selected clip", APPLY_TO_CLIP)));

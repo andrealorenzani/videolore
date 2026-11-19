@@ -858,8 +858,20 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
     let mut h = Harness::new(app, 1280.0, 800.0);
     let rows: Vec<_> = effects::rows().into_iter().collect();
     let names: Vec<&str> = rows.iter().map(|r| r.1).collect();
-    assert_eq!(names, ["Fade IN/OUT", "Subtitles", "Volume", "Clean audio"]);
-    for (effect, name) in rows {
+    // (REQ-130: the three picture effects follow Clean audio)
+    assert_eq!(
+        names,
+        [
+            "Fade IN/OUT",
+            "Subtitles",
+            "Volume",
+            "Clean audio",
+            "Change aspect",
+            "Scale",
+            "Move"
+        ]
+    );
+    for (effect, name) in rows.into_iter().take(4) {
         // the row shows only the name, with the tooltip explaining how to apply it
         let n = h.find(name).unwrap_or_else(|| panic!("{name}"));
         assert_eq!(n.label, name);

@@ -13,6 +13,8 @@ Exact versions are in `Cargo.toml` and `Cargo.lock`, which are the source of tru
 `cargo build --no-default-features` gives the minimal build (no sound, no speech-to-text; subtitle editing and burn-in still work).
 
 ## Rust crates
+No new crate was added in 1.5.0 (frame effects use the existing `egui` colour picker and core `ffmpeg` filters).
+
 | Crate | Version | Licence | Why |
 |---|---|---|---|
 | `eframe` / `egui` | 0.37 | MIT/Apache-2.0 | Native GUI. |

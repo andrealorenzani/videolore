@@ -74,6 +74,15 @@ fn window(
     }
 }
 
+fn target_name(app: &AppState, t: crate::timeline::FrameTarget) -> String {
+    match t {
+        crate::timeline::FrameTarget::Whole => "the whole video".into(),
+        crate::timeline::FrameTarget::Clip(c) => {
+            app.clip_name(c).unwrap_or_else(|| "a clip".into())
+        }
+    }
+}
+
 /// Text of a fade or line in the chooser.
 pub fn instance_label(app: &AppState, i: Instance) -> String {
     match i {
@@ -99,6 +108,9 @@ pub fn instance_label(app: &AppState, i: Instance) -> String {
             "Clean audio of {}",
             app.clip_name(c).unwrap_or_else(|| "a clip".into())
         ),
+        Instance::Aspect => "Change aspect".into(),
+        Instance::Scale(t) => format!("Scale of {}", target_name(app, t)),
+        Instance::Move(t) => format!("Move of {}", target_name(app, t)),
         Instance::Pov(m, t) => {
             let at = app.pov_position(m, t).map(timecode).unwrap_or_default();
             format!("360° point of view {at}")
@@ -187,6 +199,13 @@ pub fn instance_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mu
         Some(Instance::ClipVolume(c)) => effects::clip_volume_body(ui, app, cache, c, cmds),
         Some(Instance::CleanAudio(c)) => effects::clean_audio_clip_body(ui, app, c, cmds),
         Some(Instance::Pov(m, t)) => pov_instance(ui, app, cache, m, t, cmds),
+        Some(Instance::Aspect) => super::frame_popups::aspect_body(ui, app, cmds),
+        Some(Instance::Scale(t)) => {
+            super::frame_popups::key_body(ui, app, cache, t, crate::app::FrameFx::Scale, cmds)
+        }
+        Some(Instance::Move(t)) => {
+            super::frame_popups::key_body(ui, app, cache, t, crate::app::FrameFx::Move, cmds)
+        }
     }
 }
 

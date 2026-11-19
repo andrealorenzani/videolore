@@ -12,6 +12,8 @@ pub mod actions;
 pub mod boxes;
 pub mod effects;
 pub mod export_dialog;
+pub mod frame_handles;
+pub mod frame_popups;
 pub mod keymap;
 pub mod layout;
 pub mod markers;
@@ -95,6 +97,11 @@ pub struct UiCache {
     /// Values of a point of view being edited in its popup: media, its time, and
     /// (time in s, yaw, pitch, zoom in degrees).
     pub pov_edit: Option<(crate::media::MediaId, Micros, [f64; 4])>,
+    /// Scale (percent) or Move (x, y percent) typed or dragged in a popup, kept until
+    /// the edit ends.
+    pub frame_edit: Option<[f64; 2]>,
+    /// A Scale corner or Move target being dragged in the preview.
+    pub frame_handle: Option<frame_handles::Grab>,
     /// The new text being filled in (its fields and the text buffer).
     pub text_draft: Option<(crate::text::TextItem, String)>,
     /// The text of an existing item while it is being typed.
@@ -548,6 +555,8 @@ pub fn action_tooltip(ctx: &Context, app: &AppState, id: actions::ActionId) -> S
     }
 }
 
+#[cfg(test)]
+mod frame_ux_tests;
 #[cfg(test)]
 mod sphere_ux_tests;
 #[cfg(test)]

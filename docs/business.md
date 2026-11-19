@@ -19,6 +19,7 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [Subtitles](business-subtitles.md) — automatic offline subtitles, the speech model download, editing, styles, how subtitles follow edits, subtitles for one clip, reusing the subtitles already in a video, `.srt` export, moving lines on screen and selecting several lines.
 - [Text](business-text.md) — 1.3.0: "Add Text" in the Effects list, multiline texts with the effects Fade IN, Fade OUT, Blink and Slide in, time to live on the timeline, colour, font installed on the computer, text on the picture and in the export. 1.4.0: the box changes its width only and the text size fits it; Align and Reset as for subtitle lines; text can be dragged past the picture edges.
 - [Boxes on the picture and 360 video](business-picture.md) — 1.2.6: visible boxes to move and enlarge what sits on the picture, effect commands (align horizontally, align vertically, reset) in the toolbar, 360° videos with look-around and points of view (POV) the camera moves between in a straight line. 1.3.0: the toolbar group becomes the Context Menu, Export of a 360 project asks for a 360 video or the flat camera view, text and subtitles on a 360 clip stay at their place in the sphere. 1.4.0: the "360°" switch is removed (a clip is 360 only from its file's information); the 360 choice is in the Export dialog.
+- [Frame](business-frame.md) — added in 1.5.0: Change aspect (4:3, 16:9, 9:16 with fit on width or height and an empty space filled with a colour or a blurred video), Scale and Move of a clip or of the whole video, with keyframes for Scale and Move.
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, third-party notices, first-launch steps.
 - [Settings, performance and safety](business-performance.md) — automatic setup at first start, the Settings window (preview quality, subtitle quality, how hard videolore works, export speed), more accurate speech models, older processors, responsiveness, safe handling of files and downloads, private temporary files, quality goals (including the real-hardware check of faster export).
 
@@ -39,18 +40,20 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (1.2.0) Every effect can be applied to one video clip (drag and drop or right-click) or to the whole video (double-click in the Effects list).
 - (1.2.0) When a video already contains subtitles, the user chooses between using their text (matched word by word to the speech) and recognising the speech; the video's text is never replaced.
 - (1.2.0) The project file format changes to store start and end fades, clip volumes and subtitle positions; older projects open with the same result.
-- (1.2.6) A 360° video is shown through a camera the user can turn; the export was a normal flat video that follows the camera path set with points of view. This is the only keyframe-like feature, limited to the camera of 360 clips.
+- (1.2.6) A 360° video is shown through a camera the user can turn; the export was a normal flat video that follows the camera path set with points of view. This was the only keyframe-like feature, limited to the camera of 360 clips (superseded in 1.5.0: Scale and Move are keyframed too).
 - (1.3.0) For a project with 360 clips, Export asked whether to make a 360 video (the whole sphere) or the flat camera view of 1.2.6. (1.4.0) This is now the 360 choice of the Export dialog, offered only when all video clips are 360 clips.
 - (1.3.0) Text items are a new kind of object on the picture, on their own timeline lane: they are not a video track, so multiple video tracks stay out of scope. The text effects Fade IN and Fade OUT have a set time; the video effect "Fade through black" is named "Fade IN/OUT" and keeps its fixed length.
 - (1.3.0) Text and subtitle lines added on a 360 clip are anchored to a point of the sphere and do not move when the camera turns.
 - (1.4.0) Clean audio is an on/off effect of the video's sound, not of the music, with no technical controls.
 - (1.4.0) Text and subtitle lines can be dragged past the picture edges; a text item's box changes its width only, and its text size fits the box.
 - (1.4.0) A clip is treated as 360 only from its file's own information; the manual "360°" switch is removed.
+- (1.5.0) Change aspect applies to the whole video only, because a video has one frame size. Scale and Move are the first effects with keyframes; the change between keyframes is a straight line, with no easing. Subtitle lines and text items keep their place in the frame when the picture moves or scales.
 - (0.4.0) Export can use the computer's video hardware (NVIDIA, Intel, AMD, Apple) when the user chooses "Export: Faster" in Settings. Best quality stays the default. Every hardware result is checked, and on any problem the export is silently redone with the normal method, so the user always gets a correct file.
 
 Topic-specific decisions are in each document.
 
-## Known limitations (1.2.0, 1.3.0, 1.4.0)
+## Known limitations (1.2.0, 1.3.0, 1.4.0, 1.5.0)
+- (1.5.0) A 360 video export ignores Change aspect, Scale and Move; the longer side of an output frame is capped at 4096 px (assumption); keyframes are straight lines only; subtitle lines and text items do not follow Scale or Move (see [Frame](business-frame.md)).
 - (1.4.0) Clean audio reduces background noise but does not remove it completely (about 9 dB less noise on the reference clip; quiet speech can lose up to about 2.5 dB; its cost on weak computers is not measured); it works on the video's sound, not on the music track.
 - (1.4.0) Text and subtitle lines dragged past an edge of the picture are cut in the preview and in the export.
 - (1.4.0) Short texts become large and long texts small, because the text size fits the box; the fit is an estimate, so a text can fill about 85% to 115% of its box; a text that does not fit even at the minimum size runs past its box. A large multi-line text of a 1.3.0 project can become smaller when opened.
@@ -79,7 +82,7 @@ Topic-specific decisions are in each document.
 
 ## Out of scope
 - Multiple video tracks, overlays, picture-in-picture.
-- Color grading, keyframe animation, transitions other than fade through black.
+- Color grading, keyframe animation other than Scale and Move (1.5.0), transitions other than fade through black.
 - Accounts, cloud storage, sync, collaboration, direct upload to social networks.
 - Mobile versions.
 - Technical export settings beyond the fixed presets of the Export dialog (1.4.0).

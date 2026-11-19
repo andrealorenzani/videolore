@@ -17,7 +17,7 @@ pub const SELECT_A_LINE: &str = "Select a subtitle line first";
 
 impl AppState {
     /// The clip an effect goes to (`None`: the whole video).
-    fn effect_clip(&self, target: Target) -> Result<Option<ClipId>, String> {
+    pub(super) fn effect_clip(&self, target: Target) -> Result<Option<ClipId>, String> {
         match target {
             Target::WholeVideo => {
                 if self.project.timeline.clips.is_empty() {
@@ -78,6 +78,9 @@ impl AppState {
                 self.show_effect(Popup::Subtitles, shown);
                 self.create_subtitles(clip)
             }
+            EffectKind::ChangeAspect | EffectKind::Scale | EffectKind::Move => {
+                self.apply_frame_effect(effect, clip, now)
+            }
             EffectKind::CleanAudio => {
                 self.set_clean_audio(shown, true, now)?;
                 match clip {
@@ -108,6 +111,9 @@ impl AppState {
             (Popup::Instance, Some(Instance::FadeStart)) => "Fade from black",
             (Popup::Instance, Some(Instance::FadeEnd)) => "Fade to black",
             (Popup::Instance, Some(Instance::Pov(..))) => "Point of view",
+            (Popup::Instance, Some(Instance::Aspect)) => "Change aspect",
+            (Popup::Instance, Some(Instance::Scale(t))) => return self.frame_title("Scale", t),
+            (Popup::Instance, Some(Instance::Move(t))) => return self.frame_title("Move", t),
             _ => p.title(),
         };
         match self.popups.target(p) {
@@ -117,6 +123,16 @@ impl AppState {
                 None => base.to_string(),
             },
             _ => base.to_string(),
+        }
+    }
+
+    fn frame_title(&self, base: &str, t: FrameTarget) -> String {
+        match t {
+            FrameTarget::Whole => format!("{base} — whole video"),
+            FrameTarget::Clip(id) => match self.clip_name(id) {
+                Some(n) => format!("{base} — {n}"),
+                None => base.to_string(),
+            },
         }
     }
 
@@ -323,13 +339,18 @@ impl AppState {
     /// place.
     pub fn shown_project(&self) -> std::borrow::Cow<'_, Project> {
         let overlay = self.live_overlay();
-        if self.drag_pos.is_none() && self.resize_drag.is_none() && overlay.is_empty() {
+        if self.drag_pos.is_none()
+            && self.resize_drag.is_none()
+            && self.frame_drag.is_none()
+            && overlay.is_empty()
+        {
             return std::borrow::Cow::Borrowed(&self.project);
         }
         let mut q = self.project.clone();
         if let Some((ids, p)) = &self.drag_pos {
             let _ = q.subtitles.set_position(ids, Some(*p));
         }
+        self.with_frame_drag(&mut q);
         if let Some(d) = &self.resize_drag {
             let _ = q.subtitles.set_boxes(&d.ids, None, Some(Some(d.size)));
             let _ = q.subtitles.set_boxes(&[d.line], Some(Some(d.pos)), None);
@@ -403,5 +424,8 @@ fn effect_label(effect: EffectKind) -> &'static str {
         EffectKind::Subtitles => "Create subtitles",
         EffectKind::Volume => "Volume",
         EffectKind::CleanAudio => "Clean audio",
+        EffectKind::ChangeAspect => "Change aspect",
+        EffectKind::Scale => "Scale",
+        EffectKind::Move => "Move",
     }
 }

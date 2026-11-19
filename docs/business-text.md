@@ -48,6 +48,7 @@ Changed in 1.4.0: a text item's box changes its width only, and its text size fi
 - (1.4.0) REQ-117: a text item can be dragged past the edges of the picture, like a subtitle line.
 - REQ-023 and REQ-062: a text item makes the export a re-encode, and the hardware export carries the text as the subtitles do.
 - REQ-113: projects with text items are a newer format (see [Editing](business-editing.md)).
+- (1.5.0) REQ-131: a text item keeps its place in the frame when Scale, Move or Change aspect change the picture; it is not keyframed (see [Frame](business-frame.md)).
 
 ## Known limitations
 - A text has no outline, shadow or background box, so its readability depends on the colour chosen and on the picture behind it.

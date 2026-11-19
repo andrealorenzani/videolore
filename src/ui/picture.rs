@@ -7,8 +7,9 @@
 //! right-click menu. The geometry is in [`super::boxes`] and [`super::placement`].
 
 use super::boxes::{self, BoxItem, Corner, HANDLE_TOLERANCE, Hit, ObjectId};
+use super::frame_handles::{self, Grab};
 use super::{UiCache, actions::ActionId, menu, placement, subtitle_font};
-use crate::app::{AppState, Command, ResizeDrag};
+use crate::app::{AppState, Command, FrameDrag, FrameFx, FrameValue, ResizeDrag};
 use crate::subtitles::{LineId, SIZE_NORMAL};
 use eframe::egui::{
     self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2,
@@ -192,7 +193,10 @@ pub fn interact(
         }
     }
 
+    draw_frame_handles(ui, app, picture, frame);
+
     let dragging = cache.subtitle_drag.is_some()
+        || cache.frame_handle.is_some()
         || cache.box_resize.is_some()
         || cache.text_box_drag.is_some()
         || cache.camera_drag;
@@ -230,6 +234,7 @@ pub fn interact(
         cache.subtitle_drag = None;
         cache.box_resize = None;
         cache.text_box_drag = None;
+        cache.frame_handle = None;
         cache.camera_drag = false;
         if let Some(o) = origin {
             let f = to_frame(o);
@@ -282,7 +287,11 @@ pub fn interact(
                         }
                     },
                 },
-                None => cache.camera_drag = sphere,
+                // the handles of Scale and Move come after the subtitle and text boxes
+                None => match grab_at(app, f, tol, frame) {
+                    Some(g) => cache.frame_handle = Some(g),
+                    None => cache.camera_drag = sphere,
+                },
             }
         }
     }
@@ -327,6 +336,7 @@ pub fn interact(
         );
     }
 
+    frame_drag(ui, app, cache, cmds, &resp, picture);
     text_box_drag(ui, cache, cmds, &resp, picture);
     resize_drag(ui, app, cache, cmds, &resp, picture, frame);
     move_drag(ui, app, cache, cmds, &resp, picture, frame);
@@ -541,5 +551,128 @@ fn text_box_drag(
                 place: boxes::centre_pos(rect, d.frame),
             }),
         }
+    }
+}
+
+/// The box, corner handles and target of Scale and Move at the playhead (REQ-127, 128).
+fn draw_frame_handles(ui: &Ui, app: &AppState, picture: Rect, frame: (u32, u32)) {
+    let (scale, moved) = (
+        app.frame_target_at_playhead(FrameFx::Scale).is_some(),
+        app.frame_target_at_playhead(FrameFx::Move).is_some(),
+    );
+    if !scale && !moved {
+        return;
+    }
+    let Some((fr, _)) = app.picture_rect() else {
+        return;
+    };
+    let s = placement::to_screen(frame_handles::to_rect(fr, frame), picture, frame);
+    let painter = ui.painter_at(picture.expand(HANDLE_SIDE));
+    if scale {
+        painter.rect_stroke(
+            s,
+            0.0,
+            Stroke::new(1.5, Color32::LIGHT_BLUE),
+            StrokeKind::Outside,
+        );
+        for h in boxes::handle_rects(s, HANDLE_SIDE) {
+            painter.rect_filled(h, 0.0, Color32::LIGHT_BLUE);
+            painter.rect_stroke(
+                h,
+                0.0,
+                Stroke::new(1.0, Color32::BLACK),
+                StrokeKind::Outside,
+            );
+        }
+    }
+    if moved {
+        painter.circle(
+            s.center(),
+            7.0,
+            Color32::TRANSPARENT,
+            Stroke::new(2.0, Color32::LIGHT_RED),
+        );
+        painter.circle_filled(s.center(), 2.0, Color32::LIGHT_RED);
+    }
+}
+
+/// The handle of Scale or Move under frame point `f`, as a drag to start.
+fn grab_at(app: &AppState, f: Pos2, tol: f32, frame: (u32, u32)) -> Option<Grab> {
+    let (fr, _) = app.picture_rect()?;
+    let scale_t = app.frame_target_at_playhead(FrameFx::Scale);
+    let move_t = app.frame_target_at_playhead(FrameFx::Move);
+    let rect = frame_handles::to_rect(fr, frame);
+    let hit = frame_handles::hit(rect, scale_t.is_some(), move_t.is_some(), f, tol)?;
+    let target = match hit {
+        frame_handles::Hit::Corner(_) => scale_t?,
+        frame_handles::Hit::Target => move_t?,
+    };
+    Some(Grab {
+        target,
+        hit,
+        rect,
+        scale: app.scale_at(target).unwrap_or(crate::frame::Scale::NORMAL),
+        pos: app.move_at(target).unwrap_or(crate::frame::CENTRE),
+        grab: f - rect.center(),
+        frame,
+    })
+}
+
+/// A Scale corner or the Move target being dragged: the picture follows the pointer in the
+/// preview, one undo step on release.
+fn frame_drag(
+    ui: &Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    cmds: &mut Vec<Command>,
+    resp: &egui::Response,
+    picture: Rect,
+) {
+    let Some(g) = cache.frame_handle else {
+        return;
+    };
+    let Some(p) = resp.interact_pointer_pos().or(resp.hover_pos()) else {
+        if resp.drag_stopped() {
+            cache.frame_handle = None;
+            cmds.push(Command::DragPicture(None));
+        }
+        return;
+    };
+    let p = placement::to_frame(p, picture, g.frame);
+    let (value, rect) = match g.hit {
+        frame_handles::Hit::Corner(c) => {
+            let s = frame_handles::scale_to(&g, c, p);
+            (FrameValue::Scale(s), frame_handles::scaled_rect(&g, s))
+        }
+        frame_handles::Hit::Target => {
+            let m = frame_handles::move_to(&g, p);
+            let (fx, fy) = m.fraction();
+            let (ox, oy) = g.pos.fraction();
+            let shift = egui::vec2(
+                ((fx - ox) * f64::from(g.frame.0)) as f32,
+                ((fy - oy) * f64::from(g.frame.1)) as f32,
+            );
+            (FrameValue::Move(m), g.rect.translate(shift))
+        }
+    };
+    ui.painter().rect_stroke(
+        placement::to_screen(rect, picture, g.frame),
+        0.0,
+        Stroke::new(2.0, Color32::YELLOW),
+        StrokeKind::Outside,
+    );
+    ui.ctx().set_cursor_icon(match g.hit {
+        frame_handles::Hit::Corner(c) => boxes::cursor(Hit::Corner(c), true),
+        frame_handles::Hit::Target => CursorIcon::Grabbing,
+    });
+    let drag = FrameDrag {
+        target: g.target,
+        value,
+    };
+    if resp.drag_stopped() {
+        cache.frame_handle = None;
+        cmds.push(Command::SetPicture(drag));
+    } else if app.frame_drag != Some(drag) {
+        cmds.push(Command::DragPicture(Some(drag)));
     }
 }

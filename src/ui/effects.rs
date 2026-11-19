@@ -60,7 +60,7 @@ pub const EFFECT_TOOLTIP: &str =
     "Drag onto a clip to apply it to that clip; double-click to apply it to the whole video";
 
 /// The rows of the Effects section: the effect and its name (nothing else is shown).
-pub fn rows() -> [(EffectKind, &'static str); 4] {
+pub fn rows() -> [(EffectKind, &'static str); 7] {
     EffectKind::ALL.map(|e| (e, e.name()))
 }
 
@@ -75,13 +75,29 @@ pub fn fade_count(app: &AppState) -> usize {
     tl.fades.len() + usize::from(tl.start_fade) + usize::from(tl.end_fade)
 }
 
+/// True when the popup of `effect` is open (for the picture effects: the one it shows).
+fn row_is_open(app: &AppState, effect: EffectKind) -> bool {
+    match effect {
+        EffectKind::ChangeAspect => app.popups.instance == Some(Instance::Aspect),
+        EffectKind::Scale => {
+            matches!(app.popups.instance, Some(Instance::Scale(_)))
+                && app.popups.is_open(crate::app::Popup::Instance)
+        }
+        EffectKind::Move => {
+            matches!(app.popups.instance, Some(Instance::Move(_)))
+                && app.popups.is_open(crate::app::Popup::Instance)
+        }
+        e => app.popups.is_open(e.popup()),
+    }
+}
+
 pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let w = ui.available_width();
     for (effect, name) in rows() {
         let popup = effect.popup();
         let r = ui
             .add(
-                Button::selectable(app.popups.is_open(popup), name)
+                Button::selectable(row_is_open(app, effect), name)
                     .min_size(egui::vec2(w, 0.0))
                     .sense(egui::Sense::click_and_drag()),
             )
@@ -106,7 +122,11 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
                 target: Target::WholeVideo,
             });
         } else if r.clicked() {
-            cmds.push(Command::OpenPopup(popup));
+            cmds.push(if effect.is_frame() {
+                Command::OpenFrameEffect(effect)
+            } else {
+                Command::OpenPopup(popup)
+            });
         }
     }
     // not an effect to drop on a clip: only a click

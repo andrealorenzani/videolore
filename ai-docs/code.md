@@ -31,6 +31,13 @@
 - docs/code-export.md § Project format 6 — L85-95 (11 lines)
 - docs/code-export.md § Tests — L96-105 (10 lines)
 - docs/code-export.md § Known limits — L106-111 (6 lines)
+- docs/code-frame.md § Code — Change aspect, Scale, Move and keyframes (1.5.0) — L1-5 (5 lines)
+- docs/code-frame.md § Where things are — L6-19 (14 lines)
+- docs/code-frame.md § Storage and time (REQ-132) — L20-35 (16 lines)
+- docs/code-frame.md § The picture (REQ-125, 126, 131) — L36-63 (28 lines)
+- docs/code-frame.md § Interface (REQ-124, 127..130) — L64-80 (17 lines)
+- docs/code-frame.md § Tests — L81-88 (8 lines)
+- docs/code-frame.md § Known limits — L89-96 (8 lines)
 - docs/code-hardware.md § Code — hardware export ("Export: Faster") — L1-7 (7 lines)
 - docs/code-hardware.md § Modules — L8-19 (12 lines)
 - docs/code-hardware.md § Methods and arguments — L20-53 (34 lines)
@@ -60,8 +67,9 @@
 - docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L90-101 (12 lines)
 - docs/code-testing.md § 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`) — L102-119 (18 lines)
 - docs/code-testing.md § 1.2.6 tests — L120-128 (9 lines)
-- docs/code-testing.md § 1.4.0 tests — L129-135 (7 lines)
-- docs/code-testing.md § 1.3.0 tests — L136-141 (6 lines)
+- docs/code-testing.md § 1.5.0 tests — L129-134 (6 lines)
+- docs/code-testing.md § 1.4.0 tests — L135-141 (7 lines)
+- docs/code-testing.md § 1.3.0 tests — L142-147 (6 lines)
 - docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-10 (10 lines)
 - docs/code-text.md § Where things are — L11-23 (13 lines)
 - docs/code-text.md § Model and file — L24-38 (15 lines)
@@ -80,14 +88,29 @@
 - docs/code-ui.md § Settings file — L108-114 (7 lines)
 - docs/code-ui.md § Since 1.2.0 — L115-125 (11 lines)
 - docs/code-ui.md § Preview picture (1.2.6) — L126-134 (9 lines)
-- docs/code.md § Code — L1-21 (21 lines)
-- docs/code.md § Build, test, run — L22-37 (16 lines)
-- docs/code.md § System requirements for building — L38-47 (10 lines)
-- docs/code.md § Settings and machine detection — L48-58 (11 lines)
-- docs/code.md § CPU baseline for speech recognition — L59-68 (10 lines)
-- docs/code.md § Cargo features — L69-79 (11 lines)
-- docs/code.md § Finding ffmpeg — L80-87 (8 lines)
-- docs/code.md § Dependencies — L88-111 (24 lines)
+- docs/code.md § Code — L1-22 (22 lines)
+- docs/code.md § Build, test, run — L23-38 (16 lines)
+- docs/code.md § System requirements for building — L39-48 (10 lines)
+- docs/code.md § Settings and machine detection — L49-59 (11 lines)
+- docs/code.md § CPU baseline for speech recognition — L60-69 (10 lines)
+- docs/code.md § Cargo features — L70-80 (11 lines)
+- docs/code.md § Finding ffmpeg — L81-88 (8 lines)
+- docs/code.md § Dependencies — L89-112 (24 lines)
+
+## State (1.5.0)
+1.5.0 implemented REQ-124..132 (Change aspect, Scale, Move, keyframes, schema 7); plan architecture-plan-1.5.0.md steps 1-12. Docs: + docs/code-frame.md. Status flip (planned -> implemented) and version = documenter/PM (PE did not touch them). Quality suite green: fmt, clippy -D warnings, cargo test (VIDEOLORE_REQUIRE_FFMPEG=1: 502 unit + 57 integration), coverage 95.8%, feature 120/120 (REQ-124..132 still "planned" in docs, all 9 have `// covers:`).
+
+## 1.5.0 notes
+- New modules: keyframes (Key<T>, Lerp, at/add/set/remove/sanitise, MAX_KEYS 200), frame (FrameAspect{Shape,Fit,Fill(Colour(Rgb)|Blur)}, frame_size/preview_size/picture_size/camera_size/fit_filter, Scale{permille,dx,dy}, Stack{scale,moved: Vec<Track{keys,offset}>}, Placement, expression generator), app/frame.rs, ui/frame_popups.rs (KeyBar pure), ui/frame_handles.rs (hit, scale_to, move_to pure). No crate added, no unsafe.
+- Timeline fields frame_aspect (lenient_aspect deserialiser: unknown -> None), whole_scale, whole_move, clip_frames Vec<ClipFrames> sorted; skip_serializing_if empty (v6 JSON byte-identical for projects without effects). Edit methods return EditError::Key(KeyError)/NoSuchEffect. merge needs equal keys (DIFFERENT_FRAMES). frame_stack(i): whole track offset = clip start (timeline time), clip track offset = src_in (source time); Stack::at(local) with local = clip-relative time INCLUDING preview skip (the graph's setpts carries skip, so ffmpeg's `t` is the same local time).
+- DEVIATION from ADR-097/098: the picture is fitted to the FRAME, not to the base size: Fit width `scale=W:-2`, Fit height `scale=-2:H`, no aspect `scale=W:H:force_original_aspect_ratio=decrease` (no pad). Same numbers as REQ-125 for the example; removes the need to carry the base size (preset/format choice) to check_graph/hw/preview; `Geometry` = frame everywhere (plan_export_choice and output_geometry overwrite settings.width/height with frame_size). A 360 camera view is rendered at camera_size(frame, aspect) (frame, or 16:9 on the kept side).
+- DEVIATION from ADR-104: damaged values are corrected silently (from_json's second return is the list of missing sources, not a notes channel); unknown shape/fit/fill -> effect dropped silently.
+- DEVIATION from ADR-103: handles/popup: preview handles show the clip's own Scale/Move else the whole video's (one of each kind at a time); popups share Popup::Instance with Instance::{Aspect, Scale(FrameTarget), Move(FrameTarget)} (one at a time).
+- Graph (render::compose_frame): `[pa]` picture chain; colour `color=c=0xRRGGBB:s=WxH:r=fps:d=len,setpts=PTS-STARTPTS+skip/TB[b]` or blur (`split`, small copy W/8 x H/8 cover+crop, boxblur=min(3, small_min/4):2, scale back); `[pa]scale=w='max(2,trunc(iw*(F)/2)*2)':h=...:eval=frame[pm]` only when a Scale acts; `[b][pm]overlay=x='(W-w)/2+W*(OX)':y=...:eval=frame:shortest=1,format=pf`. Expressions: if(lt(t,T),a+(d)*max(0,t-t0)/span,rest); constant tail segments folded; negatives in parentheses; NaN -> 0. boxblur radius must be <= half the smaller chroma plane (a 68x120 frame failed with radius 3).
+- SPIKE ffmpeg 6.1.1 (local; bundled 9.x not re-measured here, CI v15 tests run on it): scale eval=frame accepts `t`, overlay x/y accept `t` (measured: 1.5x width at t=2 for 1x->2x over 4 s). No ADR-098 fallback needed.
+- FrameKey.placement: Option<(Option<FrameAspect>, (factor, ox, oy) in millionths)>. shown_project() applies frame_drag (with_frame_drag). picture_rect() uses output_size + picture_size (360: camera_size). Selected key: Popups.key; a change with no selected key makes a key at the playhead (key_time clamps to the clip).
+- Req -> test map (1.5.0): 124 app/frame_tests change_aspect_starts..., ui/frame_ux_tests the_change_aspect_popup..., timeline change_aspect_is_one_effect; 125 frame::tests (numbers, even sides, 4096, camera), render::tests the_frame_graph..., the_preview_has_the_frame_shape, v15 a_4_3_video_in_a_tall_frame...; 126 render::tests the_frame_graph..., v15 the_blurred_fill...; 127 ui/frame_handles tests, ui/frame_ux_tests a_corner_handle..., render expressions, v15 scale_makes...; 128 frame_handles the_target_moves..., frame_ux_tests the_target_moves..., v15 move_shifts...; 129 keyframes::tests, timeline split/merge/keys, app/frame_tests keyframes_are_added..., frame_ux_tests the_scale_row..., the_key_timeline_fills..., v15 keyframes_change...; 130 app/frame_tests (aspect whole only, second Scale, paste), frame_ux_tests markers, ux_tests the_effects_section_lists...; 131 render::tests (re-encode, order, 360, subtitles after composition, key), v15 composed under fades; 132 project::tests (v7, 1.4.1 refusal, v6 opens, damaged values), frame::tests lenient, keyframes sanitise.
+- Debt 1.5.0: camera.rs not moved onto keyframes.rs; no hardware/outcheck test with a frame effect (settings carry the frame size, covered by plan tests only); blur strength fixed; blurred fill + Scale re-renders the whole still per drag step; whole-video keys do not follow trims; no easing; ux test harness cannot run the colour picker; popup key timeline click path (select/seek) not driven by a pointer test (KeyBar pure tests only).
 
 ## State (1.4.0)
 1.4.0 implemented REQ-114..123 + reworded 022, 023, 069, 075, 089, 097, 100, 103, 106, 111 (plan: architecture-plan-1.4.0.md, steps 0-12). Docs: + docs/code-export.md. Status flip (planned -> implemented) and version = documenter/PM (PE did not touch them). Quality at hand-off: fmt ok, clippy -D warnings ok, cargo test ok (447 lib + 51 integration), coverage 95.8%, feature-coverage script 103/103 (REQs still marked planned: grep -rn "covers:.*REQ-1[12]" src tests shows every one of 114..123 has tests).

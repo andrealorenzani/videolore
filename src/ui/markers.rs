@@ -15,6 +15,9 @@ use crate::time::{Micros, timecode};
 pub const HIT_TOLERANCE: f32 = 4.0;
 /// Pixels between the volume marker and the Clean audio marker of a clip.
 pub const CLEAN_OFFSET: f32 = 12.0;
+/// Pixels from a clip's start to its Scale marker, and to its Move marker.
+pub const SCALE_OFFSET: f32 = 24.0;
+pub const MOVE_OFFSET: f32 = 36.0;
 /// Characters of a line's text shown in its tooltip.
 const TOOLTIP_TEXT: usize = 40;
 
@@ -28,6 +31,10 @@ pub enum MarkerKind {
     ClipVolume,
     /// A clip with Clean audio (REQ-114).
     CleanAudio,
+    /// A clip with Scale (1.5.0).
+    Scale,
+    /// A clip with Move (1.5.0).
+    Move,
     /// A boundary without a fade: clicking adds one.
     AddFade,
     /// A point of view of a 360 clip.
@@ -155,6 +162,38 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
                 x,
                 x_end: x,
                 tooltip: format!("Clean audio on \"{}\". Click for its settings.", name(i)),
+            });
+        }
+        let keys = |n: usize, what: &str| {
+            format!(
+                "{what} on \"{}\": {n} keyframe{}. Click for its settings.",
+                name(i),
+                if n == 1 { "" } else { "s" }
+            )
+        };
+        let (scale, moved) = (
+            tl.scale_keys(crate::timeline::FrameTarget::Clip(c.id))
+                .len(),
+            tl.move_keys(crate::timeline::FrameTarget::Clip(c.id)).len(),
+        );
+        if scale > 0 {
+            let x = x_of(start) + SCALE_OFFSET;
+            out.push(Marker {
+                kind: MarkerKind::Scale,
+                instance: Instance::Scale(crate::timeline::FrameTarget::Clip(c.id)),
+                x,
+                x_end: x,
+                tooltip: keys(scale, "Scale"),
+            });
+        }
+        if moved > 0 {
+            let x = x_of(start) + MOVE_OFFSET;
+            out.push(Marker {
+                kind: MarkerKind::Move,
+                instance: Instance::Move(crate::timeline::FrameTarget::Clip(c.id)),
+                x,
+                x_end: x,
+                tooltip: keys(moved, "Move"),
             });
         }
         start = start + c.len();

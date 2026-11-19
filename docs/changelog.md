@@ -2,6 +2,22 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.5.0 — 2026-11-19 19:02 +0000
+
+Change the aspect of the whole video, scale and move pictures with keyframes, and fill the empty space with a colour or a blurred copy of the video. Projects saved by this version need version 1.5.0 or later (project format 7); 1.4.x refuses them and leaves them untouched.
+
+### Added
+- **Requirements (business)**: new `docs/business-frame.md` with the frame features, REQ-124 to REQ-132 implemented: Change aspect (shape, fit, colour or blurred fill), frame size, Scale and Move with keyframes, the Effects list and menus, composition order, project format 1.5.0.
+- **Architecture**: new `docs/architecture-frame.md` with the frame design (the 4096 px cap of the longer side, decided on 2026-11-19, composition order, keyframes, filter graph, export and preview rules, format 7, tests, risks); no new crate.
+- **Code**: new modules `keyframes.rs` (keyframe lists) and `frame.rs` (frame model and ffmpeg expressions), with `app/frame.rs`, `ui/frame_popups.rs` and `ui/frame_handles.rs`; the picture is composed in the same ffmpeg graph for preview and export; project format 7. The ffmpeg expression spike is OK on 6.1.1: time-dependent sizes and positions are accepted. Real-ffmpeg tests in `tests/ffmpeg_integration/v15.rs`.
+
+### Changed
+- **Requirements (business)**: impact notes in the UI, export, picture, text and editing documents; a 360 video export ignores the three frame effects, and a 360 clip's Scale and Move act on its flat camera view only.
+- **Code, deviations from the plan**: the picture is fitted to the frame, so the frame size is set first and the video is scaled into it (for example 9:16 with Fit on height gives a 676x1200 frame, with the picture cut at both sides); damaged frame values in a project file are corrected silently and never refuse the file; one popup at a time; a drag of a handle creates a keyframe at the playhead when none is selected; the blur radius of the blurred fill is clamped to the range of `boxblur`.
+
+### Quality
+- Line coverage 95.7%, feature coverage 129/129: REQ-124 to REQ-132 are implemented and each has a test.
+
 ## 1.4.1 — 2026-11-18 00:01 +0000
 
 The project page is rewritten: a short introduction with the director animation, the evolution of the project, the key features with their images, the availability and what it is built with. It is also lighter on phones and for users who prefer reduced motion, which see still pictures; the timeline can be scrolled from the keyboard, and the page has share tags (canonical and Open Graph).

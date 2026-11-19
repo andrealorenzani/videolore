@@ -8,6 +8,7 @@
 
 use crate::export::{self, ExportEvent, ExportHandle, ExportJob, ExportMethod};
 use crate::ffmpeg::{self, FfmpegInfo, Runner};
+use crate::frame::{FrameAspect, Scale};
 use crate::history::History;
 use crate::hwenc::{self, Codec, HwOffer, HwStatus, Platform, ProbeLimits};
 use crate::jobs::{Limited, MAX_CAP, MAX_PROCESSES, Pool, Priority, Scheduler};
@@ -29,7 +30,7 @@ use crate::stt::{
 };
 use crate::subtitles::{LineId, Pos, Preset};
 use crate::time::{Fps, Micros};
-use crate::timeline::{Clip, ClipId, EditError};
+use crate::timeline::{Clip, ClipId, EditError, FrameTarget};
 pub use sphere::{Axis, LiveView, ResizeDrag};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -71,15 +72,32 @@ pub enum EffectKind {
     Volume,
     /// Reduces the background noise of the video's sound (REQ-114).
     CleanAudio,
+    /// The shape of the whole video's frame and what fills the empty space (REQ-124).
+    ChangeAspect,
+    /// Zooms the picture, with keyframes (REQ-127, REQ-129).
+    Scale,
+    /// Moves the picture, with keyframes (REQ-128, REQ-129).
+    Move,
 }
 
 impl EffectKind {
-    pub const ALL: [EffectKind; 4] = [
+    pub const ALL: [EffectKind; 7] = [
         EffectKind::Fade,
         EffectKind::Subtitles,
         EffectKind::Volume,
         EffectKind::CleanAudio,
+        EffectKind::ChangeAspect,
+        EffectKind::Scale,
+        EffectKind::Move,
     ];
+
+    /// True for the effects of the picture frame (1.5.0).
+    pub fn is_frame(self) -> bool {
+        matches!(
+            self,
+            EffectKind::ChangeAspect | EffectKind::Scale | EffectKind::Move
+        )
+    }
 
     pub fn name(self) -> &'static str {
         match self {
@@ -87,6 +105,9 @@ impl EffectKind {
             EffectKind::Subtitles => "Subtitles",
             EffectKind::Volume => "Volume",
             EffectKind::CleanAudio => "Clean audio",
+            EffectKind::ChangeAspect => "Change aspect",
+            EffectKind::Scale => "Scale",
+            EffectKind::Move => "Move",
         }
     }
 
@@ -97,6 +118,7 @@ impl EffectKind {
             EffectKind::Subtitles => Popup::Subtitles,
             EffectKind::Volume => Popup::Volume,
             EffectKind::CleanAudio => Popup::CleanAudio,
+            EffectKind::ChangeAspect | EffectKind::Scale | EffectKind::Move => Popup::Instance,
         }
     }
 }
@@ -276,6 +298,33 @@ pub enum Instance {
     CleanAudio(ClipId),
     /// A point of view of a 360 source, at this source time.
     Pov(MediaId, Micros),
+    /// Change aspect of the whole video (1.5.0).
+    Aspect,
+    /// Scale of a clip or of the whole video (1.5.0).
+    Scale(FrameTarget),
+    /// Move of a clip or of the whole video (1.5.0).
+    Move(FrameTarget),
+}
+
+/// Scale or Move, as the commands of the keyframes name them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FrameFx {
+    Scale,
+    Move,
+}
+
+/// A value of Scale or Move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameValue {
+    Scale(Scale),
+    Move(Pos),
+}
+
+/// A Scale or Move value being set for `target` at the playhead (or the selected key).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameDrag {
+    pub target: FrameTarget,
+    pub value: FrameValue,
 }
 
 /// The open floating windows, most recently opened last.
@@ -290,6 +339,8 @@ pub struct Popups {
     pub text: Option<crate::text::TextId>,
     /// What each effect popup was last applied to (shown in its title).
     pub targets: Vec<(Popup, Target)>,
+    /// The keyframe selected in the Scale or Move popup (its key time).
+    pub key: Option<Micros>,
 }
 
 impl Popups {
@@ -519,6 +570,33 @@ pub enum Command {
         effect: EffectKind,
         target: Target,
     },
+    /// Opens the popup of a picture effect of the whole video (a click on its row).
+    OpenFrameEffect(EffectKind),
+    /// Sets Change aspect of the whole video (REQ-124).
+    SetAspect(FrameAspect),
+    /// Removes Change aspect.
+    RemoveAspect,
+    /// Adds a keyframe at the playhead with the value shown there (REQ-129).
+    AddKey {
+        target: FrameTarget,
+        effect: FrameFx,
+    },
+    /// Removes the selected keyframe.
+    RemoveKey {
+        target: FrameTarget,
+        effect: FrameFx,
+    },
+    /// Removes Scale or Move (all its keyframes).
+    RemoveFrameEffect {
+        target: FrameTarget,
+        effect: FrameFx,
+    },
+    /// Selects a keyframe of the open Scale or Move popup.
+    SelectKey(Option<Micros>),
+    /// A value being dragged in the preview (not an edit).
+    DragPicture(Option<FrameDrag>),
+    /// Sets the selected keyframe, or makes one at the playhead (REQ-127..129).
+    SetPicture(FrameDrag),
     /// Sound level (0–100 %) and mute of one video clip.
     /// Switches Clean audio on or off for a clip or the whole video (REQ-114).
     SetCleanAudio {
@@ -700,6 +778,27 @@ impl Command {
                 effect: EffectKind::CleanAudio,
                 ..
             } => "Clean audio",
+            Command::ApplyEffect {
+                effect: EffectKind::ChangeAspect,
+                ..
+            }
+            | Command::SetAspect(_) => "Change aspect",
+            Command::ApplyEffect {
+                effect: EffectKind::Scale,
+                ..
+            } => "Scale",
+            Command::ApplyEffect {
+                effect: EffectKind::Move,
+                ..
+            } => "Move",
+            Command::RemoveAspect | Command::RemoveFrameEffect { .. } => "Remove effect",
+            Command::AddKey { .. } => "Add keyframe",
+            Command::RemoveKey { .. } => "Remove keyframe",
+            Command::SetPicture(FrameDrag {
+                value: FrameValue::Scale(_),
+                ..
+            }) => "Scale",
+            Command::SetPicture(_) => "Move",
             Command::ApplyEffect { .. } => "Volume",
             Command::SetClipVolume { .. } => "Clip volume",
             Command::SetCleanAudio { on: true, .. } => "Clean audio",
@@ -805,6 +904,10 @@ pub struct AppState {
     pub selection: crate::selection::Selection,
     /// Lines being dragged in the preview and where (shown at once, saved on release).
     pub drag_pos: Option<(Vec<LineId>, Pos)>,
+    /// A Scale or Move value being dragged in the preview (shown at once, saved on release).
+    pub frame_drag: Option<FrameDrag>,
+    /// The keyframes of the copied clip (REQ-130: a paste keeps them).
+    pub clipboard_frames: Option<crate::timeline::ClipFrames>,
     /// Lines whose corner is being dragged in the preview and their new size.
     pub resize_drag: Option<ResizeDrag>,
     /// The camera of each 360 source you looked through (window state: not saved, not
@@ -1036,6 +1139,8 @@ impl AppState {
             selected_music: None,
             selection: Default::default(),
             drag_pos: None,
+            frame_drag: None,
+            clipboard_frames: None,
             resize_drag: None,
             live: HashMap::new(),
             camera_restart: None,
@@ -1403,8 +1508,22 @@ impl AppState {
                     Target::Clip(c) => tl.get(*c).is_some(),
                     Target::WholeVideo => !tl.clips.is_empty(),
                 };
-                clip_ok && (*effect != EffectKind::Subtitles || (has_ff && !self.is_generating()))
+                let aspect_ok =
+                    *effect != EffectKind::ChangeAspect || *target == Target::WholeVideo;
+                clip_ok
+                    && aspect_ok
+                    && (*effect != EffectKind::Subtitles || (has_ff && !self.is_generating()))
             }
+            Command::OpenFrameEffect(_) | Command::SetAspect(_) | Command::RemoveAspect => {
+                !tl.clips.is_empty()
+            }
+            Command::AddKey { target, .. } | Command::RemoveFrameEffect { target, .. } => {
+                match target {
+                    FrameTarget::Whole => !tl.clips.is_empty(),
+                    FrameTarget::Clip(c) => tl.get(*c).is_some(),
+                }
+            }
+            Command::RemoveKey { target, effect } => self.selected_key(*target, *effect).is_some(),
             Command::SetClipVolume { clip, .. } => tl.get(*clip).is_some(),
             Command::SetCleanAudio { target, .. } => match target {
                 Target::Selected => self.target_clip().is_some(),
@@ -1595,6 +1714,7 @@ impl AppState {
                     .target_clip()
                     .ok_or(EditError::NothingSelected.to_string())?;
                 self.clipboard = self.project.timeline.get(id).copied();
+                self.clipboard_frames = self.project.timeline.frames_of(id).cloned();
                 self.status = "Clip copied".into();
                 Ok(())
             }
@@ -1603,11 +1723,13 @@ impl AppState {
                     .target_clip()
                     .ok_or(EditError::NothingSelected.to_string())?;
                 let clip = self.project.timeline.get(id).copied();
+                let frames = self.project.timeline.frames_of(id).cloned();
                 self.edit(now, label, |e| {
                     e.timeline.remove(id).map(|_| ()).map_err(err)
                 })?;
                 if cmd == Command::Cut {
                     self.clipboard = clip;
+                    self.clipboard_frames = frames;
                 }
                 self.selected_clip = None;
                 Ok(())
@@ -1622,8 +1744,14 @@ impl AppState {
                 let min = self.frame_len();
                 let at = self.playhead;
                 let mut new_id = None;
+                let frames = self.clipboard_frames.clone();
                 self.edit(now, label, |e| {
-                    new_id = Some(e.timeline.insert_at(&clip, at, min).map_err(err)?);
+                    let id = e.timeline.insert_at(&clip, at, min).map_err(err)?;
+                    if let Some(f) = frames {
+                        e.timeline
+                            .put_frames(crate::timeline::ClipFrames { clip: id, ..f });
+                    }
+                    new_id = Some(id);
                     Ok(())
                 })?;
                 self.selected_clip = new_id;
@@ -2227,6 +2355,26 @@ impl AppState {
                 self.save_settings()
             }
             Command::ApplyEffect { effect, target } => self.apply_effect(effect, target, now),
+            Command::OpenFrameEffect(effect) => {
+                self.open_frame_effect(effect);
+                Ok(())
+            }
+            Command::SetAspect(a) => self.set_aspect(Some(a), now),
+            Command::RemoveAspect => self.set_aspect(None, now),
+            Command::AddKey { target, effect } => self.add_key(target, effect, now),
+            Command::RemoveKey { target, effect } => self.remove_key(target, effect, now),
+            Command::RemoveFrameEffect { target, effect } => {
+                self.remove_frame_effect(target, effect, now)
+            }
+            Command::SelectKey(k) => {
+                self.popups.key = k;
+                Ok(())
+            }
+            Command::DragPicture(d) => {
+                self.drag_picture(d, now);
+                Ok(())
+            }
+            Command::SetPicture(d) => self.set_picture(d, now),
             Command::SetClipVolume {
                 clip,
                 volume,
@@ -2368,6 +2516,12 @@ impl AppState {
                 tl.index_of(c).map(|i| tl.start_of(i))
             }
             Instance::Pov(m, t) => self.pov_position(m, t),
+            Instance::Aspect
+            | Instance::Scale(FrameTarget::Whole)
+            | Instance::Move(FrameTarget::Whole) => (!tl.clips.is_empty()).then_some(Micros::ZERO),
+            Instance::Scale(FrameTarget::Clip(c)) | Instance::Move(FrameTarget::Clip(c)) => {
+                tl.index_of(c).map(|i| tl.start_of(i))
+            }
         }
     }
 
@@ -2549,6 +2703,11 @@ impl AppState {
             Command::SetPov | Command::DragCamera { .. } | Command::ZoomCamera(_) => {
                 sphere::NOT_A_360
             }
+            Command::RemoveKey { .. } => frame::SELECT_A_KEY,
+            Command::ApplyEffect {
+                effect: EffectKind::ChangeAspect,
+                ..
+            } => frame::ASPECT_WHOLE_ONLY,
             Command::ApplyEffect {
                 target: Target::Selected,
                 ..
@@ -3332,6 +3491,7 @@ fn preview_config(
 }
 
 mod effects;
+mod frame;
 mod sphere;
 mod subs_create;
 mod texts;
@@ -3339,6 +3499,8 @@ pub use subs_create::pick_track;
 
 #[cfg(test)]
 mod effects_tests;
+#[cfg(test)]
+mod frame_tests;
 #[cfg(test)]
 mod hw_tests;
 #[cfg(test)]

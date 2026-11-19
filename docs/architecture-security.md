@@ -75,6 +75,11 @@ There are no secrets, accounts or telemetry.
 - The dialog's choices are kept in memory for the session only; nothing is written to disk or sent over the network.
 - Text widths and 360 anchor sizes are range-checked on load like the other values of the project.
 
+## Frame effects (1.5.0)
+- Change aspect, Scale and Move take their values from closed lists and numeric ranges only; the colour of the frame is a strict `#RRGGBB` value. No project text reaches an `ffmpeg` filter graph: the expressions are built from numbers.
+- Frame sizes come from the base size and the chosen shape, capped at 4096 px on the longer side; numbers stored in a project cannot make the frame larger.
+- Values outside their ranges in a project file are corrected on load with a note, and never crash the program.
+
 ## Unsafe code
 Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in two reviewed places: the cancel callback passed to whisper.cpp and the macOS "open document" handler.
 

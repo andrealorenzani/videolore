@@ -8,6 +8,8 @@ Implemented in 1.2.6: everything that can be moved on the preview picture gets a
 
 1.4.0 changes: text items and subtitle lines can be dragged past the edges of the picture (REQ-117); the Context Menu also works for text items; a clip is treated as 360 only from its file's own information (the "360°" switch is removed, REQ-100); for a project whose clips are all 360, the 360 choice is in the Export dialog (REQ-122).
 
+1.5.0 adds: Scale and Move, which change the picture of a clip or of the whole video, and Change aspect for the whole video; Scale and Move can be keyframed. They are described in [Frame](business-frame.md). On a 360 clip they apply to the flat camera view, not to the 360 video export.
+
 ## Features
 - **Visible boxes**: every object that can be moved on the picture shows a thin box in the preview (subtitle lines, and since 1.3.0 text items). Drag the box to move it; drag a corner to enlarge or shrink it. The box is a preview aid and is never exported.
 - **Context Menu** (1.3.0): a group in the toolbar, separated from the action buttons. It is shown only when there is something to act on: a selected subtitle line or text item (**Align horizontally**, **Align vertically**, **Reset**), or the playhead on a 360 clip (**Set POV** and **Reset view**). Otherwise it is not shown.
@@ -58,6 +60,7 @@ Implemented in 1.2.6: everything that can be moved on the preview picture gets a
 - REQ-078 (Clip details): the "Treat as 360° video" switch is removed in 1.4.0 (REQ-100).
 - REQ-076 / REQ-077 (popups and markers): a POV popup and POV markers on the timeline of the 360 clip.
 - REQ-029 and REQ-105: projects from 1.2.6 and earlier open with the same result; 1.3.0 projects are a newer format (REQ-113).
+- (1.5.0) REQ-124 to REQ-131 (Change aspect, Scale, Move, keyframes): the picture of a 360 clip is scaled and moved in the flat camera view only; a 360 video export ignores them (see [Frame](business-frame.md)).
 
 ## Known limitations
 - Only equirectangular, single-picture 360 video is supported (no stereo 3D, cube maps or partial 180° video); the spatial (ambisonic) sound is played as it is and does not follow the camera.
@@ -72,6 +75,7 @@ Implemented in 1.2.6: everything that can be moved on the preview picture gets a
 - (1.3.0) A subtitle line placed on a 360 clip is drawn as plain white text: it has no preset box and no word-by-word highlight, in the preview and in the export.
 - (1.4.0) A video without spherical information is always flat: a plain 2:1 picture can no longer be looked around in, because the "360°" switch is removed.
 - (1.3.0) The 360 marker of a 360 video export is written only for MP4 and MOV files; a 360 video in another container (for example Matroska or WebM) carries no 360 marker, so 360 players may show it flat.
+- (1.5.0) A 360 video export ignores Change aspect, Scale and Move.
 
 ## Out of scope
 - Stereo 3D, cube maps, 180° VR video, headsets and motion sensors.

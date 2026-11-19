@@ -2,7 +2,7 @@
 
 <!-- AI-only notes. Owner agent edits only. Dense format OK. -->
 
-target: 1.4.0 PLANNED (clean audio afftdn; text width + best fit (ADR-087); export dialog + presets + audio formats; 360 switch removed; schema v6; ADR-080..091; details ai-docs/architecture-plan-1.4.0.md; Q1 confirmed = A 2026-11-17, no open questions) | prev 1.3.0 BUILT (text items via ASS/libass, installed fonts (+fontdb 0.24, MIT), one Selection, Context Menu, 360 anchors burned into sphere before v360, 360 video export + own MP4/MOV spherical writer; ADR-066..079 + addenda DEV-1..3; REQ-106..113 implemented; schema v5; details ai-docs/architecture-plan-1.3.0.md (plan + § Built in 1.3.0 and deviations); Q1=A, Q2=A confirmed 2026-11-17) | prev 1.2.6 (boxes+size+align/reset, 360 video; ADR-059..065; REQ-096..105, schema v4, no new crates) | prev 1.2.0 (effects per clip/whole video, embedded subtitle reuse + alignment, SRT export, per-line positions, selection, ruler; ADR-049..058; earlier: 1.1.0 ADR-041..048, 0.4.2 ADR-037..040 + deviations; ADR-032 superseded) | MSRV 1.100 (ADR-012) | toolchain: latest stable | ed 2024 | GPL-3.0-only
+target: 1.5.0 PLAN (2026-11-19; frame: Change aspect, Scale, Move with keyframes; schema v7; ADR-093..104; details ai-docs/architecture-plan-1.5.0.md; Q-A CLOSED 2026-11-19 = A: frame longer side cap 4096 px) | prev 1.4.1 BUILT (project page only, ADR-092) | prev 1.4.0 BUILT (clean audio afftdn; text width + best fit (ADR-087); export dialog + presets + audio formats; 360 switch removed; schema v6; ADR-080..091; details ai-docs/architecture-plan-1.4.0.md) | prev 1.3.0 BUILT (text items via ASS/libass, installed fonts (+fontdb 0.24, MIT), one Selection, Context Menu, 360 anchors burned into sphere before v360, 360 video export + own MP4/MOV spherical writer; ADR-066..079 + addenda DEV-1..3; REQ-106..113 implemented; schema v5; details ai-docs/architecture-plan-1.3.0.md (plan + § Built in 1.3.0 and deviations); Q1=A, Q2=A confirmed 2026-11-17) | prev 1.2.6 (boxes+size+align/reset, 360 video; ADR-059..065; REQ-096..105, schema v4, no new crates) | prev 1.2.0 (effects per clip/whole video, embedded subtitle reuse + alignment, SRT export, per-line positions, selection, ruler; ADR-049..058; earlier: 1.1.0 ADR-041..048, 0.4.2 ADR-037..040 + deviations; ADR-032 superseded) | MSRV 1.100 (ADR-012) | toolchain: latest stable | ed 2024 | GPL-3.0-only
 scope 0.2.0: resolve all 0.1.3 known limitations + REQ-026..044 + REQ-014..020 implemented (music, subtitles/STT) + bundled ffmpeg (C1 reversed) + installers.
 scope 0.3.0: REQ-045..059 (auto setup, plain Settings, effort levels, preview quality, subtitle quality levels, model storage, old-CPU gate, responsiveness, untrusted-input hardening, safe downloads, private temp files) + QG-01..04 (perf review, vuln check + ffmpeg refresh, faster tests, CI warnings). REQ-055 (hw encode) stays planned (ADR-032). Andrea away: SEVERE items defaulted (ADR-030/031/032, effort semantics ADR-029, in-app Settings window ADR-028) -> confirm on return.
 scope 0.4.0: REQ-055 (reworded, implemented) + REQ-060..065 + QG-05 (manual real-hw matrix): hw H.264/HEVC export for NVENC/QSV/AMF(win)/VA-API(linux)/VideoToolbox(macOS), opt-in "Export: Faster" (Best quality default, S1), probe on demand, stall watchdog, output check, silent sw redo, failure memory. all vendors on (S2). next free REQ-066, QG-06 (PM).
@@ -18,23 +18,68 @@ numbers below are decisions/estimates, not measurements; QG-01/03/05 measured va
 scope 1.2.6: REQ-096..105 (PM section 1.2.6; docs/business-picture.md + REQ-105 in business-editing.md). no SEVERE questions (M1 flat export, M3 align=centre decided by PM as MINOR). technical Qs decided: engine v360 (ADR-059), per-source POVs in source time (061), camera view fills output frame (063), 360 proxy 4096 wide (063), sizes permille + \fs (064), schema v4 (065). next free REQ-106 (PM).
 
 ## ai sub-documents (read only when a task needs them)
+- ai-docs/architecture-plan-1.5.0.md § whole file — L1-103 (103 lines, PLAN 2026-11-19): code facts, ADR-093..104 (frame storage, time base, keyframe limits, Scale pivot, frame size, picture layers, expressions, colour and blur, edit rules, export rules, preview priority, format 7), components, ordered steps for the Principal Engineer, tests per REQ, NFR, security, risks, Q-A (closed 2026-11-19: 4096 px cap), future work.
 - ai-docs/architecture-plan-1.4.0.md § Code facts — L5-14; § Components and changes (1.4.0) — L15-30; § ADRs (1.4.0) ADR-080..091 — L31-49; § Schema v6 (REQ-123) — L50-56; § Export dialog flow — L57-62; § NFR (1.4.0) — L63-71; § Security (1.4.0) — L72-79; § Crates — L80-82; § Ordered steps for the Principal Engineer — L83-97; § Tests per REQ (summary) — L98-108; § Risks — L109-119; § Questions (Q1 confirmed = A, none open) — L120-124; § Future work — L125-131 (131 lines, PLAN 2026-11-17)
 - ai-docs/architecture-plan-1.3.0.md § whole file — L1-136 (136 lines): code facts, crate decision, text model, effects to ASS events, flat render, selection, context menu, 360 anchors, 360 video export, project v5, rename, tests per REQ, ordered steps (done), security, risks, questions; § Built in 1.3.0 and deviations — L131-136 (DEV-1 time to live, DEV-2 spherical marker, DEV-3 anchored subtitle lines, DEV-4 selection).
 
-## human docs index (1.4.0 PLAN sections; other sections: grep -n '^#' <doc>)
-- docs/architecture.md § Title and status — L1-4 · § Overview — L5-9 (REQ-001..113 + 1.4.0 planned sentence L8) · § Sub-documents — L10-30 (export-dialog row; 1.4.0 rows) · § Components — L31-67 (export/choice row L37, timeline row L36) · § Data flow — L68-84 (1.4.0 export bullet L80) · § Main technical decisions — L85-87 · § Projects — L88-90 (v6 planned, L89) · § Deviations from the 1.3.0 plan (as built) — L91-96 · § Non-functional targets — L97-118 (1.4.0 bullet L112) · § Rust toolchain policy — L119-122 · § Build and CI — L123-130 · § Known risks — L131-143 (1.4.0 bullet L142) (143 lines, at the limit)
+## human docs index (one line per heading for docs changed in 1.5.0 PLAN; other docs: sections listed earlier, grep -n '^#' <doc> for the rest)
+- docs/architecture-frame.md (NEW 1.5.0) — see the lines listed below under docs/architecture-frame.md
+- docs/architecture.md § Title — L1-4 (4 lines)
+- docs/architecture.md § Overview — L5-9 (5 lines)
+- docs/architecture.md § Sub-documents — L10-31 (22 lines; frame row L11)
+- docs/architecture.md § Components — L32-70 (39 lines; keyframes + frame rows 1.5.0 planned)
+- docs/architecture.md § Data flow — L71-88 (18 lines; frame effects bullet 1.5.0 planned)
+- docs/architecture.md § Main technical decisions — L89-91 (3 lines)
+- docs/architecture.md § Projects — L92-94 (3 lines; v7 planned)
+- docs/architecture.md § Deviations from the 1.3.0 plan (as built) — L95-100 (6 lines)
+- docs/architecture.md § Non-functional targets — L101-123 (23 lines; frame bullet 1.5.0 planned)
+- docs/architecture.md § Rust toolchain policy — L124-127 (4 lines)
+- docs/architecture.md § Build and CI — L128-135 (8 lines)
+- docs/architecture.md § Known risks — L136-149 (14 lines; 1.5.0 bullet planned)
+- docs/architecture-frame.md § Title — L1-4 (4 lines, NEW 1.5.0 planned)
+- docs/architecture-frame.md § Overview — L5-11 (7 lines)
+- docs/architecture-frame.md § Frame size (Change aspect) — L12-19 (8 lines)
+- docs/architecture-frame.md § Picture composition — L20-29 (10 lines)
+- docs/architecture-frame.md § Scale and Move keyframes — L30-38 (9 lines)
+- docs/architecture-frame.md § Filter graph — L39-43 (5 lines)
+- docs/architecture-frame.md § Export and 360 video — L44-47 (4 lines)
+- docs/architecture-frame.md § Preview — L48-52 (5 lines)
+- docs/architecture-frame.md § Project format — L53-57 (5 lines)
+- docs/architecture-frame.md § Non-functional targets (1.5.0) — L58-64 (7 lines)
+- docs/architecture-frame.md § Security — L65-69 (5 lines)
+- docs/architecture-frame.md § Dependencies — L70-72 (3 lines)
+- docs/architecture-frame.md § Tests (planned) — L73-78 (6 lines)
+- docs/architecture-frame.md § Risks — L79-85 (7 lines)
+- docs/architecture-frame.md § Decided: size limit of the frame — L86-87 (2 lines; Q-A closed: 4096 px cap)
 - docs/architecture-export-dialog.md § whole file — L1-66 (66 lines, NEW 1.4.0 planned): § Opening the dialog — L5-9 · § Modes — L10-15 · § Export file — L16-22 · § Video format (Full video only) — L23-41 (preset table) · § Audio format — L42-47 · § 360 choice — L48-51 · § What the export does with the choices — L52-56 · § Tests (planned) — L57-62 · § Risks — L63-66
 - docs/architecture-decisions.md § whole file — L1-30 (30 lines; 1.4.0 bullet L29)
 - docs/architecture-text.md § Model — L5-9 (1.4.0 width L6) · § Rendering — L10-15 (layout L14, 1.4.0) · § Effects — L16-22 · § Fonts and safety — L23-28 · § Box, best fit and place (1.4.0, planned) — L29-38 (width, best fit, anchors, reset, align, drag, migration Q1) · § Tests — L39-44 (1.4.0 bullet L43) · § Risks — L45-51 (1.4.0 bullets L47-48) · § Deviations (1.3.0) — L52-53 (53 lines)
 - docs/architecture-360.md § Recognising a 360 video — L10-15 (switch removal L13, 1.4.0) · § Risks — L43-48 (switch L47) · § Anchored text and subtitles (1.3.0) — L49-59 (1.4.0 box bullet L58) · § Export as 360 video (1.3.0) — L60-66 (dialog choice L61, mixed L63) · § Tests for 1.3.0 — L67-70 (70 lines)
 - docs/architecture-boxes.md § Effect commands — L15-20 (Edit menu L18, 1.4.0) · § Context Menu and text boxes (1.3.0) — L21-25 (1.3.0 text note) · § Text items, width and dragging (1.4.0, planned) — L26-32 · § Tests — L33-39 (1.4.0 bullet L36; 39 lines)
-- docs/architecture-projects.md § Format versions — L5-23 (v6 row L15, 1.4.0 planned) · § Loading and validation — L24-33 (v6 bullet, 1.4.0) · § Unsaved changes — L34-39 · § What is not in a project — L40-41 (export choices; 41 lines)
+- docs/architecture-projects.md § Format versions — L5-24 (20 lines; v7 row L16 planned 1.5.0)
+- docs/architecture-projects.md § Loading and validation — L25-34 (10 lines)
+- docs/architecture-projects.md § Unsaved changes — L35-40 (6 lines)
+- docs/architecture-projects.md § What is not in a project — L41-42 (2 lines)
 - docs/architecture-ui.md § Menus, toolbar and shortcuts — L30-39 (1.4.0 Effects/Edit + Export bullet L38) · § Selection (1.3.0) — L79-83 · § Add Text popup (1.3.0) — L84-87 · § Risks — L88-91 (91 lines)
 - docs/architecture-subtitles.md § Position on screen (1.2.0) — L50-61 (1.4.0 drag limit L54, L56) (110 lines)
 - docs/architecture-effects.md § Applying an effect — L5-14 (1.4.0 Clean audio in list L6, menu note L9) · § Fade through black — L15-23 · § Clip volume — L24-30 · § Clean audio (1.4.0, planned) — L31-39 (engine, where, popup, edit rules, export, acceptance) · § When the export must re-encode — L40-42 · § Tests — L43-48 (1.4.0 bullet L48) (48 lines)
 - docs/architecture-ffmpeg.md § Pinning and download — L22-29 (1.4.0 smoke test bullet L27) · § Subtitle rendering and fonts — L53-58 (78 lines)
-- docs/architecture-dependencies.md § Rust crates — L15-44 (1.4.0 paragraph L37; no new crate) (74 lines)
-- docs/architecture-security.md § Export dialog and clean audio (1.4.0, planned) — L71-77 · § Text items and fonts (1.3.0) — L61-66 · § Spherical marker (1.3.0) — L67-70 (90 lines)
+- docs/architecture-dependencies.md § Rust crates — L15-46 (32 lines; 1.5.0 "no new crate" line L16)
+- docs/architecture-security.md § Export dialog and clean audio (1.4.0) — L71-77 (7 lines)
+- docs/architecture-security.md § Text items and fonts (1.3.0) — L61-66 (6 lines)
+- docs/architecture-security.md § Spherical marker (1.3.0) — L67-70 (4 lines)
+- docs/architecture-security.md § Frame effects (1.5.0, planned) — L78-82 (5 lines)
+- docs/architecture-security.md § Title — L1-4 (4 lines)
+- docs/architecture-security.md § Threat model — L5-11 (7 lines)
+- docs/architecture-security.md § Running ffmpeg — L12-21 (10 lines)
+- docs/architecture-security.md § Project and settings files — L22-32 (11 lines)
+- docs/architecture-security.md § Subtitles — L33-37 (5 lines)
+- docs/architecture-security.md § Network — L38-44 (7 lines)
+- docs/architecture-security.md § Temporary files (since 0.3.0) — L45-51 (7 lines)
+- docs/architecture-security.md § Other files written outside projects — L52-60 (9 lines)
+- docs/architecture-security.md § Unsafe code — L83-85 (3 lines)
+- docs/architecture-security.md § Unsigned installers — L86-88 (3 lines)
+- docs/architecture-security.md § Supply chain — L89-95 (7 lines)
 
 ## component map (src/ modules)
 - time: µs/rational time, ts parse/format, no floats in cut math. pure.
@@ -107,6 +152,7 @@ scope 1.2.6: REQ-096..105 (PM section 1.2.6; docs/business-picture.md + REQ-105 
   - Instance + Pov(MediaId, Micros); ui/markers.rs POV marker (diamond variant) for POVs inside the clip's kept source range, timeline x = clip.start+(t-src_in); popup: time, yaw, pitch, zoom (DragValue, 1 undo on commit), Remove.
   - actions: + AlignHorizontal, AlignVertical, ResetObjects, SetPov, ToggleBoxes (-> 43); toolbar = existing 12 + separator group [AlignHorizontal, AlignVertical, ResetObjects] placed after the 12 (overflow into "»" first); toolbar::fit must treat the separator as zero-cost, group kept together in overflow. shortcuts: SetPov bare `P`; Align H/V Ctrl/Cmd+Shift+H / +Shift+J, Reset Ctrl/Cmd+Shift+R (NOT Ctrl+Alt: AltGr collisions); PE may adjust, test asserts uniqueness. menus: Effects (Align x2, Reset, Set POV), Playback (Set POV), View (Show boxes); preview + marker context menus.
   - ui/mod.rs preview: 360 clip at playhead & no subtitle box under pointer: drag -> DragCamera, scroll/pinch -> ZoomCamera, Set POV button overlay in preview controls; camera drag debounce 30 ms (still mailbox) ; during playback with override: restart stream from playhead (latest-only, 100 ms) with fixed camera.
+- 1.5.0 PLAN (not built): keyframes.rs (NEW, pure Key<T>, at(), limits); frame.rs (NEW, pure FrameAspect, frame_size, 4096 cap); timeline.rs + frame fields & rules; render.rs stages A-D + expression generator + re-encode rule; project.rs v7 validation notes; app/frame.rs (NEW submodule); ui/frame_popups.rs + keytimeline layout (NEW); preview FrameKey frame state. Details ai-docs/architecture-plan-1.5.0.md § Components and changes.
 - main.rs: run_native (+ macOS: event_loop_builder default menu off, odoc observer before run_native; argv[1] open).
 data flow:
 - UI ev -> AppState::dispatch -> mutate Edit -> history -> recompute dirty -> FrameKey@playhead -> if != shown_key post still req to mailbox after 80 ms debounce (injected now).
@@ -659,6 +705,21 @@ ADR-080..091 (1.4.0, PLANNED; full text in ai-docs/architecture-plan-1.4.0.md §
 - ADR-089 drag limit for flat text and subtitles: centre on picture (grab rule); 360 unchanged. REQ-089/117.
 - ADR-090 Effects menu = effects + Add text + Apply ▸; item commands in Edit menu (placement only). REQ-069/075.
 - ADR-091 Context group + Align/Reset for selected text items; width handle right edge only; Reset = default place and width. REQ-106/115/116.
+
+## 1.5.0 PLAN decisions (summary; full ADRs in ai-docs/architecture-plan-1.5.0.md)
+- ADR-093 storage: frame_aspect, whole_scale/whole_move, clip_frames in Timeline (Clip stays Copy; no BTreeMap with ClipId keys in JSON).
+- ADR-094 time base: clip keys in source time (never deleted by trim/split; hidden not lost); whole-video keys in timeline time.
+- ADR-095 limits: Key<T>{t,v}, <=200 per effect, Scale permille 100..=4000, Move Pos 0..=10000, hold + linear; new keyframes.rs (camera.rs not refactored: debt).
+- ADR-096 Scale pivot: Scale keys carry hidden centre offset so corner drags keep the opposite corner fixed; Move independent. TECHNICAL.
+- ADR-097 frame size: pure frame.rs; base = format/preset size; fit width/height; even sides; longer side cap 4096 (Q-A closed 2026-11-19 = A).
+- ADR-098 layers: picture fitted without pad when frame effect applies; background (colour or blur at 1/8 size); overlay with per-frame scale+position; fades after composition; no effect = identical argv.
+- ADR-099 expressions from numbers only (nested if piecewise linear); script file when long; fallback sampled command file if bundled ffmpeg refuses t.
+- ADR-100 colour #RRGGBB validated -> 0xRRGGBB; blur fixed strength.
+- ADR-101 edit rules: split/copy keep keys, merge needs equal keys, remove drops; one undo per action.
+- ADR-102 export: any frame effect re-encodes; Sphere360 ignores all three; flat camera applies after camera view; hw export applies.
+- ADR-103 preview hit priority: subtitle/text boxes > Scale corners > Move target > picture (camera).
+- ADR-104 format 7: always written; 1.4.x refuses; damaged values corrected with notes; keys dropped when outside the media (REQ-132 says clip: PM to align; flagged 2026-11-19).
+- Crates: none new (ffmpeg core filters: color, split, scale, boxblur, overlay; egui colour picker).
 
 ## NFR targets (1.4.0 additions, full list in plan)
 - clean audio gate: noise-only parts >= 6 dB lower, speech within 3 dB (ASSUMPTION thresholds, PE measures on committed fixture); preview: no audio correction events over 60 s (ESTIMATE); frame <= 200 ms with clean audio + export + STT.

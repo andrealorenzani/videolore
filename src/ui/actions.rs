@@ -43,6 +43,9 @@ pub enum ActionId {
     Subtitles,
     Volume,
     CleanAudio,
+    ChangeAspect,
+    Scale,
+    Move,
     ToggleFadeAtPlayhead,
     GenerateSubtitles,
     AddSubtitleLine,
@@ -51,10 +54,15 @@ pub enum ActionId {
     ApplyClipSubtitles,
     ApplyClipVolume,
     ApplyClipCleanAudio,
+    ApplyClipScale,
+    ApplyClipMove,
     ApplyWholeFade,
     ApplyWholeSubtitles,
     ApplyWholeVolume,
     ApplyWholeCleanAudio,
+    ApplyWholeChangeAspect,
+    ApplyWholeScale,
+    ApplyWholeMove,
     AlignHorizontal,
     AlignVertical,
     ResetObjects,
@@ -255,6 +263,24 @@ pub const ACTIONS: &[Action] = &[
         "Reduce the background noise of the video's sound"
     ),
     action!(
+        ChangeAspect,
+        "Change aspect…",
+        [],
+        "The shape of the whole video's frame and what fills the empty space"
+    ),
+    action!(
+        Scale,
+        "Scale…",
+        [],
+        "Make the picture bigger or smaller, with keyframes"
+    ),
+    action!(
+        Move,
+        "Move…",
+        [],
+        "Move the picture in the frame, with keyframes"
+    ),
+    action!(
         ToggleFadeAtPlayhead,
         "Add/remove fade at playhead",
         [],
@@ -303,6 +329,18 @@ pub const ACTIONS: &[Action] = &[
         "Reduce the background noise in the sound of the selected clip"
     ),
     action!(
+        ApplyClipScale,
+        "Scale",
+        [],
+        "Make the picture of the selected clip bigger or smaller"
+    ),
+    action!(
+        ApplyClipMove,
+        "Move",
+        [],
+        "Move the picture of the selected clip in the frame"
+    ),
+    action!(
         ApplyWholeFade,
         "Fade IN/OUT",
         [],
@@ -325,6 +363,24 @@ pub const ACTIONS: &[Action] = &[
         "Clean audio",
         [],
         "Reduce the background noise in the sound of the whole video"
+    ),
+    action!(
+        ApplyWholeChangeAspect,
+        "Change aspect",
+        [],
+        "Change the shape of the whole video's frame"
+    ),
+    action!(
+        ApplyWholeScale,
+        "Scale",
+        [],
+        "Make the picture of the whole video bigger or smaller"
+    ),
+    action!(
+        ApplyWholeMove,
+        "Move",
+        [],
+        "Move the picture of the whole video in the frame"
     ),
     action!(
         AlignHorizontal,
@@ -452,6 +508,9 @@ impl ActionId {
             Subtitles => Command::OpenPopup(Popup::Subtitles),
             Volume => Command::OpenPopup(Popup::Volume),
             CleanAudio => Command::OpenPopup(Popup::CleanAudio),
+            ChangeAspect => Command::OpenFrameEffect(EffectKind::ChangeAspect),
+            Scale => Command::OpenFrameEffect(EffectKind::Scale),
+            Move => Command::OpenFrameEffect(EffectKind::Move),
             ToggleFadeAtPlayhead => Command::ToggleFadeAtPlayhead,
             GenerateSubtitles => Command::GenerateSubtitles,
             AddSubtitleLine => Command::AddSubtitle,
@@ -460,6 +519,11 @@ impl ActionId {
             ApplyClipSubtitles => apply(EffectKind::Subtitles, Target::Selected),
             ApplyClipVolume => apply(EffectKind::Volume, Target::Selected),
             ApplyClipCleanAudio => apply(EffectKind::CleanAudio, Target::Selected),
+            ApplyClipScale => apply(EffectKind::Scale, Target::Selected),
+            ApplyClipMove => apply(EffectKind::Move, Target::Selected),
+            ApplyWholeChangeAspect => apply(EffectKind::ChangeAspect, Target::WholeVideo),
+            ApplyWholeScale => apply(EffectKind::Scale, Target::WholeVideo),
+            ApplyWholeMove => apply(EffectKind::Move, Target::WholeVideo),
             ApplyWholeFade => apply(EffectKind::Fade, Target::WholeVideo),
             ApplyWholeSubtitles => apply(EffectKind::Subtitles, Target::WholeVideo),
             ApplyWholeVolume => apply(EffectKind::Volume, Target::WholeVideo),

@@ -326,7 +326,10 @@ fn tracks(
             .on_hover_text(format!(
                 "{name}\nDouble-click for details, right-click for more"
             ));
-        if resp.dnd_hover_payload::<EffectKind>().is_some() {
+        if resp
+            .dnd_hover_payload::<EffectKind>()
+            .is_some_and(|e| *e != EffectKind::ChangeAspect)
+        {
             over_clip = true;
             ui.ctx().set_cursor_icon(egui::CursorIcon::Copy);
             painter.rect_stroke(
@@ -336,7 +339,10 @@ fn tracks(
                 StrokeKind::Inside,
             );
         }
-        if let Some(effect) = resp.dnd_release_payload::<EffectKind>() {
+        // Change aspect is for the whole video: dropped on a clip it does nothing (REQ-130)
+        if let Some(effect) = resp.dnd_release_payload::<EffectKind>()
+            && *effect != EffectKind::ChangeAspect
+        {
             cmds.push(Command::SelectClip(Some(c.id)));
             cmds.push(Command::ApplyEffect {
                 effect: *effect,
@@ -493,7 +499,10 @@ fn clip_menu(ui: &mut Ui, app: &AppState, i: usize, at: Micros, cmds: &mut Vec<C
         entry(ui, true, label, cmds, vec![cmd]);
     }
     ui.menu_button("Effects", |ui| {
-        for effect in EffectKind::ALL {
+        for effect in EffectKind::ALL
+            .into_iter()
+            .filter(|e| *e != EffectKind::ChangeAspect)
+        {
             entry(
                 ui,
                 true,
@@ -611,6 +620,20 @@ fn marker_lane(
                     outline,
                     StrokeKind::Inside,
                 );
+            }
+            MarkerKind::Scale => {
+                let c = pos2(m.x + 5.0, mid);
+                painter.rect(
+                    Rect::from_center_size(c, vec2(9.0, 7.0)),
+                    0.0,
+                    Color32::from_rgb(200, 140, 60),
+                    outline,
+                    StrokeKind::Inside,
+                );
+            }
+            MarkerKind::Move => {
+                let c = pos2(m.x + 5.0, mid);
+                painter.circle(c, 4.0, Color32::from_rgb(170, 90, 190), outline);
             }
             MarkerKind::Fade | MarkerKind::EdgeFade => {
                 let d = 6.0;
@@ -769,6 +792,21 @@ fn marker_lane(
                         },
                     ),
                     Instance::Pov(media, t) => ("Remove", Command::RemovePov { media, t }),
+                    Instance::Aspect => ("Remove effect", Command::RemoveAspect),
+                    Instance::Scale(target) => (
+                        "Remove effect",
+                        Command::RemoveFrameEffect {
+                            target,
+                            effect: crate::app::FrameFx::Scale,
+                        },
+                    ),
+                    Instance::Move(target) => (
+                        "Remove effect",
+                        Command::RemoveFrameEffect {
+                            target,
+                            effect: crate::app::FrameFx::Move,
+                        },
+                    ),
                 };
                 entry(ui, app.is_enabled(&cmd), label, cmds, vec![cmd]);
                 if let Instance::Line(id, _) = i {

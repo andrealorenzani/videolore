@@ -4,7 +4,10 @@
 //! The single video track: a contiguous list of clips (no gaps, no overlaps) plus the set of
 //! boundaries that carry a fade. Every edit is a method returning `Result<_, EditError>`.
 
+use crate::frame::{self, FrameAspect, Scale, Stack, Track};
+use crate::keyframes::{self, Key, KeyError};
 use crate::media::{MediaId, MediaItem};
+use crate::subtitles::Pos;
 use crate::time::Micros;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -102,6 +105,10 @@ pub enum EditError {
     NothingToRedo,
     #[error("the timeline is empty")]
     EmptyTimeline,
+    #[error("{0}")]
+    Key(KeyError),
+    #[error("the picture has no such effect")]
+    NoSuchEffect,
 }
 
 /// Why two clips cannot be merged although they are parts of the same file.
@@ -109,6 +116,27 @@ pub const DIFFERENT_VOLUMES: &str = "The clips have different volumes";
 
 /// Why two clips cannot be merged: one has Clean audio and the other has not.
 pub const DIFFERENT_CLEAN_AUDIO: &str = "The clips have different clean audio settings";
+
+/// Why two clips cannot be merged: their Scale or Move keyframes differ (1.5.0).
+pub const DIFFERENT_FRAMES: &str = "The clips have different frame settings";
+
+/// What a Scale or Move is applied to (REQ-130).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FrameTarget {
+    Whole,
+    Clip(ClipId),
+}
+
+/// The Scale and Move keyframes of one clip, in SOURCE time of the clip's media (ADR-094):
+/// a trim or split never deletes or shifts them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipFrames {
+    pub clip: ClipId,
+    #[serde(default)]
+    pub scale: Vec<Key<Scale>>,
+    #[serde(default)]
+    pub moved: Vec<Key<Pos>>,
+}
 
 /// The video track.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -124,6 +152,22 @@ pub struct Timeline {
     /// Fade to black at the very end of the video (1.2.0).
     #[serde(default)]
     pub end_fade: bool,
+    /// Change aspect of the whole video (1.5.0, REQ-124); `None` = no effect.
+    #[serde(
+        default,
+        deserialize_with = "frame::lenient_aspect",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub frame_aspect: Option<FrameAspect>,
+    /// Scale keyframes of the whole video, in timeline time (ADR-094).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub whole_scale: Vec<Key<Scale>>,
+    /// Move keyframes of the whole video, in timeline time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub whole_move: Vec<Key<Pos>>,
+    /// Scale and Move keyframes of the clips, sorted by clip id; empty entries are removed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clip_frames: Vec<ClipFrames>,
 }
 
 impl Timeline {
@@ -247,6 +291,10 @@ impl Timeline {
         );
         self.rename_fade_left(c.id, id);
         self.prune_fades();
+        // both halves keep the whole path (ADR-101)
+        if let Some(f) = self.frames_of(c.id).cloned() {
+            self.put_frames(ClipFrames { clip: id, ..f });
+        }
         Ok(id)
     }
 
@@ -255,6 +303,7 @@ impl Timeline {
         let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
         let c = self.clips.remove(i);
         self.prune_fades();
+        self.clip_frames.retain(|f| f.clip != id);
         Ok(c)
     }
 
@@ -318,6 +367,8 @@ impl Timeline {
             Some(DIFFERENT_VOLUMES)
         } else if a.clean_audio != b.clean_audio {
             Some(DIFFERENT_CLEAN_AUDIO)
+        } else if self.keys_of(a.id) != self.keys_of(b.id) {
+            Some(DIFFERENT_FRAMES)
         } else {
             None
         }
@@ -334,6 +385,7 @@ impl Timeline {
         self.fades.remove(&(id, b.id));
         self.rename_fade_left(b.id, id);
         self.prune_fades();
+        self.clip_frames.retain(|f| f.clip != b.id);
         Ok(())
     }
 
@@ -446,6 +498,278 @@ impl Timeline {
         self.fades.clear();
         self.start_fade = false;
         self.end_fade = false;
+    }
+
+    // ---- Change aspect, Scale and Move (1.5.0) ----
+
+    /// The keyframes of a clip, if it has any.
+    pub fn frames_of(&self, id: ClipId) -> Option<&ClipFrames> {
+        self.clip_frames.iter().find(|f| f.clip == id)
+    }
+
+    /// The (scale, move) keys of a clip, empty when it has none.
+    fn keys_of(&self, id: ClipId) -> (&[Key<Scale>], &[Key<Pos>]) {
+        match self.frames_of(id) {
+            Some(f) => (&f.scale, &f.moved),
+            None => (&[], &[]),
+        }
+    }
+
+    /// Stores the keyframes of a clip (replacing its entry; an empty entry is dropped).
+    pub fn put_frames(&mut self, f: ClipFrames) {
+        self.clip_frames.retain(|x| x.clip != f.clip);
+        if !f.scale.is_empty() || !f.moved.is_empty() {
+            self.clip_frames.push(f);
+            self.clip_frames.sort_by_key(|x| x.clip);
+        }
+    }
+
+    pub fn scale_keys(&self, t: FrameTarget) -> &[Key<Scale>] {
+        match t {
+            FrameTarget::Whole => &self.whole_scale,
+            FrameTarget::Clip(id) => self.keys_of(id).0,
+        }
+    }
+
+    pub fn move_keys(&self, t: FrameTarget) -> &[Key<Pos>] {
+        match t {
+            FrameTarget::Whole => &self.whole_move,
+            FrameTarget::Clip(id) => self.keys_of(id).1,
+        }
+    }
+
+    fn check_target(&self, t: FrameTarget) -> Result<(), EditError> {
+        match t {
+            FrameTarget::Whole if self.clips.is_empty() => Err(EditError::EmptyTimeline),
+            FrameTarget::Clip(id) if self.get(id).is_none() => Err(EditError::NoSuchClip),
+            _ => Ok(()),
+        }
+    }
+
+    /// Runs `f` on the scale keys of `t` (an entry of a clip is made when missing and
+    /// dropped again when it ends up empty).
+    fn with_scale<R>(
+        &mut self,
+        t: FrameTarget,
+        f: impl FnOnce(&mut Vec<Key<Scale>>) -> R,
+    ) -> Result<R, EditError> {
+        self.check_target(t)?;
+        Ok(match t {
+            FrameTarget::Whole => f(&mut self.whole_scale),
+            FrameTarget::Clip(id) => {
+                let mut e = self.frames_of(id).cloned().unwrap_or(ClipFrames {
+                    clip: id,
+                    scale: vec![],
+                    moved: vec![],
+                });
+                let r = f(&mut e.scale);
+                self.put_frames(e);
+                r
+            }
+        })
+    }
+
+    fn with_move<R>(
+        &mut self,
+        t: FrameTarget,
+        f: impl FnOnce(&mut Vec<Key<Pos>>) -> R,
+    ) -> Result<R, EditError> {
+        self.check_target(t)?;
+        Ok(match t {
+            FrameTarget::Whole => f(&mut self.whole_move),
+            FrameTarget::Clip(id) => {
+                let mut e = self.frames_of(id).cloned().unwrap_or(ClipFrames {
+                    clip: id,
+                    scale: vec![],
+                    moved: vec![],
+                });
+                let r = f(&mut e.moved);
+                self.put_frames(e);
+                r
+            }
+        })
+    }
+
+    /// Where a new Scale or Move of `t` starts: the clip's first source instant, or 0.
+    pub fn frame_start(&self, t: FrameTarget) -> Micros {
+        match t {
+            FrameTarget::Whole => Micros::ZERO,
+            FrameTarget::Clip(id) => self.get(id).map_or(Micros::ZERO, |c| c.src_in),
+        }
+    }
+
+    /// The time of a key of `t` at timeline position `at` (the clip's source time).
+    pub fn key_time(&self, t: FrameTarget, at: Micros) -> Option<Micros> {
+        match t {
+            FrameTarget::Whole => Some(at),
+            FrameTarget::Clip(id) => {
+                let i = self.index_of(id)?;
+                let c = &self.clips[i];
+                Some(c.src_in + (at - self.start_of(i)).clamp(Micros::ZERO, c.len()))
+            }
+        }
+    }
+
+    /// Adds Scale (100 %, one keyframe at the start) to `t`; false when it is there.
+    pub fn add_scale(&mut self, t: FrameTarget) -> Result<bool, EditError> {
+        let at = self.frame_start(t);
+        self.with_scale(t, |k| {
+            if !k.is_empty() {
+                return false;
+            }
+            k.push(Key {
+                t: at,
+                v: Scale::NORMAL,
+            });
+            true
+        })
+    }
+
+    /// Adds Move (centred, one keyframe at the start) to `t`; false when it is there.
+    pub fn add_move(&mut self, t: FrameTarget) -> Result<bool, EditError> {
+        let at = self.frame_start(t);
+        self.with_move(t, |k| {
+            if !k.is_empty() {
+                return false;
+            }
+            k.push(Key {
+                t: at,
+                v: frame::CENTRE,
+            });
+            true
+        })
+    }
+
+    pub fn remove_scale(&mut self, t: FrameTarget) -> Result<(), EditError> {
+        if self.scale_keys(t).is_empty() {
+            return Err(EditError::NoSuchEffect);
+        }
+        self.with_scale(t, |k| k.clear())
+    }
+
+    pub fn remove_move(&mut self, t: FrameTarget) -> Result<(), EditError> {
+        if self.move_keys(t).is_empty() {
+            return Err(EditError::NoSuchEffect);
+        }
+        self.with_move(t, |k| k.clear())
+    }
+
+    /// Sets the Scale key at `at` (adds it when there is none); limits are applied.
+    pub fn set_scale_key(
+        &mut self,
+        t: FrameTarget,
+        at: Micros,
+        mut v: Scale,
+    ) -> Result<(), EditError> {
+        v.clamp();
+        if self.scale_keys(t).is_empty() {
+            return Err(EditError::NoSuchEffect);
+        }
+        self.with_scale(t, |k| keyframes::set(k, at, v))?
+            .map_err(EditError::Key)
+    }
+
+    pub fn set_move_key(&mut self, t: FrameTarget, at: Micros, v: Pos) -> Result<(), EditError> {
+        let v = Pos {
+            x: v.x.min(crate::subtitles::POS_MAX),
+            y: v.y.min(crate::subtitles::POS_MAX),
+        };
+        if self.move_keys(t).is_empty() {
+            return Err(EditError::NoSuchEffect);
+        }
+        self.with_move(t, |k| keyframes::set(k, at, v))?
+            .map_err(EditError::Key)
+    }
+
+    /// Adds a Scale key (never replaces one).
+    pub fn add_scale_key(
+        &mut self,
+        t: FrameTarget,
+        at: Micros,
+        mut v: Scale,
+    ) -> Result<(), EditError> {
+        v.clamp();
+        if self.scale_keys(t).is_empty() {
+            return Err(EditError::NoSuchEffect);
+        }
+        self.with_scale(t, |k| keyframes::add(k, at, v))?
+            .map_err(EditError::Key)
+    }
+
+    pub fn add_move_key(&mut self, t: FrameTarget, at: Micros, v: Pos) -> Result<(), EditError> {
+        if self.move_keys(t).is_empty() {
+            return Err(EditError::NoSuchEffect);
+        }
+        self.with_move(t, |k| keyframes::add(k, at, v))?
+            .map_err(EditError::Key)
+    }
+
+    /// Removes the Scale key at `at`; the last key stays.
+    pub fn remove_scale_key(&mut self, t: FrameTarget, at: Micros) -> Result<(), EditError> {
+        self.with_scale(t, |k| keyframes::remove(k, at))?
+            .map_err(EditError::Key)
+    }
+
+    pub fn remove_move_key(&mut self, t: FrameTarget, at: Micros) -> Result<(), EditError> {
+        self.with_move(t, |k| keyframes::remove(k, at))?
+            .map_err(EditError::Key)
+    }
+
+    /// Sets or removes Change aspect.
+    pub fn set_frame_aspect(&mut self, a: Option<FrameAspect>) -> Result<(), EditError> {
+        if self.clips.is_empty() {
+            return Err(EditError::EmptyTimeline);
+        }
+        self.frame_aspect = a;
+        Ok(())
+    }
+
+    /// True when Change aspect, Scale or Move changes the picture (REQ-131: such a project
+    /// is always re-encoded).
+    pub fn has_frame_effect(&self) -> bool {
+        self.frame_aspect.is_some()
+            || !self.whole_scale.is_empty()
+            || !self.whole_move.is_empty()
+            || self.clips.iter().any(|c| {
+                let (s, m) = self.keys_of(c.id);
+                !s.is_empty() || !m.is_empty()
+            })
+    }
+
+    /// The Scale and Move keys that act on the clip at `index`: the whole video's, then
+    /// the clip's (REQ-131).
+    pub fn frame_stack(&self, index: usize) -> Stack {
+        let mut st = Stack::default();
+        let Some(c) = self.clips.get(index) else {
+            return st;
+        };
+        let start = self.start_of(index);
+        if !self.whole_scale.is_empty() {
+            st.scale.push(Track {
+                keys: self.whole_scale.clone(),
+                offset: start,
+            });
+        }
+        if !self.whole_move.is_empty() {
+            st.moved.push(Track {
+                keys: self.whole_move.clone(),
+                offset: start,
+            });
+        }
+        let (s, m) = self.keys_of(c.id);
+        if !s.is_empty() {
+            st.scale.push(Track {
+                keys: s.to_vec(),
+                offset: c.src_in,
+            });
+        }
+        if !m.is_empty() {
+            st.moved.push(Track {
+                keys: m.to_vec(),
+                offset: c.src_in,
+            });
+        }
+        st
     }
 
     /// Sets a clip's sound level (0–100 %, clamped) and mute.
@@ -850,5 +1174,175 @@ pub(crate) mod tests {
         let t: Timeline =
             serde_json::from_str(r#"{"clips":[],"fades":[],"next_clip_id":0}"#).unwrap();
         assert!(!t.start_fade && !t.end_fade);
+    }
+
+    fn one() -> (Timeline, ClipId) {
+        let mut t = Timeline::default();
+        let id = t.append(&media(1, 8, true)).unwrap();
+        (t, id)
+    }
+
+    fn sc(p: u16) -> Scale {
+        Scale {
+            permille: p,
+            dx: 0,
+            dy: 0,
+        }
+    }
+
+    // covers: REQ-129
+    // covers: REQ-130
+    #[test]
+    fn scale_and_move_start_with_one_key_and_a_second_add_does_nothing() {
+        let (mut t, id) = one();
+        let c = FrameTarget::Clip(id);
+        assert!(t.add_scale(c).unwrap());
+        assert!(!t.add_scale(c).unwrap());
+        assert!(t.add_move(FrameTarget::Whole).unwrap());
+        assert_eq!(
+            t.scale_keys(c),
+            &[Key {
+                t: Micros::ZERO,
+                v: Scale::NORMAL
+            }]
+        );
+        assert_eq!(t.move_keys(FrameTarget::Whole).len(), 1);
+        assert!(t.has_frame_effect());
+        t.remove_scale(c).unwrap();
+        assert_eq!(t.remove_scale(c), Err(EditError::NoSuchEffect));
+        assert!(t.clip_frames.is_empty(), "empty entries are removed");
+        assert_eq!(
+            t.add_scale(FrameTarget::Clip(ClipId(99))),
+            Err(EditError::NoSuchClip)
+        );
+        assert_eq!(
+            Timeline::default().add_move(FrameTarget::Whole),
+            Err(EditError::EmptyTimeline)
+        );
+    }
+
+    // covers: REQ-129
+    #[test]
+    fn keys_are_added_set_removed_and_clamped() {
+        let (mut t, id) = one();
+        let c = FrameTarget::Clip(id);
+        assert_eq!(
+            t.set_scale_key(c, s(1), sc(500)),
+            Err(EditError::NoSuchEffect)
+        );
+        t.add_scale(c).unwrap();
+        t.add_scale_key(c, s(4), sc(2000)).unwrap();
+        assert_eq!(
+            t.add_scale_key(c, s(4), sc(1)),
+            Err(EditError::Key(KeyError::SameTime))
+        );
+        t.set_scale_key(c, s(4), sc(9000)).unwrap();
+        assert_eq!(t.scale_keys(c)[1].v.permille, 4000);
+        t.set_scale_key(c, s(2), sc(1)).unwrap();
+        assert_eq!(t.scale_keys(c)[1].v.permille, 100);
+        t.remove_scale_key(c, s(2)).unwrap();
+        t.remove_scale_key(c, s(4)).unwrap();
+        assert_eq!(
+            t.remove_scale_key(c, Micros::ZERO),
+            Err(EditError::Key(KeyError::LastKey))
+        );
+        t.add_move(c).unwrap();
+        t.add_move_key(c, s(1), Pos { x: 60000, y: 1 }).unwrap();
+        t.set_move_key(c, s(1), Pos { x: 65000, y: 2 }).unwrap();
+        assert_eq!(t.move_keys(c)[1].v, Pos { x: 10000, y: 2 });
+        t.remove_move_key(c, s(1)).unwrap();
+        t.remove_move(c).unwrap();
+        assert_eq!(
+            t.add_move_key(c, s(1), frame::CENTRE),
+            Err(EditError::NoSuchEffect)
+        );
+        assert_eq!(t.key_time(c, s(3)), Some(s(3)));
+        assert_eq!(t.key_time(FrameTarget::Whole, s(3)), Some(s(3)));
+        assert_eq!(t.key_time(FrameTarget::Clip(ClipId(9)), s(3)), None);
+    }
+
+    // covers: REQ-129
+    #[test]
+    fn split_gives_both_halves_the_path_and_trim_keeps_keys() {
+        let (mut t, id) = one();
+        let c = FrameTarget::Clip(id);
+        t.add_scale(c).unwrap();
+        t.add_scale_key(c, s(8), sc(2000)).unwrap();
+        let right = t.split(s(4), F).unwrap();
+        assert_eq!(t.scale_keys(c), t.scale_keys(FrameTarget::Clip(right)));
+        // the value at the new edge is the one the path had there
+        let st = t.frame_stack(1);
+        let p = st.at(Micros::ZERO);
+        assert!((p.factor - 1.5).abs() < 1e-9);
+        t.trim(right, s(6), s(8), s(8), F).unwrap();
+        assert_eq!(t.scale_keys(FrameTarget::Clip(right)).len(), 2);
+        t.remove(right).unwrap();
+        assert!(t.frames_of(right).is_none());
+    }
+
+    // covers: REQ-129
+    #[test]
+    fn merge_needs_equal_keys() {
+        let (mut t, id) = one();
+        let right = t.split(s(4), F).unwrap();
+        assert!(t.can_merge(id));
+        t.add_scale(FrameTarget::Clip(right)).unwrap();
+        assert!(!t.can_merge(id));
+        assert_eq!(t.merge_block_reason(id), Some(DIFFERENT_FRAMES));
+        t.add_scale(FrameTarget::Clip(id)).unwrap();
+        assert!(!t.can_merge(id));
+        t.add_scale_key(FrameTarget::Clip(id), s(4), Scale::NORMAL)
+            .unwrap();
+        t.add_scale_key(FrameTarget::Clip(right), Micros::ZERO, Scale::NORMAL)
+            .unwrap();
+        t.merge(id).unwrap();
+        assert!(t.frames_of(right).is_none());
+        assert_eq!(t.scale_keys(FrameTarget::Clip(id)).len(), 2);
+    }
+
+    // covers: REQ-124
+    // covers: REQ-131
+    #[test]
+    fn change_aspect_is_one_effect_of_the_whole_video() {
+        let (mut t, _) = one();
+        assert!(!t.has_frame_effect());
+        t.set_frame_aspect(Some(FrameAspect::default())).unwrap();
+        assert!(t.has_frame_effect());
+        t.set_frame_aspect(None).unwrap();
+        assert!(!t.has_frame_effect());
+        assert_eq!(
+            Timeline::default().set_frame_aspect(None),
+            Err(EditError::EmptyTimeline)
+        );
+    }
+
+    // covers: REQ-131
+    #[test]
+    fn the_stack_of_a_clip_has_the_whole_video_first() {
+        let (mut t, id) = one();
+        let right = t.split(s(4), F).unwrap();
+        t.add_scale(FrameTarget::Whole).unwrap();
+        t.add_move(FrameTarget::Clip(right)).unwrap();
+        let st = t.frame_stack(1);
+        assert_eq!(st.scale.len(), 1);
+        assert_eq!(st.scale[0].offset, s(4));
+        assert_eq!(st.moved[0].offset, s(4));
+        assert!(t.frame_stack(0).moved.is_empty());
+        assert!(t.frame_stack(7).is_empty());
+        let _ = id;
+    }
+
+    // covers: REQ-132
+    #[test]
+    fn frame_fields_round_trip_and_old_timelines_have_none() {
+        let (mut t, id) = one();
+        t.add_scale(FrameTarget::Clip(id)).unwrap();
+        t.add_move(FrameTarget::Whole).unwrap();
+        t.set_frame_aspect(Some(FrameAspect::default())).unwrap();
+        let j = serde_json::to_string(&t).unwrap();
+        assert_eq!(serde_json::from_str::<Timeline>(&j).unwrap(), t);
+        let old = Timeline::default();
+        let j = serde_json::to_string(&old).unwrap();
+        assert!(!j.contains("frame_aspect") && !j.contains("clip_frames"));
     }
 }

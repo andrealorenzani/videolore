@@ -19,6 +19,9 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Custom resolutions, frame rates and bitrates** — the Export dialog offers a fixed list of presets; let the user enter other resolutions, frame rates, bitrates, quality values or encoder options. (source: 1.4.0, out of scope of the 1.4.0 request)
 - **Codec names for non-experts** — the Export dialog's format entries show codec names and extensions such as libx264 and .mp4; a plain description may suit non-experts better. (source: 1.4.0, product risk)
 - **Export speed for 4K and HEVC presets** — re-encodes to 3840x2160 and to libx265 are slow, and no speed is promised; measure them and speed them up if they are too slow for users. (source: 1.4.0, known limitation)
+- **Export speed of large frames** — a frame made larger by Change aspect (for example 1600x2844, or 4K in 9:16 near the 4096 px cap) makes export slow and may hit codec limits; measure the export time and decide whether to warn or to limit the frame size. (source: 1.5.0, product risk)
+- **Export time of blurred fill** — the blurred background of Change aspect has not been timed on real material; measure its cost in preview and export and speed it up if it is too slow, for example with a lighter path for Move-only and Scale 100% that skips the scale step. (source: 1.5.0, measurement to do)
+- **Hardware export with frame effects** — the Scale, Move and Change aspect graphs are tested with the normal method only; check them with the hardware export and its output check on real graphics hardware, with the QG-05 checklist in [code-hardware](code-hardware.md). (source: 1.5.0, check to do)
 
 ## Effects
 - **More effect types** — per-clip speed and other effects beyond fades, volume, subtitles and text items. Each effect needs its own requirements. (source: 1.1.0, postponed from the 1.1.0 request)
@@ -30,6 +33,14 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Clean audio strength setting** — Clean audio is on or off per clip, with no amount control; add one if the fixed effect is too strong or too weak for some clips. Quiet speech (about -32 dB) can lose up to about 2.5 dB, so a gentler setting may suit it. (source: 1.4.0, out of scope of the 1.4.0 request; known limitation)
 - **Clean the music track** — Clean audio works on the video's sound only; cleaning the music track is not planned yet. (source: 1.4.0, out of scope of the 1.4.0 request)
 - **Speech enhancement** — voice isolation or speech enhancement beyond noise reduction. (source: 1.4.0, out of scope of the 1.4.0 request)
+- **Keyframes for other effects** — keyframes (Scale and Move in 1.5.0) only for Scale and Move; extend them to fades, volume and text, each with its own requirements. (source: 1.5.0, out of scope of the 1.5.0 request)
+- **Easing curves for keyframes** — keyframes move in a straight line at a constant rate; add easing curves (ease in, ease out) if the motion looks mechanical. (source: 1.5.0, out of scope of the 1.5.0 request)
+- **Blur strength setting** — the blurred fill of Change aspect uses one fixed blur; let the user set its strength if the fixed one is too strong or too weak. (source: 1.5.0, out of scope of the 1.5.0 request)
+- **Crop tool** — crop a picture by dragging its edges, instead of only scaling and moving it inside the frame. (source: 1.5.0, out of scope of the 1.5.0 request)
+- **Free aspect ratios** — Change aspect offers the fixed ratios of its list only; let the user type any ratio. (source: 1.5.0, out of scope of the 1.5.0 request)
+- **Aspect ratio per clip** — Change aspect applies to the whole video, one frame size per project; let each clip have its own frame where the edit needs it. (source: 1.5.0, out of scope of the 1.5.0 request)
+- **Whole-video keyframes follow cuts at the start** — whole-video Scale and Move keyframes are in timeline time and do not move when the start of the video is cut, unlike clip keyframes in source time; let them move with the cut. (source: 1.5.0, known limitation)
+- **Copy keyframes between clips** — keyframes are made by hand for each clip; copy a clip's Scale and Move keys to other clips. (source: 1.5.0, known limitation)
 
 ## 360 video
 - **Automatic subtitles keep their preset place in 360 video export** — in a 360 video export, automatic subtitle lines stay at the preset place (the lower third, about 30° below the front) and do not follow the view; let the user anchor them or choose the place. (source: 1.3.0, known limitation)
@@ -50,6 +61,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Spherical marker on the bundled ffmpeg** — the MP4 and MOV 360 marker writer was checked only with the system ffmpeg 6.1.1; the bundled ffmpeg 9.x path was not measured. Check the marker and the 360 export with the bundled 9.x build. (source: 1.3.0, check to do)
 - **360 files without spherical information** — since 1.4.0 a 360 video without spherical information stays flat, because the "Treat as 360° video" switch is removed; ask at import, or let the user mark the file as 360, so that such files can be looked around in again. (source: 1.4.0, known limitation)
 - **Video format presets for 360 video** — a 360 video export ignores the video format presets and keeps the sphere's own size; decide whether a 360 preset (resolution, codec) is needed or the sphere's size is enough. (source: 1.4.0, known limitation)
+- **Frame effects in 360 video export** — a 360 video export ignores Change aspect, Scale and Move, so the sphere is written as it is; decide whether these effects should apply, or the Export dialog should say so. (source: 1.5.0, known limitation; may confuse users)
 
 ## Text
 - **Outline, shadow or background box for text** — a text has no outline or box today, so its readability depends on the colour and the picture behind it. (source: 1.3.0, known limitation)
@@ -66,6 +78,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Preview box of texts with the installed font** — the preview measures a text's box with the bundled font, while the picture uses the installed one; measure it with the same font. (source: 1.3.0, known limitation)
 - **Measured best-fit text** — the best-fit size estimates each character as 0.6 em wide, so a text may fill 85–115% of its box; measure the glyph widths (a direct `ttf-parser` dependency) only if the fill is visibly off. (source: 1.4.0, estimate risk)
 - **Migrated text sizes** — text items made in 1.3.0 take the best-fit size of their box when a project opens in 1.4.0, so large multi-line texts shrink; offer the old size again only if users need it. (source: 1.4.0, known limitation)
+- **Text items and picture moves** — text items keep their place when the picture is scaled or moved with Scale and Move (they are not keyframed), so a text may end over the edge of the picture; let texts follow the picture, or warn. (source: 1.5.0, known limitation)
 
 ## Subtitles
 - **Meet the accuracy target of reused subtitles** — the word timing of a video's own subtitles is approximate: 82% of the words were matched and the start error averaged 0.48 s, against a target of 90% and 0.3 s. Improve the word timing (DTW timestamps, sound-onset snapping, or a larger model), then re-enable the strict test `alignment_matches_real_speech`. (source: 1.2.0, known limitation, REQ-095)
@@ -120,6 +133,8 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Sub-second ruler labels** — the timeline ruler shows whole seconds only; at frame zoom show fractions of a second. (source: 1.2.0, known limitation)
 - **Autosave and crash recovery** — save the project automatically and offer to recover unsaved work after a crash. (source: 1.1.0, postponed from the 1.1.0 request)
 - **Items half outside the picture** — a text or a subtitle line dragged partly past the picture edge is cut in the preview and in the export; check that users notice the cut and can find the item again, and add a hint or a way back if not. (source: 1.4.0, product risk)
+- **Keyframe popup usability** — in the small Scale and Move popup keyframes are harder to pick and edit; the timeline has a minimum width, so check the popup in real use and rework it if users struggle. (source: 1.5.0, product risk)
+- **Picture handles for every effect** — the picture handles show only one effect per kind (the clip's, else the whole video's); show the handles of both when a clip and the whole video both have Scale or Move. (source: 1.5.0, known limitation)
 
 ## Performance
 - **Faster test suite** — tests got 25% faster in 0.3.0 against a 30% goal; most of the remaining time is the two real speech-recognition tests. (source: 0.3.0, QG-03 result)
@@ -137,6 +152,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Record 4K and 8K frame times** — the frame times of the preview and of the 360 view at 4K and 8K were not recorded for the 1.3.0 features; measure them against the 200 ms target of REQ-104. (source: 1.3.0, measurement to do)
 - **Lighter clean audio for the preview** — if the preview with Clean audio on a weak computer underruns or corrects its audio often, use lighter noise-reduction values in the preview only; the export keeps the tuned values. (source: 1.4.0, CPU budget risk)
 - **Measure Clean audio in the preview on weak computers** — the processor cost of Clean audio in the preview has not been measured on a weak computer; measure it, and use the lighter values above if it causes underruns. (source: 1.4.0, measurement to do)
+- **Faster blurred fill and Scale in the preview** — with a blurred fill or Scale, the preview renders the whole still again on every change of the picture state, so dragging is slow; render only the changed part, or keep the blurred background. (source: 1.5.0, known limitation)
 - **Measured quality goals** — the numbers of the quality goals (detection time, regressions, speed) are assumptions to confirm with measurements. (source: 0.3.0, assumption)
 
 ## Quality
@@ -153,6 +169,9 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Interface tests with a test harness** — the interface tests use a small helper on the window's accessibility tree; move them to `egui_kittest` if the helper grows. (source: 1.1.0, planned fallback)
 - **Golden argument tests for format 4 and 5 projects** — the export command lines of projects saved in format 4 and 5 are not compared with fixed expected arguments; add golden fixtures so that a change to the arguments shows at once. (source: 1.4.0, test gap found in the code part)
 - **Click the Export dialog's dropdowns in UI tests** — the interface tests set the dialog's dropdowns without opening them; add clicks so that the menus themselves are tested. (source: 1.4.0, test gap found in the code part)
+- **One keyframe module for the 360 camera and the picture** — `camera.rs` (360 points of view) and `keyframes.rs` (Scale and Move) share the same rules (hold at the edges, linear between keys); move the camera onto `keyframes.rs`, with the 360 tests as the safety net. (source: 1.5.0, architecture debt)
+- **Pointer tests of the colour picker and keyframe timeline** — the colour picker of Change aspect and a click on the keyframe timeline are tested in code only, not with a pointer; add interface tests that click them. (source: 1.5.0, check to do)
+- **Frame expressions on the bundled ffmpeg 9.x** — the Scale and Move expressions were checked with ffmpeg 6.1.1 only; check them on the bundled 9.x build in CI. (source: 1.5.0, check to do)
 
 ## Packaging
 - **Run the installer job before each release** — a manual run, or on pull requests that touch `scripts/package.sh`, `packaging/` or `assets/icon/`; the 0.4.2 macOS and Windows failures were found only at release time. (source: 0.4.3, release of 0.4.2)

@@ -126,6 +126,12 @@ See [code-360.md](code-360.md) (section "Tests and fixtures"). Real-ffmpeg tests
 with the 1.2.5 code). The four responsiveness gates in `src/ui/tests.rs` run one at a time
 (`one_gate_at_a_time`) because each keeps every core busy.
 
+### 1.5.0 tests
+
+See [code-frame.md](code-frame.md) (section "Tests"). `tests/ffmpeg_integration/v15.rs` uses flat
+colour clips so pixels can be sampled with a small tolerance; the golden argv files of 1.1.0 and
+1.2.5 still pass unchanged: a project without frame effects exports as before.
+
 ### 1.4.0 tests
 
 See [code-export.md](code-export.md) (section "Tests"). `tests/ffmpeg_integration/v14.rs` makes its

@@ -31,6 +31,8 @@ mod v126;
 mod v13;
 #[path = "ffmpeg_integration/v14.rs"]
 mod v14;
+#[path = "ffmpeg_integration/v15.rs"]
+mod v15;
 
 struct Env {
     info: FfmpegInfo,
