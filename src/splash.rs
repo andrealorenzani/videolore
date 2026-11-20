@@ -8,36 +8,67 @@
 //! * [`layout`] sizes the image and the summary panel (scaled together to fit the screen);
 //! * [`fit_text`] finds the largest size at which "Version X.Y" fits its rectangle;
 //! * [`text_colour`] picks a readable colour for it over the image;
+//! * [`fit_summary`] finds the largest text size at which the summary fits its panel;
 //! * [`decode`] reads the GIF (every frame is kept; the image shipped today has one).
 
 use std::io::Cursor;
 
-/// The release image of this version (`assets/splash/<version>.gif`).
-pub const IMAGE: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/splash/",
-    env!("CARGO_PKG_VERSION"),
-    ".gif"
-));
+/// What one program shows at its start: a fixed picture, the summary of the running
+/// version and the rectangle of the version text in the picture.
+#[derive(Debug, Clone, Copy)]
+pub struct Program {
+    /// Name used for the textures.
+    pub name: &'static str,
+    /// The GIF (`assets/splash/videolore.gif` or `videolore-player.gif`).
+    pub image: &'static [u8],
+    /// The summary of this version: the first line is the heading, the others one line
+    /// each (`assets/splash/<version>.txt` or `<version>-player.txt`).
+    pub summary: &'static str,
+    /// The rectangle of the version text in the image (x0, y0, x1, y1).
+    pub text_rect: (f32, f32, f32, f32),
+}
 
-/// The summary of the latest change of this version (`assets/splash/<version>.txt`): the
-/// first line is the heading, the others one line each.
-pub const SUMMARY: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/splash/",
-    env!("CARGO_PKG_VERSION"),
-    ".txt"
-));
+/// The editor's splash (REQ-133, REQ-134): rectangle x 74..408, y 381..465.
+pub const EDITOR: Program = Program {
+    name: "editor",
+    image: include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/splash/videolore.gif"
+    )),
+    summary: include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/splash/",
+        env!("CARGO_PKG_VERSION"),
+        ".txt"
+    )),
+    text_rect: (74.0, 381.0, 408.0, 465.0),
+};
+
+/// The player's splash (REQ-150): rectangle x 78..386, y 388..462.
+pub const PLAYER: Program = Program {
+    name: "player",
+    image: include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/splash/videolore-player.gif"
+    )),
+    summary: include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/splash/",
+        env!("CARGO_PKG_VERSION"),
+        "-player.txt"
+    )),
+    text_rect: (78.0, 388.0, 386.0, 462.0),
+};
 
 /// Width of the summary panel, in image pixels.
 pub const POPUP_WIDTH: f32 = 400.0;
-/// The rectangle of the version text in the image: x from 74 to 408, y from 381 to 465.
-pub const TEXT_RECT: (f32, f32, f32, f32) = (74.0, 381.0, 408.0, 465.0);
 /// Space kept free on every side of the text inside its rectangle, so it touches no edge.
 pub const TEXT_MARGIN: f32 = 6.0;
 /// Frames kept at most, and the longest side accepted (a damaged or hostile file).
 pub const MAX_FRAMES: usize = 64;
 pub const MAX_SIDE: u32 = 4096;
+/// The most RGBA bytes kept for one picture (all frames).
+pub const MAX_BYTES: usize = 64 * 1024 * 1024;
 
 /// "Version X.Y" from `X.Y.Z` (the major and minor numbers).
 pub fn version_text(version: &str) -> String {
@@ -167,10 +198,16 @@ pub struct Decoded {
 /// Decodes a GIF: every frame (up to [`MAX_FRAMES`]) as RGBA. A file that is not a GIF, is
 /// empty or has frames of other sizes is an error.
 pub fn decode(bytes: &[u8]) -> Result<Decoded, String> {
+    decode_capped(bytes, MAX_BYTES)
+}
+
+/// [`decode`] with another limit on the RGBA bytes of all frames.
+pub fn decode_capped(bytes: &[u8], max_bytes: usize) -> Result<Decoded, String> {
     use image::AnimationDecoder;
     let dec = image::codecs::gif::GifDecoder::new(Cursor::new(bytes)).map_err(|e| e.to_string())?;
     let mut frames = Vec::new();
     let mut size = (0, 0);
+    let mut total = 0usize;
     for f in dec.into_frames().take(MAX_FRAMES) {
         let f = f.map_err(|e| e.to_string())?;
         let (num, den) = f.delay().numer_denom_ms();
@@ -185,6 +222,10 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded, String> {
         } else if size != s {
             return Err("the frames have different sizes".into());
         }
+        total += buf.as_raw().len();
+        if total > max_bytes {
+            return Err("the image is too large".into());
+        }
         frames.push(Frame {
             rgba: buf.into_raw(),
             delay_ms,
@@ -196,13 +237,33 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded, String> {
     Ok(Decoded { size, frames })
 }
 
-/// The lines of the summary: heading and items (empty lines dropped).
-pub fn summary_lines() -> Vec<&'static str> {
-    SUMMARY
+/// The lines of the summary of `p`: heading and items (empty lines dropped).
+pub fn summary_lines(p: &Program) -> Vec<&'static str> {
+    p.summary
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect()
+}
+
+/// The largest text size, from `floor` to `max`, at which `height(size)` is at most
+/// `room`. Below the floor the floor is returned (the tests then fail rather than the
+/// text becoming unreadable).
+pub fn fit_summary(height: impl Fn(f32) -> f32, room: f32, max: f32, floor: f32) -> f32 {
+    let floor = floor.min(max);
+    if height(max) <= room {
+        return max;
+    }
+    let (mut lo, mut hi) = (floor, max);
+    for _ in 0..20 {
+        let mid = (lo + hi) / 2.0;
+        if height(mid) <= room {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
 }
 
 #[cfg(test)]
@@ -222,30 +283,61 @@ mod tests {
         );
     }
 
+    fn check_program(p: &Program, size: (u32, u32), rect_size: (u32, u32)) {
+        let d = decode(p.image).unwrap();
+        assert_eq!(d.size, size);
+        assert!(!d.frames.is_empty() && d.frames.len() <= MAX_FRAMES);
+        assert_eq!(d.frames[0].rgba.len(), (size.0 * size.1 * 4) as usize);
+        let t = p.text_rect;
+        // the rectangle of the text is inside the image
+        assert!(t.0 >= 0.0 && t.1 >= 0.0 && t.2 <= size.0 as f32 && t.3 <= size.1 as f32);
+        assert_eq!(((t.2 - t.0) as u32, (t.3 - t.1) as u32), rect_size);
+        // the summary written for this version: a heading and one to five lines
+        let lines = summary_lines(p);
+        assert!(lines.len() >= 2 && lines.len() <= 6, "{lines:?}");
+        // the colour rule gives a readable colour over the real picture
+        let c = text_colour(mean_colour(&d.frames[0].rgba, d.size, t));
+        assert!(c == [255, 255, 255] || c == [20, 20, 20]);
+    }
+
     // covers: REQ-134
     #[test]
-    fn the_shipped_image_decodes_at_its_own_size_and_the_summary_exists() {
-        let d = decode(IMAGE).unwrap();
-        assert_eq!(d.size, (486, 506));
-        assert_eq!(d.frames.len(), 1, "a still image today");
-        assert_eq!(d.frames[0].rgba.len(), 486 * 506 * 4);
-        // the rectangle of the text is inside the image
-        assert!(TEXT_RECT.2 <= 486.0 && TEXT_RECT.3 <= 506.0);
+    fn the_editor_image_decodes_at_its_own_size_and_the_summary_exists() {
+        check_program(&EDITOR, (486, 506), (334, 84));
+        assert_eq!(EDITOR.text_rect, (74.0, 381.0, 408.0, 465.0));
+        assert_eq!(decode(EDITOR.image).unwrap().frames.len(), 1);
+        assert!(EDITOR.summary.starts_with("New in this version"));
+    }
+
+    // covers: REQ-150
+    #[test]
+    fn the_player_image_decodes_at_its_own_size_and_the_summary_exists() {
+        check_program(&PLAYER, (487, 505), (308, 74));
+        assert_eq!(PLAYER.text_rect, (78.0, 388.0, 386.0, 462.0));
+        assert_ne!(PLAYER.summary, EDITOR.summary, "its own summary");
+        assert_eq!(version_text("1.6.2"), "Version 1.6");
+    }
+
+    // covers: REQ-134
+    #[test]
+    fn the_summary_fits_the_largest_size_that_leaves_room() {
+        // each of 5 lines is `size` high
+        let h = |s: f32| 5.0 * s;
+        assert_eq!(fit_summary(h, 1000.0, 20.0, 6.0), 20.0, "never enlarged");
+        let s = fit_summary(h, 100.0, 40.0, 6.0);
+        assert!(h(s) <= 100.0 && h(s + 0.1) > 100.0, "{s}");
+        assert_eq!(fit_summary(h, 1.0, 40.0, 6.0), 6.0, "the floor");
+        assert_eq!(fit_summary(h, 1.0, 4.0, 6.0), 4.0, "floor above max");
+    }
+
+    #[test]
+    fn a_picture_with_too_many_bytes_is_refused() {
+        // the editor picture is 486 x 506 x 4 = 983 KB
+        assert!(decode_capped(EDITOR.image, 1000 * 1000).is_ok());
         assert_eq!(
-            (
-                (TEXT_RECT.2 - TEXT_RECT.0) as u32,
-                (TEXT_RECT.3 - TEXT_RECT.1) as u32
-            ),
-            (334, 84)
+            decode_capped(EDITOR.image, 900 * 1000).unwrap_err(),
+            "the image is too large"
         );
-        // the summary written for this version: a heading and at most 6 lines
-        let lines = summary_lines();
-        assert!(lines.len() >= 2 && lines.len() <= 6, "{lines:?}");
-        assert!(SUMMARY.contains("Whole-video effects"));
-        // the colour rule gives a readable colour over the real picture
-        let m = mean_colour(&d.frames[0].rgba, d.size, TEXT_RECT);
-        let c = text_colour(m);
-        assert!(c == [255, 255, 255] || c == [20, 20, 20]);
     }
 
     // covers: REQ-134
@@ -300,6 +392,6 @@ mod tests {
         assert_eq!(mean_colour(&[], (2, 1), (0.0, 0.0, 2.0, 1.0)), [0, 0, 0]);
         assert!(decode(b"not a gif").is_err());
         assert!(decode(&[]).is_err());
-        assert!(decode(&IMAGE[..IMAGE.len() / 2]).is_err() || decode(&IMAGE[..40]).is_err());
+        assert!(decode(&EDITOR.image[..40]).is_err());
     }
 }

@@ -72,26 +72,28 @@
 - docs/code-packaging.md § Desktop integration — L65-74 (10 lines)
 - docs/code-packaging.md § Manual checklist per OS (before publishing a release) — L76-97 (22 lines)
 - docs/code-packaging.md § Known limitations — L99-116 (18 lines)
-- docs/code-player.md § Code — videolore player and the workspace (1.6.0) — L1-3 (3 lines)
+- docs/code-player.md § Code — videolore player and the workspace (1.6.0, start screen 1.6.2) — L1-3 (3 lines)
 - docs/code-player.md § Workspace — L5-19 (15 lines)
 - docs/code-player.md § Modules of `player/src` — L21-31 (11 lines)
 - docs/code-player.md § How it works (ADR-105..108, 118, 119) — L33-58 (26 lines)
 - docs/code-player.md § Packaging (ADR-108, 115) — L60-68 (9 lines)
 - docs/code-player.md § Known limits — L70-75 (6 lines)
-- docs/code-splash-icons.md § Code — splash screen and icons (1.6.0) — L1-3 (3 lines)
-- docs/code-splash-icons.md § Splash — L5-25 (21 lines)
-- docs/code-splash-icons.md § Icons — L27-63 (37 lines)
-- docs/code-splash-icons.md § Tests — L65-70 (6 lines)
+- docs/code-player.md § Start screen (1.6.2, REQ-150) — L77-84 (8 lines)
+- docs/code-splash-icons.md § Code — splash screen and icons (1.6.0, splash shared with the player in 1.6.2) — L1-3 (3 lines)
+- docs/code-splash-icons.md § Splash — L5-36 (32 lines)
+- docs/code-splash-icons.md § Icons — L38-74 (37 lines)
+- docs/code-splash-icons.md § Tests — L76-82 (7 lines)
 - docs/code-testing.md § Code — tests and CI — L1-1 (1 lines)
-- docs/code-testing.md § Tests — L3-86 (84 lines)
-- docs/code-testing.md § Coverage — L88-94 (7 lines)
-- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L96-106 (11 lines)
-- docs/code-testing.md § 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`) — L108-124 (17 lines)
-- docs/code-testing.md § 1.2.6 tests — L126-133 (8 lines)
-- docs/code-testing.md § 1.6.0 tests — L135-145 (11 lines)
-- docs/code-testing.md § 1.5.0 tests — L147-151 (5 lines)
-- docs/code-testing.md § 1.4.0 tests — L153-158 (6 lines)
-- docs/code-testing.md § 1.3.0 tests — L160-165 (6 lines)
+- docs/code-testing.md § Tests — L3-88 (86 lines)
+- docs/code-testing.md § Coverage — L90-96 (7 lines)
+- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L98-108 (11 lines)
+- docs/code-testing.md § 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`) — L110-126 (17 lines)
+- docs/code-testing.md § 1.2.6 tests — L128-135 (8 lines)
+- docs/code-testing.md § 1.6.0 tests — L137-147 (11 lines)
+- docs/code-testing.md § 1.6.2 tests — L149-155 (7 lines)
+- docs/code-testing.md § 1.5.0 tests — L157-161 (5 lines)
+- docs/code-testing.md § 1.4.0 tests — L163-168 (6 lines)
+- docs/code-testing.md § 1.3.0 tests — L170-175 (6 lines)
 - docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-9 (9 lines)
 - docs/code-text.md § Where things are — L11-22 (12 lines)
 - docs/code-text.md § Model and file — L24-37 (14 lines)
@@ -366,3 +368,9 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 - REQ-056 harness: SlowExport runner (export = argv ending .videolore-partial streams progress 20 ms/line), BusyTranscriber spins all cores until cancel; 30 frames <=200 ms each.
 - Debt: weekly cargo-deny schedule NOT added; QEMU old-CPU CI step NOT done; preview keeps its own system-temp dir (now chmod 0700, tempfile does not do it) for subs.ass — not lock-registered (no partial files there, removed on drop).
 - FIX 0.4.2 (probe flake, REQ-061; deviation from ADR-038 1s/3s): VERIFY of 0.4.1 saw the_real_hardware_check_is_quick_and_stable fail under parallel-test CPU load (VA-API H.264 CQ probe >1s -> TimedOut -> h264 None vs Some). Fix: retry-on-timeout (above) + app auto-repeat: AppState.hw_rechecked; start_hw_probe() (all triggers) = reset flag + launch_hw_probe(); tick: accepted Done && inconclusive && !hw_rechecked -> set flag, launch again WITHOUT going to Checking (first answer stays Done/in use; acceptance = generation match && (Checking(g) || rechecked&&Done)). Max one repeat per trigger. Probe timeouts never reach settings.hardware_off (only export SoftwareAfterProblem does) -> REQ-064 unaffected (asserted in app/hw_tests a_check_without_an_answer_in_time_is_repeated_once). FakeRunner::hanging_if(pred on args, asked once per spawn) = per-call held stdout. Dev laptop: hevc_vaapi CQP on renderD128 runs ~14s then fails "Failed to map output buffers" -> costs 1+4s per check -> check ~6.4s idle, hits 10s under 16 busy loops/8 cores (test bound total+1.5s passed 3/3 loaded + 2 full suites); always inconclusive (HEVC) -> repeated once each trigger. Integration test now asserts both runs < total+1.5s and h264/hevc equal (prints both).
+
+## 1.6.2 notes (splash for both programs)
+- Done: assets (videolore.gif git mv of 1.6.1.gif, 1.6.0.gif removed, 1.6.2.txt, 1.6.2-player.txt from PM drafts, videolore-player.gif added); `splash::Program` + `EDITOR`/`PLAYER` (consts, so a program that does not use PLAYER does not embed it: no linker measure done, release build not made, disk 13 GB); `fit_summary`, `decode_capped` (64 MiB); `ui/splash_window.rs` shared (summary fitted once per scale, cached in Loaded); `splash_ui.rs` = editor adapter; player `PlayerState::splash`, `Command::CloseSplash`, drawn in `popups()`; opening a video closes it; notices entry names the two pictures.
+- Tests: REQ-133/134 in src/splash.rs + src/ui/splash_ux_tests.rs; REQ-150 in src/splash.rs (player picture), player/src/ui_tests.rs (3 start_screen tests) and player/src/tests.rs (real_app). Req->test map unchanged otherwise.
+- Env: scratchpad run.sh (PKG_CONFIG_PATH alsa + LIBCLANG + systemd-run 8G cap + timeout). Result: fmt/clippy x3/test ok, coverage 95.6%, feature 148/148 (REQ-134 and REQ-150 still `(planned)` in docs: PM flips).
+- Debt: summary fit floor 7 px (a longer text fails the test); both summaries per release; real_app tests do not start ffmpeg-free (player real_app(None) test uses the real locate).

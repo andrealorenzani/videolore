@@ -1,6 +1,6 @@
 # Architecture: videolore player
 
-Part of [Architecture](architecture.md). Requirements REQ-138 to REQ-141 ([business](business-player.md)). Since 1.6.0.
+Part of [Architecture](architecture.md). Requirements REQ-138 to REQ-141 and REQ-150 ([business](business-player.md)). Since 1.6.0; the start screen (REQ-150) since 1.6.2.
 
 ## Overview
 The player is a second program, `videolore-player`, with its own executable and its own installers for Windows, macOS and Linux. It plays one video file with the 360 view, subtitles and full screen. It never edits, saves or exports. It reuses the editor's playback engine, so a video looks the same in both programs.
@@ -18,6 +18,11 @@ The player is a second program, `videolore-player`, with its own executable and 
 - Subtitle places on the picture are kept in the session only; they are never written.
 - 360 video: dragging the picture turns the camera with the same drag function and limits as the editor. The preview restarts from the playhead with the fixed camera, as in the editor.
 - Full screen: F11 or F toggles it (window fullscreen). Esc closes an open popup first, then leaves full screen. The menu, title and status line are hidden; the controls hide after 2 seconds without pointer movement. On entering full screen a popup says "Press Esc to exit full screen" and closes with OK or after 5 seconds.
+
+## Start screen (1.6.2)
+- The player uses the library's splash code and window (`videolore::splash`, `videolore::ui::splash_window`), with `splash::PLAYER`: the picture `assets/splash/videolore-player.gif`, "Version X.Y" over the rectangle x 78 to 386, y 388 to 462, and the summary `assets/splash/<version>-player.txt`. The rules are those of the editor's splash (see [splash](architecture-splash.md)).
+- It opens at a start without a video on the command line, as a splash state of the player (its only other popup is the full-screen hint). A video on the command line opens at once, with no splash; so does a `.vlproj`, which is refused.
+- Non-blocking: playback keys, F11 and the mouse keep working. Esc closes the splash first, then another popup, then leaves full screen.
 
 ## Opening files
 - One video at a time: a path on the command line, File > Open, or a dropped file where drag and drop works.

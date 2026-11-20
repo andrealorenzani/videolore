@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-1.6.1-blue)
+![version](https://img.shields.io/badge/version-1.6.2-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-95.5%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-95.6%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -82,7 +82,7 @@ Start videolore from the menu, the Applications folder, the AppImage or the extr
 12. **360 video**: a video recorded as a full 360° sphere is recognised from its file's own information and shown as a 360 clip; a video without that information stays flat. Drag the picture to look around, and use the mouse wheel to zoom, during playback too. **Set POV** saves the current view at the playhead; between two saved views the camera moves in a straight line. On export, a project whose clips are all 360 offers in the Export dialog a 360 video, which keeps the whole sphere, or a flat video that follows this camera path (a project that mixes 360 and flat clips exports as a flat camera view); a moving camera exports at about one third of real time. A text or subtitle line added on a 360 clip stays at its point of the sphere.
 13. **Titles and captions**: choose **Add Text** in the Effects list, or Effects > Add text at playhead, to write a multiline text at the playhead. Choose its effects (Fade IN, Fade OUT, Blink and Slide in, in any combination), its time to live, colour and font (the fonts installed on your computer). The text has a bar on the Text lane of the timeline: drag the bar to move it, or drag its right end to change how long it is shown. Drag its box in the preview to move it, or its right edge to change its width; the text size follows the width. Texts are burned into the exported video.
 14. **Colour with a LUT**: drag **Apply LUT** from the Effects list onto a clip, or double-click it to apply it to every clip on the timeline at that moment, each clip getting its own copy. **Choose file…** opens a `.cube` file (3D or 1D LUT); a file that is not a valid LUT is refused with a message. The project keeps the file's path, not a copy, so keep the file where it is. **Remove effect** takes the LUT off. A missing or damaged LUT file is reported in the notice that lists items which could not be found or were repaired.
-15. **Video player**: videolore player (`videolore-player`) is a separate program with its own download (see Installation). It opens one video at a time, with File > Open… or by dropping a video onto its window where drag and drop works, and plays it with sound. Drag a 360 picture to look around. The Subtitles menu lists None, the video's text subtitle tracks and any `.srt` file you open with Subtitles > Open .srt…. View > Full screen, F11 or F switches full screen on and off. The player keeps no settings and has no playlist.
+15. **Video player**: videolore player (`videolore-player`) is a separate program with its own download (see Installation). It opens one video at a time, with File > Open… or by dropping a video onto its window where drag and drop works, and plays it with sound. Started without a video, it shows a splash screen with its own picture and the release summary; close it with its Close button or Esc, or by opening a video. Drag a 360 picture to look around. The Subtitles menu lists None, the video's text subtitle tracks and any `.srt` file you open with Subtitles > Open .srt…. View > Full screen, F11 or F switches full screen on and off. The player keeps no settings and has no playlist.
 
 The About screen lists every bundled third-party component with its version, licence and where to get its source code.
 
@@ -167,9 +167,9 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **1.6.2** — The video player opens with a start screen like the editor's, with its own picture and the release summary, until a video is opened. The editor's splash shows a longer summary for each release, sized to fit its box.
 - **1.6.1** — A whole-video effect now applies to every clip on the timeline at that moment: the fades go to the first clip's start and the last clip's end, and Scale, Move and Apply LUT give each clip its own copy. Boxes on the picture resize from their visible edges when partly outside the picture. A paused preview no longer stays black. Projects saved by this version need version 1.6.1 or later; projects from 1.6.0 are converted once on open, with one status note.
 - **1.6.0** — A separate video player, `videolore-player`, with its own download, for watching videos with sound, 360 look-around and subtitles. Apply LUT gives a clip or the whole video a colour look from a `.cube` file. A splash screen with the release summary opens at each start of the editor, and buttons, menus and lists show icons. Projects saved by this version need version 1.6.0 or later.
-- **1.5.0** — Change aspect sets the shape of the whole video (4:3, 16:9 or 9:16), with the picture fitted by width or by height, and fills the empty space with a colour you choose or a blurred copy of the video. Scale and Move zoom and shift a clip's picture or the whole video's picture, with keyframes in a popup timeline and corner and centre handles in the preview. Projects saved by this version need version 1.5.0 or later.
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
 ## License

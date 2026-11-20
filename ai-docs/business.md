@@ -6,9 +6,9 @@
 - docs/business.md § (title, purpose, users) — L1-15 (15 lines; 1.6.0 player para L8)
 - docs/business.md § Documents — L16-32 (17 lines; 1.6.0 LUT, splash, player, icons L25-28; 1.6.1 Effects line L19)
 - docs/business.md § Constraints — L33-37 (5 lines)
-- docs/business.md § Key decisions (general) — L38-65 (28 lines; 1.6.0 x3 L58-60; 1.6.1 L61)
-- docs/business.md § Known limitations (1.2.0 … 1.6.0) — L66-94 (29 lines; 1.6.0 L67, splash 1.6.1 image in same line)
-- docs/business.md § Out of scope — L95-106 (12 lines; 1.6.0 L97-98)
+- docs/business.md § Key decisions (general) — L38-66 (29 lines; 1.6.0 x3 L58-60; 1.6.1 L61; 1.6.2 player splash L62)
+- docs/business.md § Known limitations (1.2.0 … 1.6.0) — L67-95 (29 lines; 1.6.0 L68, splash 1.6.1 image in same line)
+- docs/business.md § Out of scope — L96-107 (12 lines; 1.6.0 L98-99)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
@@ -109,12 +109,12 @@
 - docs/business-performance.md § Key decisions — L72-85 (14 lines)
 - docs/business-performance.md § Known limitations — L86-91 (6 lines)
 - docs/business-performance.md § Out of scope — L92-98 (7 lines)
-- docs/business-splash.md § intro — L1-5 (5 lines; NEW 1.6.0)
-- docs/business-splash.md § Features — L7-11 (5 lines)
-- docs/business-splash.md § Requirements / Splash screen (REQ-133, 134) — L12-17 (6 lines)
-- docs/business-splash.md § Key decisions — L18-22 (5 lines)
-- docs/business-splash.md § Known limitations — L23-28 (6 lines; 1.6.0 STATUS +2 bullets; 1.6.1 +1 bullet L27)
-- docs/business-splash.md § Out of scope — L29-30 (2 lines)
+- docs/business-splash.md § intro — L1-5 (5 lines; NEW 1.6.0; 1.6.2 extends to player)
+- docs/business-splash.md § Features — L7-11 (5 lines; 1.6.2 fixed picture names + summary per program)
+- docs/business-splash.md § Requirements / Splash screen (REQ-133 implemented; REQ-134 implemented 1.6.2, reworded) — L12-17 (6 lines)
+- docs/business-splash.md § Key decisions — L18-24 (7 lines; 1.6.2 L22-23)
+- docs/business-splash.md § Known limitations — L25-31 (7 lines; 1.6.1 L29; 1.6.2 summary fit L30; build-needs bullet L27)
+- docs/business-splash.md § Out of scope — L32-33 (2 lines; splash in player removed 1.6.2)
 - docs/business-lut.md § intro — L1-5 (5 lines; NEW 1.6.0)
 - docs/business-lut.md § Features — L7-12 (6 lines)
 - docs/business-lut.md § Requirements / Apply LUT (REQ-135 implemented 1.6.1: whole-video LUT = copy per clip, Q-F exception) — L13-17 (5 lines)
@@ -124,14 +124,15 @@
 - docs/business-lut.md § Known limitations — L29-34 (6 lines; 1.6.1 one-LUT-per-clip bullet L34)
 - docs/business-lut.md § Out of scope — L35-36 (2 lines)
 - docs/business-player.md § intro — L1-5 (5 lines; NEW 1.6.0)
-- docs/business-player.md § Features — L7-13 (7 lines)
-- docs/business-player.md § Requirements / The program (REQ-138) — L14-18 (5 lines)
-- docs/business-player.md § 360 video (REQ-139) — L19-21 (3 lines)
-- docs/business-player.md § Subtitles (REQ-140) — L22-24 (3 lines)
-- docs/business-player.md § Full screen (REQ-141) — L25-27 (3 lines)
-- docs/business-player.md § Key decisions — L28-32 (5 lines)
-- docs/business-player.md § Known limitations — L33-39 (7 lines; 1.6.0 STATUS +1 bullet)
-- docs/business-player.md § Out of scope — L40-42 (3 lines)
+- docs/business-player.md § Features — L7-14 (8 lines; 1.6.2 Start screen bullet L13)
+- docs/business-player.md § Requirements / The program (REQ-138) — L15-19 (5 lines)
+- docs/business-player.md § 360 video (REQ-139) — L20-22 (3 lines)
+- docs/business-player.md § Subtitles (REQ-140) — L23-25 (3 lines)
+- docs/business-player.md § Full screen (REQ-141) — L26-28 (3 lines)
+- docs/business-player.md § Start screen (REQ-150 implemented 1.6.2) — L29-31 (3 lines)
+- docs/business-player.md § Key decisions — L32-37 (6 lines; 1.6.2 L34)
+- docs/business-player.md § Known limitations — L38-44 (7 lines; 1.6.0 STATUS +1 bullet)
+- docs/business-player.md § Out of scope — L45-47 (3 lines)
 - docs/business-icons.md § intro — L1-5 (5 lines; NEW 1.6.0)
 - docs/business-icons.md § Features — L7-13 (7 lines)
 - docs/business-icons.md § Requirements / Icons (REQ-142, 143) — L14-19 (6 lines)
@@ -139,6 +140,33 @@
 - docs/business-icons.md § Known limitations — L25-27 (3 lines)
 - docs/business-icons.md § Out of scope — L28-29 (2 lines)
 Line ranges re-checked at the 1.4.0 STATUS (grep -n '^#' + line count); convention: heading to the line before the next heading; re-check with grep -n '^#' after any edit.
+
+## 1.6.2 PLAN (target 1.6.2, Andrea request 2026-11-20) — no SEVERE, all MINOR
+- Request: splash screens only. Editor picture = 1.6.1.gif renamed `assets/splash/videolore.gif` (same image). Player gets a splash with `assets/splash/videolore-player.gif`, rectangle x 78-386, y 388-462 (read as two corners, sorted; origin top-left like the editor), same behaviour as the editor's; summary = changelog of the current version.
+- DECIDED (naming, flagged to Andrea via command as a decision, not a question): pictures have FIXED names and no longer change per version: `videolore.gif` (editor), `videolore-player.gif` (player). Summary text stays per version: `<version>.txt` (editor, naming unchanged, 1.6.0.txt and 1.6.1.txt stay valid) and NEW `<version>-player.txt` (player, required from 1.6.2). Build needs the 2 pictures and the 2 txt of the version being built; fails without. `1.6.0.gif` and the renamed `1.6.1.gif` are unused by the build (PE may delete; git keeps them).
+- Human docs changed: business-splash (intro, Features, REQ-134 planned reworded, Key decisions 1.6.2 x2, Known limitations 1.6.2 x2 + build bullet, Out of scope splash-in-player removed), business-player (Features Start screen bullet, NEW "### Start screen" REQ-150 planned, Key decision 1.6.2), business (Documents 2 bullets, key decision 1.6.0 reversed note L60, NEW key decision 1.6.2 L62).
+- REQ-134 REWORDED -> (planned) (was implemented 1.6.0): picture name, 1.6.2 example "Version 1.6", summary file. Acceptance: videolore.gif shows "Version 1.6" in rectangle; popup 400 px; summary = running version's.
+- REQ-150 (planned, business-player "Start screen"): player splash like REQ-133/134 with its own picture, rectangle and summary file; no splash with any path on the command line (video or project); 3 closing methods; acceptance as REQ-134 with 308x74 rectangle. Next free ID: REQ-151. QG: none.
+- REVERSED (Andrea request): 1.6.0 "no splash in the player" (business-splash key decision, intro, Out of scope; business-player was silent) and business.md 1.6.0 key decision L60 (reversed note added).
+- MINOR defaults (Andrea can overrule): M1 player splash rule = editor rule (no splash when a path is on the command line; not blocking; on top until closed; next start shows it again). M2 rectangle read as x 78-386, y 388-462 (top-left origin; the given corners are not ordered). PE must check the rectangle lies inside videolore-player.gif; if not, stop and report. M3 "Version X.Y" text as editor (largest fit, centred). M4 summary per program: player text is its own (player changes differ), not the editor's text. M5 "2-3 times" read as WORDS, not lines: 1.6.0 body = 53 words; drafts below = 129 (edit) ~2.4x; max five lines kept. M6 popup text longer than 1.6.0 must fit the popup (400 px, as high as picture): smaller text, no scrolling (ASSUMPTION; PE to check at build, report if it does not fit).
+- DRAFT for PE/Architect (PM does not own assets; write exactly these, UTF-8, heading + body lines):
+  - `assets/splash/1.6.2.txt`:
+    "New in this version" / "The start screen uses the same videolore picture in every release, so only the version number and the summary change from one release to the next." / "It still opens at every start without a project or a video on the command line, and stays on top until you close it with Close, Esc or the window's close button." / "The summary on the right is written for this version: it lists the changes you will notice, in short lines you can read at once." / "The video player now has its own start screen, with its own picture and its own summary, shown in the same way as the editor's." / "Opening a project or a video from the command line still skips the start screen, so the work starts at once."
+  - `assets/splash/1.6.2-player.txt`:
+    "New in this version" / "The player now opens with a start screen, with its own picture, shown at every start without a video on the command line." / "The start screen shows the version and a summary of what changed in this version; close it with Close, Esc or the window's close button." / "A video given on the command line opens at once, without the start screen." / "Playback, subtitles, the 360 view and full screen work as before."
+- Open for later: the 1.6.0 open point "GIF plays as it is" vs static image (REQ-134) still open; origin and licence of both pictures unconfirmed (now also videolore-player.gif); a player file association still out of scope.
+- Rejected: per-version pictures (copy each release); one summary for both programs; a new REQ for the build check (kept as known limitation, Architect/PE).
+- Product risks 1.6.2: stale summary per program (release without update); the player splash on a double-clicked file (no association: not affected); longer text may not fit the popup (smaller text); two summaries to keep up to date at each release (more work per release).
+- Future work to pass on: origin and licence of the two pictures; the old unused gifs cleanup; summary fit check at build; the static/animated GIF question (REQ-134).
+
+## 1.6.2 STATUS (target 1.6.2, PE report 2026-11-20)
+- IMPLEMENTED (flipped in docs, `(planned)` -> `(implemented)`): REQ-134 (reworded at PLAN, implemented again; text unchanged), REQ-150 (new). REQ-133 unchanged (implemented 1.6.0). All three have `// covers:` tests (PE). Edited: docs/business-splash.md REQ-134 line, docs/business-player.md REQ-150 line. No `(planned)` REQ left in docs/business*.md. Next free ID REQ-151 (unchanged).
+- Asset check: assets/splash/1.6.2.txt and 1.6.2-player.txt match the PM drafts word for word (heading + 5 body lines each, max five kept).
+- Length goal (MINOR, words): editor body 129 words vs 1.6.0 body 52 words (PM recount; PLAN said 53) = 2.5x, inside the 2-3x goal. Player body 73 words; no 1.6.0 player text exists, so the 2-3x goal is applied to the editor only (MINOR, ASSUMPTION).
+- Not in the PE input (open, PE to state, not decided here): whether the rectangle lies inside videolore-player.gif (M2 check), whether the editor and player texts fit the 400 px popup (M6), whether "Version 1.6" fits the rectangle on both pictures.
+- Index refreshed in place (no line count changed; business-splash REQ-134 and business-player REQ-150 now "implemented 1.6.2").
+- Decisions at STATUS: none new. Splash text and REQ wording unchanged from PLAN.
+- Future work: origin and licence of the two pictures (now `videolore.gif` and `videolore-player.gif`); old unused gifs `1.6.0.gif` and renamed `1.6.1.gif` (cleanup, PE may delete; git keeps them); summary fit check at build (M6); the static/animated GIF question (REQ-134); each release now needs two summaries (`<version>.txt`, `<version>-player.txt`), a stale one is a product risk; player file association still out of scope.
 
 ## 1.6.1 PLAN (target 1.6.1, Andrea request 2026-11-19) — 1 SEVERE (Q1), rest MINOR
 - NEW (planned): REQ-144 preview never black when paused (editing, Preview). REQ-145 visible edges of the Scale box = resize, proportional (frame). REQ-146 subtitle line / text item partly outside picture: visible edge + handle reachable (picture, Boxes). REQ-147 whole-video effect = applied to each clip on the timeline, stays with those clips, new clips do not get it, Fade exception, one undo (ui, Effects). REQ-149 project format 1.6.1 (editing, Media and projects).

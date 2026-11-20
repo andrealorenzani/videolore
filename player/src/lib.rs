@@ -61,8 +61,10 @@ pub fn real_app(file: Option<PathBuf>) -> ui::PlayerApp {
         },
         now,
     );
-    if let Some(p) = file {
-        state.dispatch(app::Command::Open(p), now);
+    match file {
+        Some(p) => state.dispatch(app::Command::Open(p), now),
+        // a start without a video shows the start screen (REQ-150)
+        None => state.show_splash(),
     }
     ui::PlayerApp {
         state,

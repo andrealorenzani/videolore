@@ -1,28 +1,39 @@
-# Code — splash screen and icons (1.6.0)
+# Code — splash screen and icons (1.6.0, splash shared with the player in 1.6.2)
 
-Back to the [index](code.md). Requirements REQ-133, REQ-134 (splash), REQ-142, REQ-143 (icons).
+Back to the [index](code.md). Requirements REQ-133, REQ-134, REQ-150 (splash), REQ-142, REQ-143 (icons).
 
 ## Splash
 
 | Where | What |
 |---|---|
-| `src/splash.rs` (pure) | `IMAGE` / `SUMMARY` (compiled in from `assets/splash/<version>.gif` and `.txt`), `version_text`, `layout`, `fit_text`, `mean_colour`, `text_colour`, `decode` (all GIF frames) |
-| `src/ui/splash_ui.rs` | the egui window (`Order::Foreground`, title bar with the close control), textures, `fit_version`, `frame_index` (loops a multi-frame GIF with timed repaints) |
+| `src/splash.rs` (pure) | `Program { name, image, summary, text_rect }` with `EDITOR` and `PLAYER` (compiled in), `version_text`, `layout`, `fit_text`, `fit_summary`, `mean_colour`, `text_colour`, `decode` / `decode_capped` (all GIF frames, caps), `summary_lines(&Program)` |
+| `src/ui/splash_window.rs` | the shared egui window (`Order::Foreground`, title bar with the close control): `show(ctx, slot, &Program) -> (SplashOutcome, Option<SplashRects>)`, textures kept in `Loaded`, `fit_version`, `frame_index` (loops a multi-frame GIF with timed repaints) |
+| `src/ui/splash_ui.rs` | the editor's adapter: `Popup::Splash`, passes `EDITOR`, turns `Close` into `ClosePopup(Splash)` |
 | `src/app.rs` | `Popup::Splash`, `show_splash`, `banner_after_splash` |
 | `src/lib.rs` | `real_app(None)` opens the splash; `real_app(Some(path))` does not |
+| `player/src/{app,ui,lib}.rs` | `PlayerState::splash` (`show_splash`), `Command::CloseSplash`, drawn first in `popups()` with `PLAYER`; `real_app(None)` opens it; opening a video closes it |
 
-- **Build check.** `include_bytes!`/`include_str!` use `CARGO_PKG_VERSION`: a version without its `.gif` and `.txt` does
-  not compile (so every version bump needs the files, even a patch bump; copy the previous ones when only the code changed).
-- **Layout.** The image keeps its size (486 x 506 for 1.6.0); the panel is 400 wide and as high as the image; both
-  are scaled by the same factor when the window is small (never enlarged). The text "Version X.Y" (major and minor,
-  from the version) is fitted by binary search into the rectangle x 74..408, y 381..465 minus a 6 px margin, centred; its
-  colour (white or near-black) comes from the mean colour of the rectangle in the first frame.
-- **Closing.** Close button, Esc (`keymap::topmost_popup` returns the splash first) and the window's own control all send
-  `ClosePopup(Splash)`; no unsaved-changes question. It does not block the editor (it is a window, not a modal).
+- **Fixed pictures, per-version summaries (1.6.2).** `assets/splash/videolore.gif` (editor, 486 x 506) and
+  `videolore-player.gif` (player, 487 x 505) never change per version. The summaries are `<version>.txt` (editor) and
+  `<version>-player.txt` (player), included with `CARGO_PKG_VERSION`: a version without both files does not compile (every
+  version bump needs them, even a patch bump). A summary is a heading plus one to five lines. `1.6.0.txt` and `1.6.1.txt`
+  stay as history (not read by the build). Both pictures are in the lib (about 175 KB).
+- **Layout.** The image keeps its size; the panel is 400 wide and as high as the image; both are scaled by the same
+  factor when the window is small (never enlarged). "Version X.Y" is fitted by binary search into the program's
+  rectangle minus a 6 px margin, centred (editor x 74..408, y 381..465; player x 78..386, y 388..462); its colour (white or
+  near-black) comes from the mean colour of the rectangle in the first frame.
+- **Summary fit (no clip, no scroll).** `splash_window::summary_panel` measures the heading and the items wrapped to the
+  panel width and picks, with `fit_summary`, the largest item size from 15 down to a floor of 7 (image px, scaled); the
+  result is cached in `Loaded` until the scale changes. `SplashRects::{summary_room, summary_used}` let the tests assert that
+  the text fits; a longer text fails the test instead of being clipped.
+- **Decoder caps.** 64 frames, side 4096, and 64 MiB of RGBA in total (`MAX_BYTES`); the files are build inputs.
+- **Closing.** Close button, Esc and the window's own control. Editor: `keymap::topmost_popup` returns the splash first and
+  `ClosePopup(Splash)`; no unsaved-changes question. Player: Esc (`Command::Escape`) closes the start screen before About,
+  the notice, the full-screen hint and full screen; Space and F11 keep working (it is a window, not a modal).
 - **First-start banner (REQ-045)** is held in `banner_after_splash` while the splash is open and shown by `tick` afterwards.
 - **A file on the command line** shows no splash; a file opened by the system while the splash is open closes it.
-- The image is static today (one frame); the decoder keeps up to 64 frames and the window loops them. The origin and licence
-  of the image are noted in `packaging/notices/third-party.txt` as to be confirmed by the author before the release.
+- The images are static today (one frame); the decoder keeps up to 64 frames and the window loops them. The origin and licence
+  of both images are noted in `packaging/notices/third-party.txt` as to be confirmed by the author before the release.
 
 ## Icons
 
@@ -65,6 +76,7 @@ videolore player has its own short list (`player/src/ui.rs`, module `icon`): Ope
 ## Tests
 
 `src/ui/icon_ux_tests.rs` (every menu item, the toolbar, the greyed Redo, every popup and dialog title, every marker kind and
-effect row), `src/ui/icons.rs` (font cmap, SHA-256 and licence), `src/notices.rs` (REQ-143), `src/splash.rs`,
+effect row), `src/ui/icons.rs` (font cmap, SHA-256 and licence), `src/notices.rs` (REQ-143), `src/splash.rs` (both programs: size, rectangle, summary lines, caps, `fit_summary`),
 `src/ui/splash_ux_tests.rs` (opening, three ways of closing, Esc order, banner order, 400 x image-height panel, text fitted,
-scaling on a small window). The UI test harness strips the icon from labels (`without_icon`) and keeps the raw label in `Node::raw`.
+summary fitted, scaling on a small window) and, for the player, `player/src/ui_tests.rs` and `player/src/tests.rs`
+(`start_screen` tests, REQ-150). The UI test harness strips the icon from labels (`without_icon`) and keeps the raw label in `Node::raw`.

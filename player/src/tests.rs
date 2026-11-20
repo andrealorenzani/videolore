@@ -336,6 +336,7 @@ fn the_player_has_no_save_export_or_edit_command() {
             | Command::ZoomCamera(_)
             | Command::ToggleFullScreen
             | Command::Escape
+            | Command::CloseSplash
             | Command::DismissFullScreenHint
             | Command::ShowAbout
             | Command::CloseAbout
@@ -731,4 +732,20 @@ fn the_players_dependency_graph_has_no_network_and_no_speech_code() {
             .output()
             .unwrap();
     assert!(String::from_utf8_lossy(&editor.stdout).contains("ureq"));
+}
+
+// covers: REQ-150
+#[test]
+fn a_start_without_a_video_opens_the_start_screen_and_one_with_a_video_does_not() {
+    let without = crate::real_app(None);
+    assert!(without.state.splash);
+    let with = crate::real_app(Some("/nowhere/a.mp4".into()));
+    assert!(!with.state.splash);
+    // Esc and CloseSplash close it
+    let mut s = crate::real_app(None).state;
+    s.dispatch(Command::CloseSplash, now());
+    assert!(!s.splash);
+    s.show_splash();
+    s.dispatch(Command::Escape, now());
+    assert!(!s.splash);
 }

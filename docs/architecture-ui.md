@@ -92,5 +92,5 @@ The interface is tested headless (no window): egui's accessibility tree, which l
 
 ## Icons, splash and the Apply LUT popup (1.6.0)
 - Every toolbar button, menu item, Effects row, marker type and popup or dialog title gets an icon from one bundled font; the icon's command table is the same one that drives menus and shortcuts (see [icons](architecture-icons.md)).
-- The splash opens at editor start as an in-app popup with the same closing rules (see [splash](architecture-splash.md)).
+- The splash opens at editor start as an in-app popup with the same closing rules (see [splash](architecture-splash.md)). Since 1.6.2 the window itself is shared with the player (`ui::splash_window`); the editor only adds its popup command.
 - Apply LUT has a popup with Choose file, the file name (full path in a tooltip) and Remove effect (see [LUT](architecture-lut.md)).

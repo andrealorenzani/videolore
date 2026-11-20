@@ -97,6 +97,11 @@ Since 0.3.0, to remove GitHub's deprecation warnings and make builds reproducibl
 - Both carry the same pinned `ffmpeg` and `ffprobe` (`packaging/ffmpeg.lock`), so the player's smoke test is the editor's list without the editing-only filters. Each installer has its own Rust notices: `rust-crates.txt` (editor) and `rust-crates-player.txt` (player); the third-party notices and the source archive are shared.
 - Release: the package job runs both products on each runner; the release globs already attach both sets of files.
 
+## Splash files (1.6.2)
+- The splash pictures and summaries are compiled into the programs: the installers gain no new file, and the package scripts are unchanged.
+- The third-party notices (`packaging/notices/third-party.txt`, shared by both products) name the two pictures: `assets/splash/videolore.gif` (editor) and `assets/splash/videolore-player.gif` (player); origin and licence to be confirmed before release.
+- The source archive of each release includes the four files, committed with the code.
+
 ## Risks
 - First launch of unsigned packages, the macOS launch-time "open document" event and Linux file-manager behaviour can only be checked by hand; a manual checklist is kept in [code packaging](code-packaging.md). If the macOS event fails, opening the project from inside the app still works.
 - cargo-packager has had no release for about a year; the fallback is a hand-written NSIS script and `hdiutil`.

@@ -40,8 +40,8 @@ videolore player, is the package in `player/` and follows the same rule (see [co
 | `app` | `AppState`, the single command dispatcher (`Command`, `AppState::dispatch`), background results in `tick()`; `app/effects.rs` (applying effects, clip volume, edge fades, line selection and positions, SRT export) `app/subs_create.rs` (creating subtitles for a clip or the whole video) and `app/sphere.rs` (360 camera, points of view, resize/align/reset) |
 | `ui` | The window (see [code-ui.md](code-ui.md)): action table (`actions`), menu bar (`menu`), toolbar (`toolbar`), status bar (`status`), resizable sections (`layout`), media list (`media`), timeline with marker lane and music track (`timeline`, `markers`), Effects section and effect popups (`effects`), floating windows (`popups`), Settings body and banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`), ruler labels (`ruler`), subtitle boxes and their measuring (`placement`), box geometry (`boxes`) and everything done on the preview picture (`picture`) |
 | `lut` | Apply LUT: the `.cube` parser (untrusted input), the normalised 3D cube and its hash, the parsed-file cache (see [code-lut.md](code-lut.md)) |
-| `splash` | The splash screen's pure parts (layout, text fit, colour, GIF decoding); the window is `ui/splash_ui.rs` (see [code-splash-icons.md](code-splash-icons.md)) |
-| `ui/icons`, `ui/lut_popup`, `ui/splash_ui` | The icon font and constants, the Apply LUT popup body, the splash window |
+| `splash` | The splash screen's pure parts (`Program` with `EDITOR` and `PLAYER`, layout, text and summary fit, colour, GIF decoding); the window is `ui/splash_window.rs`, shared with the player (see [code-splash-icons.md](code-splash-icons.md)) |
+| `ui/icons`, `ui/lut_popup`, `ui/splash_window`, `ui/splash_ui` | The icon font and constants, the Apply LUT popup body, the shared splash window and the editor's adapter |
 | `dialogs` | Native file dialogs (rfd) |
 
 ## Main patterns

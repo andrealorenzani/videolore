@@ -68,9 +68,10 @@ Phosphor Icons (the icons of the interface, bundled as a font)
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-Splash image (assets/splash/<version>.gif, shown when the editor starts)
-  Supplied by the author of videolore for each release. Its origin and licence
-  are to be confirmed before the release is published (open item of the author).
+Splash images (assets/splash/videolore.gif for the editor and
+assets/splash/videolore-player.gif for the player, shown when each program starts)
+  Supplied by the author of videolore. Their origin and licence are to be
+  confirmed before the release is published (open item of the author).
 
 whisper.cpp (speech recognition engine, built into videolore)
   Version:  as bundled by whisper-rs-sys 0.15.0

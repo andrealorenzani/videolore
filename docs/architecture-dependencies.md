@@ -44,6 +44,8 @@ No new crate was added in 1.5.0 (frame effects use the existing `egui` colour pi
 
 **1.6.0 .** One crate is added: `image` 0.25.10 with only its `gif` feature (`default-features = false`), to decode the splash image; it is already in the tree through `eframe`, and its GIF decoder adds the `gif` and `weezl` crates (MIT/Apache-2.0 or MIT, checked by `cargo-deny`). `ttf-parser` (already in the tree through `fontdb`) is declared as a development dependency only, to check that every icon exists in the font. Rejected: `egui-phosphor` 0.14.0 (requires egui 0.36, not the 0.37 in use), `egui-pop-phosphor` (fork), `egui_extras` (its image loaders are not needed; its `gif` feature gives no animation). The `.cube` reader and the icon constants are in-house. The player is a second member of the workspace that uses the same libraries without the speech feature, so it adds no crate. See [LUT](architecture-lut.md), [splash](architecture-splash.md), [icons](architecture-icons.md) and [player](architecture-player.md).
 
+**1.6.2 .** No crate is added and no version changes. The splash code of both programs is one library module (`image` with its `gif` feature, `eframe` for drawing); the player uses it through the library it already depends on. Rejected: a copy of the splash code in the player (two text-fit rules would drift apart) and a new crate for the splash (a fifth workspace member for about 400 lines). See [splash](architecture-splash.md).
+
 Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDLA-Permissive-2.0). Both are listed in the notices and allowed by the CI licence check.
 
 ## Bundled with the installers (not Rust)
@@ -52,7 +54,7 @@ Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDL
 | `ffmpeg`, `ffprobe` (GPL builds: BtbN for Windows/Linux, Martin Riedl for macOS) | GPL-3.0-or-later (includes x264, x265: GPL-2.0-or-later; libass and others) | All media decoding, encoding and subtitle rendering. See [ffmpeg](architecture-ffmpeg.md). |
 | Noto Sans Bold | SIL Open Font License 1.1 | Subtitle font. |
 | Phosphor Icons, Regular weight (1.6.0) | MIT | Icons of the whole interface, bundled as one font file. See [icons](architecture-icons.md). |
-| Release image `assets/splash/<version>.gif` (1.6.0) | To be recorded before release (origin open) | Splash screen. See [splash](architecture-splash.md). |
+| Splash pictures `assets/splash/videolore.gif` (editor, the 1.6.1 picture renamed in 1.6.2) and `assets/splash/videolore-player.gif` (player, 1.6.2) | To be recorded before release (origin open) | Splash screens of both programs. See [splash](architecture-splash.md). |
 
 Downloaded after consent, not bundled: the whisper models of the three subtitle quality levels (`ggml-tiny-q5_1.bin`, `ggml-small-q5_1.bin`, `ggml-large-v3-turbo-q5_0.bin`, all MIT). See [subtitles](architecture-subtitles.md#subtitle-quality-levels-030).
 

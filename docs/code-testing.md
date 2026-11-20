@@ -50,7 +50,9 @@
 - **Memory:** a hostile-input test must not build its input at the size of the attack (the
   subtitle track test once built 10 GB of JSON and brought a machine down). When running the
   suite on a small machine, cap it, e.g. `systemd-run --user --scope -p MemoryMax=6G
-  -p MemorySwapMax=0 -- cargo test --workspace`.
+  -p MemorySwapMax=0 -- cargo test --workspace`. Every test, clippy and coverage run of a
+  development is made under such a cap (8 GB, `MemorySwapMax=0`) and a `timeout`, one cargo job
+  at a time; `target/llvm-cov-target` is deleted after coverage when the disk has less than 8 GB free.
 - **Settings and hostile input:** the settings decisions are pure functions tested with corpora
   (bad JSON, unknown values, huge numbers, nesting, relative paths, newer formats, 0.2.x files);
   project files are tested with a hostile corpus (truncated, nested, out-of-range numbers,
@@ -143,6 +145,14 @@ file name, ffmpeg writes a subtitle track, spawned processes hold their output u
 programs read egui's accessibility tree; the editor's strips the leading icon from labels (`Node::label`, with the raw one in
 `Node::raw`). CI runs fmt, clippy, tests and coverage with `--workspace`, and greps the player's `cargo tree` for network and
 speech crates.
+
+### 1.6.2 tests
+
+The splash is shared: `src/splash.rs` tests both programs (`check_program`: size, rectangle inside the picture, one to five
+summary lines, colour), `fit_summary` and the 64 MiB cap (`decode_capped`); `src/ui/splash_ux_tests.rs` measures that the
+summary fits its panel (`SplashRects::summary_used` against `summary_room`); the player's `start_screen` tests (REQ-150) are in
+`player/src/ui_tests.rs` (rectangle, closing, Esc order, Space and F11) and `player/src/tests.rs` (`real_app`). See
+[code-splash-icons.md](code-splash-icons.md).
 
 ### 1.5.0 tests
 

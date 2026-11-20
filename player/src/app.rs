@@ -80,6 +80,8 @@ pub enum Command {
     ToggleFullScreen,
     /// Esc.
     Escape,
+    /// Close on the start screen (or its window's close control).
+    CloseSplash,
     /// OK on "Press Esc to exit full screen".
     DismissFullScreenHint,
     ShowAbout,
@@ -125,6 +127,8 @@ pub struct PlayerState {
     pub status: String,
     pub notice: Option<String>,
     pub show_about: bool,
+    /// The start screen is open (REQ-150): at a start without a video.
+    pub splash: bool,
     pub subs: Subs,
     pub fullscreen: FullScreen,
     /// The 360 camera you dragged (not saved, there is nothing to save it in).
@@ -186,6 +190,7 @@ impl PlayerState {
             status: String::new(),
             notice,
             show_about: false,
+            splash: false,
             subs: Subs::default(),
             fullscreen: FullScreen::new(now),
             live: None,
@@ -201,6 +206,11 @@ impl PlayerState {
     }
 
     /// The window title: the file's name and the program's.
+    /// Opens the start screen (REQ-150): at a start without a video on the command line.
+    pub fn show_splash(&mut self) {
+        self.splash = true;
+    }
+
     pub fn title(&self) -> String {
         match &self.file {
             Some(p) => format!("{} — videolore player", display_name(p)),
@@ -346,8 +356,14 @@ impl PlayerState {
                 self.fullscreen.toggle(now);
                 Ok(())
             }
+            Command::CloseSplash => {
+                self.splash = false;
+                Ok(())
+            }
             Command::Escape => {
-                if self.show_about {
+                if self.splash {
+                    self.splash = false;
+                } else if self.show_about {
                     self.show_about = false;
                 } else if self.notice.is_some() {
                     self.notice = None;
@@ -384,6 +400,8 @@ impl PlayerState {
     /// Starts opening a video: a project is refused by its name alone (never read); the
     /// probe runs in the background.
     fn open(&mut self, path: PathBuf, now: Instant) -> Result<(), String> {
+        // a video given or chosen makes the start screen pointless
+        self.splash = false;
         if is_project_file(&path) {
             self.notice = Some(PROJECT_REFUSED.into());
             return Ok(());

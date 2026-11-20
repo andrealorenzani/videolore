@@ -1,6 +1,6 @@
-# Code — videolore player and the workspace (1.6.0)
+# Code — videolore player and the workspace (1.6.0, start screen 1.6.2)
 
-Back to the [index](code.md). Requirements REQ-138 to REQ-141 (and REQ-142 for its icons).
+Back to the [index](code.md). Requirements REQ-138 to REQ-141, REQ-150 (start screen) (and REQ-142 for its icons).
 
 ## Workspace
 
@@ -23,11 +23,11 @@ embedded text track; the speech matching uses it too), `videolore::app_icon()`, 
 | File | What |
 |---|---|
 | `main.rs` | thin: the argument, `native_options`, `real_app` |
-| `lib.rs` | `real_app`, `native_options`, `file_arg`, native dialogs (rfd) |
+| `lib.rs` | `real_app` (opens the start screen when no video is given), `native_options`, `file_arg`, native dialogs (rfd) |
 | `app.rs` | `PlayerState`, `Command`, the open rules, transport, 360 camera, subtitle commands, probing and preview copies |
 | `fullscreen.rs` | the full-screen state machine with an injected clock |
 | `subs.rs` | subtitle sources (embedded tracks, `.srt` files), session positions, `read_srt` |
-| `ui.rs` | the egui window: menu bar, controls, picture and its drags, popups |
+| `ui.rs` | the egui window: menu bar, controls, picture and its drags, popups (the start screen first) |
 | `tests.rs`, `ui_tests.rs`, `tests/ffmpeg.rs` | unit tests with a scripted ffprobe, UI tests, real-ffmpeg tests |
 
 ## How it works (ADR-105..108, 118, 119)
@@ -73,3 +73,12 @@ No player settings (volume and window size are not remembered), no playlist, no 
 styling is the editor's default, no preview copy shown in the UI (the copy is made silently). The installer carries a second ffmpeg
 (size). The About text shares `third-party.txt` with the editor, which also describes the editor's speech files. A 360 video wider
 than the editor's limit is refused like in the editor.
+
+## Start screen (1.6.2, REQ-150)
+
+`PlayerState::splash` (set by `show_splash`, which `real_app(None)` calls) is drawn by `popups()` through the shared window
+`videolore::ui::splash_window::show` with `videolore::splash::PLAYER` (picture `assets/splash/videolore-player.gif`, text
+rectangle x 78..386 y 388..462, summary `assets/splash/<version>-player.txt`). `Command::CloseSplash` (Close or the window's
+control) and `Command::Escape` (before About, the notice, the full-screen hint and full screen) close it; opening a video
+closes it too. It is not modal, so Space and F11 keep working. `PlayerCache` holds the textures and `splash_rects` (for tests).
+Details: [code-splash-icons.md](code-splash-icons.md).

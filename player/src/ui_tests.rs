@@ -600,3 +600,111 @@ fn at_the_smallest_window_every_control_and_popup_is_inside_the_window() {
     h.click_label("Subtitles");
     assert!(outside(&h).is_empty(), "menu: {:#?}", outside(&h));
 }
+
+// ---- the start screen (1.6.2, REQ-150) ----
+
+fn with_splash(d: &Path) -> Harness {
+    let mut app = state(d);
+    app.show_splash();
+    Harness::new(app)
+}
+
+// covers: REQ-150
+#[test]
+fn the_start_screen_has_its_picture_rectangle_and_summary_and_everything_fits() {
+    let d = tempfile::tempdir().unwrap();
+    let h = with_splash(d.path());
+    assert!(h.app.splash && h.has("Close"));
+    let r = h.cache.splash_rects.expect("drawn");
+    // 400 wide and as high as the 487 x 505 picture (1 px tolerance)
+    assert!((r.panel.width() - 400.0).abs() <= 1.0, "{:?}", r.panel);
+    assert!((r.panel.height() - r.image.height()).abs() <= 1.0);
+    assert!((r.image.width() - 487.0).abs() <= 1.0 && (r.image.height() - 505.0).abs() <= 1.0);
+    // the version rectangle is 308 x 74 at x 78, y 388
+    assert!((r.text.width() - 308.0).abs() <= 1.0 && (r.text.height() - 74.0).abs() <= 1.0);
+    assert!((r.text.min.x - r.image.min.x - 78.0).abs() <= 1.0);
+    assert!((r.text.min.y - r.image.min.y - 388.0).abs() <= 1.0);
+    // "Version 1.6" at its fitted size is inside the rectangle
+    let text = videolore::splash::current_version_text();
+    let size =
+        videolore::ui::splash_window::fit_version(&h.ctx, &text, 1.0, &videolore::splash::PLAYER);
+    assert!(size > 20.0, "{size}");
+    let g = h.ctx.fonts_mut(|f| {
+        f.layout_no_wrap(
+            text,
+            eframe::egui::FontId::proportional(size),
+            eframe::egui::Color32::WHITE,
+        )
+    });
+    let m = 2.0 * videolore::splash::TEXT_MARGIN + 0.5;
+    assert!(g.size().x <= r.text.width() - m + 1.0 && g.size().y <= r.text.height() - m + 1.0);
+    // the summary of this version: heading and lines, all fitting, no scroll
+    assert!(
+        r.summary_used.height() <= r.summary_room.height() + 0.5,
+        "{r:?}"
+    );
+    let lines = videolore::splash::summary_lines(&videolore::splash::PLAYER);
+    assert!(lines.len() >= 2 && lines.len() <= 6);
+    assert!(h.has(lines[0]), "{:#?}", h.labels());
+    assert!(lines[0] == "New in this version");
+}
+
+// covers: REQ-150
+#[test]
+fn each_way_of_closing_the_start_screen_removes_it_and_the_next_start_shows_it_again() {
+    let d = tempfile::tempdir().unwrap();
+    let mut h = with_splash(d.path());
+    h.click_label("Close");
+    assert!(!h.app.splash && h.cache.splash_rects.is_none());
+    h.app.show_splash();
+    h.idle(3);
+    assert!(h.app.splash);
+    h.key(Key::Escape);
+    assert!(!h.app.splash);
+    h.app.show_splash();
+    h.idle(3);
+    let x = h.find("Close window").expect("the window's close control");
+    h.click(x.rect.center());
+    assert!(!h.app.splash);
+    assert!(with_splash(d.path()).app.splash, "the next start");
+    // a start with a video shows none: opening one closes it
+    let mut h = with_splash(d.path());
+    open_video(&mut h, d.path(), "a.mp4");
+    assert!(!h.app.splash && !h.has("Close"));
+    // a small window scales both parts together and the text still fits
+    let mut app = state(d.path());
+    app.show_splash();
+    let mut h = Harness::new(app);
+    h.size = vec2(800.0, 500.0);
+    h.idle(3);
+    let r = h.cache.splash_rects.unwrap();
+    assert!(r.image.height() < 505.0 && r.summary_used.height() <= r.summary_room.height() + 0.5);
+}
+
+// covers: REQ-150
+#[test]
+fn escape_closes_the_start_screen_before_the_full_screen_hint_and_the_controls_still_work() {
+    let d = tempfile::tempdir().unwrap();
+    let mut h = Harness::new(state(d.path()));
+    open_video(&mut h, d.path(), "a.mp4");
+    h.key(Key::F11);
+    assert!(h.app.fullscreen.on && h.has(HINT_TEXT));
+    h.app.show_splash();
+    h.idle(3);
+    assert!(h.app.splash);
+    // Space and F11 work with the start screen open
+    h.key(Key::Space);
+    assert!(h.app.is_playing() && h.app.splash);
+    h.key(Key::Space);
+    // Esc closes the start screen first, then the hint, then leaves full screen
+    h.key(Key::Escape);
+    assert!(!h.app.splash && h.app.fullscreen.hint_visible() && h.app.fullscreen.on);
+    h.key(Key::Escape);
+    assert!(!h.app.fullscreen.hint_visible() && h.app.fullscreen.on);
+    h.key(Key::Escape);
+    assert!(!h.app.fullscreen.on);
+    h.app.show_splash();
+    h.idle(3);
+    h.key(Key::F11);
+    assert!(h.app.fullscreen.on && h.app.splash);
+}

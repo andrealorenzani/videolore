@@ -1,0 +1,5 @@
+New in this version
+The player now opens with a start screen, with its own picture, shown at every start without a video on the command line.
+The start screen shows the version and a summary of what changed in this version; close it with Close, Esc or the window's close button.
+A video given on the command line opens at once, without the start screen.
+Playback, subtitles, the 360 view and full screen work as before.

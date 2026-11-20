@@ -137,14 +137,43 @@ fn the_popup_is_400_wide_and_as_high_as_the_image_and_the_version_fits_its_recta
     assert!(size > 20.0, "a large size, not 1: {size}");
     // the summary written for this version is in the panel
     assert!(
-        h.has(crate::splash::summary_lines()[0]),
+        h.has(crate::splash::summary_lines(&crate::splash::EDITOR)[0]),
         "{:#?}",
         h.labels()
     );
 }
 
+// covers: REQ-134
+#[test]
+fn the_summary_fits_its_panel_without_clipping_or_scrolling() {
+    for (w, hgt) in [(1280.0, 800.0), (800.0, 500.0)] {
+        let mut app = state(FakeDialogs::default());
+        app.show_splash();
+        let mut h = Harness::new(app, w, hgt);
+        h.idle(2);
+        let r = h.cache.splash_rects.unwrap();
+        assert!(
+            r.summary_used.height() <= r.summary_room.height() + 0.5,
+            "{r:?}"
+        );
+        assert!(
+            r.summary_used.width() <= r.summary_room.width() + 0.5,
+            "{r:?}"
+        );
+        // every line of the summary is on screen
+        for l in crate::splash::summary_lines(&crate::splash::EDITOR) {
+            assert!(h.labels().iter().any(|x| x.contains(&l[..15])), "{l}");
+        }
+    }
+}
+
 fn fit_version_for_test(ctx: &eframe::egui::Context, s: f32) -> f32 {
-    crate::ui::splash_ui::fit_version(ctx, &crate::splash::current_version_text(), s)
+    crate::ui::splash_window::fit_version(
+        ctx,
+        &crate::splash::current_version_text(),
+        s,
+        &crate::splash::EDITOR,
+    )
 }
 
 // covers: REQ-134
@@ -178,7 +207,7 @@ fn on_a_small_window_both_parts_are_scaled_together() {
 
 #[test]
 fn frames_of_an_animated_image_loop_and_a_single_frame_stays() {
-    use crate::ui::splash_ui::frame_index;
+    use crate::ui::splash_window::frame_index;
     use std::time::Duration as D;
     let d = [D::from_millis(100), D::from_millis(300)];
     assert_eq!(frame_index(&d, D::from_millis(0)), 0);

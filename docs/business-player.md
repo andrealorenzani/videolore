@@ -10,6 +10,7 @@ Added in 1.6.0: **videolore player**, a second program with its own build. It pl
 - **360 video**: drag the picture to turn the camera, as in the editor (see [Boxes on the picture and 360 video](business-picture.md)).
 - **Subtitles**: a Subtitles menu chooses None, a subtitle track embedded in the video, or a `.srt` file opened with Subtitles > Open .srt…; a line is dragged to another place on the picture.
 - **Full screen**: only the picture and its playback controls remain; Esc leaves it.
+- **Start screen** (1.6.2): a splash screen like the editor's, shown at every start without a video path on the command line (REQ-150).
 
 ## Requirements
 
@@ -25,8 +26,12 @@ Added in 1.6.0: **videolore player**, a second program with its own build. It pl
 ### Full screen
 - REQ-141 (implemented): View > Full screen, F11 or F switches full screen on and off. In full screen the menu bar, the title and the status information are hidden; the picture and its playback controls remain, and the controls hide after 2 seconds without pointer movement and show again when the pointer moves (assumption). When full screen is entered, a popup says "Press Esc to exit full screen" with an OK button; it closes with OK or after 5 seconds (assumption), and it shows again at the next entry. Esc always leaves full screen, and while a popup is open it closes the popup first. Acceptance: entering full screen hides the menu and the title; the popup appears; Esc returns to the normal window; F11 toggles both ways.
 
+### Start screen
+- REQ-150 (implemented): The player has a start screen like the editor's (REQ-133, REQ-134), with these differences. It opens at every start of the player without a path on the command line, on top of the player window, and closes in the same three ways (Close, Esc, the window's close control); a start with a project or video path on the command line shows none. Its picture is `assets/splash/videolore-player.gif`, and "Version X.Y" is written in the rectangle from x 78 to x 386 and from y 388 to y 462 (pixels, origin at the top left corner, so the rectangle is 308 by 74 pixels), in the largest size that fits, centred, touching neither edge. Its popup is 400 pixels wide, as high as the picture, with the summary of this version from `assets/splash/<version>-player.txt` and a **Close** button. Acceptance: at a start without a path the splash is visible and each closing method removes it; the next such start shows it again; a start with a video path shows none; "Version 1.6" lies entirely inside the rectangle on the player's picture; the popup is 400 pixels wide (±1 pixel) and as high as the picture (±1 pixel); the summary is the player's text for the running version.
+
 ## Key decisions
 - (1.6.0) The player is a separate program so that people who only watch videos get a small, simple tool, and the editor stays focused on making clips.
+- (1.6.2) The player has a start screen like the editor's (REQ-150); this reverses the 1.6.0 rule that the player has no splash screen.
 - (1.6.0) The player opens video files only, never projects: a project belongs to the editor and its source files (REQ-001).
 - (1.6.0) Subtitle positions chosen in the player are not saved, so the player never writes files next to the video (assumption).
 

@@ -2,6 +2,27 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.6.2 — 2026-11-20 00:17 +0000
+
+The video player gets the editor's start screen, and the editor's splash shows a longer summary for each release.
+
+### Added
+- **Video player start screen (REQ-150)**: the player opens with a splash screen like the editor's, with its own picture (`assets/splash/videolore-player.gif`, added to the repository) and its own summary. It shows at every start without a video on the command line; a video on the command line opens at once, and opening a video closes it. This reverses the 1.6.0 rule that the player has no splash screen.
+
+### Changed
+- **Splash screen (REQ-134)**: the editor's picture is the fixed file `assets/splash/videolore.gif`, and the summary is about 2.5 times as long as the 1.6.0 text. The summary text is sized to fit the popup without scrolling, from 15 px down to 7 px. Each program has its own summary per release (`assets/splash/<version>.txt` for the editor, `<version>-player.txt` for the player).
+- **Splash code (architecture)**: one shared splash module for both programs, `videolore::splash` with the `EDITOR` and `PLAYER` programs and `videolore::ui::splash_window`; the four asset files are compiled in, the GIF is decoded under a 64 MiB total cap, and no crate is added.
+
+### Removed
+- `assets/splash/1.6.0.gif` (byte-identical to `videolore.gif`); `assets/splash/1.6.1.gif` is renamed to `videolore.gif`. `1.6.0.txt` and `1.6.1.txt` stay as history and are not read by the build.
+
+### Workflow
+- Every version needs its own `assets/splash/<version>.txt` and `assets/splash/<version>-player.txt`: the build fails without them. The picture files do not change per version.
+- A memory cap of 8 GB for builds and tests on the development machine is used in development; it is not yet a written workflow rule.
+
+### Quality
+- Line coverage 95.6%; feature coverage 148 of 148 implemented requirements have a test.
+
 ## 1.6.1 — 2026-11-19 23:13 +0000
 
 ### Changed

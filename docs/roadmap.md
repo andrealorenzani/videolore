@@ -191,7 +191,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Run the 1.6.0 ffmpeg integration tests on the bundled ffmpeg 9.x** — the tests in `tests/ffmpeg_integration/v16.rs` are checked on the development ffmpeg only; run them on the bundled 9.x build before the 1.6.0 release. (source: 1.6.0, check before release)
 - **Widen the hardware probe timeouts** — two hardware tests use 30 ms probe timeouts and can fail under heavy load; make them independent of the load on the machine. (source: 1.6.0, test failure risk)
 - **Check that 1.5.x refuses project format 8** — with the real 1.5.0 build, open a project saved with 1.6.0 (it uses a LUT) and confirm it is refused with the newer-version message and left untouched. (source: 1.6.0, check before release)
-- **Pin the ffmpeg version used by the tests** — the CI test job takes ffmpeg from the runner's package repository, so its version can change between runs; pin it to the bundled version (planned for 1.6.2). (source: 1.6.1, CI time measurement)
+- **Pin the ffmpeg version used by the tests** — the CI test job takes ffmpeg from the runner's package repository, so its version can change between runs; pin it to the bundled version (candidate for 1.6.3, not delivered in 1.6.2). (source: 1.6.1, CI time measurement; retargeted at the 1.6.2 close)
 - **Verify the cargo-about install action** — the CI gets cargo-about 0.9.3 from the taiki-e install action, and its support for this tool is not verified; if it fails, install with `cargo install --locked cargo-about --version 0.9.3 --features cli`. (source: 1.6.1, CI check to do)
 - **Speech fixture for CI tests** — the CI test job installs espeak-ng for the real-speech tests; the committed speech fixture could be read instead, which saves install time. (source: 1.6.1, CI time measurement)
 - **Paused frame at a fade in the ffmpeg tests** — the fix that keeps a paused preview from staying black has no ffmpeg integration test for the paused frame at a fade yet. (source: 1.6.1, test gap)
@@ -209,7 +209,9 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Weekly security-advisory check** — a scheduled CI run of the dependency advisory check, not only on pushes. (source: 0.3.0, skipped item)
 - **Other systems** — builds exist for Windows and Linux on x86-64 and for macOS on Apple Silicon only; Intel Macs and ARM Windows or Linux are not built. (source: 0.4.0, scope decision)
 - **Bundled ffmpeg 9.x Clean audio and MP3 output** — the `afftdn` filter and the `libmp3lame` encoder are checked only by the CI smoke test, which checks that they exist; their output on the bundled ffmpeg 9.x build has not been checked by hand. (source: 1.4.0, check to do)
+- **Package list for the player on crates.io** — the player's crate has no `include` list; set one if the player is ever published on crates.io. (source: 1.6.2, only if published)
 - **Player builds on real systems** — the player's Windows and macOS builds were only checked with clippy, and its installers only with the configuration check; build and run them on real systems. (source: 1.6.0, check before release)
+- **Notices check exit code** — `scripts/notices.sh --check` ran in the 1.6.2 check, but its exit code was not recorded; run it again and record the result. (source: 1.6.2, check to do)
 
 ## Player
 - **File association for the player** — double-clicking a video in the file manager opens it in the player; needs a registration in each installer. (source: 1.6.0, known limitation)
@@ -221,14 +223,17 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Lighter ffmpeg build for the player** — the player's installers carry their own copy of the pinned `ffmpeg` and `ffprobe`, and their size is not measured yet; measure it and build a smaller `ffmpeg` for the player if it is large. (source: 1.6.0, measurement to do)
 - **Player sound for very large videos** — very large videos play from a silent preview copy in the player; keep the sound, or make the preview copy with sound. (source: 1.6.0, accepted deviation)
 - **Player's own third-party list** — the player's About screen shows the editor's third-party notices; give the player a list of its own bundled components. (source: 1.6.0, known limitation)
-- **Player image not in git** — `assets/splash/videolore-player.gif` is untracked; decide whether it is used, then commit it or remove it. (source: 1.6.1, open decision)
 
 ## Splash screen
 - **Do not show again** — an option to turn the splash off, or to show it only once per version. (source: 1.6.0, out of scope of the 1.6.0 request)
-- **Splash summary from the changelog** — the summary is written by hand for each release; take it from the changelog entry so it is not written twice. (source: 1.6.0, known limitation)
-- **Missing splash image or summary** — the image must be in the repository before a version is built; decide what the splash shows when the image or the summary is missing. (source: 1.6.0, open question)
-- **Animated splash image** — the 1.6.0 image is a static GIF, kept as supplied; a multi-frame GIF would animate with no code change. Decide whether to ship an animated one. (source: 1.6.0, decision: static in 1.6.0)
-- **Splash image origin and licence** — the origin and licence of the splash image are not yet recorded in the notices; confirm them and record them before the 1.6.0 release. The 1.6.1 splash reuses the same image, so the same check covers it. (source: 1.6.0, check before release; 1.6.1 reuse)
+- **Splash summary from the changelog** — each release needs two summary texts written by hand, one for the editor and one for the player (from 1.6.2); take them from the changelog entry so they are not written twice. Also decide whether the summaries list only what users see, not technical items. (source: 1.6.0, known limitation; two texts from 1.6.2; user-facing question from 1.6.2)
+- **Missing splash picture or summary** — since 1.6.2 the build fails when a picture or the version's summary is missing; decide whether a release should build without the splash instead. (source: 1.6.0, open question; build failure from 1.6.2)
+- **Clearer message for a missing splash summary** — the build has no build script, so a missing `assets/splash/<version>.txt` or `<version>-player.txt` is reported by the compiler with the file name only; add a build script with a clearer message if that proves unclear. (source: 1.6.2, design option not taken)
+- **Splash picture size in the programs** — both pictures are compiled into both programs, an estimated 175 KB more per program, not yet measured; measure the editor's release size with and without the player's picture, and move the player's picture into the player crate if the size matters. (source: 1.6.2, measurement to do)
+- **Animated splash image** — the splash picture is a static GIF, kept as supplied; a multi-frame GIF would animate with no code change. REQ-134 says "the GIF plays as it is", so decide whether the requirement or the picture changes, and whether to ship an animated one. (source: 1.6.0, decision: static in 1.6.0; REQ-134 wording open from 1.6.2)
+- **Splash picture origin and licence** — the origin and licence of `assets/splash/videolore.gif` and `assets/splash/videolore-player.gif` are not yet recorded in the notices; confirm them and record them before the 1.6.2 release. (source: 1.6.2, check before release; replaces the 1.6.0 image item)
+- **Old splash summaries** — `assets/splash/1.6.0.txt` and `1.6.1.txt` are kept as history and not read by the build; remove them later if unwanted. (source: 1.6.2, cleanup)
+- **Summary length in the splash popup** — a summary that does not fit is shown in a smaller text, from 15 px down to 7 px, and is not scrolled; a summary that needs less than 7 px fails a test instead of being clipped. Check that the longest summaries read well in both programs. (source: 1.6.2, check to do)
 
 ## Project page
 - **Smaller project page images** — the page's GIF images total about 341 KB; animated WebP or AV1 would cut that weight, but browser support must be checked first and a second set of image files would be needed. (source: 1.4.1, project page image review)
@@ -236,6 +241,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Content-Security-Policy for the project page** — add a CSP once the hosts that the badges redirect to are known. (source: 1.4.1, postponed from the 1.4.1 work)
 
 ## Workflow
+- **Test memory cap as a project rule** — every build and test run on the development machine is capped at 8 GB with no swap (`systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0`); make this a written rule of the development workflow, not only a note in the architecture. (source: 1.6.2, workflow change)
 - **Shorter internal documents** — the three long internal development documents (architecture about 145 KB, code about 61 KB, business about 51 KB) should become short indexes of the human documentation, one line per paragraph with its line range, with the detail moved to sub-documents. (source: 1.2.5, documentation size)
 
 ## Not planned

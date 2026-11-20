@@ -28,6 +28,7 @@ pub mod popups;
 pub mod ruler;
 pub mod settings;
 pub mod splash_ui;
+pub mod splash_window;
 pub mod status;
 pub mod text_popup;
 pub mod timeline;
@@ -110,9 +111,9 @@ pub struct UiCache {
     /// The text of an existing item while it is being typed.
     pub text_edit: Option<(crate::text::TextId, String)>,
     /// The splash image as textures, loaded when the splash first opens.
-    pub splash: Option<splash_ui::Loaded>,
+    pub splash: Option<splash_window::Loaded>,
     /// Where the splash was drawn this frame.
-    pub splash_rects: Option<splash_ui::SplashRects>,
+    pub splash_rects: Option<splash_window::SplashRects>,
 }
 
 impl UiCache {

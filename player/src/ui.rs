@@ -46,6 +46,10 @@ pub struct PlayerCache {
     pub picture: Option<Rect>,
     /// The About text (built when the dialog opens).
     about: Option<String>,
+    /// The start screen's textures, loaded when it first opens.
+    splash: Option<videolore::ui::splash_window::Loaded>,
+    /// Where the start screen was drawn this frame (screen pixels).
+    pub splash_rects: Option<videolore::ui::splash_window::SplashRects>,
 }
 
 /// The icon of an item of the player.
@@ -137,7 +141,7 @@ pub fn frame_ui(root: &mut Ui, app: &mut PlayerState, cache: &mut PlayerCache, n
     ctx.request_repaint_after(Duration::from_millis(if app.busy() { 10 } else { 100 }));
 }
 
-/// Keyboard shortcuts of this frame. Esc closes a dialog, then the full-screen popup,
+/// Keyboard shortcuts of this frame. Esc closes the start screen, then a dialog, then the full-screen popup,
 /// then leaves full screen.
 fn keys(ctx: &Context, _app: &PlayerState, modal: bool) -> Vec<Command> {
     let mut out = Vec::new();
@@ -524,8 +528,18 @@ pub fn line_boxes(ctx: &Context, app: &PlayerState) -> Vec<(videolore::subtitles
     app.line_boxes(&mut measure)
 }
 
-/// The full-screen hint, the notice and About.
+/// The start screen, the full-screen hint, the notice and About.
 fn popups(ctx: &Context, app: &PlayerState, cache: &mut PlayerCache, cmds: &mut Vec<Command>) {
+    if app.splash {
+        let (outcome, rects) =
+            videolore::ui::splash_window::show(ctx, &mut cache.splash, &videolore::splash::PLAYER);
+        cache.splash_rects = rects;
+        if outcome == videolore::ui::splash_window::SplashOutcome::Close {
+            cmds.push(Command::CloseSplash);
+        }
+    } else {
+        cache.splash_rects = None;
+    }
     if app.fullscreen.hint_visible() {
         egui::Window::new("player-fs-hint")
             .title_bar(false)

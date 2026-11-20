@@ -18,7 +18,7 @@ This page covers building and running; the details are in the sub-documents:
 | [code-export.md](code-export.md) | The Export dialog (names, formats, presets, only audio, session memory), Clean audio, text boxes with best-fit size, project format 6 (all since 1.4.0) |
 | [code-frame.md](code-frame.md) | Change aspect, Scale and Move with keyframes: frame size, expressions and graph, popups and handles, project format 7 (all since 1.5.0) |
 | [code-lut.md](code-lut.md) | Apply LUT: the `.cube` parser, the filter graph, missing files, project format 8 (1.6.0) |
-| [code-splash-icons.md](code-splash-icons.md) | The splash screen and the icons (Phosphor), with the list of controls and their icons (1.6.0) |
+| [code-splash-icons.md](code-splash-icons.md) | The splash screen (editor and player) and the icons (Phosphor), with the list of controls and their icons (1.6.0, 1.6.2) |
 | [code-player.md](code-player.md) | The Cargo workspace, videolore player (open rules, playback, 360, subtitles, full screen) and its packaging (1.6.0) |
 | [code-ui.md](code-ui.md) | The window: menus, toolbar, resizable sections, shortcuts, popups, timeline markers, status bar, recent projects, drag and drop |
 | [code-testing.md](code-testing.md) | Unit, UI and integration tests, coverage, CI jobs |
