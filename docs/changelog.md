@@ -2,6 +2,18 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.6.3 — 2026-11-20 00:49 +0000
+
+Workflow and housekeeping only; nothing changes for the users of the programs.
+
+### Changed
+- **Splash files have fixed names and are never copied per version**: `assets/splash/splash.gif` (editor) and `splash-player.gif` (player), with the texts `summary.txt` and `summary-player.txt` rewritten in place for each version. The old per-version files (`1.6.0.txt`, `1.6.1.txt`) are deleted; `src/splash.rs` includes the new paths (not rebuilt or tested in this change); the human docs and the third-party notice use the new names.
+
+### Workflow
+- **`/release` reworked**: a consolidation before the gate and the snapshot (the Documenter cleans and compacts `docs/` and the README known limitations; the Product Manager writes a prioritised `docs/roadmap.md` and `docs/roadmap_tasks.md`; the Principal Engineer, always on Opus, optimises code, tests and libraries and writes `docs/code-index.md` and `docs/code-architecture.md` with mermaid diagrams; the Architect verifies and stores the module architecture; each cleans what it owns). The architectural plans are archived in the release snapshot and removed from `ai-docs/`. A git-ignored temporary `github_page/after release.md` carries the page data. When the next major opens, the Documenter writes a new README poem and the Principal Engineer regenerates the project page.
+- **Project page rules**: every regeneration points to the last release and its artefacts, with a "Download" link right after the project name.
+- **`/analysis`** command and **`analyst`** agent: a read-only Haiku agent (`Read`, `Glob`, `Grep`) that answers questions about the project and writes nothing.
+
 ## 1.6.2 — 2026-11-20 00:17 +0000
 
 The video player gets the editor's start screen, and the editor's splash shows a longer summary for each release.

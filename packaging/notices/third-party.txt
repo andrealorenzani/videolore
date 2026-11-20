@@ -68,8 +68,8 @@ Phosphor Icons (the icons of the interface, bundled as a font)
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-Splash images (assets/splash/videolore.gif for the editor and
-assets/splash/videolore-player.gif for the player, shown when each program starts)
+Splash images (assets/splash/splash.gif for the editor and
+assets/splash/splash-player.gif for the player, shown when each program starts)
   Supplied by the author of videolore. Their origin and licence are to be
   confirmed before the release is published (open item of the author).
 

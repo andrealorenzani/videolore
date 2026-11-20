@@ -30,3 +30,11 @@ You may read every other file; you never edit files you do not own. Read the bus
 
 ### REFINE
 The command passes the user's answers. Apply them to the same documents and to the plan. Same return format; `## Questions` must be `none`.
+
+### RELEASE (step 2.4 of `/release`)
+Run after the Principal Engineer's RELEASE (it left the module architecture in `docs/code-architecture.md` and the code index in `docs/code-index.md`; read them by path).
+1. **Verify and store**: check what the Principal Engineer wrote about the modules and how they interact (against your components, data flow and ADRs, and against `Cargo.toml` and the module list); record the verified architecture in your documents (the human overview in `docs/architecture*.md` links to `docs/code-architecture.md` instead of repeating it) and report any mismatch in `## Future work`.
+2. **Clean and compact** your own documents (`docs/architecture*.md`, `ai-docs/architecture*.md`): remove what is no longer needed (superseded ADRs kept only as one line with their replacement, "planned" wording for built things, resolved questions), compact and make contiguous what is needed (one topic in one place, decisions grouped by area), keep every fact, figure and exact wording a `grep` may need, and **regenerate your index** with the new line ranges. **Do not delete `ai-docs/architecture-plan-*.md`**: the command moves them into the release snapshot after the snapshot is taken (step 4); write in your index that the plans are archived in the latest `releases/<version> - <name>/docs/ai-docs/` and drop their per-plan index lines.
+3. **Page data**: append a `## Architect` section to the temporary file `github_page/after release.md` (quote the name; git-ignored): how it is built in user-level words (components, platforms, what is bundled, security and privacy points, performance figures that were measured) for the project page. Facts only.
+Return the usual format (`## Questions` `none`, `## Changed`, `## Future work`).
+

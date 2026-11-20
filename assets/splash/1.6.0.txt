@@ -1,5 +1,0 @@
-New in this version
-Apply LUT: give a clip, or the whole video, the colours of a LUT file.
-Icons on every button, menu item, list row, marker and dialog.
-A new Start screen, this one, with what changed.
-videolore player: a separate program to watch a video with its 360 view, subtitles and full screen.

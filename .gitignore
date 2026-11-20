@@ -1,2 +1,4 @@
 /target
 dist/
+# temporary page data written during /release (see .claude/commands/release.md); never committed
+github_page/after release.md

@@ -13,11 +13,10 @@ Back to the [index](code.md). Requirements REQ-133, REQ-134, REQ-150 (splash), R
 | `src/lib.rs` | `real_app(None)` opens the splash; `real_app(Some(path))` does not |
 | `player/src/{app,ui,lib}.rs` | `PlayerState::splash` (`show_splash`), `Command::CloseSplash`, drawn first in `popups()` with `PLAYER`; `real_app(None)` opens it; opening a video closes it |
 
-- **Fixed pictures, per-version summaries (1.6.2).** `assets/splash/videolore.gif` (editor, 486 x 506) and
-  `videolore-player.gif` (player, 487 x 505) never change per version. The summaries are `<version>.txt` (editor) and
-  `<version>-player.txt` (player), included with `CARGO_PKG_VERSION`: a version without both files does not compile (every
-  version bump needs them, even a patch bump). A summary is a heading plus one to five lines. `1.6.0.txt` and `1.6.1.txt`
-  stay as history (not read by the build). Both pictures are in the lib (about 175 KB).
+- **Fixed names, nothing copied per version (1.6.3).** `assets/splash/splash.gif` (editor, 486 x 506) and
+  `splash-player.gif` (player, 487 x 505) never change per version, and are never copied. The summaries are `summary.txt` (editor) and
+  `summary-player.txt` (player): fixed names, rewritten in place for each version (the build does not check that they
+  were updated). A summary is a heading plus one to five lines. Both pictures are in the lib (about 175 KB).
 - **Layout.** The image keeps its size; the panel is 400 wide and as high as the image; both are scaled by the same
   factor when the window is small (never enlarged). "Version X.Y" is fitted by binary search into the program's
   rectangle minus a 6 px margin, centred (editor x 74..408, y 381..465; player x 78..386, y 388..462); its colour (white or

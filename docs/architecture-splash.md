@@ -8,16 +8,16 @@ At every start without a file on the command line, the editor and the player sho
 ## Assets
 | File | Used by | Checked at build time |
 |---|---|---|
-| `assets/splash/videolore.gif` | editor | Yes: `include_bytes!` in the library (`splash::EDITOR`). Fixed name since 1.6.2. |
-| `assets/splash/videolore-player.gif` | player | Yes: `include_bytes!` (`splash::PLAYER`). |
-| `assets/splash/<version>.txt` | editor | Yes: `include_str!` of `CARGO_PKG_VERSION`. A missing file is a build error. |
-| `assets/splash/<version>-player.txt` | player | Yes, the same way. Required for every build from 1.6.2 (the editor build too, since both live in the library). |
+| `assets/splash/splash.gif` | editor | Yes: `include_bytes!` in the library (`splash::EDITOR`). Fixed name since 1.6.2. |
+| `assets/splash/splash-player.gif` | player | Yes: `include_bytes!` (`splash::PLAYER`). |
+| `assets/splash/summary.txt` | editor | Yes: `include_str!`. Rewritten for every version (same name, git keeps the history). A missing file is a build error. |
+| `assets/splash/summary-player.txt` | player | Yes, the same way (the editor build too, since both live in the library). |
 
 The four rules:
 - Paths are built from `CARGO_MANIFEST_DIR` of the root package, so the player gets the same files. No `build.rs`: the compiler already names the missing file.
-- The picture names do not change with the version; only the two summaries are written per release.
+- The file names never change with the version (1.6.3: no copy per version); the two summaries are rewritten in place for each version.
 - Each summary is UTF-8 text: a heading line, then at most five lines, one item each.
-- The old picture `1.6.0.gif` is removed from `assets/splash/` (byte-identical to `videolore.gif`; the git history and the 1.6.0 release keep it). `1.6.0.txt` and `1.6.1.txt` stay as history; the build does not read them.
+- The old per-version files (`1.6.0.gif`, `1.6.1.gif`, `1.6.0.txt`, `1.6.1.txt`, `1.6.2*.txt`) are gone; git history and the release snapshots keep them.
 
 ## Text rules
 - **Version text.** "Version X.Y" (major and minor number) is written over the program's rectangle, centred, in the largest size that fits inside the rectangle minus a 6 px margin on each side. Editor rectangle: x 74 to 408, y 381 to 465 (334 x 84 px). Player rectangle: x 78 to 386, y 388 to 462 (308 x 74 px). Origin top left. Its colour is dark or light, chosen from the mean brightness of the rectangle. The rectangles are checked to lie inside their pictures by a test.

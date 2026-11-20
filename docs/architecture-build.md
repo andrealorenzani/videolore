@@ -39,11 +39,11 @@ Part of [Architecture](architecture.md). Since 1.6.0 with the workspace; the res
 - **Estimate** (not yet measured on the new workflow): check job about 4.4 to 4.7 min, i.e. about 80% shorter than the 25.2 min of the 1.6.0 run and about 20 to 25% shorter than a typical run of the same steps (about 5.9 min). Push to last executable: about 7 min instead of 28. The 30% target of QG-06 is an assumption: the measured time of the first run after the change is reported against both baselines.
 
 ## Assets and CI effects (1.6.2)
-- Four splash files are compiled in, by `include_bytes!` and `include_str!` in the library (`src/splash.rs`), with paths from `CARGO_MANIFEST_DIR`: `assets/splash/videolore.gif`, `assets/splash/videolore-player.gif`, `assets/splash/<version>.txt`, `assets/splash/<version>-player.txt`. There is no `build.rs`: a missing file is the compiler's error, naming the file.
-- Every build needs the two summaries of its version, the editor's and the player's (both are in the library); a version bump therefore needs both files before any job compiles.
+- Four splash files are compiled in, by `include_bytes!` and `include_str!` in the library (`src/splash.rs`), with paths from `CARGO_MANIFEST_DIR`: `assets/splash/splash.gif`, `assets/splash/splash-player.gif`, `assets/splash/summary.txt`, `assets/splash/summary-player.txt`. There is no `build.rs`: a missing file is the compiler's error, naming the file.
+- Every build needs the two summaries, the editor's and the player's (both are in the library). Their names are fixed (`summary.txt`, `summary-player.txt`), so a version bump needs no new file; the summaries are rewritten for each version.
 - CI adds no step. Fmt, clippy, tests, the MSRV build and the executables all compile the library, so a missing asset fails them at once.
 - Git: the new player picture and the summaries must be committed with the code; the release `sources.zip` takes untracked files that are not ignored, so it is complete either way.
-- The `1.6.0.gif` picture is removed (byte-identical to `videolore.gif`); no build reads `1.6.0.txt` or `1.6.1.txt`.
+- 1.6.3: the per-version files (`1.6.0.gif`, `1.6.1.gif`, `<version>.txt`, `<version>-player.txt`) are gone; the pictures and summaries have fixed names.
 
 ## Test memory cap (1.6.2, development machine)
 - Every build and test run on the development machine (15 GB RAM) is capped: `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 <command>`, for example `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 cargo test --locked --workspace`. Child processes (rustc, test binaries, ffmpeg) stay in the same scope, so they are capped too. Coverage runs under the same cap.

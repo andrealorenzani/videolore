@@ -94,7 +94,7 @@ There are no secrets, accounts or telemetry.
 - The summary is plain text drawn as labels: no markup, no links, no user input reaches it.
 - The bundled picture is decoded with caps: at most 64 frames, 4096 px on the longer side, and 64 MiB of RGBA per picture. The files are trusted build inputs; the caps guard against a bad replacement.
 - The player's splash adds no code path that reads or writes a file; the player's network rule is unchanged.
-- The origin and licence of `videolore.gif` and `videolore-player.gif` are still to be recorded before release.
+- The origin and licence of `splash.gif` and `splash-player.gif` are still to be recorded before release.
 
 ## Unsafe code
 Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in two reviewed places: the cancel callback passed to whisper.cpp and the macOS "open document" handler.

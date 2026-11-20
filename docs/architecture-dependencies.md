@@ -54,7 +54,7 @@ Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDL
 | `ffmpeg`, `ffprobe` (GPL builds: BtbN for Windows/Linux, Martin Riedl for macOS) | GPL-3.0-or-later (includes x264, x265: GPL-2.0-or-later; libass and others) | All media decoding, encoding and subtitle rendering. See [ffmpeg](architecture-ffmpeg.md). |
 | Noto Sans Bold | SIL Open Font License 1.1 | Subtitle font. |
 | Phosphor Icons, Regular weight (1.6.0) | MIT | Icons of the whole interface, bundled as one font file. See [icons](architecture-icons.md). |
-| Splash pictures `assets/splash/videolore.gif` (editor, the 1.6.1 picture renamed in 1.6.2) and `assets/splash/videolore-player.gif` (player, 1.6.2) | To be recorded before release (origin open) | Splash screens of both programs. See [splash](architecture-splash.md). |
+| Splash pictures `assets/splash/splash.gif` (editor, the 1.6.1 picture renamed in 1.6.2) and `assets/splash/splash-player.gif` (player, 1.6.2) | To be recorded before release (origin open) | Splash screens of both programs. See [splash](architecture-splash.md). |
 
 Downloaded after consent, not bundled: the whisper models of the three subtitle quality levels (`ggml-tiny-q5_1.bin`, `ggml-small-q5_1.bin`, `ggml-large-v3-turbo-q5_0.bin`, all MIT). See [subtitles](architecture-subtitles.md#subtitle-quality-levels-030).
 

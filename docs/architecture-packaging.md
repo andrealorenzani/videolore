@@ -99,7 +99,7 @@ Since 0.3.0, to remove GitHub's deprecation warnings and make builds reproducibl
 
 ## Splash files (1.6.2)
 - The splash pictures and summaries are compiled into the programs: the installers gain no new file, and the package scripts are unchanged.
-- The third-party notices (`packaging/notices/third-party.txt`, shared by both products) name the two pictures: `assets/splash/videolore.gif` (editor) and `assets/splash/videolore-player.gif` (player); origin and licence to be confirmed before release.
+- The third-party notices (`packaging/notices/third-party.txt`, shared by both products) name the two pictures: `assets/splash/splash.gif` (editor) and `assets/splash/splash-player.gif` (player); origin and licence to be confirmed before release.
 - The source archive of each release includes the four files, committed with the code.
 
 ## Risks

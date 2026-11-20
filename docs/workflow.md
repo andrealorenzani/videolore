@@ -8,14 +8,15 @@ How AI agents build this project: who does what, which commands exist, which rul
 |---|---|---|---|---|---|---|
 | Product Manager | `.claude/agents/product-manager.md` | blue | haiku | business, requirements, functionalities | `ai-docs/business.md` | `docs/business*.md` |
 | Architect | `.claude/agents/architect.md` | green | haiku | architecture, NFRs, security, performance, technology choices | `ai-docs/architecture.md` | `docs/architecture*.md` |
-| Principal Engineer | `.claude/agents/principal-engineer.md` | red | sonnet (opus when the session model is Opus) | code, tests, code patterns, implementation security | `ai-docs/code.md` | `docs/code*.md` (+ code) |
-| Documenter | `.claude/agents/documenter.md` | yellow | haiku | docs, README, changelog, roadmap, workflow doc, version | `ai-docs/notes.md` | any `docs/*.md`, `README.md`, `docs/changelog.md`, `docs/roadmap.md`, `docs/workflow*.md` (never the text of `LICENSE`) |
+| Principal Engineer | `.claude/agents/principal-engineer.md` | red | sonnet (opus when the session model is Opus; always opus in `/release` consolidation and page regeneration) | code, tests, code patterns, implementation security, the project page | `ai-docs/code.md` | `docs/code*.md` (+ code, + `github_page/`) |
+| Documenter | `.claude/agents/documenter.md` | yellow | haiku | docs, README, changelog, roadmap, workflow doc, version, release poem | `ai-docs/notes.md` | any `docs/*.md`, `README.md`, `docs/changelog.md`, `docs/roadmap.md`, `docs/workflow*.md` (never the text of `LICENSE`) |
+| Analyst | `.claude/agents/analyst.md` | purple | haiku | read-only answers about the project (used by `/analysis`); tools `Read`, `Glob`, `Grep` only, it can write nothing | none | none |
 
 - `ai-docs/*.md` are notes for AI, short: an index of every paragraph of the human docs the owner manages (`- <file> § <heading> — L<start>-<end> (<n> lines)`), so an agent finds a paragraph with `grep` and reads only its lines. AI-only detail goes in `ai-docs/<area>-<topic>.md`, indexed in the main file. Only the owner edits them.
 - `docs/*.md` are for humans: brief, with every interesting detail. An owner may split its doc into `docs/<area>-<topic>.md` sub-documents (past ~150 lines or with distinct topics); `docs/<area>.md` remains the index.
 - The Documenter has no ownership guardrail on `docs/` and `README.md`; it never edits another agent's `ai-docs/`.
 - Every agent's return to the command is short: `[SEVERE]` questions for the user, the list of changed files, and `## Future work` bullets.
-- **Models** (`AGENTS.md` rule 13): Product Manager, Architect and Documenter always use `haiku`. The Principal Engineer uses `opus` if the selected session model is Opus, otherwise `sonnet`; the agent file says `sonnet` and `/add-feature` and `/release` pass `model: opus` in the Agent call when needed.
+- **Models** (`AGENTS.md` rule 13): Product Manager, Architect and Documenter always use `haiku`. The Principal Engineer uses `opus` if the selected session model is Opus, otherwise `sonnet`; the agent file says `sonnet` and `/add-feature` and `/release` pass `model: opus` in the Agent call when needed. In `/release` the consolidation (step 2) and the page regeneration (step 6) are **always** on `opus`. The Analyst always uses `haiku`.
 - Agent colors available in Claude Code: red, blue, green, yellow, purple, orange, pink, cyan.
 
 ## Commands
@@ -25,7 +26,8 @@ How AI agents build this project: who does what, which commands exist, which rul
 | `/add-feature <text>` | `.claude/commands/add-feature.md` | Feature pipeline (below). |
 | `/change-workflow <text>` | `.claude/commands/change-workflow.md` | Changes agents/commands/rules/skills/guardrails. Calls no project agent; may consult an advisor. Updates this file. |
 | `/clone-workflow <dir>` | `.claude/commands/clone-workflow.md` | Exports the workflow to another directory using the manifest below. |
-| `/release [name]` | `.claude/commands/release.md` | Releases the **current** version: gates (Principal Engineer VERIFY) → release name (asked if missing) → Documenter (release summary, roadmap, README, docs compaction) → `scripts/collect-release.sh` creates `releases/<version> - <name>/` (all docs unchanged, `sources.zip`, `RELEASE_NOTES.md` from the changelog) → changelog cleaned → commit `Release <version> <name>` → tag `v<version>` → push → watch CI → `scripts/version.sh set <next major>` → commit `Start version <major>` → push. The tag makes CI create the GitHub release with executables, installers and the release notes. |
+| `/analysis <question>` | `.claude/commands/analysis.md` | Asks the read-only Analyst (haiku; `Read`, `Glob`, `Grep` only) to answer a question about the project from all the documents and the code. Nothing is written by the agent or by the command. |
+| `/release [name]` | `.claude/commands/release.md` | Releases the **current** version (below). |
 
 ### `/add-feature` pipeline
 ```
@@ -46,19 +48,40 @@ target version (named by the user, else next-patch)
 - Claude Code subagents cannot start other subagents, so the command makes each call. The documenter is called right after each part, as the agent's last step, and only updates docs.
 - MINOR ambiguities and TECHNICAL questions are decided by the agents and recorded as assumptions/decisions in their notes.
 
+### `/release` pipeline
+```
+0 preconditions (clean main, not behind, version check, no tag)   1 release name (asked if missing)
+2 consolidation, each agent cleans and compacts what it owns, each appends its section to github_page/after release.md (git-ignored, temporary):
+    documenter RELEASE-CLEAN  -> cleans docs/, cleans README Known limitations -> hand-off in ai-docs/notes.md
+    product-manager RELEASE   -> prioritised docs/roadmap.md + docs/roadmap_tasks.md (versions and batches); cleans its docs
+    principal-engineer RELEASE (always opus) -> optimises code, tests (faster, fewer, same feature coverage), libraries (+ estimates);
+                                docs/code-index.md + docs/code-architecture.md (mermaid); cleans its docs; suite green
+    architect RELEASE         -> verifies and stores the module architecture; cleans its docs
+3 gate: principal-engineer VERIFY -> documenter RELEASE (release summary, README badge/latest) -> scripts/collect-release.sh (docs incl. plans, sources.zip, RELEASE_NOTES.md)
+4 plans ai-docs/architecture-plan-*.md git rm'd (they live in the snapshot); changelog cleaned
+5 commit "Release <V> <name>" -> tag v<V> -> push -> watch CI (artefacts exist)
+6 scripts/version.sh set <next major> -> changelog entry -> documenter POEM (new poem) -> principal-engineer PAGE (always opus):
+  regenerates github_page/ from github_page/after release.md, pointing to the last release and its artefacts, "Download" link right after the project name; deletes the temporary file
+  -> commit "Start version <N>" -> push -> watch CI and Pages
+```
+- The code and test optimisation happens **before** the gate and `sources.zip`, so the tag, the snapshot and the VERIFY report describe the same code.
+- If a step fails the consolidation stays uncommitted in the working tree; after the fix `/release` can be run again (every call is idempotent).
+
 ## Rules (full text in `AGENTS.md`)
 1. The Documenter runs at the end of **every part** of a development (after the business, architecture and code parts), and only updates docs.
 2. An `ai-docs/` file is written only by its owner. The Documenter may write any `docs/` file and `README.md` (no owner guardrail) and reports what it touched.
 3. **Every development bumps the version, everywhere**: the user's version if named, otherwise last number +1 (0.1.1 → 0.1.2); after `/release` the version moves to the next major. The target is decided once by the command and applied by the first documenter call; later calls leave it unchanged. Always through `scripts/version.sh set` (Cargo.toml, Cargo.lock, README badge), verified by `scripts/version.sh check`.
 4. Changelog in reverse chronological order, one entry per development, `## <version> — <YYYY-MM-DD HH:MM +zone>`; on release its entries become `releases/<version> - <name>/RELEASE_NOTES.md` and it is cleaned.
 4b. `releases/<version> - <name>/` snapshots are immutable: deny rules `Edit(releases/**)` and `Write(releases/**)` in `.claude/settings.json` + `scripts/release-guard.sh` in CI. Andrea deletes old ones manually.
-4c. `docs/roadmap.md` (Documenter) keeps the known limitations and improvements for future versions, fed by every agent's `## Future work` and by features a plan postpones.
-5. README is for users: no reference to AI/agents/workflow; "Latest changes" shows only the last 3 versions, by version, never by date. The **poem** at the end of the README is rewritten only when a new major version is released (`X.0.0`); verses 1-9 end with `\` so GitHub shows one verse per line.
+4c. `docs/roadmap.md` (Documenter) keeps the known limitations and improvements for future versions, fed by every agent's `## Future work` and by features a plan postpones; on `/release` the Product Manager rewrites it prioritised and writes `docs/roadmap_tasks.md`.
+4d. **Project page** (`github_page/`, Principal Engineer): every regeneration points to the last release and its artefacts, with a "Download" link right after the project name (`AGENTS.md` rule 4e).
+4e. **Splash files**: fixed names (`splash.gif`, `splash-player.gif`, `summary.txt`, `summary-player.txt`), nothing copied per version (`AGENTS.md` rule 4f).
+5. README is for users: no reference to AI/agents/workflow; "Latest changes" shows only the last 3 versions, by version, never by date. The **poem** at the end of the README is replaced by a new one only by `/release`, when the next major version is opened (Documenter, POEM mode); verses 1-9 end with `\` so GitHub shows one verse per line.
 6. Workflow changes only via `/change-workflow`.
 7. **Only the Principal Engineer runs tests**, after coding, looping (fix code, rerun) until the suite passes; it reports line coverage and feature coverage, which the Documenter writes into the badge with `scripts/coverage.sh --badge`. No other agent or command runs tests, builds or coverage; `/release` asks the Principal Engineer for a VERIFY run. CI reruns everything independently. Code passes `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`; line coverage ≥ 85% and feature coverage 100% (`REQ-NNN (implemented)` in `docs/business*.md` ↔ `// covers: REQ-NNN` in tests).
 8. Every development ends with a commit with one human-readable line (no prefixes or body) plus the `Co-Authored-By:` trailer as the only other line. Push only on request.
 9. `LICENSE` is the unmodified GPL-3.0 text; Andrea Lorenzani's copyright is in the README and in the header of each `.rs` file.
-10. **Token economy** (`AGENTS.md` rule 12): agents read their index first and grep only the paragraphs they need. The Documenter checks all of `docs/` with `scripts/docs-check.sh` and reads in full only the files a development changed; on `/release` it compacts every `docs/` file (not `ai-docs/`, not the changelog), removing only useless data.
+10. **Token economy** (`AGENTS.md` rule 12): agents read their index first and grep only the paragraphs they need. The Documenter checks all of `docs/` with `scripts/docs-check.sh` and reads in full only the files a development changed; on `/release` (step 2) it compacts every `docs/` file (not `ai-docs/`, not the changelog) and every other agent cleans and compacts what it owns, removing only useless data.
 
 ## Token economy
 The cost is not the number of agents but the notes and docs read in full again and again. Measures in place:
@@ -109,7 +132,8 @@ releases/<version> - <name>/  release snapshots: docs/, sources.zip, RELEASE_NOT
 scripts/                  version, coverage, release helpers
 README.md, LICENSE        written by the Documenter
 .github/workflows/        CI: checks + executables; pages.yml publishes github_page/
-github_page/             the project page (one static index.html), published by pages.yml
+github_page/             the project page (one static index.html), published by pages.yml; github_page/after release.md is temporary and git-ignored (written during /release)
+assets/splash/           splash.gif, splash-player.gif, summary.txt, summary-player.txt (fixed names)
 ```
 
 ## Workflow manifest
@@ -125,6 +149,7 @@ Used by `/clone-workflow`.
 | `docs/workflow.md` | copy, add a "cloned from" history line |
 | `LICENSE` | copy verbatim |
 | `.github/workflows/build.yml` | copy verbatim (binary name is read from `Cargo.toml`) |
+| `.gitignore` | merge the line `github_page/after release.md` (temporary file of `/release`) |
 | `ai-docs/business.md`, `ai-docs/architecture.md`, `ai-docs/code.md`, `ai-docs/notes.md` | create empty template |
 | `docs/business.md`, `docs/architecture.md`, `docs/code.md`, `docs/changelog.md`, `docs/roadmap.md`, `releases/.gitkeep` | create empty template |
 | `docs/<area>-*.md` sub-documents, `ai-docs/<area>-*.md`, `github_page/`, `.github/workflows/pages.yml` (project page), `src/`, `Cargo.*`, `target/`, `README.md`, `releases/<version> - <name>/`, `.git/` (and the `origin` remote) | never copy |
@@ -144,3 +169,4 @@ Used by `/clone-workflow`.
 - 2026-11-16 — v1.2.5: notes become indexes (`ai-docs/` index by paragraph and line range, optional `ai-docs/<area>-<topic>.md` sub-documents); `/add-feature` hands work over through files, the command relays only questions, paths and counts; the Documenter runs after each part, with no ownership guardrail on `docs/`; the README poem changes only on a major release; docs compacted on release (and once now).
 - 2026-11-17 — v1.2.7: models per agent: Haiku for Product Manager, Architect and Documenter; Principal Engineer on Sonnet, or Opus when the session model is Opus.
 - 2026-11-17 — v1.2.8: commit messages may carry the `Co-Authored-By:` trailer as their only second line (rule 9).
+- 2026-11-20 — v1.6.3: `/release` reworked: consolidation by every agent before the gate and the snapshot (Documenter cleans docs and README limitations, Product Manager prioritises the roadmap and writes `docs/roadmap_tasks.md`, Principal Engineer on Opus optimises code, tests and libraries and writes the code index and the mermaid architecture, Architect verifies and stores it), architectural plans archived in the snapshot, a temporary git-ignored `github_page/after release.md`, a new README poem and a regenerated project page (last release, Download link) when the next major opens; project page rules (rule 4e); splash files with fixed names (rule 4f); new read-only `/analysis` command and `analyst` agent (haiku).

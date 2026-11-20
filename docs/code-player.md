@@ -77,8 +77,8 @@ than the editor's limit is refused like in the editor.
 ## Start screen (1.6.2, REQ-150)
 
 `PlayerState::splash` (set by `show_splash`, which `real_app(None)` calls) is drawn by `popups()` through the shared window
-`videolore::ui::splash_window::show` with `videolore::splash::PLAYER` (picture `assets/splash/videolore-player.gif`, text
-rectangle x 78..386 y 388..462, summary `assets/splash/<version>-player.txt`). `Command::CloseSplash` (Close or the window's
+`videolore::ui::splash_window::show` with `videolore::splash::PLAYER` (picture `assets/splash/splash-player.gif`, text
+rectangle x 78..386 y 388..462, summary `assets/splash/summary-player.txt`). `Command::CloseSplash` (Close or the window's
 control) and `Command::Escape` (before About, the notice, the full-screen hint and full screen) close it; opening a video
 closes it too. It is not modal, so Space and F11 keep working. `PlayerCache` holds the textures and `splash_rects` (for tests).
 Details: [code-splash-icons.md](code-splash-icons.md).

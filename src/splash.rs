@@ -19,10 +19,11 @@ use std::io::Cursor;
 pub struct Program {
     /// Name used for the textures.
     pub name: &'static str,
-    /// The GIF (`assets/splash/videolore.gif` or `videolore-player.gif`).
+    /// The GIF (`assets/splash/splash.gif` or `splash-player.gif`).
     pub image: &'static [u8],
-    /// The summary of this version: the first line is the heading, the others one line
-    /// each (`assets/splash/<version>.txt` or `<version>-player.txt`).
+    /// The summary of the running version: the first line is the heading, the others one
+    /// line each (`assets/splash/summary.txt` or `summary-player.txt`, rewritten for every
+    /// version).
     pub summary: &'static str,
     /// The rectangle of the version text in the image (x0, y0, x1, y1).
     pub text_rect: (f32, f32, f32, f32),
@@ -33,13 +34,11 @@ pub const EDITOR: Program = Program {
     name: "editor",
     image: include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/assets/splash/videolore.gif"
+        "/assets/splash/splash.gif"
     )),
     summary: include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/assets/splash/",
-        env!("CARGO_PKG_VERSION"),
-        ".txt"
+        "/assets/splash/summary.txt"
     )),
     text_rect: (74.0, 381.0, 408.0, 465.0),
 };
@@ -49,13 +48,11 @@ pub const PLAYER: Program = Program {
     name: "player",
     image: include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/assets/splash/videolore-player.gif"
+        "/assets/splash/splash-player.gif"
     )),
     summary: include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/assets/splash/",
-        env!("CARGO_PKG_VERSION"),
-        "-player.txt"
+        "/assets/splash/summary-player.txt"
     )),
     text_rect: (78.0, 388.0, 386.0, 462.0),
 };

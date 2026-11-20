@@ -5,7 +5,7 @@ resolver = "3"
 
 [package]
 name = "videolore"
-version = "1.6.2"
+version = "1.6.3"
 edition = "2024"
 rust-version = "1.100"
 license = "GPL-3.0-only"
