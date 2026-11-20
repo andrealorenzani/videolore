@@ -231,8 +231,9 @@ Why: keeps the code and the tests healthy and replaces assumed numbers with meas
 - **Click the Export dialog's dropdowns in UI tests** — the interface tests set the dialog's dropdowns without opening them; add clicks so that the menus themselves are tested. (source: 1.4.0, test gap found in the code part)
 - **Golden argument tests for format 4 and 5 projects** — the export command lines of projects saved in format 4 and 5 are not compared with fixed expected arguments; add golden fixtures. (source: 1.4.0, test gap found in the code part)
 - **Split the application module** — `src/app.rs` (3,515 lines) mixes the editing state with popups, recent projects, drops and the effect and subtitle commands, and `src/render.rs` (3,227 lines) holds the graph builders; move them into their own submodules when they are next changed. The function `dispatch_inner` (about 870 lines of one match) is split by area (editing, effects, subtitles, export, view) at the same time. (source: 1.1.0, size of the modules; app.rs grown since 1.2.0, render.rs noted in 1.6.0; dispatch_inner noted in 1.6.3)
-- **Break the module cycles** — 16 modules depend on each other in one cycle (for example project and settings, stt and media, subtitles and timeline); move the shared types and helpers into a base module that the others depend on, so the cycle goes. (source: 1.6.3, architecture debt, see [code architecture](code-architecture.md#cycles))
 - **One keyframe module for the 360 camera and the picture** — `camera.rs` and `keyframes.rs` share the same rules; move the camera onto `keyframes.rs`, with the 360 tests as the safety net. (source: 1.5.0, architecture debt)
+- **Measure the cycle check's CI cost** — `tests/module_cycles.rs` parses the source once on every test run; measure its time in CI (estimated 1 to 3 s in a debug build) and report QG-06. (source: 2.0.1, measurement to do)
+- **Cycle check limits** — the check is syntactic: a cycle created through a macro, and `#[path]` or `include!` files, are not followed (the check fails on `#[path]`); extend it if such code appears. (source: 2.0.1, known limitation)
 - **Shared core crate** — if a third program is planned, move the engine (preview, export and the ffmpeg graphs) out of the editor's library into a `videolore-core` crate; the player uses the library without the speech feature today. (source: 1.6.0, architecture decision: not needed for two programs)
 
 ## Priority 12 — Splash, project page and release process
@@ -248,6 +249,8 @@ Why: presentation and process; low urgency, and most of it depends on decisions 
 - **Content-Security-Policy for the project page** — add a CSP once the hosts that the badges redirect to are known. (source: 1.4.1, postponed from the 1.4.1 work)
 - **Test memory cap as a project rule** — every build and test run on the development machine is capped at 8 GB with no swap; make this a written rule of the development workflow. (source: 1.6.2, workflow change)
 - **Package list for the player on crates.io** — the player's crate has no `include` list; set one if the player is ever published on crates.io. (source: 1.6.2, only if published)
+- **Wording of the leaves layer** — the "Leaves" row of the module table in the code architecture page (modules that use no other module) needs a wording review. (source: 2.0.1, documentation review at the next release)
+- **Player notice file version line** — the version line of the player's third-party notice file changes on every version bump, so it shows as modified in every release; decide whether the notices script should write it or the line should be left out. (source: 2.0.1, workflow noise)
 
 ## Not planned
 - **Remembering export choices in the project or in Settings** — the Export dialog keeps its choices for the session only, by design in 1.4.0; revisit only if users ask for it. Decided on 2026-11-17.

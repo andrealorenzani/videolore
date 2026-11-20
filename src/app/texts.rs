@@ -267,7 +267,7 @@ impl AppState {
 
     /// Where a text (`text`) or subtitle line added now is fixed on the sphere when the
     /// playhead is on a 360 clip: the point the camera looks at.
-    pub fn text_anchor_at_playhead(&self, text: bool) -> Option<crate::text::Anchor360> {
+    pub fn text_anchor_at_playhead(&self, text: bool) -> Option<crate::base::pos::Anchor360> {
         let cam = self.camera_at_playhead()?;
         let (w, h) = self.output_size()?;
         Some(if text {

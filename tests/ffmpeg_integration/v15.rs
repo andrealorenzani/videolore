@@ -5,8 +5,8 @@
 //! flat colours so that pixels can be sampled with a small tolerance.
 
 use super::*;
+use videolore::base::pos::Pos;
 use videolore::frame::{Fill, Fit, FrameAspect, Rgb, Scale, Shape};
-use videolore::subtitles::Pos;
 use videolore::timeline::FrameTarget;
 
 /// A 4 s, 160x120, 10 fps clip of one flat colour.

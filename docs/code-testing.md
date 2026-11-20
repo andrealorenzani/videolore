@@ -47,6 +47,7 @@
   (`cargo test --lib write_golden_1_1 -- --ignored`). Since 1.6.1 the tests compare with
   `export-argv-1.1.0-in-1.6.1.txt` (and `export-argv-1.2.5-in-1.6.1.txt`), where the video's
   sound level is applied per clip; the 1.1.0 and 1.2.5 files stay as the historical record.
+- **Module structure (2.0.1):** `tests/module_cycles.rs` parses `src/` with `syn` and fails on a cycle between top-level modules, on a `crate::` path inside `base`, and on a `#[path]` attribute (comments, `#[cfg(test)]` items and test files are skipped; REQ-153); its own tests use small in-memory sources. The tests of `base` live in the files of `src/base/`; `scratch::tests::file_names_are_those_of_version_2_0_0` pins the names that must not change (REQ-151).
 - **Memory:** a hostile-input test must not build its input at the size of the attack (the
   subtitle track test once built 10 GB of JSON and brought a machine down). When running the
   suite on a small machine, cap it, e.g. `systemd-run --user --scope -p MemoryMax=6G

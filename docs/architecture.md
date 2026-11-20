@@ -16,6 +16,7 @@ Implemented: requirements REQ-001..123 (see [business](business.md)). 0.3.0 adde
 | [architecture-player.md](architecture-player.md) | 1.6.0: the videolore player program, its crate, reuse of the preview engine, subtitles, 360 view, full screen, installers, tests. |
 | [architecture-icons.md](architecture-icons.md) | 1.6.0: icon set and licence, how icons are drawn, tests. |
 | [architecture-build.md](architecture-build.md) | Rust policy, the 1.6.0 workspace and versions, CI jobs and checks. |
+| [architecture-structure.md](architecture-structure.md) | 2.0.1: the `base` module of shared helpers, the module cycles broken, the automatic cycle check, what does not change. |
 | [architecture-decisions.md](architecture-decisions.md) | The main technical decisions of the whole program, with reasons and alternatives. |
 | [architecture-export-dialog.md](architecture-export-dialog.md) | 1.4.0: the Export dialog, modes (full video, audio only, subtitles only), file name rules, video format presets, audio formats, the 360 choice, tests. |
 | [architecture-effects.md](architecture-effects.md) | Applying effects to a clip or the whole video (1.2.0): fades from and to black (named Fade IN/OUT since 1.3.0), clip volume, drag from the Effects list, export rules, tests. 1.4.0: Clean audio. |

@@ -15,6 +15,8 @@ Exact versions are in `Cargo.toml` and `Cargo.lock`, which are the source of tru
 ## Rust crates
 No new crate was added in 1.5.0 (frame effects use the existing `egui` colour picker and core `ffmpeg` filters).
 
+2.0.1: one development dependency, `syn` 2 (features `full`, `visit`; MIT or Apache-2.0), used only by `tests/module_cycles.rs` to read the import paths of `src/`. It is already in the lock file through the derive crates, so no new package is downloaded. No runtime dependency is added.
+
 | Crate | Version | Licence | Why |
 |---|---|---|---|
 | `eframe` / `egui` | 0.37 | MIT/Apache-2.0 | Native GUI. |

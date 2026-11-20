@@ -6,8 +6,8 @@
 //! geometry is pure (frame pixels), so the interaction can be tested without a window.
 
 use super::boxes::{Corner, Side, partly_outside, side_at, visible_part};
+use crate::base::pos::Pos;
 use crate::frame::{MAX_OFFSET, MAX_SCALE, MIN_SCALE, Scale};
-use crate::subtitles::Pos;
 use crate::timeline::FrameTarget;
 use eframe::egui::{Pos2, Rect, Vec2, pos2, vec2};
 

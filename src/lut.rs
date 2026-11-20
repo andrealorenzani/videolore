@@ -225,7 +225,7 @@ fn from_1d(rows: &[[f32; 3]]) -> Lut {
 /// Reads and parses a LUT file (regular file, at most 16 MiB).
 pub fn read(path: &Path) -> Result<Lut, LutError> {
     use std::io::ErrorKind;
-    let bytes = crate::project::read_limited(path, MAX_BYTES).map_err(|e| match e.kind() {
+    let bytes = crate::base::io::read_limited(path, MAX_BYTES).map_err(|e| match e.kind() {
         ErrorKind::InvalidData => LutError::TooLarge,
         ErrorKind::InvalidInput => LutError::NotRegular,
         _ => LutError::Read(e.to_string()),

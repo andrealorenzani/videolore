@@ -9,7 +9,7 @@ use super::ux_tests::{Harness, Node};
 use super::*;
 use crate::app::tests::{FakeDialogs, files, import, state};
 use crate::app::{Instance, Popup};
-use crate::subtitles::Pos;
+use crate::base::pos::Pos;
 use eframe::egui::accesskit::Role;
 use eframe::egui::{Event, Key, Modifiers, PointerButton, RawInput, Shape};
 

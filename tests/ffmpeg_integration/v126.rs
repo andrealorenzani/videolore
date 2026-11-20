@@ -341,7 +341,7 @@ fn a_sized_subtitle_is_burned_in_at_its_size() {
     p.subtitles
         .set_boxes(
             &[id],
-            Some(Some(videolore::subtitles::Pos { x: 5000, y: 5000 })),
+            Some(Some(videolore::base::pos::Pos { x: 5000, y: 5000 })),
             None,
         )
         .unwrap();

@@ -15,6 +15,8 @@
 //! the application. The real engine ([`whisper`]) and downloader ([`download`]) are compiled
 //! only with the `stt` feature; everything else is tested with fakes.
 
+use crate::base::language::iso639_2_to_1;
+use crate::base::names::SPEECH_MODEL_FILES;
 use crate::ffmpeg::{Runner, argv, file_arg};
 use crate::media::MediaId;
 use crate::settings::SubtitleQuality;
@@ -58,19 +60,19 @@ pub fn builtin_models() -> [ModelSpec; 3] {
     [
         spec(
             SubtitleQuality::Fast,
-            "ggml-tiny-q5_1.bin",
+            SPEECH_MODEL_FILES[0],
             32_152_673,
             "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
         ),
         spec(
             SubtitleQuality::Balanced,
-            "ggml-small-q5_1.bin",
+            SPEECH_MODEL_FILES[1],
             190_085_487,
             "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
         ),
         spec(
             SubtitleQuality::MostAccurate,
-            "ggml-large-v3-turbo-q5_0.bin",
+            SPEECH_MODEL_FILES[2],
             574_041_195,
             "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
         ),
@@ -78,7 +80,7 @@ pub fn builtin_models() -> [ModelSpec; 3] {
 }
 
 /// The Fast file (the one of videolore 0.2.x).
-pub const MODEL_FILE: &str = "ggml-tiny-q5_1.bin";
+pub const MODEL_FILE: &str = SPEECH_MODEL_FILES[0];
 
 /// Sample rate the speech model expects.
 pub const SAMPLE_RATE: u32 = 16_000;
@@ -165,134 +167,6 @@ pub trait ModelFetcher: Send + Sync {
 /// Loads a transcriber for a model file with `threads` threads.
 pub type TranscriberFactory =
     Arc<dyn Fn(&Path, usize) -> Result<Box<dyn Transcriber>, SttError> + Send + Sync>;
-
-/// The languages of the speech model: its code (ISO 639-1, or whisper's own for a few),
-/// the ISO 639-2 codes (bibliographic and terminology) files use, the English name.
-const LANGUAGE_TABLE: &[(&str, &[&str], &str)] = &[
-    ("en", &["eng"], "English"),
-    ("zh", &["chi", "zho"], "Chinese"),
-    ("de", &["ger", "deu"], "German"),
-    ("es", &["spa"], "Spanish"),
-    ("ru", &["rus"], "Russian"),
-    ("ko", &["kor"], "Korean"),
-    ("fr", &["fre", "fra"], "French"),
-    ("ja", &["jpn"], "Japanese"),
-    ("pt", &["por"], "Portuguese"),
-    ("tr", &["tur"], "Turkish"),
-    ("pl", &["pol"], "Polish"),
-    ("ca", &["cat"], "Catalan"),
-    ("nl", &["dut", "nld"], "Dutch"),
-    ("ar", &["ara"], "Arabic"),
-    ("sv", &["swe"], "Swedish"),
-    ("it", &["ita"], "Italian"),
-    ("id", &["ind"], "Indonesian"),
-    ("hi", &["hin"], "Hindi"),
-    ("fi", &["fin"], "Finnish"),
-    ("vi", &["vie"], "Vietnamese"),
-    ("he", &["heb"], "Hebrew"),
-    ("uk", &["ukr"], "Ukrainian"),
-    ("el", &["gre", "ell"], "Greek"),
-    ("ms", &["may", "msa"], "Malay"),
-    ("cs", &["cze", "ces"], "Czech"),
-    ("ro", &["rum", "ron"], "Romanian"),
-    ("da", &["dan"], "Danish"),
-    ("hu", &["hun"], "Hungarian"),
-    ("ta", &["tam"], "Tamil"),
-    ("no", &["nor", "nob"], "Norwegian"),
-    ("th", &["tha"], "Thai"),
-    ("ur", &["urd"], "Urdu"),
-    ("hr", &["hrv"], "Croatian"),
-    ("bg", &["bul"], "Bulgarian"),
-    ("lt", &["lit"], "Lithuanian"),
-    ("la", &["lat"], "Latin"),
-    ("mi", &["mao", "mri"], "Maori"),
-    ("ml", &["mal"], "Malayalam"),
-    ("cy", &["wel", "cym"], "Welsh"),
-    ("sk", &["slo", "slk"], "Slovak"),
-    ("te", &["tel"], "Telugu"),
-    ("fa", &["per", "fas"], "Persian"),
-    ("lv", &["lav"], "Latvian"),
-    ("bn", &["ben"], "Bengali"),
-    ("sr", &["srp"], "Serbian"),
-    ("az", &["aze"], "Azerbaijani"),
-    ("sl", &["slv"], "Slovenian"),
-    ("kn", &["kan"], "Kannada"),
-    ("et", &["est"], "Estonian"),
-    ("mk", &["mac", "mkd"], "Macedonian"),
-    ("br", &["bre"], "Breton"),
-    ("eu", &["baq", "eus"], "Basque"),
-    ("is", &["ice", "isl"], "Icelandic"),
-    ("hy", &["arm", "hye"], "Armenian"),
-    ("ne", &["nep"], "Nepali"),
-    ("mn", &["mon"], "Mongolian"),
-    ("bs", &["bos"], "Bosnian"),
-    ("kk", &["kaz"], "Kazakh"),
-    ("sq", &["alb", "sqi"], "Albanian"),
-    ("sw", &["swa"], "Swahili"),
-    ("gl", &["glg"], "Galician"),
-    ("mr", &["mar"], "Marathi"),
-    ("pa", &["pan"], "Punjabi"),
-    ("si", &["sin"], "Sinhala"),
-    ("km", &["khm"], "Khmer"),
-    ("sn", &["sna"], "Shona"),
-    ("yo", &["yor"], "Yoruba"),
-    ("so", &["som"], "Somali"),
-    ("af", &["afr"], "Afrikaans"),
-    ("oc", &["oci"], "Occitan"),
-    ("ka", &["geo", "kat"], "Georgian"),
-    ("be", &["bel"], "Belarusian"),
-    ("tg", &["tgk"], "Tajik"),
-    ("sd", &["snd"], "Sindhi"),
-    ("gu", &["guj"], "Gujarati"),
-    ("am", &["amh"], "Amharic"),
-    ("yi", &["yid"], "Yiddish"),
-    ("lo", &["lao"], "Lao"),
-    ("uz", &["uzb"], "Uzbek"),
-    ("fo", &["fao"], "Faroese"),
-    ("ht", &["hat"], "Haitian Creole"),
-    ("ps", &["pus"], "Pashto"),
-    ("tk", &["tuk"], "Turkmen"),
-    ("nn", &["nno"], "Norwegian Nynorsk"),
-    ("mt", &["mlt"], "Maltese"),
-    ("sa", &["san"], "Sanskrit"),
-    ("lb", &["ltz"], "Luxembourgish"),
-    ("my", &["bur", "mya"], "Burmese"),
-    ("bo", &["tib", "bod"], "Tibetan"),
-    ("tl", &["tgl", "fil"], "Tagalog"),
-    ("mg", &["mlg"], "Malagasy"),
-    ("as", &["asm"], "Assamese"),
-    ("tt", &["tat"], "Tatar"),
-    ("haw", &["haw"], "Hawaiian"),
-    ("ln", &["lin"], "Lingala"),
-    ("ha", &["hau"], "Hausa"),
-    ("ba", &["bak"], "Bashkir"),
-    ("jw", &["jav", "jv"], "Javanese"),
-    ("su", &["sun"], "Sundanese"),
-    ("yue", &["yue"], "Cantonese"),
-];
-
-fn language_entry(
-    code: &str,
-) -> Option<&'static (&'static str, &'static [&'static str], &'static str)> {
-    let base = code.split(['-', '_']).next()?.to_ascii_lowercase();
-    if base.is_empty() || base == "und" {
-        return None;
-    }
-    LANGUAGE_TABLE
-        .iter()
-        .find(|(one, two, _)| *one == base || two.contains(&base.as_str()))
-}
-
-/// The speech model's code for a language code found in a file (`ita`, `ger`, `en-US`,
-/// `it`); `None` when unknown or undetermined (the language is then detected).
-pub fn iso639_2_to_1(code: &str) -> Option<&'static str> {
-    language_entry(code).map(|e| e.0)
-}
-
-/// English name of a language code (`it`, `ita`, …), when known.
-pub fn language_name(code: &str) -> Option<&'static str> {
-    language_entry(code).map(|e| e.2)
-}
 
 /// True when this build can generate subtitles.
 pub fn available() -> bool {
@@ -454,13 +328,13 @@ impl ModelStore {
         Ok(self.path(level))
     }
 
-    fn prepare(&self) -> Result<Option<crate::scratch::Work>, SttError> {
+    fn prepare(&self) -> Result<Option<crate::base::private::Work>, SttError> {
         if let Some(parent) = self.dir.parent() {
-            crate::scratch::private_dir(parent).map_err(io_err)?;
+            crate::base::private::private_dir(parent).map_err(io_err)?;
         }
-        crate::scratch::private_dir(&self.dir).map_err(io_err)?;
+        crate::base::private::private_dir(&self.dir).map_err(io_err)?;
         match &self.work_root {
-            Some(r) => crate::scratch::Work::new(r).map(Some).map_err(io_err),
+            Some(r) => crate::base::private::Work::new(r).map(Some).map_err(io_err),
             None => Ok(None),
         }
     }
@@ -482,7 +356,7 @@ impl ModelStore {
         }
         let work = self.prepare()?;
         let part = self.part(level);
-        let mut f = crate::scratch::create_private_file(&part).map_err(io_err)?;
+        let mut f = crate::base::private::create_private_file(&part).map_err(io_err)?;
         if let Some(w) = &work {
             w.register(&part).map_err(io_err)?;
         }
@@ -515,7 +389,7 @@ impl ModelStore {
             w.register(&part).map_err(io_err)?;
         }
         let copied = (|| {
-            let mut out = crate::scratch::create_private_file(&part)?;
+            let mut out = crate::base::private::create_private_file(&part)?;
             let mut src = std::fs::File::open(file)?;
             io::copy(&mut src, &mut out)?;
             out.sync_all()
@@ -784,7 +658,7 @@ pub fn read_track(
     if !out.success {
         return Err(failed());
     }
-    let bytes = crate::project::read_limited(&file, MAX_TRACK_BYTES).map_err(|_| failed())?;
+    let bytes = crate::base::io::read_limited(&file, MAX_TRACK_BYTES).map_err(|_| failed())?;
     let _ = std::fs::remove_file(&file);
     let mut cues = crate::srt::parse(&String::from_utf8_lossy(&bytes));
     if let Some((from, to)) = range {
@@ -865,7 +739,7 @@ pub fn run(
     cancel: &Arc<AtomicBool>,
     tx: &Sender<SttEvent>,
 ) -> Result<SttResult, SttError> {
-    let work = crate::scratch::Work::new(&job.work_root).map_err(io_err)?;
+    let work = crate::base::private::Work::new(&job.work_root).map_err(io_err)?;
     let n = job.ranges.len().max(1) as f32;
     let mut result = SttResult::default();
     // the language chosen by the user, else the one of the first subtitle track used,
@@ -1746,19 +1620,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn language_codes_of_files_map_to_the_model() {
-        assert_eq!(iso639_2_to_1("ita"), Some("it"));
-        assert_eq!(iso639_2_to_1("ger"), Some("de"));
-        assert_eq!(iso639_2_to_1("deu"), Some("de"));
-        assert_eq!(iso639_2_to_1("en-US"), Some("en"));
-        assert_eq!(iso639_2_to_1("EN"), Some("en"));
-        assert_eq!(iso639_2_to_1("und"), None);
-        assert_eq!(iso639_2_to_1(""), None);
-        assert_eq!(iso639_2_to_1("xx"), None);
-        assert_eq!(iso639_2_to_1("yue"), Some("yue"));
-        assert_eq!(language_name("it"), Some("Italian"));
-        assert_eq!(language_name("fre"), Some("French"));
-        assert!(LANGUAGE_TABLE.len() >= 99);
+    fn track_args_select_the_stream_and_file() {
         let ta = track_args(Path::new("/v.mkv"), 3, Path::new("/w/t.srt"));
         assert_eq!(ta.last().unwrap(), "file:/w/t.srt");
         assert!(ta.iter().any(|x| x == "0:s:3"));

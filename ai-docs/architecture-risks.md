@@ -68,7 +68,7 @@ Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 ti
 
 ## Code structure and debt
 - Large files: app.rs 3072 lines, render.rs 3437 lines, ui/mod.rs 582 lines; new logic goes into submodules (app/effects.rs, app/subs_create.rs, app/lut.rs, app/texts.rs, ...); further split = Future work.
-- Import cycles listed in architecture-components.md (project<->settings, stt<->media, stt<->scratch, scratch<->proxy): move shared I/O helpers (read_limited, write_atomic, read_capped) to a base module; Future work.
+- Import cycles (9 pairs, one 16-module group, app<->ui): planned for 2.0.1 in ai-docs/architecture-plan-2.0.1.md (base module, check in cargo test, ADR-136..141). Open until the Principal Engineer's step 8 and the release verification.
 - camera.rs not refactored into keyframes (debt, ADR-095).
 - Settings file: 1.0 builds drop unknown fields (accepted).
 - Hardware probe: each VA-API candidate may cost 5 s per probe; cheaper probe is Future work.

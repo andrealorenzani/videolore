@@ -410,7 +410,7 @@ pub fn pick_track<'a>(tracks: &'a [SubtitleTrack], label: &str) -> Option<&'a Su
     let language = |t: &SubtitleTrack| {
         t.language
             .as_deref()
-            .and_then(stt::iso639_2_to_1)
+            .and_then(crate::base::language::iso639_2_to_1)
             .map(str::to_string)
     };
     // a label starts with the language name (or code) of its track
@@ -418,7 +418,7 @@ pub fn pick_track<'a>(tracks: &'a [SubtitleTrack], label: &str) -> Option<&'a Su
         .iter()
         .find(|t| {
             language(t)
-                .and_then(|l| stt::language_name(&l))
+                .and_then(|l| crate::base::language::language_name(&l))
                 .is_some_and(|n| label.starts_with(n))
         })
         .or_else(|| tracks.first())

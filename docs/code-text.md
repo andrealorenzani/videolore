@@ -12,7 +12,7 @@ video](business-picture.md); the design is in [architecture-text.md](architectur
 
 | Module | What |
 |---|---|
-| `text` | Pure. `TextItem`, `Texts`, effects, `Anchor360`, limits, validation, the ASS events of an item (`events`, `flat_events_in`, `equirect_events`), `alpha_at` (the visibility formula the events follow) |
+| `text` | Pure. `TextItem`, `Texts`, effects, limits, validation, the ASS events of an item (`events`, `flat_events_in`, `equirect_events`), `alpha_at` (the visibility formula the events follow) |
 | `selection` | `Selection` (subtitle lines and text items together), `ObjRef`; every transition is a method (`click`, `pick`, `drag_targets`, `esc`, `prune`) |
 | `fonts` | Installed font families: `Fonts::start()` scans in a worker thread (fontdb 0.24), names are filtered by `valid_font` (letters, digits, space, `- . _ ( )`) |
 | `spherical` | Writes the Spherical Video V1 `uuid` box into an MP4/MOV after a 360 export |

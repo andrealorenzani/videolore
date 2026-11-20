@@ -11,8 +11,8 @@
 //!
 //! Expressions are built only from numbers written by this module, never from user text.
 
+use crate::base::pos::{POS_MAX, Pos};
 use crate::keyframes::{Key, Lerp, lerp_i64};
-use crate::subtitles::{POS_MAX, Pos};
 use crate::time::Micros;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Write as _;

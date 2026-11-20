@@ -112,10 +112,11 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-performance.md § Requirements / Automatic setup (REQ-045..049) — L21-29 (9 lines)
 - docs/business-performance.md § Performance (REQ-050..053, 056) — L30-38 (9 lines)
 - docs/business-performance.md § Safety (REQ-057..059) — L39-43 (5 lines)
-- docs/business-performance.md § Quality goals (QG-01..06, no covers) — L44-71 (28 lines)
-- docs/business-performance.md § Key decisions — L72-85 (14 lines)
-- docs/business-performance.md § Known limitations — L86-91 (6 lines)
-- docs/business-performance.md § Out of scope — L92-98 (7 lines)
+- docs/business-performance.md § Code structure (2.0.1) (REQ-151..153, implemented) — L44-48 (5 lines)
+- docs/business-performance.md § Quality goals (QG-01..06, no covers) — L49-76 (28 lines)
+- docs/business-performance.md § Key decisions — L77-91 (15 lines; 2.0.1 bullet L90)
+- docs/business-performance.md § Known limitations — L92-97 (6 lines)
+- docs/business-performance.md § Out of scope — L98-104 (7 lines)
 - docs/business-splash.md § intro — L1-6 (6 lines)
 - docs/business-splash.md § Features — L7-11 (5 lines; fixed picture names + summary per program)
 - docs/business-splash.md § Requirements / Splash screen (REQ-133, 134) — L12-17 (6 lines)
@@ -155,14 +156,15 @@ Line ranges checked at the 1.6.3 RELEASE (grep -n '^#' and line counts). Convent
   - § Early requirements — L25-45 (21 lines)
 - ai-docs/business-decisions.md — standing rules C/D, MINOR defaults in force, rejected ideas, current risks, open questions.
   - § Standing rules (C, D numbers kept) — L5-24 (20 lines)
-  - § MINOR defaults still in force — L25-39 (15 lines)
-  - § Rejected or considered — L40-53 (14 lines)
-  - § Product risks (current) — L54-64 (11 lines)
-  - § Open questions — L65-69 (5 lines)
+  - § MINOR defaults still in force — L25-40 (16 lines; 2.0.1 line L39)
+  - § Rejected or considered — L41-54 (14 lines)
+  - § Product risks (current) — L55-65 (11 lines)
+  - § Open questions — L66-70 (5 lines)
 
 ## State (after 1.6.3 RELEASE step 2)
-- Version 1.6.3 (no change of REQ in 1.6.3; splash file names only). Next free REQ: REQ-151. QG next: QG-06 (open). Next major opened by release: 2.0.0; first batch 2.0.1 (see docs/roadmap_tasks.md).
-- All REQ-001..150 implemented; no planned REQ in docs/business*.md. Feature coverage target 100%, line coverage target 85%.
+- Version 2.0.1 implemented (STATUS): module-cycle refactor (shared base module), no behaviour change. Next free REQ: REQ-154. QG next: QG-06 (open). Batch 1 of docs/roadmap_tasks.md (verify the release) is not in 2.0.1 (see Decisions).
+- REQ-001..153 implemented (REQ-151..153 in 2.0.1). Feature coverage target 100%, line coverage target 85%.
+- Decisions 2.0.1 (see ai-docs/business-decisions.md § MINOR defaults, 2.0.1 line): [MINOR] the user named 2.0.1 for the cycle refactor, so batch 1 "verify the release" moves to a later version; its items stay in Future work. [MINOR] REQ-151..153 only (observable: no change, cycle gone, cycle check); no REQ for the helper names or file layout.
 - Product in one line: offline desktop editor for short social clips (fast cut and join, fades, music, auto subtitles, quick export, hardware export optional), plus a watch-only player (separate program since 1.6.0). Users: U1 social content creator (non-expert, wants speed and captions); U2 hobbyist editing personal clips. Not pro editors (no multitrack video, no grading beyond LUT files).
 - Splash: picture names fixed (splash.gif, splash-player.gif); summaries per program (summary.txt, summary-player.txt); the build fails without them.
 

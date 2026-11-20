@@ -7,9 +7,10 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use videolore::base::pos::Pos;
 use videolore::media::{MediaId, SubtitleTrack, display_name};
 use videolore::srt::Cue;
-use videolore::subtitles::{NewLine, Pos};
+use videolore::subtitles::NewLine;
 
 /// Largest `.srt` file read (the same limit as an extracted track).
 pub const MAX_SRT_BYTES: u64 = videolore::stt::MAX_TRACK_BYTES;
@@ -93,7 +94,7 @@ impl Subs {
 pub fn read_srt(path: &Path) -> Result<Vec<Cue>, String> {
     let name = display_name(path);
     let bytes =
-        videolore::project::read_limited(path, MAX_SRT_BYTES).map_err(|e| match e.kind() {
+        videolore::base::io::read_limited(path, MAX_SRT_BYTES).map_err(|e| match e.kind() {
             std::io::ErrorKind::InvalidData => format!("{name} is larger than 16 MiB"),
             std::io::ErrorKind::InvalidInput => format!("{name} is not a regular file"),
             _ => format!("{name} could not be read"),

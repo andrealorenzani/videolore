@@ -6,7 +6,7 @@
 //! screen (REQ-089..092), and the SRT export (REQ-088).
 
 use super::*;
-use crate::subtitles::POS_MAX;
+use crate::base::pos::POS_MAX;
 
 /// Disabled reason of the SRT export.
 pub const NO_SUBTITLES: &str = "No subtitles on the timeline";

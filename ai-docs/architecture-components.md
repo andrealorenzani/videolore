@@ -9,8 +9,9 @@
   - `project` <-> `settings`: settings.rs uses `crate::project::{read_limited, write_atomic}`; project.rs uses `crate::settings::read_capped`. Suggested: shared file-I/O helpers in a base module (`fsio`), Future work.
   - `stt` <-> `media`: stt uses `media::{display_name, valid_language}`; media uses `stt::language_name`.
   - `stt` <-> `scratch`: stt uses `scratch::{Work, private_dir, create_private_file}`; scratch uses `stt::builtin_models`.
-  - `scratch` -> `proxy` (`is_cache_file`) and `proxy` -> `scratch` (per table): cycle to confirm.
-  Rust allows these; they are not compile errors. The layers table also places `settings` and `fonts`, `notices` in "Base" although they depend on hwenc/project, text, ffmpeg/packaging: the layering is a convention, not enforced.
+  - `scratch` -> `proxy` (`is_cache_file`) and `proxy` -> `scratch`: confirmed.
+  - Re-checked 2026-11-20 (production code, top level): 9 direct pairs (the four above, lut<->project, subtitles<->timeline, subtitles<->text, ass<->text, app<->ui) and one 16-module group. export<->outcheck and ffmpeg<->jobs are doc-comment links only (no cycle). The PE table in docs/code-architecture.md is right except the missing app<->ui pair. Plan 2.0.1: ai-docs/architecture-plan-2.0.1.md (ADR-136..141).
+  Rust allows these; they are not compile errors. The layers table also places `settings` and `fonts`, `notices` in "Base" although they depend on hwenc/project, text, ffmpeg/packaging: the layering is a convention, not enforced (after 2.0.1 the real base is `src/base/`).
 - MISMATCH 2: none in the module list (no missing or extra module against lib.rs / ui/mod.rs / app.rs).
 
 ## Component map (src/ modules; roles)

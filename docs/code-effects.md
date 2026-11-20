@@ -96,7 +96,7 @@ cues, 1000 characters each, damaged blocks skipped); `srt::strip_tags` removes `
 ### Matching words (`align`)
 
 Recognition runs on the same audio range as "Recognise" (with the track's language, mapped by
-`stt::iso639_2_to_1`, unless the user chose one). `align::align` then works cue by cue, forward
+`base::language::iso639_2_to_1`, unless the user chose one). `align::align` then works cue by cue, forward
 only: the cue's words against the recognised words from 1 s before to 1 s after it, with a
 Needleman–Wunsch alignment (exact word +2, close spelling +1 for words of 3+ letters,
 substitution −1, gap −1; recognised words before and after the cue cost nothing). A cue is

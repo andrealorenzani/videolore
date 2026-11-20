@@ -50,7 +50,7 @@ pub fn subtitles_note(m: &MediaItem) -> Option<String> {
             .as_deref()
             .filter(|l| *l != "und")
             .map(|l| {
-                crate::stt::language_name(l)
+                crate::base::language::language_name(l)
                     .map(str::to_string)
                     .unwrap_or_else(|| l.to_string())
             })

@@ -4,6 +4,7 @@
 //! Tests of the settings decisions (pure) and the settings file.
 
 use super::*;
+use crate::base::io::read_capped;
 use crate::hwenc::{Codec, Vendor};
 use crate::machine::{CpuFeatures, GIB, Machine};
 
@@ -123,7 +124,7 @@ fn upgrade_from_0_2_keeps_proxies_off_and_the_ffmpeg_choice() {
     assert_eq!(st.notice, Some(StartNotice::Malformed));
 }
 
-// covers: REQ-057
+// covers: REQ-057, REQ-151, REQ-152
 #[test]
 fn malformed_settings_fall_back_to_recommended_with_a_notice() {
     let m = fp(8, 4, 16);
@@ -194,7 +195,7 @@ fn malformed_settings_fall_back_to_recommended_with_a_notice() {
     assert_eq!(st.settings.ffprobe, None);
 }
 
-// covers: REQ-057
+// covers: REQ-057, REQ-151, REQ-152
 #[test]
 fn settings_files_are_read_safely_and_bad_ones_kept_aside() {
     let dir = tempfile::tempdir().unwrap();

@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
+use videolore::base::pos::Pos;
 use videolore::camera::{Camera, Pov};
 use videolore::ffmpeg::{FfmpegInfo, Runner};
 use videolore::jobs::{MAX_PROCESSES, Priority, Scheduler};
@@ -25,7 +26,7 @@ use videolore::project::Project;
 use videolore::proxy::{self, ProxyCache, ProxyEvent, ProxyTask, ProxyWorker};
 use videolore::settings::PreviewQuality;
 use videolore::srt::Cue;
-use videolore::subtitles::{LineId, Pos};
+use videolore::subtitles::LineId;
 use videolore::time::{Fps, Micros};
 
 /// Why a `.vlproj` is not opened (REQ-138).
@@ -842,7 +843,7 @@ fn read_track(
     path: &Path,
     ordinal: u8,
 ) -> Result<Vec<Cue>, String> {
-    let work = videolore::scratch::Work::new(root).map_err(|e| e.to_string())?;
+    let work = videolore::base::private::Work::new(root).map_err(|e| e.to_string())?;
     let cues = videolore::stt::read_track(ffmpeg, runner, work.path(), path, ordinal, None)
         .map_err(|e| e.to_string())?;
     if cues.is_empty() {

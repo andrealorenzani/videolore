@@ -39,14 +39,14 @@
 - src/outcheck/tests.rs: 063
 - src/packaging.rs: 030,040,041,042,138
 - src/preview.rs: 013,034,035,039,144
-- src/project.rs: 003,016,019,020,029,057,094,105,113,123,132,136,137
+- src/project.rs: 003,016,019,020,029,057,094,105,113,123,132,136,137,151,152
 - src/project/v9.rs: 149
 - src/proxy.rs: 033,038,104
 - src/render/golden_tests.rs: 029,062,094,097,105
 - src/render.rs: 011,013,017,019,020,022,023,034,036,037,038,043,083,084,101,102,103,104,111,112,114,119,120,121,125,126,127,128,131,135,136
-- src/scratch.rs: 059
+- src/scratch.rs: 059,151,152
 - src/selection.rs: 090,091,092
-- src/settings/tests.rs: 045,046,047,048,049,050,052,054,057,060,064,065,067,080,096
+- src/settings/tests.rs: 045,046,047,048,049,050,052,054,057,060,064,065,067,080,096,151,152
 - src/spherical.rs: 103
 - src/splash.rs: 134,150
 - src/srt.rs: 057,087,088
@@ -81,3 +81,4 @@
 - tests/ffmpeg_integration/v14.rs: 114,119,120,121
 - tests/ffmpeg_integration/v15.rs: 125,126,127,128,129,131
 - tests/ffmpeg_integration/v16.rs: 135,136,147
+- tests/module_cycles.rs: 153

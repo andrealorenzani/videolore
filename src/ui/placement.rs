@@ -8,8 +8,9 @@
 //! fake in tests). Pure.
 
 use crate::ass;
+use crate::base::pos::{POS_MAX, Pos};
 use crate::project::Project;
-use crate::subtitles::{LineId, POS_MAX, Pos, Preset, ShownLine};
+use crate::subtitles::{LineId, Preset, ShownLine};
 use crate::time::Micros;
 use eframe::egui::{Pos2, Rect, Vec2, pos2, vec2};
 

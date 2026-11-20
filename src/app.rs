@@ -6,6 +6,7 @@
 //! recognition, the ffmpeg check, export) runs on other threads; [`AppState::tick`]
 //! collects the results once per frame.
 
+use crate::base::pos::Pos;
 use crate::export::{self, ExportEvent, ExportHandle, ExportJob, ExportMethod};
 use crate::ffmpeg::{self, FfmpegInfo, Runner};
 use crate::frame::{FrameAspect, Scale};
@@ -28,7 +29,7 @@ use crate::stt::{
     self, ModelEvent, ModelFetcher, ModelSource, ModelStore, SttEvent, SttHandle, SttJob,
     TranscriberFactory,
 };
-use crate::subtitles::{LineId, Pos, Preset};
+use crate::subtitles::{LineId, Preset};
 use crate::time::{Fps, Micros};
 use crate::timeline::{Clip, ClipId, EditError, FrameTarget};
 pub use command::{Command, ZOOM_STEP};

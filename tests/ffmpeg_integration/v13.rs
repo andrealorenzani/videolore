@@ -5,9 +5,10 @@
 //! sphere in the flat camera view and in a 360 video.
 
 use super::*;
+use videolore::base::pos::Anchor360;
+use videolore::base::pos::Pos;
 use videolore::camera::{self, Camera, Pov};
-use videolore::subtitles::Pos;
-use videolore::text::{Anchor360, SlideDir, TextId, TextItem};
+use videolore::text::{SlideDir, TextId, TextItem};
 
 /// A black clip of `secs` seconds, `w` x `h`.
 fn black(env: &Env, w: u32, h: u32, secs: u32) -> PathBuf {

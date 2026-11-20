@@ -12,6 +12,7 @@
 //!   preview or export that needs the ffmpeg slot preempts it (it restarts later).
 //! * Proxies are only used by the preview, never by the export.
 
+use crate::base::names::is_cache_file;
 use crate::ffmpeg::{FfVersion, ProgressEvent, Runner, argv, file_arg, parse_progress_line};
 use crate::jobs::Limited;
 use crate::machine::{GIB, Machine};
@@ -133,18 +134,6 @@ pub fn key_of_kind(path: &Path, sphere: bool) -> io::Result<String> {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     Ok(cache_key_kind(path, meta.len(), mtime, sphere))
-}
-
-/// True for file names the cache owns: `<32 hex>.mkv` or `<32 hex>.mkv.partial`.
-pub fn is_cache_file(name: &str) -> bool {
-    let stem = name
-        .strip_suffix(".mkv.partial")
-        .or_else(|| name.strip_suffix(".mkv"));
-    stem.is_some_and(|s| {
-        s.len() == 32
-            && s.chars()
-                .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
-    })
 }
 
 /// The proxy cache folder.
@@ -325,8 +314,8 @@ impl ProxyWorker {
             .cache
             .dir
             .parent()
-            .map_or(Ok(()), crate::scratch::private_dir)
-            .and_then(|()| crate::scratch::private_dir(&self.cache.dir));
+            .map_or(Ok(()), crate::base::private::private_dir)
+            .and_then(|()| crate::base::private::private_dir(&self.cache.dir));
         if let Err(e) = dirs {
             return Some(ProxyEvent::Failed(task.media, e.to_string()));
         }
@@ -336,7 +325,7 @@ impl ProxyWorker {
         }
         let partial = self.cache.partial_for(&task.key);
         let work = match &self.work_root {
-            Some(r) => match crate::scratch::Work::new(r).and_then(|w| {
+            Some(r) => match crate::base::private::Work::new(r).and_then(|w| {
                 w.register(&partial)?;
                 Ok(w)
             }) {

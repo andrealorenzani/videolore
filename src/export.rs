@@ -290,7 +290,7 @@ pub fn run(
     if plan.subtitles().is_some() && !job.can_burn_subtitles {
         return Err(ExportError::NoSubtitleFilter);
     }
-    let work = crate::scratch::Work::new(&job.work_root).map_err(io)?;
+    let work = crate::base::private::Work::new(&job.work_root).map_err(io)?;
     if let Some(doc) = plan.subtitles() {
         write_subtitles(work.path(), doc).map_err(io)?;
     }
@@ -329,7 +329,7 @@ pub fn run(
     // The partial file is private until it is complete; a crash leaves it listed in the
     // work folder, so the next start removes it.
     work.register(&partial).map_err(io)?;
-    drop(crate::scratch::create_private_file(&partial).map_err(io)?);
+    drop(crate::base::private::create_private_file(&partial).map_err(io)?);
     let result = execute(job, runner, &args, work.path(), cancel, tx);
     let method = match (after, &plan) {
         (Some((codec, vendor, problem)), _) => ExportMethod::SoftwareAfterProblem {
@@ -342,7 +342,7 @@ pub fn run(
     };
     match result {
         Ok(()) => match mark_if_sphere(job, &partial)
-            .and_then(|()| crate::scratch::publish(&partial))
+            .and_then(|()| crate::base::private::publish(&partial))
             .and_then(|()| std::fs::rename(&partial, &output))
         {
             Ok(()) => Ok((output, method)),
@@ -371,7 +371,7 @@ fn run_audio(
     let plan = render::plan_audio_only(&job.project, &job.encoders, job.format.audio)?;
     let _ = tx.send(ExportEvent::Started { stream_copy: false });
     let io = |e: std::io::Error| ExportError::Io(e.to_string());
-    let work = crate::scratch::Work::new(&job.work_root).map_err(io)?;
+    let work = crate::base::private::Work::new(&job.work_root).map_err(io)?;
     let list = work.path().join("list.ffconcat");
     let script = work.path().join("graph.txt");
     let paths = ExportPaths {
@@ -381,10 +381,10 @@ fn run_audio(
     };
     let args = render::audio_export_args(&plan, &paths, job.version, job.threads).map_err(io)?;
     work.register(&partial).map_err(io)?;
-    drop(crate::scratch::create_private_file(&partial).map_err(io)?);
+    drop(crate::base::private::create_private_file(&partial).map_err(io)?);
     let result = execute(job, runner, &args, work.path(), cancel, tx);
     match result {
-        Ok(()) => match crate::scratch::publish(&partial)
+        Ok(()) => match crate::base::private::publish(&partial)
             .and_then(|()| std::fs::rename(&partial, &output))
         {
             Ok(()) => Ok((output, ExportMethod::Software)),
@@ -439,7 +439,7 @@ struct Attempt<'a> {
     job: &'a ExportJob,
     runner: &'a dyn Runner,
     plan: &'a Plan,
-    work: &'a crate::scratch::Work,
+    work: &'a crate::base::private::Work,
     cancel: &'a AtomicBool,
     tx: &'a Sender<ExportEvent>,
     /// Stops the running process without cancelling the export (a constant-quality run
@@ -615,7 +615,7 @@ impl Attempt<'_> {
                 Some(&enc),
             )
             .map_err(fatal)?;
-            drop(crate::scratch::create_private_file(&partial).map_err(fatal)?);
+            drop(crate::base::private::create_private_file(&partial).map_err(fatal)?);
             match self.encode(&args, bps, cq && !retried) {
                 Err(Encoded::TooBig(ratio)) => {
                     // constant quality making a much bigger file: once, a coarser quantiser
@@ -635,7 +635,7 @@ impl Attempt<'_> {
         };
         let r = r.and_then(|()| {
             mark_if_sphere(self.job, &partial)
-                .and_then(|()| crate::scratch::publish(&partial))
+                .and_then(|()| crate::base::private::publish(&partial))
                 .and_then(|()| std::fs::rename(&partial, output))
                 .map_err(fatal)
         });

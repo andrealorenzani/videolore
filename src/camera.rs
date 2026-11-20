@@ -351,9 +351,9 @@ pub fn unproject(cam: Camera, w: u32, h: u32, x: f64, y: f64) -> (f64, f64) {
 /// The anchor of a text added now with the camera `cam` showing a `w` x `h` picture: the
 /// centre of the view; the text is 5% of the view's height tall at 100% and wraps at 60%
 /// of its width (assumptions of REQ-112).
-pub fn anchor_at(cam: Camera, w: u32, h: u32) -> crate::text::Anchor360 {
+pub fn anchor_at(cam: Camera, w: u32, h: u32) -> crate::base::pos::Anchor360 {
     let vfov = vertical_fov_deg(cam.fov_deg(), w, h);
-    crate::text::Anchor360 {
+    crate::base::pos::Anchor360 {
         yaw_cd: cam.yaw_cd,
         pitch_cd: cam.pitch_cd,
         height_cd: ((vfov * 100.0 * 0.05).round() as u32).clamp(1, 17_000),
@@ -363,9 +363,9 @@ pub fn anchor_at(cam: Camera, w: u32, h: u32) -> crate::text::Anchor360 {
 
 /// The anchor of a text item added now (REQ-111, REQ-116): like [`anchor_at`] but with a
 /// box 20% of the view's height tall, as the flat box is 20% of the picture's height.
-pub fn text_anchor_at(cam: Camera, w: u32, h: u32) -> crate::text::Anchor360 {
+pub fn text_anchor_at(cam: Camera, w: u32, h: u32) -> crate::base::pos::Anchor360 {
     let vfov = vertical_fov_deg(cam.fov_deg(), w, h);
-    crate::text::Anchor360 {
+    crate::base::pos::Anchor360 {
         height_cd: ((vfov * 100.0 * 0.2).round() as u32).clamp(1, 18_000),
         ..anchor_at(cam, w, h)
     }

@@ -2,19 +2,21 @@
 
 <!-- AI-only notes. Owner agent edits only. Dense format OK. Read sub-documents by grep, then sed -n 'A,Bp'. -->
 
-target: 1.6.3 RELEASE (consolidation 2026-11-20; verified against src/ and Cargo.toml; no open SEVERE question; open before release: origin and licence of assets/splash/splash.gif and splash-player.gif, see architecture-risks.md) | built 1.6.2 (shared splash, ADR-128..135) | built 1.6.1 (visible edges, per-clip effects, format 9, CI time) | built 1.6.0 (splash, Apply LUT, workspace with player/, icons; ADR-105..119) | built 1.5.0 (frame: aspect, Scale, Move, keyframes; format 7; ADR-093..104) | 1.4.x (export dialog, clean audio, text width; ADR-080..091) | 1.3.0 (text items, 360 video; ADR-066..079) | 1.4.1 page (ADR-092).
-product facts: Rust, edition 2024, rust-version 1.100 (MSRV = latest stable by policy, ADR-012), toolchain latest stable, GPL-3.0-only, author Andrea Lorenzani. Versions 1.6.3 in root Cargo.toml and player/Cargo.toml (both literal, ADR-116).
+target: 2.0.1 PLAN (module cycles, REQ-151..153; plan ai-docs/architecture-plan-2.0.1.md; ADR-136..141; PE step 8 updates docs/code-architecture.md) | 1.6.3 RELEASE (consolidation 2026-11-20; verified against src/ and Cargo.toml; open before release: origin and licence of assets/splash/splash.gif and splash-player.gif, see architecture-risks.md) | built 1.6.2 (shared splash, ADR-128..135) | built 1.6.1 (visible edges, per-clip effects, format 9, CI time) | built 1.6.0 (splash, Apply LUT, workspace with player/, icons; ADR-105..119) | built 1.5.0 (frame: aspect, Scale, Move, keyframes; format 7; ADR-093..104) | 1.4.x (export dialog, clean audio, text width; ADR-080..091) | 1.3.0 (text items, 360 video; ADR-066..079) | 1.4.1 page (ADR-092).
+product facts: Rust, edition 2024, rust-version 1.100 (MSRV = latest stable by policy, ADR-012), toolchain latest stable, GPL-3.0-only, author Andrea Lorenzani. Versions 2.0.1 in root Cargo.toml and player/Cargo.toml (both literal, ADR-116); 1.6.3 was the last release.
 platforms: Linux x86_64 (Ubuntu 24.04+, Fedora current; AppImage + tar.gz), macOS aarch64 (dmg, ad-hoc sign), Windows x86_64 (NSIS setup). Editor = videolore, player = videolore-player (no speech, no network).
 engine: ffmpeg + ffprobe as separate bundled processes (GPL builds, pinned SHA-256, ADR-002/013); whisper.cpp via whisper-rs (opt stt feature, ADR-021/022); egui/eframe 0.37 GUI (ADR-001); std threads + mpsc, no tokio (ADR-004); process scheduler cap 3..6 (ADR-015/029).
 state: project JSON format 9 (SCHEMA_VERSION 9; loads 1..9; TooNew refused, never written); settings.json version 2 additive fields (ADR-028/040/044); private work folders 0700 with lock + crash cleanup (ADR-033).
-testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs excluded), feature coverage 100% via `// covers: REQ-NNN`; CI jobs check/msrv/build/package (ADR-035/036/117).
+testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs excluded), feature coverage 100% via `// covers: REQ-NNN`; CI jobs check/msrv/build/package (ADR-035/036/117); 2.0.1 adds the module-cycle test (ADR-140).
 
 ## ai sub-documents (read only when a task needs them; all owned by architect)
-- ai-docs/architecture-adr.md § whole file — L1-505 (505 lines): ADRs ADR-001..135 (ids, context, choice, alternatives, reason; status per ADR; superseded ones one line with replacement); area index at its top. Read with grep -n 'ADR-0NN' then sed.
-- ai-docs/architecture-components.md § whole file — L1-97 (97 lines): verified module structure vs src (lib.rs modules, app/export/project/render/settings/ui submodules), import cycles (mismatch to PE), component roles per module and version, module dependency list, ai data flow for every version.
+- ai-docs/architecture-adr.md § whole file — L1-514 (514 lines): ADRs ADR-001..141 (ids, context, choice, alternatives, reason; status per ADR; superseded ones one line with replacement); area index at its top. Read with grep -n 'ADR-0NN' then sed.
+- ai-docs/architecture-components.md § whole file — L1-98 (98 lines): verified module structure vs src (lib.rs modules, app/export/project/render/settings/ui submodules), import cycles (re-checked 2026-11-20), component roles per module and version, module dependency list, ai data flow for every version.
 - ai-docs/architecture-nfr.md § whole file — L1-66 (66 lines): NFR targets by area: processes, UI responsiveness, preview, export and quality (QG-01, QG-05), memory, platforms and portability, page; GATE vs ESTIMATE marked.
 - ai-docs/architecture-security.md § whole file — L1-39 (39 lines): threats, core rules (no shell, file: prefix, protocol whitelist, unsafe policy, downloads, supply chain, CI permissions), security by version 0.2.0..1.6.2.
 - ai-docs/architecture-risks.md § whole file — L1-81 (81 lines): open risks by area (release items first), hardware export limits, subtitles, interface, 360, frames/LUT/player/splash, code debt; resolved items removed.
+- ai-docs/architecture-plan-2.0.1.md § whole file — L1-125 (125 lines): plan 2.0.1 (measured cycles, base module layout, move table, cycle breaks, behaviour invariants, cycle check design, ordered PE steps, tests, risks, future work). Archived in the release snapshot after release (drop this line then).
+- ai-docs/architecture-doc-index.md § whole file — L1-256 (256 lines): paragraph index of docs/architecture*.md (one line per heading: `- <file> § <heading> — L<start>-<end> (<n> lines)`); moved here from this file to keep it short; regenerate after each change of a managed doc.
 - ai-docs/architecture-plan-1.3.0.md, -1.4.0.md, -1.5.0.md, -1.6.0.md, -1.6.1.md, -1.6.2.md: archived in the latest releases/<version> - <name>/docs/ai-docs/ snapshot (moved there by the command after the snapshot; do not look for them in ai-docs/ after the release). Their full plan text (ADR details, code facts, ordered steps, Future work) is read from the snapshot only when history is needed.
 
 ## ADR index (one line each; full text in ai-docs/architecture-adr.md)
@@ -153,6 +155,12 @@ testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs exclu
 - ADR-133 decode caps: 64 frames, 4096 px, 64 MiB RGBA per picture (1.6.2)
 - ADR-134 retired files; fixed names splash.gif, splash-player.gif, summary.txt, summary-player.txt (1.6.2; 1.6.3 AGENTS 4f)
 - ADR-135 test memory cap: systemd-run MemoryMax=8G on the development machine (1.6.2)
+- ADR-136 (2.0.1 PLAN) shared helpers in one module `src/base/` (io, private, pos, names, language); base has no crate:: path
+- ADR-137 (2.0.1 PLAN) cycle breaks: move the shared item, not the caller; simulation: no cycle left
+- ADR-138 (2.0.1 PLAN) AssEvent, font_px, BASE_HEIGHT move to ass.rs, not base
+- ADR-139 (2.0.1 PLAN) align_h, align_v move from ui/boxes.rs to base::pos; app must not use ui
+- ADR-140 (2.0.1 PLAN) cycle check: tests/module_cycles.rs with syn (dev-dependency, in lock), production code, top-level grain
+- ADR-141 (2.0.1 PLAN) no re-exports; callers (player included) take the new paths
 - Q-A/Q-B/Q-C (1.6.0) closed 2026-11-19 (icon artwork shared; splash GIF kept; no splash with a path argument); Q-E open before release (splash origin).
 
 ## Component map (short; roles and versions in ai-docs/architecture-components.md)
@@ -163,7 +171,8 @@ testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs exclu
 - Rendering (pure): render (filter graphs and argv), format, ass, camera, frame, keyframes, lut, spherical.
 - Model (pure): project (+ project::v9), timeline, music, subtitles, text, selection, history, media, srt, align.
 - Base: time, settings, machine, fonts, notices, packaging, desktop.
-- Verified 2026-11-20 against src/ (module list matches lib.rs; import cycles listed in architecture-components.md as MISMATCH 1 for the Principal Engineer).
+- 2.0.1 PLAN: base (src/base/: io = capped read and atomic write; private = private folders, Work, file names of the work folder; pos = Pos, POS_MAX, Anchor360, align_h/v; names = cache, partial and speech-model file names; language = language table). scratch keeps default_root and cleanup_stale; ass keeps AssEvent and font_px.
+- Verified 2026-11-20 against src/ (module list matches lib.rs; cycles re-checked: 9 pairs + one 16-module group + app<->ui; see ai-docs/architecture-components.md).
 - Data flow summary: UI event -> AppState::dispatch -> Edit + history -> FrameKey -> latest-only still; export: render plan -> export worker -> ffmpeg via scheduler -> rename; subtitles: extraction -> STT thread -> lines -> one undo step; start-up: detect machine -> cleanup -> settings decision -> budget.
 
 ## NFR targets (summary; full list in ai-docs/architecture-nfr.md)
@@ -176,6 +185,7 @@ testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs exclu
 - Coverage >= 85% line; feature coverage 100%.
 - Platforms: Linux x86_64 glibc 2.39 max; STT needs AVX2+FMA+F16C+BMI2 on x86_64.
 - Estimates: installers 70–130 MB; probe ~6.4 s idle, up to 10 s loaded; STT speeds per model.
+- 2.0.1 (REQ-151..153, no behaviour change): test-suite time for the cycle check estimate 1 to 3 s (to measure in CI).
 
 ## Security model (summary; full in ai-docs/architecture-security.md)
 - Threats: malicious media and project/settings JSON, PATH hijack, tampered downloads, ffmpeg/ASS/ffconcat injection, desktop entry injection, hostile drivers (contained).
@@ -183,12 +193,14 @@ testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs exclu
 - Bounded reads (project 16 MiB, settings 64 KiB, track text 16 MiB), regular-file checks (FIFO refused), strict validation, TooNew refused.
 - unsafe forbidden crate-wide except whisper abort callback and macOS odoc handler; no network except consented model download (https, sha-256, size); player has no network code (CI).
 - Unsigned installers (decided); no secrets; no telemetry; cargo-deny + cargo-about + pinned archives; CI least privilege, SHA-pinned actions.
+- 2.0.1: capped reads, atomic writes and private folders move to base::io and base::private unchanged (REQ-057, REQ-059).
 
 ## Crate shortlist (verified against Cargo.lock 2026-11-20; Cargo.toml authoritative)
 runtime (root, always): eframe 0.37.0 (glow, default_fonts, wayland, x11; egui 0.37.0), fontdb 0.24.0 (1.3.0), image 0.25.10 (gif only, 1.6.0), rfd 0.18.0 (xdg-portal), serde 1.0.229, serde_json 1.0.154, thiserror 2.0.21, directories 6.0.0, tempfile 3.27.0, sha2 0.11.1, sysinfo 0.40.4 (system feature).
 runtime optional: cpal 0.18.2 (feature audio, default); whisper-rs 0.16.0 (feature stt, default; Unlicense); ureq 3.5.2 (feature stt, rustls, default-features off).
 macOS only: objc2 0.6.5; objc2-foundation 0.3.2 (minimal features); winit 0.30.13 (default-features off; direct dependency to switch off the default menu, ADR-024; same version as eframe's).
 transitive of note: fontconfig-parser 0.5.8, memmap2 0.9.12, roxmltree 0.20.0 (via fontdb), rustls/ring (ureq).
+dev (2.0.1 PLAN): syn 2 (features full, visit; MIT OR Apache-2.0; already in Cargo.lock as 2.0.119) for tests/module_cycles.rs; no new package.
 not in the tree (planned, dropped): ttf-parser 0.25 dev-dependency of the 1.6.0 shortlist is absent from Cargo.toml and Cargo.lock at 1.6.3 (no test needs it; Future work: decide).
 rejected across versions: egui-phosphor, egui-pop-phosphor, egui_extras, resvg (MPL), Font Awesome (CC BY), font-kit, fontique, muda, egui_dock/egui_tiles, egui_kittest (fallback only), srtparse/subparse/srtlib, strsim, ab_glyph/fontdue, matroska/mp4 demuxers, candle-whisper, vosk, reqwest, native-tls, toml/ron, num_cpus, raw-cpuid, smithay-client-toolkit, cargo-nextest (as runner).
 tools (CI only, not linked): cargo-packager 0.11.8, appimagetool (packaging/tools.lock), cargo-deny 0.20.2, cargo-about 0.9.3 (prebuilt via pinned install action), cargo-llvm-cov, espeak-ng (test fixture), optional qemu-user.
@@ -198,248 +210,8 @@ bundled non-Rust: ffmpeg/ffprobe GPL builds (9.0.2 pinned: BtbN linux64-gpl and 
 - [open, release] origin and licence of the splash pictures (Q-E).
 - [open] QG-05 g failed on Intel iGPU; re-baseline or cheaper check (Future work).
 - [open] CI time after the 1.6.1 change not measured here (estimate only).
-- [open] import cycles and oversized files (app.rs 3072, render.rs 3437): Future work for the Principal Engineer and roadmap.
+- [2.0.1 plan] module cycles: plan in ai-docs/architecture-plan-2.0.1.md; the cycle check is syntactic (macro-made paths and #[path] not followed; #[path] fails the test); oversized files app.rs (about 3000 lines), render.rs (about 3400 lines) remain debt; docs/code-architecture.md must gain the app<->ui pair and the base layer (PE step 8).
+- [open] docs/architecture.md is about 160 lines: split its Components table at the next release (architect).
 
-## Human docs index (docs/architecture*.md; regenerated 2026-11-20 by grep -n '^#' ranges; read a range with sed -n 'A,Bp')
-- docs/architecture-360.md § Title — L1-3 (3 lines)
-- docs/architecture-360.md § Approach — L5-8 (4 lines)
-- docs/architecture-360.md § Recognising a 360 video — L10-14 (5 lines)
-- docs/architecture-360.md § Camera and POVs — L16-21 (6 lines)
-- docs/architecture-360.md § Preview and export graph — L23-30 (8 lines)
-- docs/architecture-360.md § Performance and limits — L32-36 (5 lines)
-- docs/architecture-360.md § Tests — L38-41 (4 lines)
-- docs/architecture-360.md § Risks — L43-47 (5 lines)
-- docs/architecture-360.md § Anchored text and subtitles (1.3.0) — L49-58 (10 lines)
-- docs/architecture-360.md § Export as 360 video (1.3.0) — L60-65 (6 lines)
-- docs/architecture-360.md § Tests for 1.3.0 — L67-70 (4 lines)
-- docs/architecture-boxes.md § Title — L1-3 (3 lines)
-- docs/architecture-boxes.md § Boxes on the picture — L5-8 (4 lines)
-- docs/architecture-boxes.md § Moving and resizing — L10-13 (4 lines)
-- docs/architecture-boxes.md § Effect commands — L15-19 (5 lines)
-- docs/architecture-boxes.md § Context Menu and text boxes (1.3.0) — L21-24 (4 lines)
-- docs/architecture-boxes.md § Text items, width and dragging (1.4.0) — L26-31 (6 lines)
-- docs/architecture-boxes.md § Visible edges (1.6.1, REQ-145, REQ-146) — L33-36 (4 lines)
-- docs/architecture-boxes.md § Tests — L38-44 (7 lines)
-- docs/architecture-build.md § Title — L1-3 (3 lines)
-- docs/architecture-build.md § Rust toolchain policy — L5-7 (3 lines)
-- docs/architecture-build.md § Workspace (1.6.0) — L9-13 (5 lines)
-- docs/architecture-build.md § CI (changes in 1.6.0) — L15-22 (8 lines)
-- docs/architecture-build.md § CI (as built) — L24-30 (7 lines)
-- docs/architecture-build.md § CI time (1.6.1, QG-06) — L32-39 (8 lines)
-- docs/architecture-build.md § Assets and CI effects (1.6.2) — L41-46 (6 lines)
-- docs/architecture-build.md § Test memory cap (1.6.2, development machine) — L48-51 (4 lines)
-- docs/architecture-decisions.md § Title — L1-33 (33 lines)
-- docs/architecture-dependencies.md § Title — L1-5 (5 lines)
-- docs/architecture-dependencies.md § Build features — L7-13 (7 lines)
-- docs/architecture-dependencies.md § Rust crates — L15-49 (35 lines)
-- docs/architecture-dependencies.md § Bundled with the installers (not Rust) — L51-59 (9 lines)
-- docs/architecture-dependencies.md § Tools used only to build, test or package — L61-75 (15 lines)
-- docs/architecture-dependencies.md § Platform build requirements (from source) — L77-82 (6 lines)
-- docs/architecture-effects.md § Title — L1-3 (3 lines)
-- docs/architecture-effects.md § Applying an effect — L5-13 (9 lines)
-- docs/architecture-effects.md § Fade through black — L15-22 (8 lines)
-- docs/architecture-effects.md § Clip volume — L24-29 (6 lines)
-- docs/architecture-effects.md § Clean audio (1.4.0) — L31-38 (8 lines)
-- docs/architecture-effects.md § Whole video per clip (1.6.1) — L40-46 (7 lines)
-- docs/architecture-effects.md § When the export must re-encode — L48-49 (2 lines)
-- docs/architecture-effects.md § Tests — L51-56 (6 lines)
-- docs/architecture-export-dialog.md § Title — L1-3 (3 lines)
-- docs/architecture-export-dialog.md § Opening the dialog — L5-8 (4 lines)
-- docs/architecture-export-dialog.md § Modes — L10-14 (5 lines)
-- docs/architecture-export-dialog.md § Export file — L16-21 (6 lines)
-- docs/architecture-export-dialog.md § Video format (Full video only) — L23-40 (18 lines)
-- docs/architecture-export-dialog.md § Audio format (Full video and Only audio) — L42-46 (5 lines)
-- docs/architecture-export-dialog.md § 360 choice — L48-50 (3 lines)
-- docs/architecture-export-dialog.md § What the export does with the choices — L52-55 (4 lines)
-- docs/architecture-export-dialog.md § Tests — L57-61 (5 lines)
-- docs/architecture-export-dialog.md § Risks — L63-66 (4 lines)
-- docs/architecture-ffmpeg.md § Title — L1-3 (3 lines)
-- docs/architecture-ffmpeg.md § Why ffmpeg is bundled — L5-6 (2 lines)
-- docs/architecture-ffmpeg.md § Which builds — L8-20 (13 lines)
-- docs/architecture-ffmpeg.md § Pinning and download — L22-28 (7 lines)
-- docs/architecture-ffmpeg.md § Where it is installed — L30-38 (9 lines)
-- docs/architecture-ffmpeg.md § How it is found — L40-51 (12 lines)
-- docs/architecture-ffmpeg.md § Subtitle rendering and fonts — L53-57 (5 lines)
-- docs/architecture-ffmpeg.md § Licences and source code — L59-68 (10 lines)
-- docs/architecture-ffmpeg.md § Size — L70-71 (2 lines)
-- docs/architecture-ffmpeg.md § Tests — L73-75 (3 lines)
-- docs/architecture-ffmpeg.md § Risks — L77-79 (3 lines)
-- docs/architecture-frame.md § Title — L1-3 (3 lines)
-- docs/architecture-frame.md § Overview — L5-10 (6 lines)
-- docs/architecture-frame.md § Frame size (Change aspect) — L12-18 (7 lines)
-- docs/architecture-frame.md § Picture composition — L20-28 (9 lines)
-- docs/architecture-frame.md § Scale and Move keyframes — L30-37 (8 lines)
-- docs/architecture-frame.md § Filter graph — L39-42 (4 lines)
-- docs/architecture-frame.md § Export and 360 video — L44-46 (3 lines)
-- docs/architecture-frame.md § Preview — L48-51 (4 lines)
-- docs/architecture-frame.md § Project format — L53-56 (4 lines)
-- docs/architecture-frame.md § Non-functional targets (1.5.0) — L58-63 (6 lines)
-- docs/architecture-frame.md § Security — L65-68 (4 lines)
-- docs/architecture-frame.md § Dependencies — L70-71 (2 lines)
-- docs/architecture-frame.md § Visible edges (1.6.1) — L73-76 (4 lines)
-- docs/architecture-frame.md § Whole-video Scale and Move (1.6.1) — L78-82 (5 lines)
-- docs/architecture-frame.md § Tests — L84-88 (5 lines)
-- docs/architecture-frame.md § Risks — L90-95 (6 lines)
-- docs/architecture-frame.md § Decided: size limit of the frame — L97-98 (2 lines)
-- docs/architecture-hardware-export.md § Title — L1-3 (3 lines)
-- docs/architecture-hardware-export.md § When the hardware is used — L5-14 (10 lines)
-- docs/architecture-hardware-export.md § Supported hardware — L16-25 (10 lines)
-- docs/architecture-hardware-export.md § Encoder settings — L27-45 (19 lines)
-- docs/architecture-hardware-export.md § VA-API constant quality — L47-52 (6 lines)
-- docs/architecture-hardware-export.md § Background hardware check — L54-73 (20 lines)
-- docs/architecture-hardware-export.md § Export with hardware — L75-82 (8 lines)
-- docs/architecture-hardware-export.md § Output check — L84-92 (9 lines)
-- docs/architecture-hardware-export.md § Remembering failures — L94-97 (4 lines)
-- docs/architecture-hardware-export.md § Settings file — L99-102 (4 lines)
-- docs/architecture-hardware-export.md § Settings window — L104-106 (3 lines)
-- docs/architecture-hardware-export.md § Performance — L108-112 (5 lines)
-- docs/architecture-hardware-export.md § Testing — L114-118 (5 lines)
-- docs/architecture-hardware-export.md § Security — L120-123 (4 lines)
-- docs/architecture-hardware-export.md § Known limitations — L125-132 (8 lines)
-- docs/architecture-hardware-export.md § Risks — L134-142 (9 lines)
-- docs/architecture-icons.md § Title — L1-3 (3 lines)
-- docs/architecture-icons.md § Choice of set — L5-7 (3 lines)
-- docs/architecture-icons.md § How icons are drawn — L9-14 (6 lines)
-- docs/architecture-icons.md § Tests — L16-20 (5 lines)
-- docs/architecture-icons.md § Notices and packaging — L22-24 (3 lines)
-- docs/architecture-icons.md § Risks — L26-28 (3 lines)
-- docs/architecture-lut.md § Title — L1-3 (3 lines)
-- docs/architecture-lut.md § Overview — L5-6 (2 lines)
-- docs/architecture-lut.md § Reading the file (`src/lut.rs`, pure) — L8-16 (9 lines)
-- docs/architecture-lut.md § Storage and project format 8 — L18-23 (6 lines)
-- docs/architecture-lut.md § Missing or changed files — L25-28 (4 lines)
-- docs/architecture-lut.md § Where it is applied (per segment) — L30-38 (9 lines)
-- docs/architecture-lut.md § Export — L40-42 (3 lines)
-- docs/architecture-lut.md § Non-functional targets (1.6.0) — L44-47 (4 lines)
-- docs/architecture-lut.md § Tests — L49-52 (4 lines)
-- docs/architecture-lut.md § Risks — L54-58 (5 lines)
-- docs/architecture.md § Title — L1-3 (3 lines)
-- docs/architecture.md § Overview — L5-8 (4 lines)
-- docs/architecture.md § Sub-documents — L10-35 (26 lines)
-- docs/architecture.md § Components — L37-81 (45 lines; module dependencies link to code-architecture.md)
-- docs/architecture.md § Data flow — L83-101 (19 lines)
-- docs/architecture.md § Main technical decisions — L103-104 (2 lines)
-- docs/architecture.md § Projects — L106-107 (2 lines)
-- docs/architecture.md § Deviations from the 1.3.0 plan (as built) — L109-113 (5 lines)
-- docs/architecture.md § Non-functional targets — L115-137 (23 lines)
-- docs/architecture.md § Build, CI and versions — L139-140 (2 lines)
-- docs/architecture.md § Known risks — L142-158 (17 lines)
-- docs/architecture-media-pipeline.md § Title — L1-3 (3 lines)
-- docs/architecture-media-pipeline.md § Job queue: a fixed process limit — L5-24 (20 lines)
-- docs/architecture-media-pipeline.md § Preview — L26-31 (6 lines)
-- docs/architecture-media-pipeline.md § Export — L33-42 (10 lines)
-- docs/architecture-media-pipeline.md § Music mix — L44-48 (5 lines)
-- docs/architecture-media-pipeline.md § Proxies — L50-58 (9 lines)
-- docs/architecture-media-pipeline.md § Memory — L60-72 (13 lines)
-- docs/architecture-media-pipeline.md § Risks — L74-76 (3 lines)
-- docs/architecture-packaging.md § Title — L1-3 (3 lines)
-- docs/architecture-packaging.md § What is produced — L5-22 (18 lines)
-- docs/architecture-packaging.md § Windows — L24-29 (6 lines)
-- docs/architecture-packaging.md § macOS — L31-35 (5 lines)
-- docs/architecture-packaging.md § Linux — L37-47 (11 lines)
-- docs/architecture-packaging.md § Opening a project by double-click — L49-51 (3 lines)
-- docs/architecture-packaging.md § Icon — L53-57 (5 lines)
-- docs/architecture-packaging.md § Release pipeline — L59-68 (10 lines)
-- docs/architecture-packaging.md § CI runners and actions — L70-86 (17 lines)
-- docs/architecture-packaging.md § Bundled ffmpeg refresh (0.3.0) — L88-91 (4 lines)
-- docs/architecture-packaging.md § Two products (1.6.0) — L93-98 (6 lines)
-- docs/architecture-packaging.md § Splash files (1.6.2) — L100-103 (4 lines)
-- docs/architecture-packaging.md § Risks — L105-108 (4 lines)
-- docs/architecture-performance.md § Title — L1-3 (3 lines)
-- docs/architecture-performance.md § Detecting the computer — L5-17 (13 lines)
-- docs/architecture-performance.md § Start-up — L19-32 (14 lines)
-- docs/architecture-performance.md § Recommended settings — L34-50 (17 lines)
-- docs/architecture-performance.md § "How hard videolore works" — L52-81 (30 lines)
-- docs/architecture-performance.md § Preview quality — L83-90 (8 lines)
-- docs/architecture-performance.md § Responsiveness while busy — L92-93 (2 lines)
-- docs/architecture-performance.md § 0.3.0 performance review — L95-108 (14 lines)
-- docs/architecture-performance.md § Hardware video encoding (since 0.4.0) — L110-111 (2 lines)
-- docs/architecture-performance.md § Risks — L113-116 (4 lines)
-- docs/architecture-player.md § Title — L1-3 (3 lines)
-- docs/architecture-player.md § Overview — L5-6 (2 lines)
-- docs/architecture-player.md § Crate layout (workspace) — L8-12 (5 lines)
-- docs/architecture-player.md § How it works — L14-20 (7 lines)
-- docs/architecture-player.md § Start screen (1.6.2) — L22-25 (4 lines)
-- docs/architecture-player.md § Opening files — L27-30 (4 lines)
-- docs/architecture-player.md § Settings, files and privacy — L32-35 (4 lines)
-- docs/architecture-player.md § Installers — L37-40 (4 lines)
-- docs/architecture-player.md § Tests — L42-48 (7 lines)
-- docs/architecture-player.md § Risks — L50-54 (5 lines)
-- docs/architecture-projects.md § Title — L1-3 (3 lines)
-- docs/architecture-projects.md § Format versions — L5-25 (21 lines)
-- docs/architecture-projects.md § Loading and validation — L27-37 (11 lines)
-- docs/architecture-projects.md § Unsaved changes — L39-43 (5 lines)
-- docs/architecture-projects.md § What is not in a project — L45-46 (2 lines)
-- docs/architecture-security.md § Title — L1-3 (3 lines)
-- docs/architecture-security.md § Threat model — L5-10 (6 lines)
-- docs/architecture-security.md § Running ffmpeg — L12-20 (9 lines)
-- docs/architecture-security.md § Project and settings files — L22-31 (10 lines)
-- docs/architecture-security.md § Subtitles — L33-36 (4 lines)
-- docs/architecture-security.md § Network — L38-43 (6 lines)
-- docs/architecture-security.md § Temporary files (since 0.3.0) — L45-50 (6 lines)
-- docs/architecture-security.md § Other files written outside projects — L52-59 (8 lines)
-- docs/architecture-security.md § Text items and fonts (1.3.0) — L61-65 (5 lines)
-- docs/architecture-security.md § Spherical marker (1.3.0) — L67-69 (3 lines)
-- docs/architecture-security.md § Export dialog and clean audio (1.4.0) — L71-76 (6 lines)
-- docs/architecture-security.md § Frame effects (1.5.0) — L78-81 (4 lines)
-- docs/architecture-security.md § Apply LUT, player and assets (1.6.0) — L83-86 (4 lines)
-- docs/architecture-security.md § Changes in 1.6.1 — L88-91 (4 lines)
-- docs/architecture-security.md § Splash in both programs (1.6.2) — L93-97 (5 lines)
-- docs/architecture-security.md § Unsafe code — L99-100 (2 lines)
-- docs/architecture-security.md § Unsigned installers — L102-103 (2 lines)
-- docs/architecture-security.md § Supply chain — L105-111 (7 lines)
-- docs/architecture-splash.md § Title — L1-3 (3 lines)
-- docs/architecture-splash.md § Overview — L5-6 (2 lines)
-- docs/architecture-splash.md § Assets — L8-20 (13 lines)
-- docs/architecture-splash.md § Text rules — L22-24 (3 lines)
-- docs/architecture-splash.md § Layout — L26-30 (5 lines)
-- docs/architecture-splash.md § Behaviour — L32-39 (8 lines)
-- docs/architecture-splash.md § Tests — L41-46 (6 lines)
-- docs/architecture-splash.md § Risks — L48-52 (5 lines)
-- docs/architecture-subtitles.md § Title — L1-3 (3 lines)
-- docs/architecture-subtitles.md § Model — L5-11 (7 lines)
-- docs/architecture-subtitles.md § Styles and burn-in — L13-24 (12 lines)
-- docs/architecture-subtitles.md § Speech-to-text — L26-39 (14 lines)
-- docs/architecture-subtitles.md § Creating subtitles — L41-48 (8 lines)
-- docs/architecture-subtitles.md § Position on screen (1.2.0) — L50-60 (11 lines)
-- docs/architecture-subtitles.md § CPU requirements (since 0.2.1) — L62-71 (10 lines)
-- docs/architecture-subtitles.md § Subtitle quality levels (0.3.0) — L73-85 (13 lines)
-- docs/architecture-subtitles.md § Speech model download — L87-98 (12 lines)
-- docs/architecture-subtitles.md § Tests — L100-102 (3 lines)
-- docs/architecture-subtitles.md § Risks — L104-110 (7 lines)
-- docs/architecture-subtitle-tracks.md § Title — L1-3 (3 lines)
-- docs/architecture-subtitle-tracks.md § Finding subtitle tracks — L5-10 (6 lines)
-- docs/architecture-subtitle-tracks.md § Reading a track — L12-16 (5 lines)
-- docs/architecture-subtitle-tracks.md § Use the video's subtitles or recognise the speech — L18-21 (4 lines)
-- docs/architecture-subtitle-tracks.md § Matching words to the speech — L23-29 (7 lines)
-- docs/architecture-subtitle-tracks.md § When matching is not possible — L31-36 (6 lines)
-- docs/architecture-subtitle-tracks.md § Export as SRT — L38-41 (4 lines)
-- docs/architecture-subtitle-tracks.md § Tests — L43-47 (5 lines)
-- docs/architecture-subtitle-tracks.md § Risks — L49-52 (4 lines)
-- docs/architecture-text.md § Title — L1-3 (3 lines)
-- docs/architecture-text.md § Model — L5-8 (4 lines)
-- docs/architecture-text.md § Rendering — L10-14 (5 lines)
-- docs/architecture-text.md § Effects — L16-21 (6 lines)
-- docs/architecture-text.md § Fonts and safety — L23-27 (5 lines)
-- docs/architecture-text.md § Box, best fit and place (1.4.0) — L29-37 (9 lines)
-- docs/architecture-text.md § Tests — L39-43 (5 lines)
-- docs/architecture-text.md § Risks — L45-50 (6 lines)
-- docs/architecture-text.md § Deviations (1.3.0) — L52-53 (2 lines)
-- docs/architecture-ui.md § Title — L1-3 (3 lines)
-- docs/architecture-ui.md § Window structure — L5-12 (8 lines)
-- docs/architecture-ui.md § Resizable sections — L14-21 (8 lines)
-- docs/architecture-ui.md § Everything reachable — L23-28 (6 lines)
-- docs/architecture-ui.md § Menus, toolbar and shortcuts — L30-38 (9 lines)
-- docs/architecture-ui.md § Status bar — L40-41 (2 lines)
-- docs/architecture-ui.md § Effects and popups — L43-48 (6 lines)
-- docs/architecture-ui.md § Timeline markers — L50-54 (5 lines)
-- docs/architecture-ui.md § Time ruler (1.2.0) — L56-59 (4 lines)
-- docs/architecture-ui.md § Recent projects — L61-62 (2 lines)
-- docs/architecture-ui.md § Drag and drop — L64-66 (3 lines)
-- docs/architecture-ui.md § Settings file — L68-69 (2 lines)
-- docs/architecture-ui.md § Testing the interface — L71-72 (2 lines)
-- docs/architecture-ui.md § Performance — L74-77 (4 lines)
-- docs/architecture-ui.md § Selection (1.3.0) — L79-82 (4 lines)
-- docs/architecture-ui.md § Add Text popup (1.3.0) — L84-86 (3 lines)
-- docs/architecture-ui.md § Risks — L88-91 (4 lines)
-- docs/architecture-ui.md § Icons, splash and the Apply LUT popup (1.6.0) — L93-96 (4 lines)
+## Human docs index
+- The paragraph index of docs/architecture*.md is in ai-docs/architecture-doc-index.md (sub-document, read with grep -n, then sed -n 'A,Bp' on the docs file).

@@ -36,6 +36,7 @@ Sub-document of [business index](business.md). Compacted in 1.6.3 RELEASE (from 
 - 1.1.0: mins Media/Effects 160 px, Preview/Timeline 240 px, rows 100 px; recent = 10; overlap chooser; fade marker click opens popup; popups non-modal; layout persisted + Reset.
 - 0.3.0 and 0.4.x: see D15-D28 above (Settings wording: banned technical words in main section, case-insensitive whole words).
 - 1.6.2/1.6.3 length goal: summary body 129 words vs 1.6.0 52 words (2.5x, inside 2-3x goal; applied to editor only).
+- 2.0.1 (implemented, STATUS): version 2.0.1 = module-cycle refactor (user's choice), not roadmap batch 1 "verify the release"; batch 1 items are Future work and move to a later version. REQ-151..153 only (no change for users; cycle gone; cycle check for maintainers), all implemented. Refactor adds no migration, notice, format bump or setting. Tests: existing REQ-057/059 tests must pass unchanged. Roadmap item "Break the module cycles" (Priority 11) is removed by the Documenter after STATUS.
 
 ## Rejected or considered (do not re-propose without new reason)
 - Per-version splash pictures (copy each release); one summary for both programs; splash once per version; blocking splash; splash in player in 1.6.0.

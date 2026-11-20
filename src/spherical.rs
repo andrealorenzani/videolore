@@ -233,7 +233,7 @@ pub fn mark_equirectangular(path: &Path) -> io::Result<bool> {
     };
     let tmp = path.with_extension("spherical-partial");
     let result = (|| -> io::Result<()> {
-        let mut out = crate::scratch::create_private_file(&tmp)?;
+        let mut out = crate::base::private::create_private_file(&tmp)?;
         f.seek(SeekFrom::Start(0))?;
         io::copy(&mut (&mut f).take(moov_at), &mut out)?;
         out.write_all(&new_moov)?;

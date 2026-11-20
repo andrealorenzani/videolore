@@ -8,6 +8,7 @@
 //! before use. Saving is atomic (temporary file, fsync, rename). Schema 1 files (videolore
 //! 0.1.x) are migrated in memory; files from a newer version are refused untouched.
 
+use crate::base::io::read_limited;
 use crate::camera::CameraPaths;
 use crate::media::{MediaFormat, MediaId, MediaItem};
 use crate::music::{Mix, MusicTrack};
@@ -17,7 +18,6 @@ use crate::time::Micros;
 use crate::timeline::Timeline;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 mod v9;
@@ -216,8 +216,7 @@ pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
 }
 
 fn project_dir(path: &Path) -> PathBuf {
-    let abs = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-    abs.parent().map(Path::to_path_buf).unwrap_or_default()
+    crate::base::io::parent_dir(path)
 }
 
 /// Serialises the project for `path` (relative paths are computed against its folder).
@@ -251,30 +250,7 @@ pub fn to_json(project: &Project, path: &Path) -> Result<String, ProjectError> {
 
 /// Atomically writes `contents` to `path`: temp file in the same folder, fsync, rename.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), ProjectError> {
-    let dir = project_dir(path);
-    let name = path
-        .file_name()
-        .ok_or_else(|| ProjectError::Io("invalid file name".into()))?;
-    let mut tmp_name = std::ffi::OsString::from(".");
-    tmp_name.push(name);
-    tmp_name.push(format!(".tmp-{}", std::process::id()));
-    let tmp = dir.join(tmp_name);
-    let result = (|| {
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(contents)?;
-        f.sync_all()?;
-        drop(f);
-        std::fs::rename(&tmp, path)?;
-        #[cfg(unix)]
-        if let Ok(d) = std::fs::File::open(&dir) {
-            let _ = d.sync_all();
-        }
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result.map_err(io_err)
+    crate::base::io::write_atomic(path, contents).map_err(io_err)
 }
 
 /// Saves the project to `path`.
@@ -525,9 +501,9 @@ fn validate_luts(tl: &mut crate::timeline::Timeline, notes: &mut Vec<String>) {
     }
 }
 
-fn clamp_pos(p: &mut crate::subtitles::Pos) {
-    p.x = p.x.min(crate::subtitles::POS_MAX);
-    p.y = p.y.min(crate::subtitles::POS_MAX);
+fn clamp_pos(p: &mut crate::base::pos::Pos) {
+    p.x = p.x.min(crate::base::pos::POS_MAX);
+    p.y = p.y.min(crate::base::pos::POS_MAX);
 }
 
 fn validate_music(music: &mut MusicTrack, media: &[MediaItem]) -> Result<(), ProjectError> {
@@ -610,35 +586,6 @@ fn validate_subtitles(subs: &mut Subtitles, media: &[MediaItem]) -> Result<(), P
     Ok(())
 }
 
-/// Reads a regular file of at most `limit` bytes. Anything else (a folder, a pipe, a
-/// device) is refused without blocking; a file that grows while being read is refused too.
-/// Errors of kind `InvalidData` mean "too large", `InvalidInput` "not a regular file".
-pub fn read_limited(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
-    use std::io::{Error, ErrorKind};
-    let not_regular = || Error::new(ErrorKind::InvalidInput, "not a regular file");
-    if !std::fs::metadata(path)?.is_file() {
-        return Err(not_regular());
-    }
-    let mut o = std::fs::OpenOptions::new();
-    o.read(true);
-    // Non-blocking open: a pipe swapped in after the check above cannot hang the caller.
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        o.custom_flags(0o4000); // O_NONBLOCK
-    }
-    #[cfg(target_os = "macos")]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        o.custom_flags(0x0004); // O_NONBLOCK
-    }
-    let f = o.open(path)?;
-    if !f.metadata()?.is_file() {
-        return Err(not_regular());
-    }
-    crate::settings::read_capped(f, limit)
-}
-
 /// Loads a project file (a regular file of at most 16 MiB).
 pub fn load(path: &Path) -> Result<(Project, Vec<String>), ProjectError> {
     let bytes = read_limited(path, MAX_PROJECT_BYTES).map_err(|e| match e.kind() {
@@ -687,7 +634,7 @@ pub(crate) mod tests {
         v
     }
 
-    // covers: REQ-057
+    // covers: REQ-057, REQ-151, REQ-152
     #[test]
     fn hostile_project_files_are_refused_or_contained() {
         let dir = tempfile::tempdir().unwrap();
@@ -1120,7 +1067,7 @@ pub(crate) mod tests {
         q.timeline.set_clip_volume(first, 30, true).unwrap();
         let line = q.subtitles.lines[0].id;
         q.subtitles
-            .set_position(&[line], Some(crate::subtitles::Pos { x: 100, y: 200 }))
+            .set_position(&[line], Some(crate::base::pos::Pos { x: 100, y: 200 }))
             .unwrap();
         q.media[0].format.subtitle_tracks = Some(vec![]);
         let file = dir.path().join("new.vlproj");
@@ -1332,7 +1279,8 @@ pub(crate) mod tests {
     // covers: REQ-113, REQ-123
     #[test]
     fn text_items_and_anchors_round_trip_and_hostile_values_are_refused() {
-        use crate::text::{Anchor360, TextId, TextItem};
+        use crate::base::pos::Anchor360;
+        use crate::text::{TextId, TextItem};
         let dir = tempfile::tempdir().unwrap();
         let mut q = v4_sample(dir.path());
         let id = q.texts.new_id();
@@ -1427,7 +1375,8 @@ pub(crate) mod tests {
     // covers: REQ-123
     #[test]
     fn a_project_of_1_3_0_opens_with_its_texts_migrated_and_1_4_0_data_round_trips() {
-        use crate::text::{Anchor360, TextId, TextItem};
+        use crate::base::pos::Anchor360;
+        use crate::text::{TextId, TextItem};
         let dir = tempfile::tempdir().unwrap();
         let mut q = v4_sample(dir.path());
         let id = q.texts.new_id();
@@ -1571,7 +1520,7 @@ pub(crate) mod tests {
     }
 
     // covers: REQ-132
-    // covers: REQ-057
+    // covers: REQ-057, REQ-151, REQ-152
     #[test]
     fn damaged_frame_values_are_corrected_without_a_crash() {
         let dir = tempfile::tempdir().unwrap();

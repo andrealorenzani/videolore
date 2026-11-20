@@ -138,7 +138,7 @@ impl SubtitleTrack {
     /// How the track is named to the user: language name (or code) and title.
     pub fn label(&self) -> String {
         let lang = self.language.as_deref().filter(|l| *l != "und").map(|l| {
-            crate::stt::language_name(l)
+            crate::base::language::language_name(l)
                 .map(str::to_string)
                 .unwrap_or_else(|| l.to_string())
         });

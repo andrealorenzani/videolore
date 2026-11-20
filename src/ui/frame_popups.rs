@@ -6,8 +6,8 @@
 
 use super::{UiCache, button};
 use crate::app::{AppState, Command, EffectKind, FrameDrag, FrameFx, FrameValue, Target};
+use crate::base::pos::{POS_MAX, Pos};
 use crate::frame::{Fill, Fit, MAX_SCALE, MIN_SCALE, Rgb, Scale, Shape};
-use crate::subtitles::{POS_MAX, Pos};
 use crate::time::Micros;
 use crate::timeline::FrameTarget;
 use eframe::egui::{self, Color32, Sense, Stroke, Ui, pos2, vec2};

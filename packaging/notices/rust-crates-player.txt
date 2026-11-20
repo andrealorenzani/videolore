@@ -1261,7 +1261,7 @@ Apache License
 GNU General Public License v3.0 only (GPL-3.0-only)
 Used by:
   videolore (this program)
-  videolore-player 1.6.3
+  videolore-player 2.0.1
 
 GNU GENERAL PUBLIC LICENSE
 Version 3, 29 June 2007

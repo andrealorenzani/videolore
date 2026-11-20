@@ -41,6 +41,11 @@ Since 0.3.0.
 - REQ-058 (implemented): Speech recognition files are downloaded only from fixed, built-in secure (HTTPS) addresses and checked against their known fingerprint (SHA-256) before use; partial or wrong files are deleted. There is no other network access, no telemetry and no update check. Acceptance: tests for a wrong fingerprint, an interrupted download and a refused non-HTTPS address.
 - REQ-059 (implemented): Temporary files (extracted audio, partial exports, partial preview copies, partial downloads) can be read only by the user, are removed when the work finishes or is cancelled, and leftovers from a crash are cleaned up at the next start. Acceptance: none remain after a cancel or after a simulated crash and restart; on Linux and macOS they are readable only by the user.
 
+### Code structure (2.0.1)
+- REQ-151 (implemented): The shared helpers (capped reading of project, settings and LUT files, atomic writing, private work folders, subtitle positions, language names, cache and speech-model file names) are reorganised into one common module. This changes no behaviour: the same projects, settings and subtitle files open with the same result, the same file names are used and the same output is written for the same input. Acceptance: every existing test passes with its expected result unchanged; a 2.0.0 project, settings file and cache folder work in 2.0.1 with no migration and no notice.
+- REQ-152 (implemented): Damaged-file and temporary-file rules stay as they are today: a damaged or oversized file is refused or replaced as in REQ-057, and temporary files are private and cleaned up as in REQ-059. Acceptance: the existing REQ-057 and REQ-059 tests pass unchanged.
+- REQ-153 (implemented): For maintainers, the program's modules have no dependency cycle; the shared helpers are used from one common module and do not depend back on the modules that use them. Acceptance: no module cycle remains (see [code architecture](code-architecture.md#cycles)), and an automatic check fails when a new cycle is added.
+
 ## Quality goals
 These are engineering targets (QG-01 to QG-04 since 0.3.0, QG-05 since 0.4.0); they are measured and reported for each development but have no feature tests. The numbers are assumptions that can be adjusted after the first measurements.
 - **QG-01 Performance review**: every choice (number of processes and threads, speech engine and files, each library, preview and export settings) is reviewed and justified. No slowdown: at the recommended settings, export time and Fast subtitle time are at most 5% above 0.2.2 on the same computer, and start-up (without the first-start detection) is at most 0.5 s slower.
@@ -82,6 +87,7 @@ These are engineering targets (QG-01 to QG-04 since 0.3.0, QG-05 since 0.4.0); t
 - Hardware video encoding for export was not built in 0.3.0 (it cannot be verified on the automatic build machines, needs tuning per graphics vendor, and some driver faults produce bad video without an error). In 0.4.0 it is built for every vendor, with an automatic fallback and an output check that address those risks, and is verified by hand (QG-05); see [Export](business-export.md#faster-export-040).
 - Confirmed by Andrea for 0.4.0: Settings is a window inside videolore; Light limits each background job rather than setting a total budget; the three speech recognition levels and their recommendation thresholds stay as described above.
 - Temporary files live in videolore's own private cache folder instead of the system temporary folder.
+- (2.0.1) The code reorganisation for the module cycles is internal: no file format, setting, file name or output changes (REQ-151 to REQ-153).
 
 ## Known limitations
 - Speed and memory use of the larger speech recognition files, and the thresholds for recommending them, are estimates to be confirmed by measurement (assumption).

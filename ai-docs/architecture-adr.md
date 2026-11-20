@@ -10,6 +10,7 @@ Status: "built" unless marked. Superseded ADRs keep one line with the replacemen
 - packaging, CI, supply chain: ADR-011, 013, 014, 024..027, 034, 036, 105..108, 116..117, 126
 - machine, settings, effort, safety: ADR-028, 029, 031, 040, 044, 037..040 (hardware)
 - hardware export: ADR-032 (superseded), 037..040
+- code structure (2.0.1): ADR-136..141 (base module, cycle breaks, cycle check)
 - interface: ADR-041..048, 090..091, 113..114, 118..119
 - effects, text, timeline: ADR-049..052, 058, 066..068, 073..075, 080..089, 093..104, 110, 122..125
 - 360 video: ADR-059..065, 069..072, 077..079
@@ -503,3 +504,11 @@ ADR-107 (1.6.0) player: no settings file (recommended levels in memory), writes 
 ADR-109 (1.6.0) LUT reader `src/lut.rs`: .cube 3D (2..=65) and 1D (2..=4096, sampled to 3D 33), 16 MiB cap, finite, clamp 0..1, DOMAIN 0..1 only; no crate.
 ADR-110 (1.6.0) LUT in graph: normalised cube in Work folder (fixed names), `format=gbrp,lut3d=...:interp=tetrahedral,format=yuv420p`; per segment: picture scale -> whole LUT -> clip LUT -> overlay on background -> fades; 360 after v360; any LUT re-encodes.
 ADR-112 (1.6.0) missing file: project opens, LUT inactive, export stops before output naming the file; changed content re-validated at choose and export; sha256 decides preview redraw.
+
+## Code structure (2.0.1)
+ADR-136 (2.0.1) shared helpers in one module `src/base/` (mod, io, private, pos, names, language); base imports no crate module (no `crate::` path) and only std and locked external crates. Rejected: one `fsio` file (no place for positions and names); a separate crate (fifth workspace member: build, packaging, notice and CI touchpoints, cf. ADR-105/116); traits or callbacks to invert the dependencies (more code, same result). [TECHNICAL]
+ADR-137 (2.0.1) cycle breaks: move the shared item, not the caller. project<->settings via base::io; stt<->media via base::language (media keeps MediaId and display_name; stt keeps valid_language use); stt<->scratch and scratch<->proxy via base::private and base::names (scratch keeps default_root and cleanup_stale only); lut<->project via base::io; subtitles<->timeline and subtitles<->text and frame and camera via base::pos; ass<->text via ass.rs (ADR-138); app<->ui via base::pos (ADR-139). Simulation: no strongly connected component left. [TECHNICAL]
+ADR-138 (2.0.1) ASS items (`AssEvent`, `font_px`, `BASE_HEIGHT`) move to `src/ass.rs`, not to base: they are rendering rules; text keeps producing events via ass. Rejected: base (rendering in the lowest layer); closures passed from text to ass. [TECHNICAL]
+ADR-139 (2.0.1) `align_h`, `align_v` (pure Pos helpers) move from ui/boxes.rs to base::pos; app must not depend on ui (app/sphere.rs had the only app -> ui edge). Rejected: move the sphere alignment into ui (app logic would leave the model layer). [TECHNICAL]
+ADR-140 (2.0.1) automatic check: `tests/module_cycles.rs` in `cargo test` (CI and coverage), parses src/ with `syn` (dev-dependency, already in Cargo.lock as 2.0.119, MIT OR Apache-2.0), top-level module grain, production code only (comments and `#[cfg(test)]` items skipped, test files skipped by name), fails with the cycle path; base must have no outgoing edge; self-tests with in-memory sources; fails on `#[path]` attributes (silent gaps). Annotated `// covers: REQ-153`. Rejected: grep in scripts/ (not in cargo test; doc-comment links gave false cycles in the scan); external graph tool (extra install, not in CI). [TECHNICAL]
+ADR-141 (2.0.1) no re-exports: callers take the new paths (player included); a shim would keep two paths and hide the edge from the check. Public paths of the player and app are `base::*` for moved items, `scratch::default_root` and `scratch::cleanup_stale` unchanged. Rejected: `pub use` shims in subtitles, text, project, scratch (less churn, but the check would see only the shims). [TECHNICAL]

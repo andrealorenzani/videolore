@@ -15,11 +15,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+use videolore::base::pos::Pos;
 use videolore::camera::Camera;
 use videolore::ffmpeg::{BinSource, CmdOutput, FfVersion, FfmpegInfo, Process, Runner};
 use videolore::machine::Machine;
 use videolore::preview::NullSink;
-use videolore::subtitles::Pos;
 use videolore::time::Micros;
 
 const VIDEO: &str = r#"{"streams":[

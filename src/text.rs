@@ -7,8 +7,9 @@
 //! here is pure: the model, its validation (projects are untrusted input) and the ASS
 //! events that burn the text in, used by the preview and the export alike.
 
-use crate::ass;
-use crate::subtitles::{MAX_TEXT, POS_MAX, Pos, SIZE_NORMAL};
+use crate::ass::{self, AssEvent, font_px};
+use crate::base::pos::{Anchor360, POS_MAX, Pos};
+use crate::subtitles::{MAX_TEXT, SIZE_NORMAL};
 use crate::time::Micros;
 use serde::{Deserialize, Serialize};
 
@@ -41,8 +42,6 @@ pub const MAX_LINES: usize = 200;
 pub const MAX_FONT: usize = 100;
 /// Text items of a project.
 pub const MAX_ITEMS: usize = 5000;
-/// Text height at 100%: 5% of the picture height (assumption of REQ-111).
-pub const BASE_HEIGHT: f64 = 0.05;
 /// Where a new text starts: centred, in the lower third.
 pub const DEFAULT_PLACE: Pos = Pos { x: 5000, y: 8300 };
 /// The font used when none is chosen (the bundled subtitle font).
@@ -101,32 +100,6 @@ impl TextEffects {
             || self.fade_out.is_some()
             || self.blink.is_some()
             || self.slide.is_some()
-    }
-}
-
-/// A point of the 360° world a text or subtitle line is fixed to (REQ-112), in
-/// hundredths of a degree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Anchor360 {
-    pub yaw_cd: i32,
-    pub pitch_cd: i32,
-    /// Height as an angle. For a text item: the height of its box. For a subtitle line:
-    /// the height of its text at 100% (the line's own size is a factor of it). Files of
-    /// 1.3.0 and before call it `size_cd`.
-    #[serde(alias = "size_cd")]
-    pub height_cd: u32,
-    /// Width the text wraps at (the width of the box), as an angle. Files of 1.3.0 and
-    /// before call it `wrap_cd`.
-    #[serde(alias = "wrap_cd")]
-    pub width_cd: u32,
-}
-
-impl Anchor360 {
-    pub fn is_valid(&self) -> bool {
-        self.yaw_cd.abs() <= 18_000
-            && self.pitch_cd.abs() <= 9_000
-            && (1..=18_000).contains(&self.height_cd)
-            && (1..=36_000).contains(&self.width_cd)
     }
 }
 
@@ -414,24 +387,6 @@ pub fn alpha_at(item: &TextItem, t: Micros) -> f64 {
         return 0.0;
     }
     envelope(item, t)
-}
-
-/// One ASS dialogue of a text: times on the timeline, tag block (without braces) and the
-/// escaped text.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AssEvent {
-    pub start: Micros,
-    pub end: Micros,
-    pub tags: String,
-    pub text: String,
-    /// Left and right margin of the event (sets the wrap width), when it has its own.
-    pub margins: Option<(u32, u32)>,
-}
-
-/// Font size in pixels of an item on a picture `height` pixels high.
-pub fn font_px(height: u32, size: u16) -> u32 {
-    ((f64::from(height) * BASE_HEIGHT * f64::from(size) / f64::from(SIZE_NORMAL)).round() as u32)
-        .max(6)
 }
 
 /// The box of a text on a flat `width` x `height` picture, in pixels: its width and the

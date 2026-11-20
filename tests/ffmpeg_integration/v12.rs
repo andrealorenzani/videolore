@@ -5,8 +5,8 @@
 //! positions, SRT export, subtitle tracks inside videos and their alignment.
 
 use super::*;
+use videolore::base::pos::Pos;
 use videolore::stt::{Mode, RangeJob, SttJob};
-use videolore::subtitles::Pos;
 
 const SRT: &str = "1\n00:00:00,500 --> 00:00:01,200\n<i>Hello</i> there\n\n\
                    2\n00:00:01,400 --> 00:00:01,900\nSecond line\n";

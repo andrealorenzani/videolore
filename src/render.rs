@@ -240,7 +240,7 @@ fn anchored_doc(
     let (w, h) = (m.format.width.max(2), m.format.height.max(1));
     let win = [(start, end)];
     let end_all = project.timeline.duration();
-    let mut events: Vec<crate::text::AssEvent> = Vec::new();
+    let mut events: Vec<crate::ass::AssEvent> = Vec::new();
     for (t, size) in anchored_line_items(project, m, start, end) {
         let px = t.anchor.map(|a| crate::text::line_equirect_px(&a, h, size));
         events.extend(crate::text::equirect_events_px(
@@ -1569,7 +1569,7 @@ pub fn preview_audio_args(
 pub type ShownSubtitle = (
     String,
     Option<usize>,
-    Option<crate::subtitles::Pos>,
+    Option<crate::base::pos::Pos>,
     Option<u16>,
 );
 
@@ -1591,7 +1591,7 @@ pub struct FrameKey {
     /// Text items on screen, with the frame index since their start when they have effects.
     pub texts: Vec<(crate::text::TextItem, i64)>,
     /// Where the lines on screen are fixed on the sphere.
-    pub line_anchors: Vec<Option<crate::text::Anchor360>>,
+    pub line_anchors: Vec<Option<crate::base::pos::Anchor360>>,
     /// Change aspect and the picture's scale and place at this position, in millionths
     /// (1.5.0); `None` with no frame effect.
     pub placement: Option<FramePlacement>,
@@ -2160,7 +2160,7 @@ pub(crate) mod tests {
         let mut p = project(&[(4, 1280, 720, 30)]);
         let id = p.texts.new_id();
         let mut t = TextItem::new(id, "Title".into(), s(2));
-        t.place = crate::subtitles::Pos { x: 1000, y: 1000 };
+        t.place = crate::base::pos::Pos { x: 1000, y: 1000 };
         p.texts.add(t).unwrap();
         let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
         let Plan::Reencode { graph, .. } = &plan else {
@@ -2648,7 +2648,8 @@ pub(crate) mod tests {
     // covers: REQ-103
     #[test]
     fn a_360_video_keeps_the_sphere_and_refuses_a_mix_with_flat_clips() {
-        use crate::text::{Anchor360, TextId, TextItem};
+        use crate::base::pos::Anchor360;
+        use crate::text::{TextId, TextItem};
         let mut p = project(&[(2, 3840, 1920, 30), (2, 3840, 1920, 30)]);
         p.media[0].format.spherical = Some(true);
         p.media[1].format.spherical = Some(true);
@@ -2728,7 +2729,7 @@ pub(crate) mod tests {
     // covers: REQ-112, REQ-103
     #[test]
     fn a_line_fixed_to_the_sphere_is_burned_on_the_equirect_picture_and_not_on_the_flat_one() {
-        use crate::text::Anchor360;
+        use crate::base::pos::Anchor360;
         let mut p = sphere_project();
         let tl = p.timeline.clone();
         let a = p
@@ -2785,7 +2786,8 @@ pub(crate) mod tests {
     // covers: REQ-112
     #[test]
     fn a_text_fixed_to_the_sphere_is_shown_flat_only_on_flat_clips() {
-        use crate::text::{Anchor360, TextItem};
+        use crate::base::pos::Anchor360;
+        use crate::text::TextItem;
         // a 360 clip (0-4 s) then a flat one (4-7 s); the text lives from 2 s to 6 s
         let mut p = sphere_project();
         let id = p.texts.new_id();

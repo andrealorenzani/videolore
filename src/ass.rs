@@ -8,7 +8,8 @@
 //! actual frame. Text is escaped so that a subtitle can never inject ASS override tags:
 //! only this module emits `{\k..}` tags.
 
-use crate::subtitles::{POS_MAX, Pos, Preset, ShownLine, Word};
+use crate::base::pos::{POS_MAX, Pos};
+use crate::subtitles::{Preset, ShownLine, Word};
 use crate::time::Micros;
 
 /// File name of the subtitles inside the ffmpeg working folder.
@@ -197,10 +198,32 @@ pub fn document(
     document_with_texts(lines, preset, width, height, shift, &[])
 }
 
+/// Text height at 100%: 5% of the picture height (assumption of REQ-111).
+pub const BASE_HEIGHT: f64 = 0.05;
+
+/// One ASS dialogue of a text: times on the timeline, tag block (without braces) and the
+/// escaped text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssEvent {
+    pub start: Micros,
+    pub end: Micros,
+    pub tags: String,
+    pub text: String,
+    /// Left and right margin of the event (sets the wrap width), when it has its own.
+    pub margins: Option<(u32, u32)>,
+}
+
+/// Font size in pixels of an item on a picture `height` pixels high.
+pub fn font_px(height: u32, size: u16) -> u32 {
+    ((f64::from(height) * BASE_HEIGHT * f64::from(size) / f64::from(crate::subtitles::SIZE_NORMAL))
+        .round() as u32)
+        .max(6)
+}
+
 /// Style of the text items (REQ-111): white, black outline, centred; everything else
 /// comes from the tags of each event.
 fn text_style(width: u32, height: u32) -> String {
-    let size = crate::text::font_px(height, crate::subtitles::SIZE_NORMAL);
+    let size = font_px(height, crate::subtitles::SIZE_NORMAL);
     format!(
         "Style: Text,Noto Sans,{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,\
          100,100,0,0,1,{},0,5,{ml},{ml},0,1\n",
@@ -216,7 +239,7 @@ pub fn document_with_texts(
     width: u32,
     height: u32,
     shift: Micros,
-    texts: &[crate::text::AssEvent],
+    texts: &[AssEvent],
 ) -> String {
     let mut s = format!(
         "[Script Info]\nScriptType: v4.00+\nPlayResX: {width}\nPlayResY: {height}\n\

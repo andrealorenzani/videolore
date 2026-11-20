@@ -1330,7 +1330,7 @@ fn look_around_and_resize_stay_responsive_on_big_spheres_while_exporting_and_mat
         app.dispatch(
             Command::SetLinePositions {
                 ids: vec![line],
-                pos: Some(crate::subtitles::Pos { x: 5000, y: 5000 }),
+                pos: Some(crate::base::pos::Pos { x: 5000, y: 5000 }),
             },
             now,
         )

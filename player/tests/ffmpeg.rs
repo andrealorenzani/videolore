@@ -293,7 +293,7 @@ fn a_chosen_embedded_track_and_an_opened_srt_show_their_lines_on_the_picture() {
     p.dispatch(
         Command::PlaceLines {
             ids: vec![id],
-            pos: videolore::subtitles::Pos { x: 2_000, y: 1_500 },
+            pos: videolore::base::pos::Pos { x: 2_000, y: 1_500 },
         },
         Instant::now(),
     );

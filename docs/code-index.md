@@ -26,7 +26,7 @@ functions (`file:symbol`), the tests and the requirements they cover (`REQ-NNN`,
 - Unsaved changes, open/save — `src/app.rs:PendingAction`, `save_interactive`, `open_now`, `load_project`; `src/project.rs:ProjectDoc`
 - Background jobs list — `src/app.rs:AppState::background_jobs`, `Job`
 - Process cap and priorities — `src/jobs.rs:Scheduler`, `Limited`, `Priority`, `Pool` (REQ-033, 050)
-- Private work folders — `src/scratch.rs:Work`, `create_private_file`, `publish`, `cleanup_stale` (REQ-059)
+- Private work folders — `src/base/private.rs:Work`, `create_private_file`, `publish`; `src/scratch.rs:cleanup_stale`, `default_root` (REQ-059, REQ-151, REQ-152)
 
 ## Media and project model
 
@@ -34,7 +34,7 @@ functions (`file:symbol`), the tests and the requirements they cover (`REQ-NNN`,
 - Media and probing — `src/media.rs:MediaItem`, `MediaFormat`, `SubtitleTrack`, `parse_ffprobe`, `probe`; `src/app.rs:AppState::import`, `probe_pool` (REQ-002, 057, 086, 100)
 - Timeline — `src/timeline.rs:Timeline`, `Clip`, `ClipFrames`, `ClipLut`, `FrameTarget`, `EditError` (REQ-005..011, 083, 084, 094, 114, 124, 129..132, 135, 147, 148)
 - Music and mix — `src/music.rs:MusicTrack`, `Mix`, `gain`, `clip_gain` (REQ-019, 020, 043, 084)
-- Project file — `src/project.rs:Project`, `Edit`, `save`, `load`, `from_json`, `read_limited`; `src/project/v9.rs` (format 8 → 9); tests `project::tests` (REQ-003, 016, 029, 057, 094, 105, 113, 123, 132, 136, 137, 149)
+- Project file — `src/project.rs:Project`, `Edit`, `save`, `load`, `from_json`; `src/base/io.rs:read_limited`, `write_atomic`; `src/project/v9.rs` (format 8 → 9); tests `project::tests` (REQ-003, 016, 029, 057, 094, 105, 113, 123, 132, 136, 137, 149)
 - Proxies — `src/proxy.rs:wants_proxy`, `ProxyCache`, `ProxyWorker`, `proxy_args`; `src/app.rs:AppState::maybe_proxy` (REQ-033, 038, 104)
 
 ## Effects
@@ -52,7 +52,7 @@ functions (`file:symbol`), the tests and the requirements they cover (`REQ-NNN`,
 - Generation (speech) — `src/stt.rs:SttJob`, `start`, `run`, `ModelStore`, `builtin_models`, `install_model`, `whisper_full_error`; `src/app/subs_create.rs` (REQ-014, 015, 052..054, 058, 085, 087, 095)
 - Video's own tracks and word matching — `src/stt.rs:read_track`; `src/align.rs:align`, `spread`; `src/srt.rs:parse`, `write` (REQ-057, 087, 088, 095)
 - ASS writing — `src/ass.rs:document`, `document_with_texts`, `font_size`, `line_tag` (REQ-017, 089, 097)
-- Text items — `src/text.rs:TextItem`, `Texts`, `TextEffects`, `Anchor360`, `events`, `fit_px`; `src/app/texts.rs`; `src/ui/text_popup.rs`; tests `src/app/text_tests.rs`, `src/ui/text_ux_tests.rs` (REQ-106..113, 115..118, 122, 123)
+- Text items — `src/text.rs:TextItem`, `Texts`, `TextEffects`, `events`, `fit_px`; `src/base/pos.rs:Anchor360`; `src/app/texts.rs`; `src/ui/text_popup.rs`; tests `src/app/text_tests.rs`, `src/ui/text_ux_tests.rs` (REQ-106..113, 115..118, 122, 123)
 - Selection — `src/selection.rs:Selection`, `ObjRef` (REQ-090..092)
 - Boxes and positions on the picture — `src/ui/boxes.rs`, `src/ui/placement.rs`, `src/ui/picture.rs` (REQ-096..098, 116, 117, 146)
 - Fonts — `src/fonts.rs:Fonts`, `families_of` (REQ-108)

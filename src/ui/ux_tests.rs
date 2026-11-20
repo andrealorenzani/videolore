@@ -1201,7 +1201,7 @@ fn a_subtitle_dragged_in_the_preview_moves_and_stays_inside_the_picture() {
     app.dispatch(
         Command::SetLinePositions {
             ids: vec![other],
-            pos: Some(crate::subtitles::Pos { x: 9000, y: 1000 }),
+            pos: Some(crate::base::pos::Pos { x: 9000, y: 1000 }),
         },
         now,
     )
@@ -1236,7 +1236,7 @@ fn a_subtitle_dragged_in_the_preview_moves_and_stays_inside_the_picture() {
     // (e) the other line did not move
     assert_eq!(
         h.app.project.subtitles.get(other).unwrap().position,
-        Some(crate::subtitles::Pos { x: 9000, y: 1000 })
+        Some(crate::base::pos::Pos { x: 9000, y: 1000 })
     );
     // (c) undo puts it back at the style's place
     h.key(Key::Z, Modifiers::COMMAND);

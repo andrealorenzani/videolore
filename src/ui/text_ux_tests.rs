@@ -363,7 +363,7 @@ fn shift_click_on_boxes_selects_several_a_drag_keeps_them_and_an_empty_click_cle
     app.dispatch(
         Command::SetTextBoxes {
             ids: vec![b],
-            place: crate::subtitles::Pos { x: 5000, y: 3000 },
+            place: crate::base::pos::Pos { x: 5000, y: 3000 },
         },
         now,
     )

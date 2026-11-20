@@ -17,14 +17,12 @@
 //! folders. Folders whose lock is held belong to another running videolore and are left
 //! alone.
 
-use std::fs::{File, OpenOptions};
-use std::io::{self, Write};
+use crate::base::io::read_limited;
+use crate::base::names::is_partial_name;
+use crate::base::private::{LOCK_FILE, TARGETS_FILE};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
-/// Name of the lock file inside a work folder.
-pub const LOCK_FILE: &str = "lock";
-/// Name of the list of outside partial files.
-pub const TARGETS_FILE: &str = "targets";
 /// Longest `targets` file read during cleanup.
 const MAX_TARGETS_BYTES: u64 = 64 * 1024;
 
@@ -33,120 +31,6 @@ pub fn default_root() -> PathBuf {
     directories::ProjectDirs::from("", "", "videolore")
         .map(|d| d.cache_dir().join("work"))
         .unwrap_or_else(|| std::env::temp_dir().join("videolore-work"))
-}
-
-/// Creates `dir` (and its parents) and makes it private to the user on Unix.
-pub fn private_dir(dir: &Path) -> io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-    }
-    Ok(())
-}
-
-/// Creates a new file only the user can read (0600 on Unix). An old file of that name is
-/// removed first (a leftover; never followed if it is a symlink).
-pub fn create_private_file(path: &Path) -> io::Result<File> {
-    match std::fs::symlink_metadata(path) {
-        Ok(m) if m.is_dir() => {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "a folder has that name",
-            ));
-        }
-        Ok(_) => std::fs::remove_file(path)?,
-        Err(_) => {}
-    }
-    let mut o = OpenOptions::new();
-    o.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        o.mode(0o600);
-    }
-    o.open(path)
-}
-
-/// Makes a finished private file readable like any other document (0644 on Unix).
-pub fn publish(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))?;
-    }
-    #[cfg(not(unix))]
-    let _ = path;
-    Ok(())
-}
-
-/// A job's private work folder; removed on drop.
-#[derive(Debug)]
-pub struct Work {
-    // Field order matters: the lock is closed before the folder is removed (Windows cannot
-    // delete an open file).
-    lock: Option<File>,
-    dir: Option<tempfile::TempDir>,
-}
-
-impl Work {
-    /// Creates a private folder in `root` and locks it for this job.
-    pub fn new(root: &Path) -> io::Result<Work> {
-        private_dir(root)?;
-        let dir = tempfile::Builder::new().prefix("job-").tempdir_in(root)?;
-        private_dir(dir.path())?;
-        let lock = File::create(dir.path().join(LOCK_FILE))?;
-        lock.lock()?;
-        Ok(Work {
-            lock: Some(lock),
-            dir: Some(dir),
-        })
-    }
-
-    pub fn path(&self) -> &Path {
-        self.dir.as_ref().map(|d| d.path()).unwrap_or(Path::new(""))
-    }
-
-    /// Records a partial file written outside the folder, so that a crash leaves nothing.
-    pub fn register(&self, target: &Path) -> io::Result<()> {
-        let target = std::path::absolute(target)?;
-        let mut f = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.path().join(TARGETS_FILE))?;
-        let line = target.to_string_lossy();
-        if line.contains(['\n', '\r']) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "file names with line breaks are not supported",
-            ));
-        }
-        writeln!(f, "{line}")
-    }
-}
-
-impl Drop for Work {
-    fn drop(&mut self) {
-        drop(self.lock.take());
-        if let Some(d) = self.dir.take() {
-            let _ = d.close();
-        }
-    }
-}
-
-/// File names videolore uses for partial files outside its work folders.
-pub fn is_partial_name(name: &str) -> bool {
-    let export = name.len() > ".videolore-partial".len() + 1
-        && name.starts_with('.')
-        && name.ends_with(".videolore-partial");
-    let proxy = name
-        .strip_suffix(".partial")
-        .is_some_and(crate::proxy::is_cache_file);
-    let model = crate::stt::builtin_models()
-        .iter()
-        .any(|m| name == format!("{}.part", m.file));
-    export || proxy || model
 }
 
 /// Removes the leftovers of jobs that did not end (crash, power cut). Returns the number of
@@ -189,7 +73,7 @@ pub fn cleanup_stale(root: &Path) -> usize {
 }
 
 fn remove_targets(list: &Path) {
-    let Ok(bytes) = crate::project::read_limited(list, MAX_TARGETS_BYTES) else {
+    let Ok(bytes) = read_limited(list, MAX_TARGETS_BYTES) else {
         return;
     };
     for line in String::from_utf8_lossy(&bytes).lines() {
@@ -208,6 +92,8 @@ fn remove_targets(list: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::base::private::{Work, create_private_file, publish};
+    use std::io::Write;
 
     fn mode(p: &Path) -> u32 {
         #[cfg(unix)]
@@ -222,7 +108,7 @@ mod tests {
         }
     }
 
-    // covers: REQ-059
+    // covers: REQ-059, REQ-152
     #[test]
     fn work_folders_are_private_and_removed_at_the_end() {
         let base = tempfile::tempdir().unwrap();
@@ -242,7 +128,7 @@ mod tests {
         assert!(default_root().ends_with("work") || default_root().ends_with("videolore-work"));
     }
 
-    // covers: REQ-059
+    // covers: REQ-059, REQ-152
     #[test]
     fn crash_leftovers_are_removed_at_the_next_start() {
         let base = tempfile::tempdir().unwrap();
@@ -312,15 +198,46 @@ mod tests {
         assert!(w.register(Path::new("/a\nb")).is_err());
     }
 
+    // covers: REQ-151
     #[test]
-    fn partial_names() {
-        assert!(is_partial_name(".a.mp4.videolore-partial"));
-        assert!(!is_partial_name(".videolore-partial"));
-        assert!(!is_partial_name("a.mp4.videolore-partial"));
-        assert!(is_partial_name(&format!("{}.mkv.partial", "0".repeat(32))));
-        assert!(!is_partial_name(&format!("{}.mkv", "0".repeat(32))));
-        assert!(is_partial_name("ggml-tiny-q5_1.bin.part"));
-        assert!(!is_partial_name("ggml-tiny-q5_1.bin"));
-        assert!(!is_partial_name("notes.part"));
+    fn file_names_are_those_of_version_2_0_0() {
+        use crate::base::names::{SPEECH_MODEL_FILES, is_cache_file, is_partial_name};
+        assert_eq!(LOCK_FILE, "lock");
+        assert_eq!(TARGETS_FILE, "targets");
+        let base = tempfile::tempdir().unwrap();
+        let w = Work::new(base.path()).unwrap();
+        let name = w.path().file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with("job-"));
+        drop(w);
+        // the speech-model names are the ones the download list uses, in the same order
+        let models = crate::stt::builtin_models();
+        for (m, f) in models.iter().zip(SPEECH_MODEL_FILES) {
+            assert_eq!(m.file, f);
+            assert!(is_partial_name(&format!("{f}.part")));
+        }
+        assert_eq!(
+            SPEECH_MODEL_FILES,
+            [
+                "ggml-tiny-q5_1.bin",
+                "ggml-small-q5_1.bin",
+                "ggml-large-v3-turbo-q5_0.bin"
+            ]
+        );
+        let key = "0123456789abcdef0123456789abcdef";
+        assert!(
+            is_cache_file(&format!("{key}.mkv")) && is_partial_name(&format!("{key}.mkv.partial"))
+        );
+        assert!(is_partial_name(".x.mp4.videolore-partial"));
+        // the temporary name of an atomic write
+        let f = base.path().join("p.vlproj");
+        std::fs::create_dir(
+            base.path()
+                .join(format!(".p.vlproj.tmp-{}", std::process::id())),
+        )
+        .unwrap();
+        assert!(
+            crate::base::io::write_atomic(&f, b"x").is_err(),
+            "the temp name is .<name>.tmp-<pid>"
+        );
     }
 }

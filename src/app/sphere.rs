@@ -6,9 +6,9 @@
 //! (REQ-097..099) which share the "select something on the picture" rules.
 
 use super::*;
+use crate::base::pos::{POS_MAX, align_h, align_v};
 use crate::camera::{self, Camera, Pov, PovError};
-use crate::subtitles::{POS_MAX, SIZE_NORMAL};
-use crate::ui::boxes;
+use crate::subtitles::SIZE_NORMAL;
 
 /// Disabled reason of the commands that need an object on the picture.
 pub const SELECT_ON_PICTURE: &str = "Select something on the picture first";
@@ -321,16 +321,16 @@ impl AppState {
         }
         let new_pos = |p: Option<Pos>| match (axis, p) {
             (Axis::Horizontal, None) => None,
-            (Axis::Horizontal, Some(p)) => Some(boxes::align_h(p)),
+            (Axis::Horizontal, Some(p)) => Some(align_h(p)),
             (Axis::Vertical, None) => Some(Pos {
                 x: POS_MAX / 2,
                 y: POS_MAX / 2,
             }),
-            (Axis::Vertical, Some(p)) => Some(boxes::align_v(p)),
+            (Axis::Vertical, Some(p)) => Some(align_v(p)),
         };
         let text_pos = |p: Pos| match axis {
-            Axis::Horizontal => boxes::align_h(p),
-            Axis::Vertical => boxes::align_v(p),
+            Axis::Horizontal => align_h(p),
+            Axis::Vertical => align_v(p),
         };
         let subs = &self.project.subtitles;
         let texts = &self.project.texts;

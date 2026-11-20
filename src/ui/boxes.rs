@@ -10,7 +10,8 @@
 //! the layer takes a list of [`BoxItem`]s, so another kind of object needs no new
 //! interaction code.
 
-use crate::subtitles::{LineId, POS_MAX, Pos, SIZE_MAX, SIZE_MIN, SIZE_NORMAL};
+use crate::base::pos::Pos;
+use crate::subtitles::{LineId, SIZE_MAX, SIZE_MIN, SIZE_NORMAL};
 use eframe::egui::{CursorIcon, Pos2, Rect, Vec2, pos2, vec2};
 
 /// Pixels around a corner (and so around the box edge) that count as the handle.
@@ -309,23 +310,6 @@ pub fn resize_side(r0: Rect, size0: u16, side: Side, p: Pos2, frame: (u32, u32))
 /// The stored position of a box (its centre) in frame pixels.
 pub fn centre_pos(r: Rect, frame: (u32, u32)) -> Pos {
     super::placement::to_pos(r.center(), frame)
-}
-
-/// Align horizontally: the centre on the picture's vertical middle line, the other
-/// coordinate kept.
-pub fn align_h(p: Pos) -> Pos {
-    Pos {
-        x: POS_MAX / 2,
-        ..p
-    }
-}
-
-/// Align vertically: the centre on the picture's horizontal middle line.
-pub fn align_v(p: Pos) -> Pos {
-    Pos {
-        y: POS_MAX / 2,
-        ..p
-    }
 }
 
 /// The size of an object that has none of its own.
@@ -708,6 +692,7 @@ mod tests {
     // covers: REQ-098
     #[test]
     fn align_moves_one_coordinate_to_the_middle() {
+        use crate::base::pos::{align_h, align_v};
         let p = Pos { x: 1200, y: 8000 };
         assert_eq!(align_h(p), Pos { x: 5000, y: 8000 });
         assert_eq!(align_v(p), Pos { x: 1200, y: 5000 });

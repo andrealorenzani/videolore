@@ -12,10 +12,10 @@
 //! a clip with its own Apply LUT keeps it (the whole video's is not applied to it).
 
 use super::{ProjectError, invalid};
+use crate::base::pos::{POS_MAX, Pos};
 use crate::frame::{MAX_SCALE, MIN_SCALE, Scale};
 use crate::keyframes::{self, Key, Lerp, MAX_KEYS};
 use crate::music::Mix;
-use crate::subtitles::{POS_MAX, Pos};
 use crate::time::Micros;
 use crate::timeline::{ClipFrames, ClipId, ClipLut, Timeline};
 

@@ -3,7 +3,7 @@
 Sub-document of [business index](business.md). Requirement texts live in the human docs (`docs/business*.md`); this file is the map and the short meaning of the early requirements.
 
 ## Status and map
-- All REQ-001..REQ-150 are `(implemented)`; none `(planned)` in docs/business*.md (1.6.2 STATUS). Next free ID: REQ-151. QG-01..QG-05 implemented, QG-06 (CI time) open: not reported by the PE.
+- REQ-001..REQ-153 are `(implemented)` (REQ-151..153 implemented in 2.0.1, code structure, in performance doc). Next free ID: REQ-154. QG-01..QG-05 implemented, QG-06 (CI time) open: not reported by the PE.
 - REQ -> human doc (grep the ID in `docs/business*.md`):
   - editing: 001-004, 005-013, 026-029, 032-035, 038, 039, 083, 094, 105, 113, 123, 144, 149
   - ui: 024, 025, 066-074, 078-081, 093
@@ -19,7 +19,7 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
   - splash: 133, 134
   - icons: 142, 143
   - install: 030, 031, 040-042
-  - performance: 045-054, 056-059 (+ QG-01..06 without covers)
+  - performance: 045-054, 056-059, 151-153 (+ QG-01..06 without covers)
 - Coverage rule: every implemented REQ has a `// covers:` test (PE, feature-coverage 100%).
 
 ## Early requirements (short, 0.2.0 wording; current text in the human docs)

@@ -25,7 +25,7 @@ number of entries, finite numbers clamped to 0..1, no mixing of 1D and 3D. A 1D 
 cube by per-channel linear sampling, so the graph has one code path. `Lut::to_cube()` writes the
 normalised text and `Lut::hash()` fingerprints it (16 bytes of SHA-256, hex). `lut::cached` keeps
 at most 8 parsed files, re-reading a file when its size or modification time changes.
-`lut::read` uses `project::read_limited` (regular files only).
+`lut::read` uses `base::io::read_limited` (regular files only).
 
 ## In the filter graph (ADR-110)
 

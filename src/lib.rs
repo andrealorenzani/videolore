@@ -14,6 +14,7 @@
 pub mod align;
 pub mod app;
 pub mod ass;
+pub mod base;
 pub mod camera;
 pub mod desktop;
 pub mod dialogs;

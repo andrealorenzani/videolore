@@ -6,6 +6,7 @@ Part of [Architecture](architecture.md). The decisions behind the whole program;
 - **Media: `ffmpeg`/`ffprobe` as separate programs**, not linked libraries, now bundled. See [ffmpeg](architecture-ffmpeg.md).
 - **Preview audio: cpal.** Without an audio device the preview continues silently.
 - **Concurrency: standard threads and channels**, no async runtime. A job queue caps `ffmpeg` processes. See [media pipeline](architecture-media-pipeline.md).
+- **Shared helpers in one base module, no module cycles (2.0.1):** file reading and writing, private work folders, positions, cache and model names and language names live in `src/base/`, which uses no other module; a test fails when a module cycle appears. Alternatives: a separate crate (more build and packaging work), shims that re-export the old paths (hide the edges). See [code structure](architecture-structure.md).
 - **Automatic setup in the app, not the installers (0.3.0):** the first start on every system (the AppImage too) detects the computer in milliseconds, without network or benchmarks, and saves recommended settings. Installers do no tuning, so there is one tested code path. See [performance](architecture-performance.md).
 - **Plain settings (0.3.0, Export added in 0.4.0):** Preview quality, Subtitle quality, How hard videolore works and Export (Faster / Best quality), in a window inside `videolore` (not a separate system window, so it looks and behaves the same everywhere and can be tested automatically). Technical options sit in a collapsed "Advanced" section.
 - **Export strategy:**

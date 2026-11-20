@@ -8,6 +8,7 @@ videolore player, is the package in `player/` and follows the same rule (see [co
 
 | Module | Responsibility |
 |---|---|
+| `base` | Shared helpers, no dependency on any other module (2.0.1): `io` (capped reading, atomic writing), `private` (private folders and files, `Work`), `pos` (`Pos`, `POS_MAX`, `Anchor360`, `align_h`, `align_v`), `names` (cache, partial and speech-model file names), `language` (language table). `tests/module_cycles.rs` keeps it a leaf |
 | `time` | `Micros` (integer microseconds), `Fps` (rational), frame rounding, timecodes |
 | `media` | `MediaItem` (with `MediaStatus` analysing/ready/rejected and `ProxyState`), `MediaFormat` (with the text subtitle tracks of the file, `SubtitleTrack`), defensive parser of `ffprobe` JSON, `probe()` |
 | `timeline` | The video track: contiguous clips (each with its own volume and mute) + fades at boundaries and at the video's start and end; every edit returns `Result<_, EditError>` |
@@ -32,7 +33,7 @@ videolore player, is the package in `player/` and follows the same rule (see [co
 | `proxy` | Small preview copies of big sources: the machine rule, the cache (keys, size, clear) and the generation job |
 | `machine` | Detection of the running machine (`Machine`: logical/physical cores, memory, OS, architecture, CPU features) and its `Fingerprint` stored with the settings |
 | `settings` | Program settings file (format 2): the four plain choices (Export added in 0.4), ffmpeg override, machine fingerprint, hardware methods turned off after a problem, section sizes and recent projects (1.1); start-up decision (`startup`), recommendation, "How hard" budget table, availability of subtitle levels, change summary, plain texts of the Settings window |
-| `scratch` | Private work folders of background jobs (0700, locked while in use), private partial files (0600), crash cleanup at the next start |
+| `scratch` | The work-folder root and the crash cleanup at the next start; the work folders themselves (0700, locked while in use) and private files (0600) are in `base::private` |
 | `stt` | Subtitle generation: audio extraction, 120 s chunks, language detection/override, cancel, word timings to lines; the table of the three speech files (`builtin_models`), the store (size + SHA-256, per level), download and local-file install, disk use and removal; whisper.cpp and the HTTPS downloader behind the `stt` feature |
 | `notices` | Bundled components with version, licence and source; the About text |
 | `packaging` | Pinned ffmpeg builds and tools (`packaging/*.lock`) and release asset names |

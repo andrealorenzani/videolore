@@ -639,7 +639,7 @@ impl Preview {
             .prefix("videolore-preview-")
             .tempdir()
             .ok()
-            .filter(|d| crate::scratch::private_dir(d.path()).is_ok());
+            .filter(|d| crate::base::private::private_dir(d.path()).is_ok());
         let mailbox = Arc::new(Mailbox::default());
         let renders = Arc::new(AtomicU64::new(0));
         let stills = match (&config, &scratch) {

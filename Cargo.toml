@@ -5,7 +5,7 @@ resolver = "3"
 
 [package]
 name = "videolore"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2024"
 rust-version = "1.100"
 license = "GPL-3.0-only"
@@ -51,3 +51,7 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["s
 # Only to switch off winit's default macOS menu (Cmd+Q must reach the app); same version
 # and features as eframe's.
 winit = { version = "0.30.13", default-features = false }
+
+[dev-dependencies]
+# Parses the sources in tests/module_cycles.rs (already in the lock through the derive crates).
+syn = { version = "2", features = ["full", "visit"] }

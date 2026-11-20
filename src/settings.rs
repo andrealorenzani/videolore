@@ -18,7 +18,6 @@
 use crate::hwenc::{Codec, Vendor};
 use crate::machine::Fingerprint;
 use serde::{Deserialize, Serialize};
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Current settings file format.
@@ -670,7 +669,7 @@ pub enum Loaded {
 
 /// Reads the settings file safely: only regular files, at most [`MAX_SETTINGS_BYTES`].
 pub fn load_file(path: &Path) -> Loaded {
-    match crate::project::read_limited(path, MAX_SETTINGS_BYTES) {
+    match crate::base::io::read_limited(path, MAX_SETTINGS_BYTES) {
         Ok(bytes) => Loaded::Bytes(bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Loaded::Missing,
         Err(_) => Loaded::Unusable,
@@ -841,7 +840,7 @@ pub fn save(settings: &Settings, path: &Path) -> Result<(), String> {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    crate::project::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
+    crate::base::io::write_atomic(path, json.as_bytes()).map_err(|e| e.to_string())
 }
 
 /// Where an unreadable settings file is copied before being replaced.
@@ -854,21 +853,8 @@ pub fn backup_path(path: &Path) -> PathBuf {
 /// Copies the unreadable bytes to [`backup_path`] (overwriting an older copy).
 pub fn backup(path: &Path, loaded: &Loaded) {
     if let Loaded::Bytes(b) = loaded {
-        let _ = crate::project::write_atomic(&backup_path(path), b);
+        let _ = crate::base::io::write_atomic(&backup_path(path), b);
     }
-}
-
-/// Reads at most `limit` bytes from `r`; errors when there is more.
-pub fn read_capped(mut r: impl Read, limit: u64) -> std::io::Result<Vec<u8>> {
-    let mut buf = Vec::new();
-    r.by_ref().take(limit + 1).read_to_end(&mut buf)?;
-    if buf.len() as u64 > limit {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "file too large",
-        ));
-    }
-    Ok(buf)
 }
 
 #[cfg(test)]

@@ -4,10 +4,10 @@
 //! The single video track: a contiguous list of clips (no gaps, no overlaps) plus the set of
 //! boundaries that carry a fade. Every edit is a method returning `Result<_, EditError>`.
 
+use crate::base::pos::Pos;
 use crate::frame::{self, FrameAspect, Scale, Stack, Track};
 use crate::keyframes::{self, Key, KeyError};
 use crate::media::{MediaId, MediaItem};
-use crate::subtitles::Pos;
 use crate::time::Micros;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -902,8 +902,8 @@ impl Timeline {
 
     pub fn set_move_key(&mut self, t: FrameTarget, at: Micros, v: Pos) -> Result<(), EditError> {
         let v = Pos {
-            x: v.x.min(crate::subtitles::POS_MAX),
-            y: v.y.min(crate::subtitles::POS_MAX),
+            x: v.x.min(crate::base::pos::POS_MAX),
+            y: v.y.min(crate::base::pos::POS_MAX),
         };
         if self.move_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
