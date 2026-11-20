@@ -24,6 +24,12 @@ Projects are JSON files (`.vlproj`) with a format version number.
 - **1.2.6:** always writes version 4 for the same reason as above; 1.2.5 refuses it. Versions 1–3 open with identical results (no 360 clips, no sizes, same export commands; golden tests). Media without the 360 flag are checked again in the background like the subtitle tracks.
 - **Files from a newer version** are refused with a clear message and are never modified. 1.1 refuses version 3 files in this way.
 
+## Format 10 (planned 2.0.3)
+- Text items gain two stored values: their readability (None, Outline or Box) and their box height (5% to 100% of the picture height).
+- Migration from format 9: texts read as readability None (their 2.0.2 outline is dropped) and box height 20% (the 2.0.2 box); their size is fitted again on opening, so it may change (see [text](architecture-text.md#203-planned-readable-text)). The status bar shows once the number of texts whose size changed and that the old outline was removed; the message appears only for a project with at least one text item and not again once the project is saved in format 10.
+- Format 10 is written from 2.0.3 on. Version 2.0.2 and older refuse such a file ("newer format") and never change it.
+- Projects of formats 1 to 9 otherwise open as before.
+
 ## Loading and validation
 - Only regular files are read (a pipe or device named like a project cannot block the program), at most 16 MiB, enforced while reading.
 - After loading, everything is validated: clip ranges, music clips use audio-only files and do not overlap, subtitle lines refer to existing media, have start before end and at most 1000 characters, at most 200,000 words. Deeply nested data is rejected.

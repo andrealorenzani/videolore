@@ -1,0 +1,15 @@
+1
+00:00:00,400 --> 00:00:04,307
+Greetings everyone, an experiment follows.
+
+2
+00:00:05,307 --> 00:00:11,219
+Swift auburn foxes leap across sleepy hounds.
+
+3
+00:00:12,219 --> 00:00:17,155
+Captions accompany spoken dialogue closely.
+
+4
+00:00:18,155 --> 00:00:22,379
+Many thanks, farewell, until next time!

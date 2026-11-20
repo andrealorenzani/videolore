@@ -45,6 +45,7 @@ Back to the [index](business.md).
 - REQ-034 (implemented): The still preview frame is re-rendered only when the picture at the playhead actually changes, and bursts of edits are combined. Acceptance: an edit that does not change the frame at the playhead causes no render; 10 rapid edits cause at most 1 render.
 - REQ-035 (implemented): During playback, video continues in real time if audio output stalls; audio catches up or skips. Acceptance: with a simulated stall video time keeps advancing, and audio/video drift is at most 100 ms after audio resumes.
 - REQ-144 (implemented): When playback is paused, or after a seek or an edit, the preview shows the picture at the playhead; it never stays black where the timeline has picture (fixes a black preview seen in 1.6.0 when paused). Acceptance: (a) play for 3 s, then pause: the preview shows the picture at the playhead, not black; (b) pause at 20 different positions, each reached by a seek, an edit or the end of playback, with and without effects: no black frame where there is picture; a fade through black still shows black at its own time.
+- REQ-155 (implemented): Added in 2.0.3. The paused picture of the last ~20 ms of a clip is shown. Where the timeline has picture, the preview shows it when playback is paused, after a seek or after an edit, up to the clip's last frame, as REQ-144 requires; this closes a 2.0.2 gap against REQ-144. Acceptance: a 2 s clip at 25 fps paused at 1.98 s and at 1.995 s, reached by a seek and by an edit, shows its picture and not black, with and without effects; a fade through black still shows black at its own time.
 
 ### Layout and commands
 The window layout (REQ-024), how commands are reached (REQ-025), menus, toolbar, shortcuts, status bar, effect popups and timeline markers are described in [Window, menus and effects](business-ui.md) since 1.1.0.
@@ -68,13 +69,13 @@ The window layout (REQ-024), how commands are reached (REQ-025), menus, toolbar,
 - (1.4.0) The project format changes again (REQ-123): a project saved with 1.4.0 cannot be opened by 1.3.0 or earlier.
 - (1.5.0) The project format changes again (REQ-132): a project saved with 1.5.0 cannot be opened by 1.4.1 or earlier.
 - (1.6.0) The project format changes once more (REQ-137, Apply LUT paths): a project saved with 1.6.0 cannot be opened by 1.5.x or earlier.
+- (2.0.3) The project format changes again (REQ-158, REQ-159: text readability and box height): a project saved with 2.0.3 cannot be opened by 2.0.2 or earlier, which refuse it untouched. Opening a format 9 project (saved by 1.6.1 to 2.0.2) in 2.0.3 and saving it writes format 10, so 2.0.2 and older can no longer open that file.
 - (1.2.0) Start and end fades belong to the edges of the video, not to the first or last clip, so "the video starts from black" stays true whatever is edited.
 - On macOS, Cmd+Q also goes through the unsaved-changes prompt (Ctrl+Q elsewhere).
 - Default shortcuts follow common conventions (Ctrl/Cmd+X/C/V/Z, Space for play/pause, Ctrl/Cmd+B for split, Ctrl/Cmd+S to save, Ctrl/Cmd+Q to quit); exact bindings are an engineering choice. The full list since 1.1.0 is REQ-071 in [Window, menus and effects](business-ui.md).
 - Letterboxing color is black.
 
 ## Known limitations
-- A paused still in the last ~20 ms of a clip shows no picture (for example at 1.98 s of a 2 s clip at 25 fps; 1.92 s works). This is a defect against REQ-144, which requires the picture at the playhead wherever the timeline has picture; the fix is a roadmap item.
 - The proxy cache is never cleaned automatically; use "Clear preview copies" in Settings.
 - Removing a file from the media list also drops the undo history when an undo step refers to it.
 - After the proxies of a project are cleared, they are regenerated only after reopening the project or changing Preview quality (assumption: carried over from the 0.2.x on/off switch).

@@ -3,15 +3,16 @@
 Sub-document of [business index](business.md). Requirement texts live in the human docs (`docs/business*.md`); this file is the map and the short meaning of the early requirements.
 
 ## Status and map
-- REQ-001..REQ-154 are `(implemented)` (REQ-154 at 2.0.2 STATUS: splash summary fit, test added). Next free ID: REQ-155. QG-01..QG-05 implemented; QG-06 (CI time) open, not reported by the PE; QG-07..QG-10 (2.0.2, maintainer goals, no covers) delivered in 2.0.2, CI changes not yet verified on a real runner.
+- REQ-001..REQ-176 and REQ-178..179 are `(implemented)` (2.0.3 STATUS: 155..176, 178, 179 built in the 2.0.3 development). REQ-177 stays `(planned)`: accuracy target not met (Fast: 23 of 28 words matched, 0.48 s average start error; DTW, one-sided onset snap and speech-region method measured and removed; strict test ignored). Open question for Andrea in business-decisions.md. Next free ID: REQ-180. QG-01..QG-05 implemented; QG-06 (CI time) open, not reported by the PE; QG-07..QG-10 (2.0.2, maintainer goals, no covers) delivered in 2.0.2, CI changes not yet verified on a real runner.
 - REQ -> human doc (grep the ID in `docs/business*.md`):
-  - editing: 001-004, 005-013, 026-029, 032-035, 038, 039, 083, 094, 105, 113, 123, 144, 149
+  - editing: 001-004, 005-013, 026-029, 032-035, 038, 039, 083, 094, 105, 113, 123, 144, 149, 155
   - ui: 024, 025, 066-074, 078-081, 093
   - effects: 075, 076, 077, 082, 107, 147
-  - subtitles: 014-018, 044, 085-092, 095
+  - subtitles: 014-018, 044, 085-092, 095; placement 168-176
+  - subtitle-accuracy: 177 (planned), 178-179 (new doc)
   - music: 019, 020, 043, 084, 114
   - export: 021-023, 036, 037, 055, 060-065, 118-122
-  - text: 108-111, 115, 116
+  - text: 108-111, 115, 116; readable text 156-167
   - picture: 096-099, 100-106, 112, 117, 146
   - frame: 124-132, 145, 148
   - lut: 135-137

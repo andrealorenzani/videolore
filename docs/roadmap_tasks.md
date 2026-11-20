@@ -3,7 +3,8 @@
 The [roadmap](roadmap.md) split into suggested versions and batches, in the order of implementation. This is a suggestion, not a commitment: Andrea chooses what is built and when.
 
 ## Version numbers
-- Each development gets one new version: the last number goes up by one (the release of 1.6.3 opened 2.0.0). Batch N ships as 2.0.(N+1): batch 1 is 2.0.2, batch 15 is 2.0.16. 2.0.1 was the module-cycles refactor and is delivered.
+- Each development gets one new version: the last number goes up by one (the release of 1.6.3 opened 2.0.0). Batch N ships as 2.0.(N+1): batch 1 is 2.0.2, batch 15 is 2.0.16, except batches 2 to 4. 2.0.1 was the module-cycles refactor and is delivered.
+- Batches 2, 3 and 4 (Readable text, Subtitle placement, Subtitle accuracy) are all built in 2.0.3 (one development). The version numbers of batches 5 to 15 are renumbered at the next release.
 - Andrea can name a minor version (for example 2.1.0) for any batch.
 - A batch may need more than one development; a development should not mix batches unless the items share code.
 
@@ -13,9 +14,9 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 |---|---|---|
 | 2.0.1 | delivered | Module-cycles refactor: shared helpers in one module, no module cycle, automatic cycle check |
 | 2.0.2 | 1. Verify the release (delivered) | A green suite on the current code, the checks of the bundled ffmpeg 9.x and the splash files confirmed |
-| 2.0.3 | 2. Readable text | Text stays readable on any picture and fits its box predictably |
-| 2.0.4 | 3. Subtitle placement | Moved subtitle lines and text items stay inside the picture and are easy to find |
-| 2.0.5 | 4. Subtitle accuracy | Reused and generated subtitles reach the accuracy target |
+| 2.0.3 | 2. Readable text (built in 2.0.3) | Text stays readable on any picture and fits its box predictably |
+| 2.0.3 | 3. Subtitle placement (built in 2.0.3) | Moved subtitle lines and text items stay inside the picture and are easy to find |
+| 2.0.3 | 4. Subtitle accuracy (built in 2.0.3) | Reused and generated subtitles reach the accuracy target (the target decision REQ-177 is open) |
 | 2.0.6 | 5. Subtitle files and fonts | Import and more export formats for subtitles; subtitle fonts for more scripts |
 | 2.0.7 | 6. Editing gestures and safety | Autosave, timeline gestures and keyboard use |
 | 2.0.8 | 7. Whole-video and keyframe clarity | Whole-video copies and keyframes are clear and easy to edit |
@@ -36,25 +37,15 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 - **Status**: delivered in 2.0.2; see the [changelog](changelog.md). The automated checks run in the test suite and in the automatic builds. The manual checks stay in [release verification](business-verification.md) until the maintainer records their results there.
 - **Left over, placed in the roadmap**: the Windows and macOS test runs, the moving-camera measurement on 9.0.2, the UI frame gates under load, the hardware probe success fakes, the notices script after each version bump (Priority 1, 11 and 12 of the [roadmap](roadmap.md)). The paused-picture defect is the first item of 2.0.3.
 
-## 2.0.3 — Readable text
-- **Goal**: a text is readable on any picture, and its size and box are predictable.
-- **Items**: paused picture in the last ~20 ms of a clip (defect against REQ-144, high priority, first); measured best-fit text; best-fit limit for very short texts; outline, shadow or background box; text box height; show the new width while dragging; left-edge resize; box of a blinking text; preview box with the installed font; font fallback check; font names across libraries; cost of loading an installed font; migrated text sizes.
-- **Why together**: all change the text's look or box, and share the same measurement.
-- **Order inside**: measured best-fit first (box height and migrated sizes depend on it); then the outline or box (preview and export change together); then box height and live width; then the left edge and blink box.
-- **Depends on**: nothing in other batches. Outline and box change the export, so the export tests must be updated with them.
+## 2.0.3 — Readable text (batch 2, delivered in 2.0.3)
+- **Status**: delivered in 2.0.3; see the [changelog](changelog.md). The remaining checks are in the [roadmap](roadmap.md), Priority 1 (font names and the cost of an installed font on macOS and Windows, REQ-165 and REQ-166).
 
-## 2.0.4 — Subtitle placement
-- **Goal**: moved subtitle lines and text items stay inside the picture and do not hide each other.
-- **Items**: keep moved lines inside when the text grows; keep moved lines apart (or warn); preview hit boxes for stacked lines; discover Ctrl/Cmd+click and Shift+drag; group drags of mixed selections; align horizontally at the style's place; keep the centre when enlarged text wraps; items half outside the picture (hint or way back); text items and picture moves (follow or warn).
-- **Why together**: all are about the place of items on the picture and the drag code.
-- **Depends on**: batch 2 (the text box and its width are used by the clamp rules).
+## 2.0.3 — Subtitle placement (batch 3, delivered in 2.0.3)
+- **Status**: delivered in 2.0.3; see the [changelog](changelog.md). Still open in the [roadmap](roadmap.md), Priority 2: text items and picture moves, and the libass checks on macOS and Windows.
 
-## 2.0.5 — Subtitle accuracy
-- **Goal**: the word timing of reused subtitles and the matching of generated subtitles reach the accuracy target.
-- **Items**: meet the accuracy target of reused subtitles (re-enable `alignment_matches_real_speech`); gated alignment test on CI's versions; speech in pieces without lost words; measure the larger speech levels; matching depends on the subtitle text (wording to the user).
-- **Why together**: all are about speech timing and its tests.
-- **Order inside**: measure first (the accuracy and the larger levels), then the piece overlap, then the test on CI versions.
-- **Depends on**: none in other batches. A larger speech model would need its own consent, size and checksum rules (existing rules) and may change the recommendation thresholds.
+## 2.0.3 — Subtitle accuracy (batch 4, delivered in 2.0.3 except the target)
+- **Status**: delivered in 2.0.3 except REQ-177, the accuracy target of reused subtitles, which is planned and open: see the [roadmap](roadmap.md), Priority 1 (decision point) and Priority 3.
+- **Still open in the roadmap**: the gated alignment test on CI's versions, the five-minute real-speech test, and the larger speech levels.
 
 ## 2.0.6 — Subtitle files and fonts
 - **Goal**: subtitles can be imported and exported in more formats, and scripts other than Latin, Greek and Cyrillic look right.
@@ -136,13 +127,14 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 
 ## Dependencies between batches (short)
 - 2.0.2 (batch 1) before everything (the release checks and the test reliability).
-- 2.0.3 (batch 2) before 2.0.4 (batch 3): the text box is used by the placement rules.
+- 2.0.3 (batches 2 to 4) delivered: the text box and its width are used by the placement rules.
 - 2.0.5 (batch 4) before the subtitle import re-timing in 2.0.6 (batch 5).
 - 2.0.9 (batch 8) before 2.0.10 (batch 9): the hardware reach uses the check.
 - 2.0.12 (batch 11) before 2.0.14 (batch 13): the file association needs the installers.
 - 2.0.15 (batch 14) and 2.0.16 (batch 15) share the camera and keyframe code: the camera items wait for the shared module.
 
 ## Decisions Andrea needs to make
+- Accuracy target of reused subtitles (REQ-177, 2.0.3): a larger speech model, or keep the target with its known limitation (default: keep planned).
 - The Ubuntu 24.04 hardware export: a different ffmpeg build or a shipped libva (2.0.10).
 - Scope of the 360 video export: presets and frame effects (2.0.15).
 

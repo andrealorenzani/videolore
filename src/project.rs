@@ -22,12 +22,12 @@ use std::path::{Component, Path, PathBuf};
 
 mod v9;
 
-/// Schema written by this version (9 since 1.6.1: every whole-video effect is a copy on each clip,
+/// Schema written by this version (10 since 2.0.3: text readability and box height; 9 since 1.6.1: every whole-video effect is a copy on each clip,
 /// edge fades are flags of the clips; 8 since 1.6.0: Apply LUT paths; 7 since 1.5.0: Change aspect, Scale and Move with
 /// keyframes; 6 since 1.4.0: text widths; 5 since 1.3.0: text items and 360 anchors; 4 since 1.2.6: subtitle sizes, the 360° switch and
 /// the camera paths; 3 since 1.2.0: clip volumes, fades at the video's edges, subtitle
 /// positions, subtitle tracks of media).
-pub const SCHEMA_VERSION: u64 = 9;
+pub const SCHEMA_VERSION: u64 = 10;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 16 * 1024 * 1024;
@@ -296,9 +296,61 @@ fn migrate_text(item: &mut crate::text::TextItem, old_size: u16) {
     }
 }
 
+/// What opening a project saved before 2.0.3 (format 9 or older) did to its text items
+/// (REQ-167): their sizes are measured again and they lose the old outline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextMigration {
+    /// Text items of the project.
+    pub texts: usize,
+    /// Text items whose size changed (measured on a 1920x1080 picture).
+    pub resized: usize,
+}
+
+impl TextMigration {
+    /// The one message of REQ-167.
+    pub fn message(&self) -> String {
+        let n = self.resized;
+        format!(
+            "This project is from an older version: {n} text {} changed size and the text{} lost {} black outline (choose Outline to bring it back)",
+            if n == 1 { "item" } else { "items" },
+            if self.texts == 1 { "" } else { "s" },
+            if self.texts == 1 { "its" } else { "their" },
+        )
+    }
+}
+
+/// Counts the text items that change size now that their font is measured, and so the ones
+/// whose 2.0.2 estimate was different (REQ-167).
+fn text_migration(texts: &Texts) -> Option<TextMigration> {
+    if texts.items.is_empty() {
+        return None;
+    }
+    let resized = texts
+        .items
+        .iter()
+        .filter(|t| {
+            let new = crate::text::layout(t, 1920, 1080).px.floor() as u32;
+            new != crate::text::legacy_fit_px(t, 1920, 1080)
+        })
+        .count();
+    Some(TextMigration {
+        texts: texts.items.len(),
+        resized,
+    })
+}
+
 /// Parses and validates project JSON. `dir` is the project's folder (for relative paths).
 /// Returns the project and the names of sources that could not be found.
 pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), ProjectError> {
+    from_json_noted(json, dir).map(|(p, m, _)| (p, m))
+}
+
+/// [`from_json`] that also says what changed in the text items of a project saved before
+/// 2.0.3 (`None` for a newer file or one without text items).
+pub fn from_json_noted(
+    json: &str,
+    dir: &Path,
+) -> Result<(Project, Vec<String>, Option<TextMigration>), ProjectError> {
     let value: serde_json::Value =
         serde_json::from_str(json).map_err(|e| ProjectError::Invalid(e.to_string()))?;
     let version = value
@@ -437,7 +489,10 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
         next_media_id: file.next_media_id.max(max_media),
     };
     project.timeline.next_clip_id = project.timeline.next_clip_id.max(max_clip);
-    Ok((project, missing))
+    let note = (version < 10)
+        .then(|| text_migration(&project.texts))
+        .flatten();
+    Ok((project, missing, note))
 }
 
 /// Corrects damaged Change aspect, Scale and Move values without refusing the file
@@ -588,13 +643,20 @@ fn validate_subtitles(subs: &mut Subtitles, media: &[MediaItem]) -> Result<(), P
 
 /// Loads a project file (a regular file of at most 16 MiB).
 pub fn load(path: &Path) -> Result<(Project, Vec<String>), ProjectError> {
+    load_noted(path).map(|(p, m, _)| (p, m))
+}
+
+/// [`load`] that also returns the note of REQ-167.
+pub fn load_noted(
+    path: &Path,
+) -> Result<(Project, Vec<String>, Option<TextMigration>), ProjectError> {
     let bytes = read_limited(path, MAX_PROJECT_BYTES).map_err(|e| match e.kind() {
         std::io::ErrorKind::InvalidData => ProjectError::TooLarge,
         std::io::ErrorKind::InvalidInput => ProjectError::Invalid("not a regular file".into()),
         _ => io_err(e),
     })?;
     let text = String::from_utf8(bytes).map_err(|_| invalid("the file is not UTF-8 text"))?;
-    from_json(&text, &project_dir(path))
+    from_json_noted(&text, &project_dir(path))
 }
 
 #[cfg(test)]
@@ -891,14 +953,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 9"));
+        assert!(text.contains("\"schema_version\": 10"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 10");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 11");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(10));
+        assert_eq!(e, ProjectError::TooNew(11));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -1077,8 +1139,8 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 9"));
-        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(9)));
+        assert!(text.contains("\"schema_version\": 10"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(10)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         assert_eq!(
             opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
@@ -1224,9 +1286,9 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 9"));
+        assert!(text.contains("\"schema_version\": 10"));
         assert!(text.contains("\"camera\"") && !text.contains("\"treat_as_360\""));
-        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(9)));
+        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(10)));
         assert_eq!(load(&file).unwrap().0, q);
         // a project without points of view writes no camera section
         let plain = dir.path().join("plain.vlproj");
@@ -1310,7 +1372,7 @@ pub(crate) mod tests {
         assert!(text.contains("\"texts\"") && text.contains("\"anchor\""));
         assert_eq!(load(&file).unwrap().0, q);
         // 1.2.6 refuses it, untouched
-        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(9)));
+        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(10)));
         // a project of 1.2.6 has no texts
         let old = text.replace("\"schema_version\": 6", "\"schema_version\": 4");
         let mut v: serde_json::Value = serde_json::from_str(&old).unwrap();
@@ -1360,10 +1422,10 @@ pub(crate) mod tests {
         v["subtitles"]["lines"][0]["anchor"]["pitch_cd"] = 99_999.into();
         assert!(from_json(&v.to_string(), dir.path()).is_err());
         // too new
-        let new = text.replace("\"schema_version\": 9", "\"schema_version\": 10");
+        let new = text.replace("\"schema_version\": 10", "\"schema_version\": 11");
         assert_eq!(
             from_json(&new, dir.path()).unwrap_err(),
-            ProjectError::TooNew(10)
+            ProjectError::TooNew(11)
         );
     }
 
@@ -1500,11 +1562,11 @@ pub(crate) mod tests {
         let file = dir.path().join("f.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 9"));
+        assert!(text.contains("\"schema_version\": 10"));
         assert!(text.contains("\"frame_aspect\""));
         assert_eq!(load(&file).unwrap().0, p);
         // 1.4.1 and earlier refuse it
-        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(9)));
+        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(10)));
     }
 
     // covers: REQ-132
@@ -1516,7 +1578,7 @@ pub(crate) mod tests {
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 9", "\"schema_version\": 6");
+            .replace("\"schema_version\": 10", "\"schema_version\": 6");
         assert!(!text.contains("frame_aspect") && !text.contains("clip_frames"));
         let (q, _) = from_json(&text, dir.path()).unwrap();
         assert!(!q.timeline.has_frame_effect());
@@ -1628,19 +1690,19 @@ pub(crate) mod tests {
         let file = dir.path().join("l.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 9"));
+        assert!(text.contains("\"schema_version\": 10"));
         let (q, notes) = load(&file).unwrap();
         assert_eq!(q, p);
         assert!(notes.is_empty());
         // 1.5.x refuses the file with its newer-version message and leaves it alone
-        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(9)));
+        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(10)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         // a project of 1.5 (no LUT keys) opens with no colour effect
         let plain = sample(dir.path());
         save(&plain, &file).unwrap();
         let old = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 9", "\"schema_version\": 7");
+            .replace("\"schema_version\": 10", "\"schema_version\": 7");
         assert!(!old.contains("whole_lut") && !old.contains("clip_luts"));
         let (r, _) = from_json(&old, dir.path()).unwrap();
         assert!(!r.timeline.any_lut());
@@ -1715,5 +1777,90 @@ pub(crate) mod tests {
         let mut w = v.clone();
         w["timeline"]["clip_luts"][0]["path"] = serde_json::json!(["a"]);
         assert!(matches!(t(&w), Err(ProjectError::Invalid(_))));
+    }
+
+    /// A project with one text item, saved as `format` (a number below 10 drops the fields
+    /// of format 10, as a file written before 2.0.3 lacks them).
+    fn saved_with_text(dir: &Path, format: u64, text: &str) -> PathBuf {
+        use crate::text::{Readability, TextItem};
+        let mut q = sample(dir);
+        let id = q.texts.new_id();
+        let mut t = TextItem::new(id, text.into(), Micros(1_000_000));
+        t.readability = Readability::Box;
+        t.height = 400;
+        q.texts.add(t).unwrap();
+        let file = dir.join(format!("f{format}.vlproj"));
+        save(&q, &file).unwrap();
+        if format < 10 {
+            let mut v: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+            v["schema_version"] = format.into();
+            for t in v["texts"].as_array_mut().unwrap() {
+                t.as_object_mut().unwrap().remove("readability");
+                t.as_object_mut().unwrap().remove("height");
+            }
+            std::fs::write(&file, v.to_string()).unwrap();
+        }
+        file
+    }
+
+    // covers: REQ-158
+    #[test]
+    fn format_10_keeps_readability_and_height_and_format_9_opens_as_none() {
+        use crate::text::{DEFAULT_HEIGHT, Readability};
+        let dir = tempfile::tempdir().unwrap();
+        let (new, _, note) = load_noted(&saved_with_text(dir.path(), 10, "Hello")).unwrap();
+        assert_eq!(new.texts.items[0].readability, Readability::Box);
+        assert_eq!(new.texts.items[0].height, 400);
+        assert!(note.is_none(), "a format 10 file has nothing to report");
+        // a file of 2.0.2 has neither field: no outline, the old box height
+        let (old, _, _) = load_noted(&saved_with_text(dir.path(), 9, "Hello")).unwrap();
+        assert_eq!(old.texts.items[0].readability, Readability::None);
+        assert_eq!(old.texts.items[0].height, DEFAULT_HEIGHT);
+        // a 2.0.2 reader refuses a format 10 file (nothing is silently changed)
+        let text = std::fs::read_to_string(dir.path().join("f10.vlproj")).unwrap();
+        assert!(text.contains("\"schema_version\": 10"));
+    }
+
+    // covers: REQ-167
+    #[test]
+    fn a_project_from_before_2_0_3_reports_its_texts_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let long = "A long text that was fitted by a guess about character widths, \
+                    with several lines\nand more words in the second line so it wraps";
+        let file = saved_with_text(dir.path(), 9, long);
+        let (p, _, note) = load_noted(&file).unwrap();
+        let note = note.expect("a note for a format 9 project with a text");
+        assert_eq!(note.texts, 1);
+        assert_eq!(note.resized, 1, "the measured size differs from the guess");
+        let msg = note.message();
+        assert!(msg.contains("1 text item changed size"), "{msg}");
+        assert!(msg.contains("outline"), "{msg}");
+        // widening the box makes the text larger again
+        let mut t = p.texts.items[0].clone();
+        t.width = 400;
+        let small = crate::text::fit_px(&t, 1920, 1080);
+        t.width = 1000;
+        assert!(crate::text::fit_px(&t, 1920, 1080) > small);
+        // saving writes format 10, which reopens with no message
+        let again = dir.path().join("again.vlproj");
+        save(&p, &again).unwrap();
+        assert!(load_noted(&again).unwrap().2.is_none());
+        // a format 9 project without texts has nothing to say
+        let none = sample(dir.path());
+        let f = dir.path().join("plain.vlproj");
+        save(&none, &f).unwrap();
+        let mut v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        v["schema_version"] = 9.into();
+        std::fs::write(&f, v.to_string()).unwrap();
+        assert!(load_noted(&f).unwrap().2.is_none());
+        // the message is plural for several
+        let m = TextMigration {
+            texts: 3,
+            resized: 2,
+        };
+        assert!(m.message().contains("2 text items changed size"));
+        assert!(m.message().contains("their"));
     }
 }

@@ -6,7 +6,7 @@
 
 use super::*;
 
-fn first_frame(pv: &mut Preview) -> videolore::preview::Frame {
+pub(super) fn first_frame(pv: &mut Preview) -> videolore::preview::Frame {
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         if let Some(f) = pv.poll(Instant::now()) {
@@ -117,4 +117,41 @@ fn the_build_offers_mp3_and_the_frame_lut_and_360_filters() {
     ] {
         assert!(env.info.filters.contains(f), "filter {f} is missing");
     }
+}
+
+// covers: REQ-155
+#[test]
+fn a_paused_picture_in_the_last_frames_of_a_clip_is_shown() {
+    use videolore::frame::{Fill, Fit, FrameAspect, Shape};
+    let Some(env) = setup() else { return };
+    let mut p = Project::default();
+    let a = env.clip("pf-last.mp4", 640, 360, 25, 2, true);
+    let ma = env.probe(&mut p, &a);
+    p.timeline.append(&ma).unwrap();
+    // 1.92 s worked before; 1.98 s and 1.995 s are inside the last frame
+    for at in [1_920_000, 1_960_000, 1_980_000, 1_995_000] {
+        let m = paused_at(&env, &p, Micros(at));
+        assert!(m > 40.0, "no picture at {at}: {m}");
+    }
+    // reached by an edit: the same instants with the picture fitted to a tall frame
+    p.timeline
+        .set_frame_aspect(Some(FrameAspect {
+            shape: Shape::Tall9x16,
+            fit: Fit::Width,
+            fill: Fill::Blur,
+        }))
+        .unwrap();
+    for at in [1_980_000, 1_995_000] {
+        let m = paused_at(&env, &p, Micros(at));
+        assert!(m > 30.0, "no picture with an effect at {at}: {m}");
+    }
+    // a fade through black is still black at its own time
+    let mut q = Project::default();
+    let mb = env.probe(&mut q, &a);
+    q.timeline.append(&mb).unwrap();
+    q.timeline.append(&mb).unwrap();
+    q.timeline.toggle_fade(0).unwrap();
+    let bright = paused_at(&env, &q, Micros(1_000_000));
+    let dark = paused_at(&env, &q, Micros(1_980_000));
+    assert!(dark < bright / 2.0, "{dark} {bright}");
 }

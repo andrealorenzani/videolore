@@ -8,7 +8,10 @@
 //! events that burn the text in, used by the preview and the export alike.
 
 use crate::ass::{self, AssEvent, font_px};
+pub use crate::base::font::{DEFAULT_FONT, MAX_FONT, valid_font};
 use crate::base::pos::{Anchor360, POS_MAX, Pos};
+use crate::fonts;
+use crate::measure::{self, Shaped};
 use crate::subtitles::{MAX_TEXT, SIZE_NORMAL};
 use crate::time::Micros;
 use serde::{Deserialize, Serialize};
@@ -30,22 +33,24 @@ pub const WIDTH_MIN: u16 = 100;
 pub const WIDTH_MAX: u16 = 1000;
 /// Width of a new text (80% of the picture width).
 pub const DEFAULT_WIDTH: u16 = 800;
-/// Height of every text box, in thousandths of the picture height (20%).
-pub const BOX_HEIGHT: u32 = 200;
+/// Lowest, highest and default height of a text box, in thousandths of the picture height
+/// (REQ-159: 5% to 100%; a new box is 20% high).
+pub const HEIGHT_MIN: u16 = 50;
+pub const HEIGHT_MAX: u16 = 1000;
+pub const DEFAULT_HEIGHT: u16 = 200;
 /// Smallest best-fit text height, in thousandths of the picture height (2%).
-pub const MIN_FIT: u32 = 20;
+pub const MIN_FIT: u32 = measure::MIN_SIZE;
+/// Largest text height, in thousandths of the picture height (REQ-157: 10%).
+pub const MAX_FIT: u32 = measure::MAX_SIZE;
 /// Limits of the ASS events of one item and of a project.
 pub const MAX_EVENTS_ITEM: usize = 2000;
 pub const MAX_EVENTS_TOTAL: usize = 20_000;
 /// Most lines of a text and longest family name.
 pub const MAX_LINES: usize = 200;
-pub const MAX_FONT: usize = 100;
 /// Text items of a project.
 pub const MAX_ITEMS: usize = 5000;
 /// Where a new text starts: centred, in the lower third.
 pub const DEFAULT_PLACE: Pos = Pos { x: 5000, y: 8300 };
-/// The font used when none is chosen (the bundled subtitle font).
-pub const DEFAULT_FONT: &str = "Noto Sans";
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
@@ -103,6 +108,44 @@ impl TextEffects {
     }
 }
 
+/// What keeps a text readable on a busy picture (REQ-158).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Readability {
+    /// Nothing around the letters (what a text of a project saved before 2.0.3 opens as).
+    #[default]
+    None,
+    /// A black outline, 6% of the text size wide.
+    Outline,
+    /// A black box behind the lines, 60% opaque, padded by 10% of the text size.
+    Box,
+}
+
+impl Readability {
+    pub const ALL: [Readability; 3] = [Readability::None, Readability::Outline, Readability::Box];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Readability::None => "None",
+            Readability::Outline => "Outline",
+            Readability::Box => "Background box",
+        }
+    }
+
+    /// Width in pixels of the outline, or the padding of the box, at text size `px`.
+    pub fn border(self, px: f64) -> f64 {
+        match self {
+            Readability::None => 0.0,
+            Readability::Outline => (px * 0.06).round().max(1.0),
+            Readability::Box => (px * 0.10).round().max(1.0),
+        }
+    }
+}
+
+fn default_height() -> u16 {
+    DEFAULT_HEIGHT
+}
+
 /// One text on the timeline.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TextItem {
@@ -122,18 +165,17 @@ pub struct TextItem {
     /// Centre of the text box (flat picture).
     pub place: Pos,
     /// Width of the box in thousandths of the picture width, `WIDTH_MIN..=WIDTH_MAX`
-    /// (1.4.0). The text size is the best fit of that box ([`fit_px`]).
+    /// (1.4.0). The text size is the best fit of that box ([`layout`]).
     pub width: u16,
+    /// Height of the box in thousandths of the picture height, `HEIGHT_MIN..=HEIGHT_MAX`
+    /// (2.0.3, REQ-159); a project saved before has 20%.
+    #[serde(default = "default_height")]
+    pub height: u16,
+    /// Outline or background box (2.0.3, REQ-158); a project saved before has none.
+    #[serde(default)]
+    pub readability: Readability,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<Anchor360>,
-}
-
-/// True for a font family name that is safe to put in an ASS file.
-pub fn valid_font(name: &str) -> bool {
-    name.chars().count() <= MAX_FONT
-        && name
-            .chars()
-            .all(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '.' | '_' | '(' | ')'))
 }
 
 /// The text with line breaks normalised and control characters removed; `None` when
@@ -168,6 +210,8 @@ impl TextItem {
             font: String::new(),
             place: DEFAULT_PLACE,
             width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+            readability: Readability::Outline,
             anchor: None,
         }
     }
@@ -199,8 +243,11 @@ impl TextItem {
         if !valid_font(&self.font) {
             return Err("text item with an invalid font name".into());
         }
-        if !self.place.is_valid() || !(WIDTH_MIN..=WIDTH_MAX).contains(&self.width) {
-            return Err("text item with an invalid place or width".into());
+        if !self.place.is_valid()
+            || !(WIDTH_MIN..=WIDTH_MAX).contains(&self.width)
+            || !(HEIGHT_MIN..=HEIGHT_MAX).contains(&self.height)
+        {
+            return Err("text item with an invalid place or box".into());
         }
         if self.anchor.is_some_and(|a| !a.is_valid()) {
             return Err("text item with an invalid 360 anchor".into());
@@ -389,18 +436,18 @@ pub fn alpha_at(item: &TextItem, t: Micros) -> f64 {
     envelope(item, t)
 }
 
-/// The box of a text on a flat `width` x `height` picture, in pixels: its width and the
-/// fixed height (REQ-116).
+/// The box of a text on a flat `width` x `height` picture, in pixels: its width (REQ-116)
+/// and height (REQ-159).
 pub fn box_px(item: &TextItem, width: u32, height: u32) -> (f64, f64) {
     (
         f64::from(width) * f64::from(item.width) / 1000.0,
-        f64::from(height) * f64::from(BOX_HEIGHT) / 1000.0,
+        f64::from(height) * f64::from(item.height) / 1000.0,
     )
 }
 
 /// The rows `text` takes at font height `px` when it wraps at `wrap` pixels: characters
 /// are taken as 0.6 of the font height wide.
-fn rows_at(text: &str, px: f64, wrap: f64) -> f64 {
+fn legacy_rows_at(text: &str, px: f64, wrap: f64) -> f64 {
     text.split('\n')
         .map(|l| {
             (l.chars().count() as f64 * px * 0.6 / wrap.max(1.0))
@@ -410,12 +457,11 @@ fn rows_at(text: &str, px: f64, wrap: f64) -> f64 {
         .sum()
 }
 
-/// The **best fit** (REQ-116): the largest font height in pixels at which `text`, wrapped
-/// at `box_w`, fits inside `box_h` (rows of 1.2 times the font height), never more than one
-/// line filling the box, never below `min_px`. Pure: preview and export call it with the
-/// same geometry, so they agree.
-pub fn fit_in(text: &str, box_w: f64, box_h: f64, min_px: f64) -> f64 {
-    let fits = |px: f64| rows_at(text, px, box_w) * px * 1.2 <= box_h;
+/// The 2.0.2 **estimate** of the best fit: the largest font height in pixels at which
+/// `text`, wrapped at `box_w` by 0.6-em characters, fits inside `box_h` (rows of 1.2 times
+/// the font height). Kept only for the sizes of old projects (ADR-088, REQ-167).
+pub fn legacy_fit_in(text: &str, box_w: f64, box_h: f64, min_px: f64) -> f64 {
+    let fits = |px: f64| legacy_rows_at(text, px, box_w) * px * 1.2 <= box_h;
     let hi = box_h / 1.2;
     if hi <= min_px || fits(hi) {
         return hi.max(min_px);
@@ -435,11 +481,144 @@ pub fn fit_in(text: &str, box_w: f64, box_h: f64, min_px: f64) -> f64 {
     lo
 }
 
-/// Font size in pixels of a flat text on a `width` x `height` picture: its best fit.
-pub fn fit_px(item: &TextItem, width: u32, height: u32) -> u32 {
+/// The size the 2.0.2 estimate gave a flat text on a `width` x `height` picture.
+pub fn legacy_fit_px(item: &TextItem, width: u32, height: u32) -> u32 {
     let (bw, bh) = box_px(item, width, height);
     let min = f64::from(height) * f64::from(MIN_FIT) / 1000.0;
-    (fit_in(&item.text, bw, bh, min).floor() as u32).max(6)
+    (legacy_fit_in(&item.text, bw, bh, min).floor() as u32).max(6)
+}
+
+/// A text measured with its font: the size and the lines it is drawn with (REQ-156).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextLayout {
+    /// Font size (the height of a line) in pixels.
+    pub px: f64,
+    /// The lines as they are drawn (already wrapped: the renderer does not wrap).
+    pub lines: Vec<String>,
+    /// Width of the widest line, in pixels.
+    pub width: f64,
+    /// False when the text runs past its box even at the smallest size (REQ-159).
+    pub fits: bool,
+}
+
+impl TextLayout {
+    /// Height of the lines, in pixels.
+    pub fn height(&self) -> f64 {
+        self.lines.len() as f64 * self.px
+    }
+}
+
+/// Texts shaped so far, by font file and text (shaping is the costly part of a layout).
+type ShapeCache = std::collections::HashMap<(String, String), Option<std::sync::Arc<Shaped>>>;
+const SHAPE_CACHE_MAX: usize = 512;
+
+fn shape_cache() -> &'static std::sync::Mutex<ShapeCache> {
+    static C: std::sync::OnceLock<std::sync::Mutex<ShapeCache>> = std::sync::OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+/// `text` shaped with the face that draws the font family `font`: the installed face, or
+/// the bundled one when the family is not installed or cannot be read (REQ-163, REQ-164).
+fn shaped_for(text: &str, font: &str) -> Option<std::sync::Arc<Shaped>> {
+    let installed = fonts::resolve(font);
+    let try_face = |face: &fonts::Face, key: String| {
+        let k = (key, text.to_string());
+        if let Ok(c) = shape_cache().lock()
+            && let Some(hit) = c.get(&k)
+        {
+            return hit.clone();
+        }
+        let v = Shaped::new(&face.bytes, face.index, text).map(std::sync::Arc::new);
+        if let Ok(mut c) = shape_cache().lock() {
+            if c.len() >= SHAPE_CACHE_MAX {
+                c.clear();
+            }
+            c.insert(k, v.clone());
+        }
+        v
+    };
+    if let Some(f) = &installed {
+        let key = format!(
+            "{}#{}",
+            f.file
+                .as_deref()
+                .map_or(String::new(), |p| p.display().to_string()),
+            f.index
+        );
+        if let Some(s) = try_face(f, key) {
+            return Some(s);
+        }
+    }
+    try_face(&fonts::bundled(), "bundled".into())
+}
+
+/// The best fit of `text` in font `font` for a box of `box_w` x `box_h` pixels, the size
+/// between `min_px` and `max_px` (REQ-156, REQ-157). Pure in its arguments (the font's own
+/// tables are the only other input): the preview and the export call it with the same
+/// geometry, so they agree.
+pub fn layout_in(
+    text: &str,
+    font: &str,
+    box_w: f64,
+    box_h: f64,
+    min_px: f64,
+    max_px: f64,
+) -> TextLayout {
+    match shaped_for(text, font) {
+        Some(s) => {
+            let f = s.fit(box_w, box_h, min_px, max_px);
+            TextLayout {
+                px: f.px,
+                width: f.width,
+                lines: f.lines,
+                fits: f.fits,
+            }
+        }
+        // no readable font at all: one row per line at the smallest size
+        None => TextLayout {
+            px: min_px,
+            width: box_w,
+            lines: text.split('\n').map(str::to_string).collect(),
+            fits: false,
+        },
+    }
+}
+
+/// The lines of `text` wrapped at `box_w` pixels when drawn at the fixed size `px` (the
+/// subtitle lines fixed to the sphere have their own size).
+pub fn layout_at(text: &str, font: &str, px: f64, box_w: f64) -> TextLayout {
+    match shaped_for(text, font) {
+        Some(s) => {
+            let f = s.at_size(box_w, px);
+            TextLayout {
+                px,
+                width: f.width,
+                lines: f.lines,
+                fits: f.fits,
+            }
+        }
+        None => TextLayout {
+            px,
+            width: box_w,
+            lines: text.split('\n').map(str::to_string).collect(),
+            fits: false,
+        },
+    }
+}
+
+/// The measured layout of a flat text on a `width` x `height` picture: the best fit of its
+/// box, between 2% and 10% of the picture height.
+pub fn layout(item: &TextItem, width: u32, height: u32) -> TextLayout {
+    let (bw, bh) = box_px(item, width, height);
+    let h = f64::from(height);
+    let min = (h * f64::from(MIN_FIT) / 1000.0).max(6.0);
+    let max = h * f64::from(MAX_FIT) / 1000.0;
+    layout_in(&item.text, &item.font, bw, bh, min, max.max(min))
+}
+
+/// Font size in pixels of a flat text on a `width` x `height` picture: its best fit.
+pub fn fit_px(item: &TextItem, width: u32, height: u32) -> f64 {
+    layout(item, width, height).px
 }
 
 /// The box width that makes a text made in 1.3.0 (with the size `old_size`, thousandths
@@ -450,13 +629,13 @@ pub fn legacy_width(text: &str, old_size: u16) -> u16 {
     let mut item = TextItem::new(TextId(0), text.to_string(), Micros::ZERO);
     let (mut lo, mut hi) = (WIDTH_MIN, WIDTH_MAX);
     item.width = hi;
-    if fit_px(&item, 1920, 1080) < want {
+    if legacy_fit_px(&item, 1920, 1080) < want {
         return WIDTH_MAX;
     }
     while lo < hi {
         let mid = (lo + hi) / 2;
         item.width = mid;
-        if fit_px(&item, 1920, 1080) >= want {
+        if legacy_fit_px(&item, 1920, 1080) >= want {
             hi = mid;
         } else {
             lo = mid + 1;
@@ -473,24 +652,18 @@ pub fn legacy_anchor_height(text: &str, size_cd: u32, wrap_cd: u32, old_size: u1
     let px =
         f64::from(size_cd) / 100.0 * (h / 180.0) * f64::from(old_size) / f64::from(SIZE_NORMAL);
     let wrap = (f64::from(wrap_cd) / 100.0 * w / 360.0).clamp(8.0, w);
-    let rows = rows_at(text, px.max(4.0), wrap);
+    let rows = legacy_rows_at(text, px.max(4.0), wrap);
     let cd = rows * f64::from(size_cd) * f64::from(old_size) / f64::from(SIZE_NORMAL) * 1.2;
     (cd.round() as u32).clamp(1, 18_000)
 }
 
-/// Rough size (pixels) of the text of an item, used where nothing is measured (the slide
-/// distance of the export): characters are taken as 0.6 of the font size wide, and long
-/// lines wrap at the width of the box.
+/// Size (pixels) of the drawn text of an item with what readability adds around it: used
+/// where only the size of the box is needed (the slide distance of the export, the preview
+/// boxes).
 pub fn estimate_box(item: &TextItem, width: u32, height: u32) -> (f64, f64) {
-    let px = f64::from(fit_px(item, width, height));
-    let max_w = box_px(item, width, height).0;
-    let mut w: f64 = 0.0;
-    for l in item.text.split('\n') {
-        w = w.max((l.chars().count() as f64 * px * 0.6).min(max_w));
-    }
-    let rows = rows_at(&item.text, px, max_w);
-    let pad = ass::outline(px as u32);
-    (w + 2.0 * pad, rows * px * 1.2 + 2.0 * pad)
+    let l = layout(item, width, height);
+    let pad = item.readability.border(l.px);
+    (l.width + 2.0 * pad, l.height() + 2.0 * pad)
 }
 
 fn alpha_hex(a: f64) -> String {
@@ -505,7 +678,7 @@ fn ms(t: Micros) -> i64 {
 }
 
 /// Where and how big an item is drawn, in the pixels of the picture the ASS file is for.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct Layout {
     /// Size of the picture (slide distances are measured against it).
     w: f64,
@@ -514,7 +687,9 @@ struct Layout {
     cx: f64,
     cy: f64,
     /// Font size.
-    px: u32,
+    px: f64,
+    /// The lines, already wrapped.
+    lines: Vec<String>,
     /// Box of the text (slide distance).
     bw: f64,
     bh: f64,
@@ -532,16 +707,16 @@ fn events_with(
     windows: Option<&[Window]>,
 ) -> Vec<AssEvent> {
     let (fin, fout) = fades(item);
-    let Layout {
-        w,
-        h,
-        cx,
-        cy,
-        px,
-        bw,
-        bh,
-        margins,
-    } = *lay;
+    let (w, h, cx, cy, px, bw, bh, margins) = (
+        lay.w,
+        lay.h,
+        lay.cx,
+        lay.cy,
+        lay.px,
+        lay.bw,
+        lay.bh,
+        lay.margins,
+    );
     let from = item.effects.slide.map(|(d, dur)| {
         let (x, y) = match d {
             SlideDir::Left => ((cx - bw).min(-bw / 2.0), cy),
@@ -552,19 +727,22 @@ fn events_with(
         (x, y, dur)
     });
     let [r, g, b] = item.colour;
-    let font = if item.font.is_empty() {
-        DEFAULT_FONT
+    // an installed font is drawn as chosen; any other one is the bundled font, written out
+    // so that the renderer never picks a silent fallback of its own (REQ-164)
+    let installed = !item.font.is_empty() && fonts::resolve(&item.font).is_some();
+    let (font, bold) = if installed {
+        (item.font.as_str(), 0)
     } else {
-        &item.font
+        (DEFAULT_FONT, 1)
     };
     let base = format!(
-        "\\an5\\fn{font}\\fs{px}\\bord{}\\1c&H{b:02X}{g:02X}{r:02X}&",
-        ass::outline(px)
+        "\\an5\\q2\\fn{font}\\b{bold}\\fs{px:.1}\\bord{}\\1c&H{b:02X}{g:02X}{r:02X}&",
+        item.readability.border(px)
     );
-    let text = item
-        .text
-        .split('\n')
-        .map(ass::escape)
+    let text = lay
+        .lines
+        .iter()
+        .map(|l| ass::escape(l))
         .collect::<Vec<_>>()
         .join("\\N");
     let mut out = Vec::new();
@@ -637,6 +815,7 @@ fn events_with(
                 tags,
                 text: text.clone(),
                 margins,
+                boxed: item.readability == Readability::Box,
             });
         }
     }
@@ -666,12 +845,14 @@ pub fn flat_events_in(
     windows: Option<&[Window]>,
 ) -> Vec<AssEvent> {
     let (w, h) = (f64::from(width), f64::from(height));
+    let fit = layout(item, width, height);
     let lay = Layout {
         w,
         h,
         cx: f64::from(item.place.x.min(POS_MAX)) * w / f64::from(POS_MAX),
         cy: f64::from(item.place.y.min(POS_MAX)) * h / f64::from(POS_MAX),
-        px: fit_px(item, width, height),
+        px: fit.px,
+        lines: fit.lines,
         bw: box_wh.0,
         bh: box_wh.1,
         margins: {
@@ -729,26 +910,23 @@ pub fn equirect_events_px(
     };
     let (cx, cy) = equirect_point(&a, w, h);
     let wrap = (f64::from(a.width_cd) / 100.0 * f64::from(w) / 360.0).clamp(8.0, f64::from(w));
-    let px = px.unwrap_or_else(|| {
-        let box_h = f64::from(a.height_cd) / 100.0 * f64::from(h) / 180.0;
-        (fit_in(&item.text, wrap, box_h, 4.0).floor() as u32).max(4)
-    });
+    let fit = match px {
+        Some(px) => layout_at(&item.text, &item.font, f64::from(px), wrap),
+        None => {
+            let box_h = f64::from(a.height_cd) / 100.0 * f64::from(h) / 180.0;
+            layout_in(&item.text, &item.font, wrap, box_h, 4.0, f64::from(h) * 0.1)
+        }
+    };
     let margin = ((f64::from(w) - wrap) / 2.0).max(0.0).round() as u32;
-    // the estimate of the box, with the equirect font and wrap
-    let chars = item
-        .text
-        .split('\n')
-        .map(|l| l.chars().count())
-        .max()
-        .unwrap_or(1) as f64;
-    let bw = (chars * f64::from(px) * 0.6).min(wrap);
-    let bh = rows_at(&item.text, f64::from(px), wrap) * f64::from(px) * 1.2;
+    let pad = item.readability.border(fit.px);
+    let (bw, bh) = (fit.width + 2.0 * pad, fit.height() + 2.0 * pad);
     let lay = Layout {
         w: f64::from(w),
         h: f64::from(h),
         cx,
         cy,
-        px,
+        px: fit.px,
+        lines: fit.lines,
         bw,
         bh,
         margins: Some((margin, margin)),
@@ -759,7 +937,7 @@ pub fn equirect_events_px(
             item,
             &Layout {
                 cx: cx + f64::from(w),
-                ..lay
+                ..lay.clone()
             },
             video_end,
             windows,
@@ -770,7 +948,7 @@ pub fn equirect_events_px(
             item,
             &Layout {
                 cx: cx - f64::from(w),
-                ..lay
+                ..lay.clone()
             },
             video_end,
             windows,
@@ -974,11 +1152,13 @@ mod tests {
         let mut i = item();
         i.text = "{\\evil}".into();
         i.colour = [0x11, 0x22, 0x33];
-        i.font = "DejaVu Sans".into();
+        // a font that is installed (a copy of the bundled one under another name)
+        crate::fonts::install_patched("Tag Sans1", 1124);
+        i.font = "Tag Sans1".into();
         i.width = 1000;
         let ev = &events(&i, 1920, 1080, estimate_box(&i, 1920, 1080), secs(100.0))[0];
         assert!(ev.tags.contains("\\1c&H332211&"));
-        assert!(ev.tags.contains("\\fnDejaVu Sans"));
+        assert!(ev.tags.contains("\\fnTag Sans1\\b0"), "{}", ev.tags);
         assert!(ev.tags.contains(&format!("\\fs{}", fit_px(&i, 1920, 1080))));
         assert!(!ev.text.contains('{') && !ev.text.contains('\\'));
         assert_eq!(font_px(1080, SIZE_NORMAL), 54);
@@ -1132,7 +1312,7 @@ mod tests {
             fit_px(&j, 1920, 1080)
         };
         // monotone in the width: a wider box never gives a smaller text
-        let mut last = 0;
+        let mut last = 0.0;
         for w in (WIDTH_MIN..=WIDTH_MAX).step_by(50) {
             let f = at(&i, w);
             assert!(f >= last, "width {w}: {f} < {last}");
@@ -1149,14 +1329,14 @@ mod tests {
         let mut four = item();
         four.text = "one\ntwo\nthree\nfour".into();
         assert!(at(&four, 800) < at(&two, 800));
-        // never above one line filling the box (20% of the height / 1.2)
+        // never above 10% of the height (REQ-157)
         let mut short = item();
         short.text = "Hi".into();
-        assert!(at(&short, 1000) <= (1080.0_f64 * 0.2 / 1.2) as u32);
+        assert_eq!(at(&short, 1000), 108.0);
         // never below 2% of the height: text that does not fit runs past the box
         let mut huge = item();
         huge.text = "word ".repeat(2000);
-        assert_eq!(at(&huge, 100), (1080.0_f64 * 0.02) as u32);
+        assert_eq!(at(&huge, 100), 1080.0 * 0.02);
         // the same item gives the same size in every call: preview and export agree
         assert_eq!(fit_px(&i, 1920, 1080), fit_px(&i, 1920, 1080));
         // 200 items fit quickly
@@ -1197,9 +1377,9 @@ mod tests {
         assert!(narrow < 400, "{narrow}");
         let mut i = TextItem::new(TextId(1), "Hi".into(), Micros::ZERO);
         i.width = narrow;
-        assert!(fit_px(&i, 1920, 1080) >= font_px(1080, SIZE_NORMAL));
+        assert!(legacy_fit_px(&i, 1920, 1080) >= font_px(1080, SIZE_NORMAL));
         i.width = narrow - 1;
-        assert!(narrow == WIDTH_MIN || fit_px(&i, 1920, 1080) < font_px(1080, SIZE_NORMAL));
+        assert!(narrow == WIDTH_MIN || legacy_fit_px(&i, 1920, 1080) < font_px(1080, SIZE_NORMAL));
         // a text too big for the box gets the widest box and shrinks to fit
         assert_eq!(legacy_width(&"word ".repeat(300), 4000), WIDTH_MAX);
         // a text fixed to the sphere: more rows make a taller box, in range
@@ -1207,5 +1387,115 @@ mod tests {
         let many = legacy_anchor_height(&"words ".repeat(40), 500, 6000, 1000);
         assert!(many > one && (1..=18_000).contains(&many));
         assert_eq!(legacy_anchor_height("x", 1, 1, 250), 1);
+    }
+
+    fn install_test_font(family: &str, win_ascent: u16) {
+        crate::fonts::install_patched(family, win_ascent);
+    }
+
+    // covers: REQ-158
+    #[test]
+    fn readability_is_written_as_none_outline_or_a_box() {
+        let mut i = item();
+        i.text = "Hi".into();
+        i.width = 1000;
+        let at = |r: Readability| {
+            let mut j = i.clone();
+            j.readability = r;
+            events(&j, 1920, 1080, estimate_box(&j, 1920, 1080), secs(100.0))
+        };
+        // Hi in the default box: 10% of 1080
+        let none = &at(Readability::None)[0];
+        assert!(none.tags.contains("\\bord0\\"), "{}", none.tags);
+        assert!(!none.boxed);
+        let out = &at(Readability::Outline)[0];
+        assert!(out.tags.contains("\\bord6\\"), "6% of 108: {}", out.tags);
+        assert!(!out.boxed);
+        let boxed = &at(Readability::Box)[0];
+        assert!(
+            boxed.tags.contains("\\bord11\\"),
+            "10% of 108: {}",
+            boxed.tags
+        );
+        assert!(boxed.boxed);
+        // the readability is stored by name, and a text without it (before 2.0.3) is None
+        let j = serde_json::to_string(&Readability::Box).unwrap();
+        assert_eq!(j, "\"box\"");
+        let old: TextItem = serde_json::from_str(
+            r#"{"id":1,"text":"x","start":0,"ttl":1000000,"colour":[1,2,3],"place":{"x":1,"y":2},"width":500}"#,
+        )
+        .unwrap();
+        assert_eq!(old.readability, Readability::None);
+        assert_eq!(old.height, DEFAULT_HEIGHT);
+        assert_eq!(Readability::None.border(100.0), 0.0);
+        assert_eq!(Readability::ALL.len(), 3);
+        assert_eq!(Readability::Box.name(), "Background box");
+        // a new text starts with an outline
+        assert_eq!(item().readability, Readability::Outline);
+    }
+
+    // covers: REQ-156
+    #[test]
+    fn the_lines_are_wrapped_by_us_and_the_renderer_never_wraps() {
+        let mut i = item();
+        i.text = "The quick brown fox jumps over the lazy dog and keeps running far away".into();
+        i.width = 300;
+        let ev = &events(&i, 1920, 1080, estimate_box(&i, 1920, 1080), secs(100.0))[0];
+        assert!(ev.tags.contains("\\q2"), "{}", ev.tags);
+        let lines: Vec<&str> = ev.text.split("\\N").collect();
+        assert!(lines.len() > 1, "a narrow box wraps: {}", ev.text);
+        // nothing is lost and no line is wider than the box
+        assert_eq!(lines.join(" "), i.text);
+        let l = layout(&i, 1920, 1080);
+        assert!(l.width <= box_px(&i, 1920, 1080).0 + 1.0);
+        assert_eq!(l.lines.len(), lines.len());
+        // the same layout twice: preview and export agree
+        assert_eq!(layout(&i, 1920, 1080), l);
+    }
+
+    // covers: REQ-163
+    #[test]
+    fn the_layout_uses_the_face_the_picture_is_drawn_with() {
+        install_test_font("Wide Sans", 300);
+        let mut a = item();
+        a.text = "A text that is measured with a font and is long enough to fill the box".into();
+        a.width = 500;
+        let mut b = a.clone();
+        b.font = "Wide Sans".into();
+        let (la, lb) = (layout(&a, 1920, 1080), layout(&b, 1920, 1080));
+        // the wider font gets a smaller size for the same box, and still fits it
+        assert!(lb.px < la.px, "{} {}", lb.px, la.px);
+        assert!(lb.fits && lb.width <= box_px(&b, 1920, 1080).0 + 1.0);
+        // the same size in both fonts: the installed one is wider
+        let wrap = |t: &TextItem| {
+            shaped_for(&t.text, &t.font)
+                .unwrap()
+                .at_size(1e6, 50.0)
+                .width
+        };
+        assert!(wrap(&b) > 1.5 * wrap(&a));
+        let ev = &events(&b, 1920, 1080, estimate_box(&b, 1920, 1080), secs(100.0))[0];
+        assert!(ev.tags.contains("\\fnWide Sans\\b0"), "{}", ev.tags);
+    }
+
+    // covers: REQ-164
+    #[test]
+    fn a_missing_font_is_drawn_in_the_bundled_font_and_its_name_is_kept() {
+        let mut i = item();
+        i.font = "Not Installed Anywhere".into();
+        assert!(i.validate().is_ok());
+        let ev = &events(&i, 1920, 1080, estimate_box(&i, 1920, 1080), secs(100.0))[0];
+        assert!(
+            ev.tags.contains("\\fnNoto Sans\\b1"),
+            "written out, never the renderer's own fallback: {}",
+            ev.tags
+        );
+        assert!(!ev.tags.contains("Not Installed"));
+        // measured with the bundled font: the same layout as the default font
+        let d = item();
+        assert_eq!(layout(&i, 1920, 1080), layout(&d, 1920, 1080));
+        // the project keeps the name
+        let j: TextItem = serde_json::from_str(&serde_json::to_string(&i).unwrap()).unwrap();
+        assert_eq!(j.font, "Not Installed Anywhere");
     }
 }

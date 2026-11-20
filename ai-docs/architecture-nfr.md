@@ -71,3 +71,17 @@ Gates are marked GATE; everything else is an estimate or target. Grouped by area
 ## Quality targets 1.6.x
 - 1.6.0: splash decode <= 100 ms (estimate); player has no network code (CI check: player graph has no ureq / whisper-rs).
 - 1.6.2: summary text tested to fit (estimate ~340 of 442 px at 14 px); editor version rectangle 74..408 x 381..465; player 78..386 x 388..462 inside 487x505 (tested).
+
+## 2.0.3 PLAN (REQ-155..179; plan ai-docs/architecture-plan-2.0.3.md)
+- GATE (REQ-155) paused picture at the last frame of a clip: picture (not black) at 1.98 s and 1.995 s of a 2 s 25 fps clip; export argv unchanged (golden).
+- GATE (REQ-156) fill 90–100% of box height for ten test texts; export size = preview size within 2% of picture height (ffmpeg test, same events).
+- GATE (REQ-157) "Hi" in the default box drawn at 10% of picture height (within 2%).
+- GATE (REQ-166) a 20 MB installed font adds at most 0.5 s to the window's appearance (manual, maintainer's computer, business-verification); automated part: no face read at start.
+- GATE (REQ-177, reworded D56): strict alignment test: at the Fast level, at least 90% of the MATCHED words start within 0.3 s of reference.json after the onset snap; the matched share is printed, not gated; pinned ffmpeg 9.0.2 and tiny q5_1 (sha-checked); Balanced and Most accurate not worse than Fast (measured, scratch note).
+- GATE (REQ-178) 5-minute reference: no transcript word missing, no duplicate at a boundary.
+- ESTIMATE measure: best fit of a 200-character text under 10 ms (cached per key; 1.4.0 target kept), per edit of the text; shaping once per (text, face).
+- ESTIMATE UI frame <= 200 ms with 200 texts during export and recognition (existing gate, REQ-104 test on the new handles and warnings).
+- QG-01 (kept): Fast subtitles at most +5% time: piece margins add 3.3% of audio work (2 s on each side of 120 s; ADR-165), measured on the reference clip.
+- Memory: no DTW (D56); the 10 ms energy envelope adds about 7 MB per hour of audio (estimate); the "Most accurate" memory note (about 1.3 GB, estimate) is unchanged; the 200 MB growth gate of the export stays.
+- Export of a project without texts or new features: argv byte-identical (GATE), except the blur fill of pictures smaller than 64 px wide (ADR-152).
+- Format 10: loading old projects is at most as slow as format 9 (no extra pass beyond the REQ-167 count, estimate).

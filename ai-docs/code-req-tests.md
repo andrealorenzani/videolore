@@ -1,6 +1,6 @@
 # ai-notes: code — requirement -> test files (generated)
 
-<!-- AI-only. Owner: principal-engineer. Regenerate: for f in $(grep -rlE 'covers: *REQ' src tests player | sort); do list the REQ numbers of its covers: lines; done. Test names: grep -rn 'covers:.*REQ-NNN' src tests player. Generated 1.6.3 (150/150). -->
+<!-- AI-only. Owner: principal-engineer. Regenerate: for f in $(grep -rlE 'covers: *REQ' src tests player | sort); do list the REQ numbers of its covers: lines; done. Test names: grep -rn 'covers:.*REQ-NNN' src tests player. Generated 2.0.3 (every implemented REQ has a covers: line; REQ-177 is planned and not met). -->
 
 - player/src/fullscreen.rs: 141
 - player/src/subs.rs: 140
@@ -12,19 +12,21 @@
 - src/app/frame_tests.rs: 124,127,128,129,130
 - src/app/hw_tests.rs: 055,060,061,064
 - src/app/lut_tests.rs: 057,135,136,137
+- src/app/placing_tests.rs: 168,169,172,174,175,176
 - src/app/settings_tests.rs: 044,045,046,047,048,050,051,052,053,054,059
-- src/app/sphere_tests.rs: 057,089,096,097,098,099,100,101,102,105,123
+- src/app/sphere_tests.rs: 057,089,096,097,098,099,100,101,102,105,123,173
 - src/app/tests.rs: 001,002,003,004,005,006,007,008,009,010,011,014,015,016,019,020,021,025,026,027,028,032,033,038,041,043,044,045,049
-- src/app/text_tests.rs: 090,091,092,103,106,108,109,110,111,112,113,115,116,117,118,119,122
+- src/app/text_tests.rs: 090,091,092,103,106,108,109,110,111,112,113,115,116,117,118,119,122,158,159,161,167
 - src/app/ux_tests.rs: 028,067,072,073,074,076,077,080,081
 - src/ass.rs: 017,089,097
+- src/base/font.rs: 108
 - src/camera.rs: 101,102,112
 - src/desktop.rs: 041
 - src/export/choice.rs: 118,119,122
 - src/export/hw_tests.rs: 021,055,063,103
 - src/export.rs: 017,021,023
 - src/ffmpeg.rs: 030
-- src/fonts.rs: 108
+- src/fonts.rs: 108,163,165,166
 - src/format.rs: 022,120,121
 - src/frame.rs: 125,129,131,132
 - src/history.rs: 004,074
@@ -33,26 +35,28 @@
 - src/keyframes.rs: 129,132
 - src/lut.rs: 136
 - src/machine.rs: 045,054
+- src/measure.rs: 116,156,157,159,163
 - src/media.rs: 002,057,086,100
 - src/music.rs: 002,019,020
 - src/notices.rs: 031,143
 - src/outcheck/tests.rs: 063
 - src/packaging.rs: 030,040,041,042,138
+- src/placement.rs: 168,169,174,175,176
 - src/preview.rs: 013,034,035,039,144
-- src/project.rs: 003,016,019,020,029,057,094,105,113,123,132,136,137,151,152
+- src/project.rs: 003,016,019,020,029,057,094,105,113,123,132,136,137,151,152,158,167
 - src/project/v9.rs: 149
 - src/proxy.rs: 033,038,104
 - src/render/golden_tests.rs: 029,062,094,097,105
-- src/render.rs: 011,013,017,019,020,022,023,034,036,037,038,043,083,084,101,102,103,104,111,112,114,119,120,121,125,126,127,128,131,135,136
+- src/render.rs: 011,013,017,019,020,022,023,034,036,037,038,043,083,084,101,102,103,104,111,112,114,119,120,121,125,126,127,128,131,135,136,155
 - src/scratch.rs: 059,151,152
 - src/selection.rs: 090,091,092
 - src/settings/tests.rs: 045,046,047,048,049,050,052,054,057,060,064,065,067,080,096,151,152
 - src/spherical.rs: 103
 - src/splash.rs: 134,150
 - src/srt.rs: 057,087,088
-- src/stt.rs: 014,015,052,053,054,058,085,087,095
+- src/stt.rs: 014,015,052,053,054,058,085,087,095,178,179
 - src/subtitles.rs: 016,018,044,085,089,092,097,099
-- src/text.rs: 108,109,110,111,113,116,123
+- src/text.rs: 108,109,110,111,113,116,123,156,158,163,164
 - src/timeline.rs: 002,005,006,007,008,009,010,011,020,083,084,094,114,124,129,130,131,132,135,147,148
 - src/ui/boxes.rs: 096,097,098,116,146
 - src/ui/frame_handles.rs: 127,128,145
@@ -65,11 +69,12 @@
 - src/ui/markers.rs: 077,083,084,090,114
 - src/ui/menu.rs: 069,075
 - src/ui/placement.rs: 089,117
+- src/ui/placing_ux_tests.rs: 169,170,171,172,175,176
 - src/ui/ruler.rs: 093
 - src/ui/sphere_ux_tests.rs: 069,070,072,089,092,096,097,098,099,100,101,102,112
 - src/ui/splash_ux_tests.rs: 133,134,154
 - src/ui/tests.rs: 012,016,017,019,020,021,024,025,026,028,032,038,045,046,048,052,056,060,064,066,073,076,082,089,095,097,101,104
-- src/ui/text_ux_tests.rs: 075,090,092,096,103,106,107,108,110,111,118,122
+- src/ui/text_ux_tests.rs: 075,090,092,096,103,106,107,108,110,111,118,122,158,159,160,161,162,164
 - src/ui/toolbar.rs: 070,106
 - src/ui/ux_tests.rs: 009,011,019,025,028,066,067,068,069,070,071,072,075,076,077,078,079,081,082,083,089,090,091,092,114
 - src/ui/zoom.rs: 012
@@ -81,5 +86,6 @@
 - tests/ffmpeg_integration/v14.rs: 114,119,120,121
 - tests/ffmpeg_integration/v15.rs: 125,126,127,128,129,131
 - tests/ffmpeg_integration/v16.rs: 135,136,147
-- tests/ffmpeg_integration/v20.rs: 121,137,144
+- tests/ffmpeg_integration/v20.rs: 121,137,144,155
+- tests/ffmpeg_integration/v21.rs: 156,157,158,162,163,164,165,174
 - tests/module_cycles.rs: 153

@@ -432,7 +432,7 @@ fn with_lines(app: &mut AppState) -> (LineId, LineId) {
     (ids[0], ids[1])
 }
 
-// covers: REQ-098
+// covers: REQ-098, REQ-173
 #[test]
 fn align_centres_the_selected_lines_on_one_axis_in_one_undo_step() {
     let dir = tempfile::tempdir().unwrap();
@@ -480,8 +480,8 @@ fn align_centres_the_selected_lines_on_one_axis_in_one_undo_step() {
     for l in &app.project.subtitles.lines {
         assert_eq!(l.position, Some(low));
     }
-    // a line at the style's place is already centred horizontally; vertically it gets
-    // the middle of the picture
+    // a line at the style's place gets its own place when it is aligned (REQ-173): the
+    // middle of the picture on that axis and, on the other one, where its box is now
     app.dispatch(Command::ResetObjects, now).unwrap();
     assert!(
         app.project
@@ -491,9 +491,29 @@ fn align_centres_the_selected_lines_on_one_axis_in_one_undo_step() {
             .all(|l| l.position.is_none())
     );
     let n = app.history.undo_len();
-    app.dispatch(Command::AlignSelected(Axis::Horizontal), now)
-        .unwrap();
-    assert_eq!(app.history.undo_len(), n, "nothing to change");
+    let c = Command::AlignSelected(Axis::Horizontal);
+    assert!(app.is_enabled(&c));
+    app.dispatch(c.clone(), now).unwrap();
+    assert_eq!(app.history.undo_len(), n + 1);
+    for l in &app.project.subtitles.lines {
+        let p = l.position.expect("an own place");
+        assert_eq!(p.x, 5000);
+        assert!(p.y > 5000, "the box stays low in the picture: {}", p.y);
+    }
+    // centred on the axis now: greyed out with the reason, and nothing more to do
+    assert!(!app.is_enabled(&c));
+    assert_eq!(app.disabled_reason(&c), Some(sphere::ALREADY_CENTRED));
+    app.dispatch(c, now).unwrap();
+    assert_eq!(app.history.undo_len(), n + 1);
+    // one undo restores the style's place
+    app.dispatch(Command::Undo, now).unwrap();
+    assert!(
+        app.project
+            .subtitles
+            .lines
+            .iter()
+            .all(|l| l.position.is_none())
+    );
     app.dispatch(Command::AlignSelected(Axis::Vertical), now)
         .unwrap();
     assert!(

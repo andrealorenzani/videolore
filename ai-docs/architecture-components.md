@@ -46,7 +46,9 @@
 - frame (1.5.0, pure): FrameAspect, frame_size, 4096 cap (ADR-097).
 - lut (1.6.0, pure): .cube reader 3D/1D, limits (ADR-109).
 - text (1.3.0, pure): text items -> ASS events; caps; font-name rule; 1.4.0 width permille, fit().
-- fonts (1.3.0): fontdb 0.24 background scan; family list; charset rule; bytes for layout (cap 64 MiB, LRU 8).
+- fonts (1.3.0): fontdb 0.24 background scan; family list; charset rule. STALE CLAIM fixed by the architect on 2026-11-20: no face bytes exist in 2.0.2 (grep: no LRU). 2.0.3 PLAN adds face bytes on demand (cap 64 MiB, LRU 8), name resolution, copies into the work `fonts/` folder (ADR-155/156).
+- measure (2.0.3 PLAN, NEW, pure, no crate dependency): face metrics (skrifa 0.44), shaping (harfrust 0.12), greedy wrap, best fit (ADR-154). Used by text (fit), placement (boxes), app (layouts cache).
+- placement (2.0.3 PLAN, NEW, pure): box rect, least move inside, centre keeping, overlap pairs, partly outside (ADR-161). Uses measure, text, subtitles, base::pos; used by app and ui.
 - selection (1.3.0): one Selection value (BTreeSet<ObjRef{Line,Text}>), pure transitions.
 - splash (1.6.0 pure; 1.6.2 shared): Program{image,summary,text_rect} with EDITOR and PLAYER; include_bytes!/include_str! from assets/splash/; decode caps (ADR-133).
 - notices: static table of bundled components + generated rust crate notices (include_str!). 1.6.0: rust-crates.txt (editor) + rust-crates-player.txt (player); third-party.txt Phosphor entry.

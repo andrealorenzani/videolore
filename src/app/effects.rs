@@ -297,6 +297,31 @@ impl AppState {
             .collect()
     }
 
+    /// The subtitle lines a drag of the text `id` moves along (REQ-172): the lines of the
+    /// selection when `id` is in it with others.
+    pub fn drag_group_lines_of_text(&self, id: crate::text::TextId) -> Vec<LineId> {
+        self.selection
+            .drag_targets(ObjRef::Text(id))
+            .into_iter()
+            .filter_map(|o| match o {
+                ObjRef::Line(l) => Some(l),
+                ObjRef::Text(_) => None,
+            })
+            .collect()
+    }
+
+    /// The text items a drag of the line `id` moves along (REQ-172).
+    pub fn drag_group_texts_of_line(&self, id: LineId) -> Vec<crate::text::TextId> {
+        self.selection
+            .drag_targets(ObjRef::Line(id))
+            .into_iter()
+            .filter_map(|o| match o {
+                ObjRef::Text(t) => Some(t),
+                ObjRef::Line(_) => None,
+            })
+            .collect()
+    }
+
     pub(super) fn set_line_positions(
         &mut self,
         ids: Vec<LineId>,

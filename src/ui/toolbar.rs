@@ -44,7 +44,11 @@ pub fn context_group(app: &AppState) -> Vec<ActionId> {
 pub fn context_group_of(line_selected: bool, on_360: bool) -> Vec<ActionId> {
     let mut v = Vec::new();
     if line_selected {
-        v.extend([ActionId::AlignHorizontal, ActionId::AlignVertical]);
+        v.extend([
+            ActionId::AlignHorizontal,
+            ActionId::AlignVertical,
+            ActionId::MoveInside,
+        ]);
     }
     if on_360 {
         v.push(ActionId::SetPov);
@@ -73,6 +77,7 @@ pub fn label(app: &AppState, id: ActionId) -> String {
         ActionId::Redo => "Redo".into(),
         ActionId::AlignHorizontal => "Align horizontally".into(),
         ActionId::AlignVertical => "Align vertically".into(),
+        ActionId::MoveInside => "Move inside the picture".into(),
         ActionId::PlayPause if app.preview.is_playing() => "Pause".into(),
         ActionId::PlayPause => "Play".into(),
         _ => id.label(app),
@@ -199,12 +204,18 @@ mod tests {
         assert!(context_group_of(false, false).is_empty());
         assert_eq!(
             context_group_of(true, false),
-            [AlignHorizontal, AlignVertical, ResetObjects]
+            [AlignHorizontal, AlignVertical, MoveInside, ResetObjects]
         );
         assert_eq!(context_group_of(false, true), [SetPov, ResetObjects]);
         assert_eq!(
             context_group_of(true, true),
-            [AlignHorizontal, AlignVertical, SetPov, ResetObjects]
+            [
+                AlignHorizontal,
+                AlignVertical,
+                MoveInside,
+                SetPov,
+                ResetObjects
+            ]
         );
     }
 }

@@ -25,6 +25,26 @@ pub fn output_text(app: &AppState) -> String {
     }
 }
 
+/// The hint shown while a subtitle line or a text item is selected (REQ-171): how to select
+/// more than one.
+pub const SELECTION_HINT: &str =
+    "Ctrl/Cmd+click adds or removes an item; Shift+drag on the timeline selects a time range";
+
+/// The selection hint, or nothing when nothing is selected (REQ-171).
+pub fn selection_hint(app: &AppState) -> Option<&'static str> {
+    (!app.selection.is_empty()).then_some(SELECTION_HINT)
+}
+
+/// The warning about items partly outside the picture at the playhead (REQ-175).
+pub fn outside_text(app: &AppState) -> Option<String> {
+    let n = app.partly_outside().len();
+    match n {
+        0 => None,
+        1 => Some("1 item is partly outside the picture".into()),
+        n => Some(format!("{n} items are partly outside the picture")),
+    }
+}
+
 pub fn status_bar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let jobs = app.background_jobs();
     let output = output_text(app);
@@ -35,6 +55,13 @@ pub fn status_bar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             ui.set_max_width((w * 0.3).max(60.0));
             ui.add(Label::new(msg).truncate()).on_hover_text(msg);
         });
+        for note in [outside_text(app), selection_hint(app).map(String::from)]
+            .into_iter()
+            .flatten()
+        {
+            ui.separator();
+            ui.add(Label::new(&note).truncate()).on_hover_text(&note);
+        }
         for (i, j) in jobs.iter().enumerate() {
             ui.separator();
             ui.add(Label::new(&j.label).truncate());

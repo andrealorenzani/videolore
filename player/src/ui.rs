@@ -436,6 +436,7 @@ fn interact(
                     cache.line_drag = Some(placement::Drag {
                         line: id,
                         ids: vec![id],
+                        texts: Vec::new(),
                         grab: f - r.center(),
                         size: r.size(),
                         frame,

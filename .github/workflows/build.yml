@@ -25,6 +25,8 @@ jobs:
       VIDEOLORE_REQUIRE_FFMPEG: "1"
       # Real speech recognition tests (the three speech files are cached below).
       VIDEOLORE_STT_MODEL: ${{ github.workspace }}/.stt-model/ggml-tiny-q5_1.bin
+      # A missing speech model or fixture fails the speech tests instead of skipping them.
+      VIDEOLORE_REQUIRE_STT: "1"
       VIDEOLORE_STT_MODELS_DIR: ${{ github.workspace }}/.stt-model
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

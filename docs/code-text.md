@@ -2,6 +2,8 @@
 
 > Changed in 1.4.0: `TextItem.size` became `width` with a best-fit size, the schema is 6 and the
 > 360 export question moved into the Export dialog. See [code-export.md](code-export.md).
+> Changed in 2.0.3: the size is measured with the font, texts have a readability and a box
+> height (schema 10), the events are wrapped by us. See [code-readable-text.md](code-readable-text.md).
 
 What 1.3.0 added, as built: text items with effects, one selection for lines and texts, the
 Context Menu group, texts fixed to the 360° sphere, the "360 video" export and the spherical

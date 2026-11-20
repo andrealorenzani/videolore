@@ -8,6 +8,10 @@
 #   reference.json  where every word starts in the sound (seconds), known exactly
 #                   because each word is synthesised on its own and placed by this script
 #
+# espeak-ng is used only here, never when the tests run (CI installs it with the other
+# packages, see build.yml; the version used for the committed files was not recorded).
+# The tests check the committed files by SHA-256: update the sums in
+# tests/ffmpeg_integration/v12.rs when you regenerate them.
 # Needs: espeak-ng, ffmpeg, ffprobe (with libopus and libx264 or mpeg4).
 # Usage: tests/fixtures/align/make.sh
 set -euo pipefail

@@ -96,6 +96,11 @@ There are no secrets, accounts or telemetry.
 - The player's splash adds no code path that reads or writes a file; the player's network rule is unchanged.
 - Resolved in 1.6.3: the origin and licence of `splash.gif` and `splash-player.gif` are recorded in the notices as the author's own work, licensed MIT.
 
+## Fonts and speech test (2.0.3, planned)
+- A project stores a font's name only; the program finds the font in the system's font list and copies its file into the private work folder (at most 64 MiB, named by a checksum prefix, removed with the folder). A missing font is never read from a path in the project.
+- The font libraries used for measuring parse font files in memory-safe Rust without unsafe code of this program; a broken font gives no measurement and the bundled font is used.
+- The speech test's fixtures are checked by checksum; CI sets a variable that makes a missing speech model a failure.
+
 ## Unsafe code
 Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in two reviewed places: the cancel callback passed to whisper.cpp and the macOS "open document" handler.
 

@@ -232,10 +232,23 @@ pub enum Command {
         ids: Vec<crate::text::TextId>,
         place: Pos,
     },
-    /// Sets the width of text boxes, thousandths of the picture width (REQ-116).
+    /// Sets the width of text boxes, thousandths of the picture width (REQ-116): the right
+    /// edge moves, the left one stays.
     ResizeTextWidth {
         ids: Vec<crate::text::TextId>,
         width: u16,
+    },
+    /// Moves the left or bottom edge of text boxes to a new width or height (thousandths
+    /// of the picture): the opposite edge stays (REQ-159, REQ-161).
+    ResizeTextBox {
+        ids: Vec<crate::text::TextId>,
+        edge: TextEdge,
+        value: u16,
+    },
+    /// Sets the readability of text items (REQ-158).
+    SetReadability {
+        ids: Vec<crate::text::TextId>,
+        readability: crate::text::Readability,
     },
     /// Sets the width, as an angle, of text boxes fixed to the sphere (REQ-116).
     ResizeTextAnchorWidth {
@@ -313,6 +326,15 @@ pub enum Command {
     AlignSelected(Axis),
     /// Selected lines back to the style's place and size; else the 360 camera to front.
     ResetObjects,
+    /// Moves subtitle lines and text items together so that each ends at `place` (REQ-172).
+    MoveSelection {
+        lines: Vec<LineId>,
+        texts: Vec<crate::text::TextId>,
+        place: Pos,
+    },
+    /// Moves the selected items by the least move that puts each wholly inside the picture
+    /// (REQ-175).
+    MoveInside,
     /// View > Show boxes on the picture.
     ToggleBoxes,
     /// Asks where to save the subtitles as an `.srt` file.
@@ -356,9 +378,10 @@ impl Command {
             Command::MoveText { .. }
             | Command::SetTextBoxes { .. }
             | Command::MoveTextAnchor { .. } => "Move text",
-            Command::ResizeTextWidth { .. } | Command::ResizeTextAnchorWidth { .. } => {
-                "Resize text"
-            }
+            Command::ResizeTextWidth { .. }
+            | Command::ResizeTextBox { .. }
+            | Command::ResizeTextAnchorWidth { .. } => "Resize text",
+            Command::SetReadability { .. } => "Text readability",
             Command::MoveLineAnchor { .. } => "Move subtitle",
             Command::DeleteTexts(_) => "Delete text",
             Command::DeleteSubtitle(_) => "Delete subtitle line",
@@ -415,6 +438,8 @@ impl Command {
             Command::EditPov { .. } => "Edit POV",
             Command::RemovePov { .. } => "Remove POV",
             Command::ResizeLines { .. } => "Resize subtitle",
+            Command::MoveSelection { .. } => "Move",
+            Command::MoveInside => "Move inside the picture",
             Command::AlignSelected(Axis::Horizontal) => "Align horizontally",
             Command::AlignSelected(Axis::Vertical) => "Align vertically",
             _ => "Edit",

@@ -6,22 +6,22 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business.md § title — L1-2 (2 lines)
 - docs/business.md § Purpose — L3-9 (7 lines)
 - docs/business.md § Users — L10-15 (6 lines)
-- docs/business.md § Documents — L16-33 (18 lines; verification L33)
-- docs/business.md § Constraints — L34-38 (5 lines)
-- docs/business.md § Key decisions (general) — L39-68 (30 lines; 1.6.2 splash L62; 2.0.2 Andrea bullet L65)
-- docs/business.md § Known limitations (1.2.0 … 1.6.0) — L69-97 (29 lines)
-- docs/business.md § Out of scope — L98-109 (12 lines; code signing not planned L105)
+- docs/business.md § Documents — L16-34 (19 lines; verification L34; accuracy bullet L23; 2.0.3 notes L22-24)
+- docs/business.md § Constraints — L35-39 (5 lines)
+- docs/business.md § Key decisions (general) — L40-69 (30 lines; 1.6.2 splash L63; 2.0.2 Andrea bullet L66)
+- docs/business.md § Known limitations (1.2.0, 1.3.0, 1.4.0, 1.5.0, 1.6.0) — L70-98 (29 lines)
+- docs/business.md § Out of scope — L99-110 (12 lines; code signing not planned L106)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
 - docs/business-editing.md § Media and projects (REQ-001..004, 026..029, 094, 105, 113, 123, 149) — L17-31 (15 lines)
 - docs/business-editing.md § Timeline (REQ-005..012, 083) — L32-42 (11 lines)
-- docs/business-editing.md § Preview (REQ-013, 034, 035, 144) — L43-48 (6 lines)
-- docs/business-editing.md § Layout and commands — L49-51 (3 lines)
-- docs/business-editing.md § Responsiveness and performance (REQ-032, 033, 038, 039) — L52-57 (6 lines)
-- docs/business-editing.md § Key decisions — L58-75 (18 lines)
-- docs/business-editing.md § Known limitations (REQ-144 defect L77) — L76-84 (9 lines)
-- docs/business-editing.md § Out of scope — L85-88 (4 lines)
+- docs/business-editing.md § Preview (REQ-013, 034, 035, 144, 155 implemented 2.0.3) — L43-49 (7 lines)
+- docs/business-editing.md § Layout and commands — L50-52 (3 lines)
+- docs/business-editing.md § Responsiveness and performance (REQ-032, 033, 038, 039) — L53-58 (6 lines)
+- docs/business-editing.md § Key decisions — L59-77 (19 lines; 2.0.3 format bullet L72)
+- docs/business-editing.md § Known limitations — L78-85 (8 lines; paused-picture gap removed 2.0.3)
+- docs/business-editing.md § Out of scope — L86-89 (4 lines)
 - docs/business-ui.md § intro — L1-6 (6 lines)
 - docs/business-ui.md § Features — L7-23 (17 lines)
 - docs/business-ui.md § Requirements — L24-25 (2 lines)
@@ -43,17 +43,18 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-effects.md § intro — L1-6 (6 lines)
 - docs/business-effects.md § Requirements — L7-8 (2 lines)
 - docs/business-effects.md § Effects (REQ-075, 107, 082, 147, 076, 077) — L9-26 (18 lines)
-- docs/business-text.md § intro — L1-8 (8 lines)
-- docs/business-text.md § Features — L9-16 (8 lines)
-- docs/business-text.md § Requirements (REQ-108..111, 115, 116) — L17-18 (2 lines)
-- docs/business-text.md § Adding text (REQ-108) — L19-21 (3 lines)
-- docs/business-text.md § Text effects (REQ-109) — L22-24 (3 lines)
-- docs/business-text.md § On the timeline and on the picture (REQ-110, 111) — L25-28 (4 lines)
-- docs/business-text.md § Box, size and Context Menu (REQ-115, 116) — L29-32 (4 lines)
-- docs/business-text.md § Key decisions — L33-40 (8 lines)
-- docs/business-text.md § Impact on existing features — L41-52 (12 lines)
-- docs/business-text.md § Known limitations — L53-62 (10 lines)
-- docs/business-text.md § Out of scope — L63-67 (5 lines)
+- docs/business-text.md § intro — L1-10 (10 lines; 2.0.3 pointer L9, REQ-155 pointer L36)
+- docs/business-text.md § Features — L11-20 (10 lines; 2.0.3 bullets L17-18)
+- docs/business-text.md § Requirements (REQ-108..111, 115, 116) — L21-22 (2 lines)
+- docs/business-text.md § Adding text (REQ-108) — L23-25 (3 lines)
+- docs/business-text.md § Text effects (REQ-109) — L26-28 (3 lines)
+- docs/business-text.md § On the timeline and on the picture (REQ-110, 111) — L29-32 (4 lines)
+- docs/business-text.md § Box, size and Context Menu (1.4.0) (REQ-115, 116) — L33-36 (4 lines)
+- docs/business-text.md § Readable text (2.0.3) (REQ-156..167 implemented; REQ-155 in editing) — L37-51 (15 lines)
+- docs/business-text.md § Key decisions — L52-61 (10 lines; 2.0.3 bullets L56-57)
+- docs/business-text.md § Impact on existing features — L62-73 (12 lines)
+- docs/business-text.md § Known limitations — L74-80 (7 lines; fonts bullet L78)
+- docs/business-text.md § Out of scope — L81-85 (5 lines)
 - docs/business-picture.md § intro — L1-12 (12 lines)
 - docs/business-picture.md § Features — L13-21 (9 lines)
 - docs/business-picture.md § Requirements — L22-23 (2 lines)
@@ -76,15 +77,22 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-frame.md § Known limitations — L57-67 (11 lines)
 - docs/business-frame.md § Out of scope — L68-71 (4 lines)
 - docs/business-subtitles.md § intro — L1-4 (4 lines)
-- docs/business-subtitles.md § Features — L5-18 (14 lines)
-- docs/business-subtitles.md § Requirements — L19-20 (2 lines)
-- docs/business-subtitles.md § Creating and editing (REQ-014..018, 044) — L21-29 (9 lines)
-- docs/business-subtitles.md § Subtitles already in the video (REQ-085..087, 095) — L30-40 (11 lines)
-- docs/business-subtitles.md § Saving subtitles as a file (REQ-088) — L41-43 (3 lines)
-- docs/business-subtitles.md § Position on screen and selection (REQ-089..092) — L44-51 (8 lines)
-- docs/business-subtitles.md § Key decisions — L52-63 (12 lines)
-- docs/business-subtitles.md § Known limitations — L64-73 (10 lines)
-- docs/business-subtitles.md § Out of scope — L74-81 (8 lines)
+- docs/business-subtitles.md § Features — L5-19 (15 lines; 2.0.3 placement bullet L18)
+- docs/business-subtitles.md § Requirements — L20-21 (2 lines)
+- docs/business-subtitles.md § Creating and editing (REQ-014..018, 044) — L22-30 (9 lines)
+- docs/business-subtitles.md § Subtitles already in the video (REQ-085..087, 095) — L31-41 (11 lines)
+- docs/business-subtitles.md § Saving subtitles as a file (REQ-088) — L42-44 (3 lines)
+- docs/business-subtitles.md § Position on screen and selection (REQ-089..092) — L45-52 (8 lines)
+- docs/business-subtitles.md § Placement and selection (2.0.3) (REQ-168..176 implemented) — L53-64 (12 lines)
+- docs/business-subtitles.md § Key decisions — L65-77 (13 lines; 2.0.3 bullet L76)
+- docs/business-subtitles.md § Known limitations (REQ-177 pointer L84; REQ-178, 179 implemented) — L78-86 (9 lines)
+- docs/business-subtitles.md § Out of scope — L87-94 (8 lines)
+- docs/business-subtitle-accuracy.md § intro (2.0.3 added; REQ-177 not met) — L1-4 (4 lines)
+- docs/business-subtitle-accuracy.md § Status of the accuracy target (REQ-177) — L5-12 (8 lines)
+- docs/business-subtitle-accuracy.md § Requirements (REQ-177 planned; REQ-178, 179 implemented) — L13-17 (5 lines)
+- docs/business-subtitle-accuracy.md § Key decisions (D56) — L18-22 (5 lines)
+- docs/business-subtitle-accuracy.md § Known limitations (REQ-177 not met; misheard words) — L23-26 (4 lines)
+- docs/business-subtitle-accuracy.md § Out of scope — L27-31 (5 lines)
 - docs/business-export.md § intro — L1-4 (4 lines)
 - docs/business-export.md § Features — L5-14 (10 lines)
 - docs/business-export.md § Requirements (REQ-021..023, 036, 037) — L15-21 (7 lines)
@@ -148,39 +156,42 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-icons.md § Known limitations — L25-27 (3 lines)
 - docs/business-icons.md § Out of scope — L28-29 (2 lines)
 - docs/business-verification.md § intro — L1-8 (8 lines)
-- docs/business-verification.md § Automated in 2.0.2 — L9-14 (6 lines; REQ-144 defect pointer L11)
-- docs/business-verification.md § Manual checklist (maintainer, by hand) — L15-25 (11 lines; not blocking)
+- docs/business-verification.md § Automated in 2.0.2 — L9-14 (6 lines; REQ-144 gap L11, closed by REQ-155 in 2.0.3)
+- docs/business-verification.md § Manual checklist (maintainer, by hand) — L15-27 (13 lines; not blocking; items 7-8 are REQ-165 and REQ-166)
 
-Line ranges checked at 2.0.2 STATUS (grep -n '^#' and line counts). Convention: heading to the line before the next heading. Re-check after any edit.
+Line ranges checked at 2.0.3 STATUS (grep -n '^#' and line counts). Convention: heading to the line before the next heading. Re-check after any edit.
 
 ## Sub-documents (owner: product-manager)
 - ai-docs/business-requirements.md — REQ map by document, status, early requirements 001-044 (short).
-  - § Status and map — L5-26 (22 lines)
-  - § Early requirements — L27-47 (21 lines)
+  - § Status and map — L5-27 (23 lines)
+  - § Early requirements — L28-48 (21 lines)
 - ai-docs/business-decisions.md — standing rules C/D, MINOR defaults in force, rejected ideas, current risks, open questions.
-  - § Standing rules (C, D numbers kept; D45-49 2.0.2 Andrea) — L5-30 (26 lines)
-  - § MINOR defaults still in force (2.0.2 STATUS paused-frame defect L35) — L31-52 (22 lines)
-  - § Rejected or considered — L53-68 (16 lines)
-  - § Product risks (current) — L69-80 (12 lines)
-  - § Open questions — L81-86 (6 lines)
+  - § Standing rules (C, D numbers kept; D50-56 2.0.3) — L5-37 (33 lines)
+  - § MINOR defaults still in force (2.0.3 defaults L59-65) — L38-66 (29 lines)
+  - § Rejected or considered (accuracy methods removed 2.0.3 L84) — L67-85 (19 lines)
+  - § Product risks (current; REQ-177 L99) — L86-101 (16 lines)
+  - § Open questions (REQ-177 for Andrea L106) — L102-107 (6 lines)
 
-## State (after 2.0.2 STATUS)
-- Version 2.0.2 implemented (roadmap batch 1 "Verify the release", Andrea's naming; later batches shift +1). Its PLAN and STATUS are done; the Principal Engineer's implementation reported REQ-154 only.
-- REQ-001..154 implemented. Next free REQ: REQ-155. QG-07..10 delivered in 2.0.2 (maintainer goals, no covers; CI changes not yet verified on a real runner). QG-06 still open (CI time not reported).
+## State (after the 2.0.3 STATUS)
+- Version 2.0.3 is one development with three batches (Readable text, Subtitle placement, Subtitle accuracy), built together. STATUS: REQ-155..176, REQ-178 and REQ-179 `(implemented)`. REQ-177 stays `(planned)`. Next free REQ: REQ-180. REQ-001..176 and 178..179 implemented.
+- REQ-177 status (Fast, reference clip): 23 of 28 words matched, matched words 0.48 s late on average (target 90% within 0.3 s). Measured and removed: DTW, one-sided onset snap (7 of 23 within 0.3 s). Speech-region method not built (21-22 of 23 only with parameters tuned on the one synthetic clip). Strict test `v12::alignment_matches_real_speech` stays #[ignore]. Recorded in docs/business-subtitle-accuracy.md (status, known limitation) and as open question for Andrea in ai-docs/business-decisions.md.
+- REFINE 2.0.3 (Andrea 2026-11-20): Q-1 = B and Q-2 = A (D55: old texts open as Readability None, sizes change, no restore command, message REQ-167); REQ-177 reworded (D56). D53: placement warns, does not move.
+- [MINOR] REQ-167 message wording is an engineering choice; the content (count of sizes and outline removal) is fixed.
+- [MINOR] Correction 2.0.3: the format-10 note in docs/business-editing.md cites REQ-158 and REQ-159 (height), not REQ-160.
+- Release note (docs/business-editing.md key decisions): opening a format 9 project and saving it writes format 10, which 2.0.2 and older refuse.
+- REQ-165 (font names on Linux, macOS, Windows) and REQ-166 (20 MB font cost) have manual parts in their acceptance; they are recorded in docs/business-verification.md at release.
+- Decisions Andrea took (kept): installers unsigned (D5); export presets kept (D45); hardware export always via ffmpeg (D46); AV1, VP9 in scope (D47, not built); whole-video keyframe copies shown apart (D49).
 - Feature coverage target 100%, line coverage target 85%.
-- Batch 1 items: REQ-154 was the only new REQ. Test reliability and bundled-ffmpeg checks are QG-07..10 (no user-visible behaviour). Items needing real systems are the manual checklist in docs/business-verification.md (not blockers): player builds, 1.5.x refusal of format 8, Clean audio and MP3 by ear, 360 marker in a 360 player, splash on both programs, next release flow review.
-- Defect found after 2.0.2 implementation: paused still in the last ~20 ms of a clip shows no frame (REQ-144). Not a requirement-wording bug; implementation gap. Recorded in decisions (MINOR 2.0.2 STATUS), known limitation in docs/business-editing.md, Future work fix item.
-- Dropped from batch 1: splash picture origin and licence (own work, MIT, 1.6.3, recorded in notices).
-- Andrea's decisions taken 2.0.2 (in ai-docs/business-decisions.md D5, D45-D49): installers stay unsigned (not planned); export presets kept; hardware export always via ffmpeg; AV1, VP9 encoding and hardware decoding in scope; 360 export always prioritises speed; whole-video keyframe copies shown apart.
-- [MINOR] 2.0.2 batch numbering: batch N = 2.0.(N+1); roadmap_tasks renumbering is for the Documenter/PM at release.
 - Product in one line: offline desktop editor for short social clips (fast cut and join, fades, music, auto subtitles, quick export, hardware export optional), plus a watch-only player (separate program since 1.6.0). Users: U1 social content creator (non-expert, wants speed and captions); U2 hobbyist editing personal clips. Not pro editors (no multitrack video, no grading beyond LUT files).
-- Splash: picture names fixed (splash.gif, splash-player.gif); summaries per program (summary.txt, summary-player.txt); the build fails without them. Summary fit rule REQ-154 (implemented 2.0.2; shipped summaries fit at 7 px or more, enforced by the test suite).
+- Splash: picture names fixed (splash.gif, splash-player.gif); summaries per program (summary.txt, summary-player.txt); the build fails without them. Summary fit rule REQ-154 (implemented 2.0.2).
+- [MINOR] 2.0.2 batch numbering: batch N = 2.0.(N+1); roadmap_tasks renumbering is for the Documenter/PM at release.
+- For the Documenter (roadmap, not PM-owned): docs/roadmap.md items of the 2.0.3 batches are built (except REQ-177 decision point and the maintainer measurements); remove them as delivered and keep REQ-177 open.
 
 ## Open (not SEVERE)
 - REQ-134 "GIF plays as it is" vs static picture (roadmap Priority 12). Open.
 - QG-06 CI time not reported by PE.
-- REQ-144 last-20-ms defect: fix is a roadmap item; if Andrea rules that a defect counts as not delivered, mark REQ-144 (planned) until fixed (MINOR default: stays implemented).
+- REQ-144 stays `(implemented)`; the last-20-ms gap is closed by REQ-155 (2.0.3). If Andrea rules that a defect counts as not delivered, mark REQ-144 `(planned)` (MINOR default: stays implemented).
 - 360 export "speed first" (D48): meaning and whether REQ-103 gets a speed acceptance; decide in its batch.
-- Roadmap decisions for Andrea: see docs/roadmap_tasks.md § Decisions Andrea needs to make (partly answered 2.0.2: signing, presets, ffmpeg hardware, AV1/VP9, copies, 360 speed).
+- REQ-177 accuracy target: open question for Andrea (options in ai-docs/business-decisions.md § Open questions; default: stays planned, known limitation). Not a SEVERE question for this development.
+- Roadmap decisions for Andrea: see docs/roadmap_tasks.md § Decisions Andrea needs to make.
 - Sub-doc ai-docs/business-decisions.md § Open questions.
-</content>

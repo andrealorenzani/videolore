@@ -110,6 +110,12 @@ pub struct UiCache {
     pub text_draft: Option<(crate::text::TextItem, String)>,
     /// The text of an existing item while it is being typed.
     pub text_edit: Option<(crate::text::TextId, String)>,
+    /// The lines that overlap another (REQ-169) with the fingerprint of what they were
+    /// computed from: recomputed only when a line, the timeline or the frame changes.
+    pub overlaps: Option<(u64, std::collections::BTreeSet<crate::subtitles::LineId>)>,
+    /// The last click on the picture that selected a box: where (screen), when and what
+    /// (REQ-170: a second click on the same spot selects the next box of the stack).
+    pub last_pick: Option<(eframe::egui::Pos2, Instant, boxes::ObjectId)>,
     /// The splash image as textures, loaded when the splash first opens.
     pub splash: Option<splash_window::Loaded>,
     /// Where the splash was drawn this frame.
@@ -119,6 +125,39 @@ pub struct UiCache {
 impl UiCache {
     pub fn has_texture(&self) -> bool {
         self.texture.is_some()
+    }
+
+    /// The subtitle lines whose boxes overlap another line shown at the same time
+    /// (REQ-169), kept until the lines, the timeline or the frame change.
+    pub fn overlapping_lines(
+        &mut self,
+        app: &AppState,
+    ) -> &std::collections::BTreeSet<crate::subtitles::LineId> {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let subs = &app.project.subtitles;
+        subs.preset.hash(&mut h);
+        for l in &subs.lines {
+            (
+                l.id,
+                l.start,
+                l.end,
+                &l.text,
+                l.position,
+                l.size,
+                l.anchor.is_some(),
+            )
+                .hash(&mut h);
+        }
+        for c in &app.project.timeline.clips {
+            (c.media, c.src_in, c.src_out).hash(&mut h);
+        }
+        app.output_size().hash(&mut h);
+        let key = h.finish();
+        if self.overlaps.as_ref().is_none_or(|(k, _)| *k != key) {
+            self.overlaps = Some((key, app.overlapping_lines()));
+        }
+        &self.overlaps.as_ref().expect("just set").1
     }
 }
 
@@ -570,6 +609,8 @@ mod frame_ux_tests;
 mod icon_ux_tests;
 #[cfg(test)]
 mod lut_ux_tests;
+#[cfg(test)]
+mod placing_ux_tests;
 #[cfg(test)]
 mod sphere_ux_tests;
 #[cfg(test)]

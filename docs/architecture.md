@@ -10,77 +10,35 @@ Implemented: requirements REQ-001..123 (see [business](business.md)). 0.3.0 adde
 ## Sub-documents
 | Document | Contents |
 |---|---|
+| [architecture-components.md](architecture-components.md) | The role of each module (table), with versions; 2.0.3 (planned) adds the modules `measure` and `placement`. |
 | [architecture-frame.md](architecture-frame.md) | 1.5.0: Change aspect (frame shape, fit, colour or blurred fill), Scale and Move with keyframes, picture composition in preview and export, format 7, tests, risks. |
 | [architecture-splash.md](architecture-splash.md) | 1.6.0: the splash screen, its assets checked at build time, layout, closing, tests. 1.6.2: the same splash in the player, shared code, text fit rules, the four asset files. |
 | [architecture-lut.md](architecture-lut.md) | 1.6.0: Apply LUT, the `.cube` reader, storage and format 8, missing files, order in the graph, export, tests. |
 | [architecture-player.md](architecture-player.md) | 1.6.0: the videolore player program, its crate, reuse of the preview engine, subtitles, 360 view, full screen, installers, tests. |
 | [architecture-icons.md](architecture-icons.md) | 1.6.0: icon set and licence, how icons are drawn, tests. |
 | [architecture-build.md](architecture-build.md) | Rust policy, the 1.6.0 workspace and versions, CI jobs and checks. |
-| [architecture-verification.md](architecture-verification.md) | 2.0.2 (planned): the test ffmpeg pinned to the bundled build, splash summaries at 7 px, tests independent of the load, automatic notices and installer checks, bundled ffmpeg 9.x checks, 360 camera timing. |
+| [architecture-verification.md](architecture-verification.md) | 2.0.2 (planned): the test ffmpeg pinned to the bundled build, splash summaries at 7 px, tests independent of the load, automatic notices and installer checks, bundled ffmpeg 9.x checks, 360 camera timing. 2.0.3 (planned): the blur fill on small pictures, the speech test required in CI. |
 | [architecture-structure.md](architecture-structure.md) | 2.0.1: the `base` module of shared helpers, the module cycles broken, the automatic cycle check, what does not change. |
 | [architecture-decisions.md](architecture-decisions.md) | The main technical decisions of the whole program, with reasons and alternatives. |
 | [architecture-export-dialog.md](architecture-export-dialog.md) | 1.4.0: the Export dialog, modes (full video, audio only, subtitles only), file name rules, video format presets, audio formats, the 360 choice, tests. |
 | [architecture-effects.md](architecture-effects.md) | Applying effects to a clip or the whole video (1.2.0): fades from and to black (named Fade IN/OUT since 1.3.0), clip volume, drag from the Effects list, export rules, tests. 1.4.0: Clean audio. |
-| [architecture-subtitle-tracks.md](architecture-subtitle-tracks.md) | Subtitle tracks inside videos (1.2.0): detection, reading, "use or recognise", matching words to the speech, fallbacks, SRT export, tests and risks. |
+| [architecture-subtitle-tracks.md](architecture-subtitle-tracks.md) | Subtitle tracks inside videos (1.2.0): detection, reading, "use or recognise", matching words to the speech, fallbacks, SRT export, tests and risks. 2.0.3 (planned): accuracy levers, recognition pieces with margins, the paraphrase message. |
 | [architecture-boxes.md](architecture-boxes.md) | 1.2.6: boxes and corner handles, per-line size, Align and Reset commands, toolbar group, show-boxes setting, tests. 1.3.0: Context Menu and text boxes. 1.4.0: Context Menu for text items, width handle, dragging past the edges. |
 | [architecture-360.md](architecture-360.md) | 1.2.6: recognising 360 video, virtual camera and POVs, one `ffmpeg` engine for preview and export, preview copies, size limit, performance, tests, risks. 1.3.0: anchored text and subtitle lines on the sphere, export as 360 video. 1.4.0: the 360 switch is removed. |
-| [architecture-text.md](architecture-text.md) | 1.3.0: text items, their effects as ASS events, installed fonts, safety, tests. 1.4.0: width-only box, best fit, placement, migration. |
-| [architecture-projects.md](architecture-projects.md) | Project files: format versions 1–9 (9 since 1.6.1, 8 since 1.6.0, 7 since 1.5.0, see [frame](architecture-frame.md#project-format) and [LUT](architecture-lut.md#storage-and-project-format-8)) and compatibility, loading and validation, unsaved changes. |
+| [architecture-text.md](architecture-text.md) | 1.3.0: text items, their effects as ASS events, installed fonts, safety, tests. 1.4.0: width-only box, best fit, placement, migration. 2.0.3 (planned): readable text (measured best fit, outline and box, height, handles, font rules). |
+| [architecture-projects.md](architecture-projects.md) | Project files: format versions 1–9 (10 planned for 2.0.3, see [projects](architecture-projects.md#format-10-planned-203); 9 since 1.6.1, 8 since 1.6.0, 7 since 1.5.0, see [frame](architecture-frame.md#project-format) and [LUT](architecture-lut.md#storage-and-project-format-8)) and compatibility, loading and validation, unsaved changes. |
 | [architecture-ui.md](architecture-ui.md) | The window (1.1.0): layout and resizable sections, menus, toolbar, shortcuts, status bar, effect popups, timeline markers, recent projects, drag and drop, interface tests. 1.3.0: one selection, Add Text popup. |
 | [architecture-performance.md](architecture-performance.md) | Machine detection, recommended settings, the "How hard videolore works" levels and what they control, the 0.3.0 performance review. |
 | [architecture-hardware-export.md](architecture-hardware-export.md) | Faster export with video hardware (0.4.0): supported hardware, encoder settings (including VA-API constant quality), background check (including the Linux libva check), output check, software redo, remembered failures, measured results, testing and known limitations. |
 | [architecture-ffmpeg.md](architecture-ffmpeg.md) | The bundled `ffmpeg`: which builds, where they live, how they are found, licences and source code. |
 | [architecture-packaging.md](architecture-packaging.md) | Installers per OS, file association, icon, Linux menu entry, release pipeline, CI runners; from 1.6.0 also the player's installers. |
-| [architecture-media-pipeline.md](architecture-media-pipeline.md) | Process limit and job queue, preview, export, music mix, proxies, memory limits. |
-| [architecture-subtitles.md](architecture-subtitles.md) | Subtitle model, styles and burn-in, creating subtitles for a clip or the whole video, position on screen and selection of lines (1.2.0), speech-to-text, subtitle quality levels and their downloads, processor requirements. |
+| [architecture-media-pipeline.md](architecture-media-pipeline.md) | Process limit and job queue, preview, export, music mix, proxies, memory limits. 2.0.3 (planned): the paused picture at the end of a clip. |
+| [architecture-subtitles.md](architecture-subtitles.md) | Subtitle model, styles and burn-in, creating subtitles for a clip or the whole video, position on screen and selection of lines (1.2.0), speech-to-text, subtitle quality levels and their downloads, processor requirements. 2.0.3 (planned): placement rules, warnings for overlapping and outside lines and texts, group move. |
 | [architecture-security.md](architecture-security.md) | Threat model and protections, temporary files, downloads, supply chain, text items and fonts, the 360 marker. |
 | [architecture-dependencies.md](architecture-dependencies.md) | Rust crates, build features, external tools and bundled components, with reasons. |
 
 ## Components
-The module dependencies, the module graph, the threads and the import flow are in [code-architecture](code-architecture.md) (written by the Principal Engineer, checked against the code by the architect on 2026-11-20). The table gives the role of each module.
-
-| Module | Role |
-|---|---|
-| `time` | Exact time arithmetic and timestamp formatting (no floating point in cut math). |
-| `media` | Information about a media file read from `ffprobe`; status "analysing / ready / rejected"; video or audio-only; since 1.2.0 its text subtitle tracks; since 1.2.6 whether it is 360. |
-| `timeline` | The video track: clips, in/out points, order, cuts, fades (since 1.2.0 also from and to black at the video's edges), each clip's volume, and (1.4.0) its clean audio flag; the rules that keep it valid. |
-| `export/choice` (1.4.0) | Pure model of the Export dialog: mode, formats, 360 choice, file name and target rules, reasons, and the mapping to the export plan. See [export dialog](architecture-export-dialog.md). |
-| `music` | The music track: audio clips that never overlap; place, move, trim, split, delete. |
-| `subtitles` | Subtitle lines stored against the source speech, and how they appear on the timeline; since 1.2.0 each line's position on screen. |
-| `srt` (1.2.0) | Reads and writes SRT subtitle files (tracks found in videos, SRT export). |
-| `align` (1.2.0) | Matches the words of a subtitle track to the recognised speech to time each word. |
-| `camera` (1.2.6) | Pure camera maths for 360 video: limits, POV path (linear, shortest way round), drag and zoom mapping, the command file for the `v360` filter (absolute commands, changed values only). Since 1.3.0 also the projection between the sphere and the view. |
-| `ass` | Writes the subtitle file (ASS format) used by `ffmpeg` for the chosen style. |
-| `history` | Undo and redo of the whole edit (video, music, subtitles, volumes); since 1.1.0 each step has a name ("Undo Split"). |
-| `project` | Save/load projects as versioned JSON (version 9 since 1.6.1; opens all older versions); unsaved-changes tracking. See [project files](architecture-projects.md). |
-| `format` | Output formats, codecs and which encoder to use, with fallbacks. |
-| `render` | Turns the edit into an export plan and the exact `ffmpeg` arguments; also the preview graphs. |
-| `ffmpeg` | Finds `ffmpeg`/`ffprobe` (bundled copy first), checks features, runs them, reads progress, cancels. |
-| `jobs` | The job queue: limits how many `ffmpeg`/`ffprobe` processes run at once (3 to 6, depending on the chosen level), by priority. Every process goes through it. |
-| `export` | Runs an export in the background and writes the result safely; since 0.4.0 tries video hardware first when asked, and redoes the export with the normal method on any problem. |
-| `hwenc` (0.4.0) | Video hardware candidates per system, their `ffmpeg` settings, and the background hardware check. |
-| `outcheck` (0.4.0) | Checks a hardware export (file details, full decode, sample frames compared with the normal render). |
-| `preview` | Decodes frames and audio for the preview player. |
-| `proxy` | Lower-resolution preview copies of large sources, and their cache. |
-| `stt` | Speech-to-text: audio extraction (since 1.2.0 also of one clip's part, and of subtitle tracks), transcription, word matching jobs, language detection, the three model levels, download and storage. |
-| `machine` | Detects the computer: cores, memory, operating system, processor features. |
-| `settings` (0.3.0) | Program settings file, first-start setup, recommended settings, how each level translates into processes and threads; since 0.4.0 the Export choice and remembered hardware failures; since 1.1.0 the section layout and recent projects. |
-| `scratch` (0.3.0) | Private work folders for temporary files, and clean-up after a crash. |
-| `notices` | The third-party notices shown in About. |
-| `desktop` | Linux application-menu entry and file association; macOS "open document" events. |
-| `ui` | Windows and panels, including the Settings window. Kept thin. Since 1.1.0 also: the section layout and borders, the table of actions shared by menus, toolbar and shortcuts, the menu bar, toolbar, status bar, effect and clip popups, and the timeline markers. Since 1.2.0 also the time ruler, dragging effects onto clips and subtitles in the preview. See [user interface](architecture-ui.md). |
-| `text` (1.3.0) | Text items: pure generation of their ASS events (fades, blink, slide, cuts at segment boundaries), caps and the font-name rule. |
-| `fonts` (1.3.0) | Installed fonts: background scan (`fontdb`), family list, name check, font bytes for layout (cached). |
-| `selection` (1.3.0) | The one selection of subtitle lines and text items, and its pure transitions (click, Shift range, group move). |
-| `spherical` (1.3.0) | Writes the Spherical Video V1 marker into MP4 and MOV exports of 360 video, which ffmpeg 6.1.1 drops on re-encode. |
-| `keyframes` (1.5.0) | Pure keyframe lists for Scale and Move: linear between keys, value held before the first and after the last, limits and unique times. |
-| `frame` (1.5.0) | Pure frame model: Change aspect shape, fit and fill, and the frame size from the base size. See [frame](architecture-frame.md). |
-| `lut` (1.6.0) | Pure reader of `.cube` colour tables (3D and 1D), with limits; the normalised cube written for `ffmpeg`. See [LUT](architecture-lut.md). |
-| `splash` (1.6.0, 1.6.2) | Pure splash layout, text fit, summaries and the bundled pictures of both programs (`EDITOR`, `PLAYER`). See [splash](architecture-splash.md). |
-| `ui::splash_window` (1.6.2) | The splash window, drawn for either program from its own picture and summary; the editor's `ui::splash_ui` is a thin adapter. See [splash](architecture-splash.md). |
-| `ui::icons` (1.6.0) | The icon font and the icon constants shared by both programs. See [icons](architecture-icons.md). |
-| `player/` (1.6.0) | The `videolore-player` program: its state and window, built on the engine above. See [player](architecture-player.md). |
-| `app` | Application state and wiring between the UI and background workers; since 1.1.0 also which popups are open, recent projects and dropped files; since 1.2.0 applying effects, the subtitle creation dialogs and the selection of subtitle lines. |
+The module dependencies, the module graph, the threads and the import flow are in [code-architecture](code-architecture.md) (written by the Principal Engineer, checked against the code by the architect on 2026-11-20). The role of each module, with its version, is in [components](architecture-components.md).
 
 ## Data flow
 - **Start-up (0.3.0):** detect the computer, clean up leftovers of a crashed session, read the settings file, decide the settings (first start, same computer, changed computer, older version, damaged file), apply them to the job queue and preview, and show a notice if needed. Details in [performance](architecture-performance.md#start-up).
@@ -106,7 +64,7 @@ The UI never waits on `ffmpeg` or on disk, apart from saving or loading the proj
 The decisions with their reasons and alternatives are in [architecture-decisions.md](architecture-decisions.md). The 1.3.0 ones: text items through the subtitle path (libass), installed fonts with one new crate (`fontdb`), anchoring on the existing projection engine, one selection, format 5, and an in-house MP4/MOV marker writer.
 
 ## Projects
-Versioned JSON files, format version 7 since 1.5.0 (version 8 added in 1.6.0, see [LUT](architecture-lut.md#storage-and-project-format-8); version 9 in 1.6.1, see [effects](architecture-effects.md#whole-video-per-clip-161)), format version 3 since 1.2.0, version 4 since 1.2.6, version 5 since 1.3.0, version 6 since 1.4.0 (opens older versions; the 1.4.0 conversions are described in [project files](architecture-projects.md)); files from a newer version are refused and never modified; strict validation after loading; unsaved-changes prompt on New, Open, close and Quit. Details in [project files](architecture-projects.md).
+Versioned JSON files, format version 10 planned for 2.0.3 (see [projects](architecture-projects.md#format-10-planned-203)); format version 7 since 1.5.0 (version 8 added in 1.6.0, see [LUT](architecture-lut.md#storage-and-project-format-8); version 9 in 1.6.1, see [effects](architecture-effects.md#whole-video-per-clip-161)), format version 3 since 1.2.0, version 4 since 1.2.6, version 5 since 1.3.0, version 6 since 1.4.0 (opens older versions; the 1.4.0 conversions are described in [project files](architecture-projects.md)); files from a newer version are refused and never modified; strict validation after loading; unsaved-changes prompt on New, Open, close and Quit. Details in [project files](architecture-projects.md).
 
 ## Deviations from the 1.3.0 plan (as built)
 - **Time to live:** on load a text item is refused as damaged only outside 0.1 s to 24 hours (the plan said: longer than the video). A value longer than the video is accepted and the text is cut at the end of the video; when an item is added, edited or moved, its time to live is clamped to the video length. See [text](architecture-text.md#deviations-130).
@@ -157,4 +115,5 @@ Listed in each sub-document; the main ones:
 - 1.5.0: the longer side of a frame is capped at 4096 px (decided 2026-11-19; 1920 px and no cap were not chosen); Scale and Move on a 360 clip act on its flat camera view only; time-dependent sizes were accepted by ffmpeg 6.1.1 (spike); the bundled 9.x build is not checked yet (see roadmap); projects saved by 1.5.0 cannot be opened by 1.4.1. See [frame](architecture-frame.md#risks).
 - 1.6.2: the splash text is sized to fit the panel and is never clipped or scrolled; a summary too long for the panel fails the test (no shipped text does). The two pictures are compiled into the library, so each program binary may grow by up to about 175 KB (an estimate, not yet measured). The test runs use a memory cap (see [build](architecture-build.md#test-memory-cap-162-development-machine)).
 - 1.6.0: the splash image has one frame today (static) and its origin and licence are recorded in the notices as the author's own work under MIT (since 1.6.3); the LUT cube is checked against the bundled `ffmpeg` 9.x (`lut3d`, not yet verified); the player duplicates `ffmpeg` in its installer (size); the player's file handling is limited (no file association, one file at a time). See the sub-documents above.
+- 2.0.3 (planned): the text size is measured from the font (the widths of the bundled and installed fonts), so the size of texts saved before 2.0.3 changes on opening, and their 8% outline is removed (see [text](architecture-text.md#203-planned-readable-text)). Recognition in pieces uses 2-second margins; the strict speech test runs in CI and fails when the model is missing.
 - egui releases often change its API; a new stable Rust can add lints: GUI code is kept thin and the code is fixed promptly.

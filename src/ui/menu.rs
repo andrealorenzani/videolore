@@ -92,6 +92,7 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 S,
                 A(AlignHorizontal),
                 A(AlignVertical),
+                A(MoveInside),
                 A(ResetObjects),
                 S,
                 A(Settings),
@@ -268,6 +269,7 @@ mod tests {
             AddSubtitleLine,
             AlignHorizontal,
             AlignVertical,
+            MoveInside,
             ResetObjects,
         ] {
             assert!(!effects.contains(&Item::Action(id)), "{id:?} in Effects");

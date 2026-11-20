@@ -35,6 +35,11 @@ pub struct BoxItem {
     /// The box changes its width only, by a handle on its right edge (a text item,
     /// REQ-116); other boxes are resized by their corners.
     pub width_only: bool,
+    /// A text that does not fit its box even at the smallest size (REQ-159).
+    pub warn: bool,
+    /// A text hidden at this moment by its blink (REQ-162): only a selected one is drawn,
+    /// dashed.
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -173,8 +178,8 @@ pub enum Hit {
     /// A visible side of a box that reaches beyond the picture: resizes it in proportion
     /// (REQ-146).
     Side(Side),
-    /// The handle on the right edge of a width-only box.
-    Edge,
+    /// A handle on the right, left or bottom edge of a text box (REQ-116, REQ-159, REQ-161).
+    Edge(Side),
     Body,
 }
 
@@ -196,7 +201,7 @@ pub fn handle_at(r: Rect, p: Pos2, tol: f32) -> Option<Hit> {
 pub fn hit_test(boxes: &[BoxItem], p: Pos2, tol: f32, frame: (u32, u32)) -> Option<(BoxItem, Hit)> {
     let corner = boxes.iter().rev().find_map(|b| {
         if b.width_only {
-            return (edge_handle_at(b.rect, p, tol, frame)).then_some((*b, Hit::Edge));
+            return text_edge_at(b.rect, p, tol, frame).map(|s| (*b, Hit::Edge(s)));
         }
         match handle_at(b.rect, p, tol) {
             Some(h @ Hit::Corner(_)) => Some((*b, h)),
@@ -221,7 +226,7 @@ pub fn cursor(hit: Hit, dragging: bool) -> CursorIcon {
         Hit::Corner(Corner::TopLeft | Corner::BottomRight) => CursorIcon::ResizeNwSe,
         Hit::Corner(Corner::TopRight | Corner::BottomLeft) => CursorIcon::ResizeNeSw,
         Hit::Side(s) => side_cursor(s),
-        Hit::Edge => CursorIcon::ResizeHorizontal,
+        Hit::Edge(s) => side_cursor(s),
         Hit::Body if dragging => CursorIcon::Grabbing,
         Hit::Body => CursorIcon::Grab,
     }
@@ -317,20 +322,27 @@ pub const fn normal_size() -> u16 {
     SIZE_NORMAL
 }
 
-/// True when `p` is on the right-edge handle of box `r` (the middle of its right edge,
-/// within `tol`).
-pub fn edge_handle_at(r: Rect, p: Pos2, tol: f32, frame: (u32, u32)) -> bool {
+/// The edge handle of a text box under `p`: its right, left or bottom edge on the visible
+/// part of the box (the nearest within `tol`).
+pub fn text_edge_at(r: Rect, p: Pos2, tol: f32, frame: (u32, u32)) -> Option<Side> {
+    let v = visible_part(r, frame)?;
     let tol = tol.max(0.0);
-    let Some(v) = visible_part(r, frame) else {
-        return false;
-    };
-    (p.x - v.right()).abs() <= tol && p.y >= v.top() - tol && p.y <= v.bottom() + tol
+    [Side::Right, Side::Left, Side::Bottom]
+        .into_iter()
+        .filter_map(|s| s.distance(v, p, tol).map(|d| (s, d)))
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(s, _)| s)
 }
 
 /// The square of the right-edge handle of a width-only box: on its visible part, so a box
 /// whose right edge is outside the picture keeps the handle at the picture's edge.
 pub fn edge_handle_rect(r: Rect, side: f32, frame: (u32, u32)) -> Rect {
-    let at = visible_part(r, frame).unwrap_or(r).right_center();
+    edge_handle(r, Side::Right, side, frame)
+}
+
+/// The square of the handle on `edge` of a text box, on its visible part.
+pub fn edge_handle(r: Rect, edge: Side, side: f32, frame: (u32, u32)) -> Rect {
+    let at = edge.mid(visible_part(r, frame).unwrap_or(r));
     Rect::from_center_size(at, eframe::egui::vec2(side, side))
 }
 
@@ -339,7 +351,10 @@ pub fn edge_handle_rect(r: Rect, side: f32, frame: (u32, u32)) -> Rect {
 /// right-edge handle (REQ-145, REQ-146).
 pub fn handle_points(r: Rect, frame: (u32, u32), width_only: bool) -> Vec<Pos2> {
     if width_only {
-        return vec![edge_handle_rect(r, 0.0, frame).center()];
+        return [Side::Right, Side::Left, Side::Bottom]
+            .into_iter()
+            .map(|e| edge_handle(r, e, 0.0, frame).center())
+            .collect();
     }
     let fr = frame_rect(frame);
     let mut v: Vec<Pos2> = Corner::ALL
@@ -359,23 +374,52 @@ pub fn handle_points(r: Rect, frame: (u32, u32), width_only: bool) -> Vec<Pos2> 
 /// pixels): the left edge and the height stay, the width stays between 10% and 100% of
 /// the picture (REQ-116). Gives the new box and its width in thousandths of the picture.
 pub fn resize_width(r0: Rect, p: Pos2, frame: (u32, u32)) -> (Rect, u16) {
-    let fw = frame.0.max(1) as f32;
-    let raw = if p.x.is_finite() {
-        p.x - r0.left()
-    } else {
-        r0.width()
+    resize_edge(r0, Side::Right, p, frame)
+}
+
+/// Resizes a text box `r0` by dragging its `edge` to the pointer `p` (frame pixels): the
+/// opposite edge stays and the other size does not change (REQ-116, REQ-159, REQ-161). The
+/// width stays between 10% and 100% of the picture width, the height between 5% and 100%
+/// of its height. Gives the new box and the new width (right or left edge) or height
+/// (bottom edge) in thousandths of the picture.
+pub fn resize_edge(r0: Rect, edge: Side, p: Pos2, frame: (u32, u32)) -> (Rect, u16) {
+    let (fw, fh) = (frame.0.max(1) as f32, frame.1.max(1) as f32);
+    let limits = |lo: u16, hi: u16, full: f32| {
+        (f32::from(lo) * full / 1000.0, f32::from(hi) * full / 1000.0)
     };
-    let lo = f32::from(crate::text::WIDTH_MIN) * fw / 1000.0;
-    let hi = f32::from(crate::text::WIDTH_MAX) * fw / 1000.0;
-    let w = raw.clamp(lo, hi);
-    let permille = (w / fw * 1000.0).round().clamp(
-        f32::from(crate::text::WIDTH_MIN),
-        f32::from(crate::text::WIDTH_MAX),
-    ) as u16;
-    (
-        Rect::from_min_size(r0.min, eframe::egui::vec2(w, r0.height())),
-        permille,
-    )
+    let permille = |v: f32, full: f32, lo: u16, hi: u16| {
+        (v / full * 1000.0)
+            .round()
+            .clamp(f32::from(lo), f32::from(hi)) as u16
+    };
+    match edge {
+        Side::Right | Side::Left => {
+            let (lo, hi) = limits(crate::text::WIDTH_MIN, crate::text::WIDTH_MAX, fw);
+            let raw = match edge {
+                Side::Right => p.x - r0.left(),
+                _ => r0.right() - p.x,
+            };
+            let w = if raw.is_finite() { raw } else { r0.width() }.clamp(lo, hi);
+            let min = if edge == Side::Right {
+                r0.min
+            } else {
+                pos2(r0.right() - w, r0.top())
+            };
+            (
+                Rect::from_min_size(min, eframe::egui::vec2(w, r0.height())),
+                permille(w, fw, crate::text::WIDTH_MIN, crate::text::WIDTH_MAX),
+            )
+        }
+        Side::Bottom | Side::Top => {
+            let (lo, hi) = limits(crate::text::HEIGHT_MIN, crate::text::HEIGHT_MAX, fh);
+            let raw = p.y - r0.top();
+            let h = if raw.is_finite() { raw } else { r0.height() }.clamp(lo, hi);
+            (
+                Rect::from_min_size(r0.min, eframe::egui::vec2(r0.width(), h)),
+                permille(h, fh, crate::text::HEIGHT_MIN, crate::text::HEIGHT_MAX),
+            )
+        }
+    }
 }
 
 /// The corner handle squares of a box, `side` pixels wide, centred on the corners.
@@ -440,12 +484,16 @@ mod tests {
             rect: r,
             size: 1000,
             width_only: false,
+            warn: false,
+            hidden: false,
         };
         let b = BoxItem {
             id: ObjectId::Line(LineId(2)),
             rect: r.translate(vec2(50.0, 0.0)),
             size: 1000,
             width_only: false,
+            warn: false,
+            hidden: false,
         };
         let (hit, h) = hit_test(&[a, b], pos2(200.0, 150.0), 8.0, (1000, 500)).unwrap();
         assert_eq!((hit.id, h), (b.id, Hit::Body));
@@ -466,6 +514,8 @@ mod tests {
             rect,
             size: 1000,
             width_only,
+            warn: false,
+            hidden: false,
         }
     }
 
@@ -565,19 +615,23 @@ mod tests {
         let r = Rect::from_min_size(pos2(800.0, 100.0), vec2(300.0, 60.0));
         let t = item(r, true);
         let (_, h) = hit_test(&[t], pos2(998.0, 130.0), 8.0, FRAME).unwrap();
-        assert_eq!(h, Hit::Edge);
-        assert!(edge_handle_at(r, pos2(1000.0, 130.0), 8.0, FRAME));
-        assert!(!edge_handle_at(
-            r.translate(vec2(900.0, 0.0)),
-            pos2(0.0, 0.0),
-            8.0,
-            FRAME
-        ));
+        assert_eq!(h, Hit::Edge(Side::Right));
+        assert_eq!(
+            text_edge_at(r, pos2(1000.0, 130.0), 8.0, FRAME),
+            Some(Side::Right)
+        );
+        assert_eq!(
+            text_edge_at(r.translate(vec2(900.0, 0.0)), pos2(0.0, 0.0), 8.0, FRAME),
+            None
+        );
         assert_eq!(
             edge_handle_rect(r, 7.0, FRAME).center(),
             pos2(1000.0, 130.0)
         );
-        assert_eq!(handle_points(r, FRAME, true), vec![pos2(1000.0, 130.0)]);
+        assert_eq!(
+            handle_points(r, FRAME, true),
+            vec![pos2(1000.0, 130.0), pos2(800.0, 130.0), pos2(900.0, 160.0)]
+        );
         // dragging it changes the width only
         let (out, w) = resize_width(r, pos2(950.0, 130.0), FRAME);
         assert_eq!((out.min, out.height()), (r.min, r.height()));
@@ -593,16 +647,27 @@ mod tests {
             rect: r,
             size: 1000,
             width_only: true,
+            warn: false,
+            hidden: false,
         };
-        // the corners do not resize it: they are only the body
-        let (_, h) = hit_test(&[t], pos2(102.0, 103.0), 8.0, (1000, 500)).unwrap();
+        // the corners do not resize it: they are the body, or an edge near them
+        let (_, h) = hit_test(&[t], pos2(150.0, 110.0), 8.0, (1000, 500)).unwrap();
         assert_eq!(h, Hit::Body);
+        let (_, h) = hit_test(&[t], pos2(102.0, 103.0), 8.0, (1000, 500)).unwrap();
+        assert_eq!(h, Hit::Edge(Side::Left));
         // the middle of the right edge (and a little above and below) is the handle
         let (_, h) = hit_test(&[t], pos2(299.0, 150.0), 8.0, (1000, 500)).unwrap();
-        assert_eq!(h, Hit::Edge);
+        assert_eq!(h, Hit::Edge(Side::Right));
         let (_, h) = hit_test(&[t], pos2(304.0, 110.0), 8.0, (1000, 500)).unwrap();
-        assert_eq!(h, Hit::Edge);
-        assert_eq!(cursor(Hit::Edge, false), CursorIcon::ResizeHorizontal);
+        assert_eq!(h, Hit::Edge(Side::Right));
+        assert_eq!(
+            cursor(Hit::Edge(Side::Right), false),
+            CursorIcon::ResizeHorizontal
+        );
+        assert_eq!(
+            cursor(Hit::Edge(Side::Bottom), false),
+            CursorIcon::ResizeVertical
+        );
         assert_eq!(
             edge_handle_rect(r, 7.0, (1000, 500)).center(),
             r.right_center()

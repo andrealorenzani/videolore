@@ -6,6 +6,7 @@
 //! This is the bottom layer: it uses only the standard library and external crates, so it can
 //! be in no dependency cycle (checked by `tests/module_cycles.rs`).
 
+pub mod font;
 pub mod io;
 pub mod language;
 pub mod names;

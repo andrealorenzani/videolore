@@ -59,6 +59,16 @@ Since 1.2.0 Subtitles is applied like the other effects (see [effects](architect
 - **1.3.0:** the selection is one thing for the timeline and the preview: Ctrl/Shift+click on a box adds to it without moving it, and a Shift+drag selection survives so the selected boxes can be moved together (see [user interface](architecture-ui.md#selection-130)). A subtitle line added at the playhead on a 360 clip is anchored to the sphere; drawn there, it is plain white text without its preset style (see [360 video](architecture-360.md#anchored-text-and-subtitles-130)).
 - **Known limits:** egui and the burn-in library may measure text a few pixels differently near the edges (the burned result is what counts); a line made longer after being placed near an edge may then cross it; positioned lines shown at the same time can overlap.
 
+## 2.0.3 (planned): placement and warnings
+- **Warnings, not moves:** two subtitle lines or text items shown at the same time whose boxes overlap are both marked in the Subtitles list and on the timeline; a line or text partly outside the picture shows a dashed outline and the status bar counts them at the playhead. Nothing moves by itself, except the move back inside after a text edit that makes its box larger.
+- **Move inside the picture:** a command (Context Menu and Edit menu) moves the selected items by the least move that puts their whole box inside; greyed out when none is partly outside. One undo step.
+- **Group move:** a selection of lines and text items moves together when one selected box is dragged; one undo step.
+- **Stacked boxes:** when boxes overlap at the point clicked, the line shown at the playhead is picked; each further click on the same spot takes the next one.
+- **Align and size:** Align on a line still at its style's place stores its place first; the command is greyed out with "already centred" when nothing would move. When a line grows or wraps onto more lines, its centre stays where it was.
+- **Hint:** while a line or text is selected, the status bar names the selection gestures.
+- **Scale, Move and Change aspect** never move items (they keep their place in the frame); they are warned about as above.
+- **Tests (planned):** pure rules (boxes, least move, centre, overlaps) and the commands, with one undo step each; the pixel check of the centre of a grown line (within 0.5% of the picture height) in preview and export.
+
 ## CPU requirements (since 0.2.1)
 - whisper.cpp is compiled for a **fixed instruction-set baseline**, not for the machine that builds it. This is set once in `.cargo/config.toml` (`GGML_NATIVE=OFF`), which the `whisper-rs` build passes on to whisper.cpp's build.
 - **Why:** before 0.2.1 whisper.cpp was optimised for the CPU of the build machine. Release executables are built on GitHub's servers, whose CPUs can have instructions (such as AVX-512) that many users' CPUs lack; generating subtitles could then crash on those computers.

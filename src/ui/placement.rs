@@ -10,7 +10,7 @@
 use crate::ass;
 use crate::base::pos::{POS_MAX, Pos};
 use crate::project::Project;
-use crate::subtitles::{LineId, Preset, ShownLine};
+use crate::subtitles::{LineId, Preset};
 use crate::time::Micros;
 use eframe::egui::{Pos2, Rect, Vec2, pos2, vec2};
 
@@ -21,6 +21,8 @@ pub struct Drag {
     pub line: LineId,
     /// Every line that moves with it.
     pub ids: Vec<LineId>,
+    /// The text items of a mixed selection that move with it (REQ-172).
+    pub texts: Vec<crate::text::TextId>,
     /// Pointer minus box centre when the drag started (frame pixels).
     pub grab: Vec2,
     /// Size of the dragged line's box (frame pixels).
@@ -32,26 +34,7 @@ pub struct Drag {
     pub whole_box: bool,
 }
 
-/// The text of a line that is on screen at `at`: the whole line, or for the
-/// word-highlight style the group of words shown at that moment.
-pub fn visible_text(l: &ShownLine, preset: Preset, at: Micros) -> String {
-    if preset != Preset::WordHighlight {
-        return l.text.clone();
-    }
-    let words = ass::words_of(l);
-    let i = l.word_at(at).unwrap_or(0);
-    let chunk = i / ass::HIGHLIGHT_CHUNK;
-    words
-        .chunks(ass::HIGHLIGHT_CHUNK)
-        .nth(chunk)
-        .map(|c| {
-            c.iter()
-                .map(|w| w.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .unwrap_or_default()
-}
+pub use crate::placement::visible_text;
 
 /// The box of a line of `text_size` (frame pixels, measured at the line's own size):
 /// centred on its own position, or at the style's place. `size` is the line's own size
@@ -372,6 +355,7 @@ mod tests {
     #[test]
     fn a_dragged_box_may_go_partly_past_an_edge_but_its_centre_stays_on_the_picture() {
         let mut d = Drag {
+            texts: Vec::new(),
             line: LineId(1),
             ids: vec![LineId(1)],
             grab: vec2(10.0, 0.0),
@@ -399,6 +383,7 @@ mod tests {
     #[test]
     fn a_dragged_whole_box_stays_inside_the_picture() {
         let d = Drag {
+            texts: Vec::new(),
             line: LineId(1),
             ids: vec![LineId(1)],
             grab: vec2(10.0, 0.0),

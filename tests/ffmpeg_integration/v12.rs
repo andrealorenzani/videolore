@@ -330,26 +330,82 @@ fn alignment_keeps_the_track_and_times_its_words_from_real_speech() {
     alignment_with_real_speech(false);
 }
 
-/// The accuracy gate of REQ-095: at least 90 % of the words found, each within 0.3 s of
-/// where it is really spoken. NOT MET by the Fast file with whisper.cpp's token times on
-/// the synthetic fixture (measured 2026-11-15: 23 of 28 words found, mean start error
-/// 0.48 s, largest 1.10 s), so it does not run by default; run it with
+/// The accuracy gate of REQ-177 (reworded 2026-11-20): at least 90 % of the MATCHED words start
+/// within 0.3 s of where they are really spoken (the matched share is reported, not required).
+/// NOT MET by the Fast file (pinned ffmpeg and model: 23 of 28 words matched, mean start error
+/// 0.48 s, largest 1.10 s). DTW token times lag every word by 0.43 to 0.75 s (dropped). Starting
+/// each word at the latest energy onset 0.2 to 1.0 s before the model's time gives 7 of 23
+/// matched words within 0.3 s (mean 0.45 s, largest 1.13 s): the model's own word times (token
+/// times, contiguous segments) are off by up to 1.1 s in both directions, so no one-sided window
+/// finds the right onset; the nearest onset within 0.5 s or 1.0 s gives 8 of 23. Placing the words
+/// in the speech regions of the envelope (dynamic programming on word length) gave 12 of 23, or
+/// 21 to 22 of 23 only with 4 of 120 tuned settings (not built). It stays
+/// ignored; run it with
 /// `cargo test --test ffmpeg_integration alignment_matches_real_speech -- --ignored`.
-// covers: REQ-095
+// covers: REQ-095, REQ-177
 #[cfg(feature = "stt")]
 #[test]
-#[ignore = "REQ-095 accuracy gate is not met yet (see the roadmap): word times of the Fast file are too coarse"]
+#[ignore = "REQ-177: the onset snap does not reach 90% of the matched words within 0.3 s on the Fast file (see the roadmap)"]
 fn alignment_matches_real_speech() {
     alignment_with_real_speech(true);
+}
+
+/// The speech fixture is checked byte for byte, so a changed fixture fails (REQ-177).
+#[cfg(feature = "stt")]
+fn check_fixture() {
+    use sha2::{Digest, Sha256};
+    for (file, sum) in [
+        (
+            "speech.mkv",
+            "d6656832dedaebfac68551b4d4199b3a4207fadb4d873d499bab75a2b31ef6e0",
+        ),
+        (
+            "reference.json",
+            "4c224006b3afa2603cae64b221a951b7a1a8a48554506be5dfbaf791e4142d4e",
+        ),
+        (
+            "track.srt",
+            "26352ad26bb8866e5abe613247875ee09b421893c6bfbdf245ec0e9b3bc6f418",
+        ),
+        (
+            "paraphrase.srt",
+            "0027d90151c9ea16073162d316f66a931da89b4e309de96c67e458ab26fe0b09",
+        ),
+    ] {
+        let bytes = std::fs::read(align_fixture().join(file)).unwrap();
+        let got: String = Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(
+            got, sum,
+            "{file} changed: regenerate with make.sh and update the sum"
+        );
+    }
+}
+
+/// The speech model of the tests, or `None` (and a note) when it is not set; with
+/// `VIDEOLORE_REQUIRE_STT=1` (CI) a missing model fails instead of skipping.
+#[cfg(feature = "stt")]
+fn speech_model() -> Option<String> {
+    match std::env::var("VIDEOLORE_STT_MODEL") {
+        Ok(m) => Some(m),
+        Err(_) => {
+            assert!(
+                std::env::var("VIDEOLORE_REQUIRE_STT").as_deref() != Ok("1"),
+                "VIDEOLORE_REQUIRE_STT is set but VIDEOLORE_STT_MODEL is not"
+            );
+            eprintln!("skipping: VIDEOLORE_STT_MODEL not set");
+            None
+        }
+    }
 }
 
 #[cfg(feature = "stt")]
 fn alignment_with_real_speech(strict: bool) {
     let Some(env) = setup() else { return };
-    let Ok(model) = std::env::var("VIDEOLORE_STT_MODEL") else {
-        eprintln!("skipping: VIDEOLORE_STT_MODEL not set");
-        return;
-    };
+    let Some(model) = speech_model() else { return };
+    check_fixture();
     let video = align_fixture().join("speech.mkv");
     let reference: Vec<(String, f64)> = serde_json::from_str::<serde_json::Value>(
         &std::fs::read_to_string(align_fixture().join("reference.json")).unwrap(),
@@ -426,9 +482,15 @@ fn alignment_with_real_speech(strict: bool) {
         assert!(l.words.iter().all(|w| w.start >= l.start && w.end <= l.end));
     }
     let mut found: u32 = 0;
+    let mut within: u32 = 0;
     let mut worst: f64 = 0.0;
     let mut sum = 0.0;
     for ((w, was_found), (word, start)) in words.iter().zip(&reference) {
+        eprintln!(
+            "  {word:>10} reference {start:.3} s, heard {:.3} s{}",
+            w.start.as_secs_f64(),
+            if *was_found { "" } else { " (not matched)" }
+        );
         if !was_found {
             continue;
         }
@@ -436,23 +498,23 @@ fn alignment_with_real_speech(strict: bool) {
         let err = (w.start.as_secs_f64() - start).abs();
         worst = worst.max(err);
         sum += err;
-        if strict {
-            assert!(
-                err <= 0.3,
-                "\"{word}\" at {:?}, really at {start} s",
-                w.start
-            );
+        if err <= 0.3 {
+            within += 1;
+        } else {
+            eprintln!("  \"{word}\" at {:?}, really at {start} s", w.start);
         }
     }
     eprintln!(
         "alignment: {found}/{total} words matched, word-start error mean {:.3} s, largest {worst:.3} s",
         sum / f64::from(found.max(1))
     );
+    eprintln!("alignment: {within} of {found} matched words within 0.3 s");
     if strict {
         assert_eq!(words.len(), total, "one timed word per word of the track");
+        // the matched share is reported above; the gate is the timing of the matched words
         assert!(
-            found as usize * 10 >= total * 9,
-            "{found} of {total} words matched"
+            within * 10 >= found * 9,
+            "{within} of {found} matched words within 0.3 s"
         );
     }
     assert!(

@@ -15,6 +15,10 @@ pub const SELECT_ON_PICTURE: &str = "Select something on the picture first";
 /// Disabled reason of Set POV.
 pub const NOT_A_360: &str = "Move the playhead over a 360° clip first";
 /// Disabled reason of Reset when everything selected is already original.
+/// What Align does: the lines and texts that move, with their new place.
+pub(super) type AlignPlan = (Vec<(LineId, Option<Pos>)>, Vec<(crate::text::TextId, Pos)>);
+
+pub const ALREADY_CENTRED: &str = "Already centred";
 pub const ALREADY_ORIGINAL: &str = "Everything selected is already in its original place and size";
 /// Disabled reason of Reset on a 360 clip whose camera has not moved.
 pub const CAMERA_AT_FRONT: &str = "The camera is already at the front";
@@ -314,34 +318,11 @@ impl AppState {
     /// that axis, the other coordinate and the size stay. A line at the style's place is
     /// already centred horizontally; vertically it gets the middle of the picture.
     pub(super) fn align_selected(&mut self, axis: Axis, now: Instant) -> Result<(), String> {
-        let ids = self.selected_lines();
-        let tids = self.selected_texts();
-        if ids.is_empty() && tids.is_empty() {
+        if self.selected_lines().is_empty() && self.selected_texts().is_empty() {
             return Err(SELECT_ON_PICTURE.into());
         }
-        let new_pos = |p: Option<Pos>| match (axis, p) {
-            (Axis::Horizontal, None) => None,
-            (Axis::Horizontal, Some(p)) => Some(align_h(p)),
-            (Axis::Vertical, None) => Some(Pos {
-                x: POS_MAX / 2,
-                y: POS_MAX / 2,
-            }),
-            (Axis::Vertical, Some(p)) => Some(align_v(p)),
-        };
-        let text_pos = |p: Pos| match axis {
-            Axis::Horizontal => align_h(p),
-            Axis::Vertical => align_v(p),
-        };
-        let subs = &self.project.subtitles;
-        let texts = &self.project.texts;
-        let lines_same = ids.iter().all(|id| {
-            subs.get(*id)
-                .is_none_or(|l| new_pos(l.position) == l.position)
-        });
-        let texts_same = tids
-            .iter()
-            .all(|id| texts.get(*id).is_none_or(|t| text_pos(t.place) == t.place));
-        if lines_same && texts_same {
+        let (lines, texts) = self.align_plan(axis);
+        if lines.is_empty() && texts.is_empty() {
             return Ok(());
         }
         let label = match axis {
@@ -349,14 +330,62 @@ impl AppState {
             Axis::Vertical => "Align vertically",
         };
         self.edit(now, label, |e| {
-            for l in e.subtitles.lines.iter_mut().filter(|l| ids.contains(&l.id)) {
-                l.position = new_pos(l.position);
+            for (id, pos) in &lines {
+                if let Some(l) = e.subtitles.lines.iter_mut().find(|l| l.id == *id) {
+                    l.position = *pos;
+                }
             }
-            for t in e.texts.items.iter_mut().filter(|t| tids.contains(&t.id)) {
-                t.place = text_pos(t.place);
+            for (id, place) in &texts {
+                if let Some(t) = e.texts.items.iter_mut().find(|t| t.id == *id) {
+                    t.place = *place;
+                }
             }
             Ok(())
         })
+    }
+
+    /// What Align does to the selection: the lines and texts that are not centred on the
+    /// axis yet, with their new place (REQ-098, REQ-115, REQ-173). A line at the style's
+    /// place gets its own place: the centre of the picture on that axis, the other
+    /// coordinate where its box is now.
+    pub(super) fn align_plan(&self, axis: Axis) -> AlignPlan {
+        let frame = self.output_size();
+        let subs = &self.project.subtitles;
+        let preset = subs.preset;
+        let mid = POS_MAX / 2;
+        let lines = self
+            .selected_lines()
+            .into_iter()
+            .filter_map(|id| {
+                let l = subs.get(id)?;
+                let new = match (axis, l.position, frame) {
+                    (Axis::Horizontal, Some(p), _) => Some(align_h(p)),
+                    (Axis::Vertical, Some(p), _) => Some(align_v(p)),
+                    (Axis::Horizontal, None, Some(f)) => Some(Pos {
+                        x: mid,
+                        y: crate::placement::line_rect(preset, &l.text, None, l.size, f)
+                            .pos(f)
+                            .y,
+                    }),
+                    (Axis::Horizontal, None, None) => None,
+                    (Axis::Vertical, None, _) => Some(Pos { x: mid, y: mid }),
+                };
+                (new != l.position).then_some((id, new))
+            })
+            .collect();
+        let texts = self
+            .selected_texts()
+            .into_iter()
+            .filter_map(|id| {
+                let t = self.project.texts.get(id)?;
+                let new = match axis {
+                    Axis::Horizontal => align_h(t.place),
+                    Axis::Vertical => align_v(t.place),
+                };
+                (new != t.place).then_some((id, new))
+            })
+            .collect();
+        (lines, texts)
     }
 
     /// True when Reset would change something among the selected lines.
@@ -371,7 +400,9 @@ impl AppState {
     fn selected_texts_changed(&self) -> bool {
         self.selected_texts().iter().any(|id| {
             self.project.texts.get(*id).is_some_and(|t| {
-                t.place != crate::text::DEFAULT_PLACE || t.width != crate::text::DEFAULT_WIDTH
+                t.place != crate::text::DEFAULT_PLACE
+                    || t.width != crate::text::DEFAULT_WIDTH
+                    || t.height != crate::text::DEFAULT_HEIGHT
             })
         })
     }
@@ -441,6 +472,7 @@ impl AppState {
             for t in e.texts.items.iter_mut().filter(|t| tids.contains(&t.id)) {
                 t.place = crate::text::DEFAULT_PLACE;
                 t.width = crate::text::DEFAULT_WIDTH;
+                t.height = crate::text::DEFAULT_HEIGHT;
             }
             Ok(())
         })

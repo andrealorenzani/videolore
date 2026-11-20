@@ -12,11 +12,11 @@ in [code-modules.md](code-modules.md).
 |---|---|
 | Programs | `src/main.rs` → `lib.rs` (`real_app`, `native_options`, `prepare_desktop`); `player/src/main.rs` → `player/src/lib.rs` |
 | Interface | `ui` (and its sub-modules), `dialogs`, `splash`; the player's `ui`, `fullscreen` |
-| Application | `app` (`AppState`, `Command`, `dispatch`, `tick`; sub-modules `command`, `effects`, `export_flow`, `frame`, `lut`, `sphere`, `subs_create`, `texts`); the player's `app`, `subs` |
+| Application | `app` (`AppState`, `Command`, `dispatch`, `tick`; sub-modules `command`, `effects`, `export_flow`, `frame`, `lut`, `placing`, `sphere`, `subs_create`, `texts`); the player's `app`, `subs` |
 | Engine (threads, processes) | `export` (+ `export::choice`), `outcheck`, `hwenc`, `preview`, `proxy`, `stt`, `jobs`, `ffmpeg`, `scratch` (work-folder root and start-up cleanup) |
 | Rendering (pure) | `render` (filter graphs and argv), `format`, `ass`, `camera`, `frame`, `keyframes`, `lut`, `spherical` |
-| Model (pure) | `project` (+ `project::v9`), `timeline`, `music`, `subtitles`, `text`, `selection`, `history`, `media`, `srt`, `align` |
-| Configuration and notices | `settings` (uses `base`, `hwenc`, `machine`), `fonts` (uses `text`), `notices` (uses `ffmpeg`, `packaging`) |
+| Model (pure) | `project` (+ `project::v9`), `timeline`, `music`, `subtitles`, `text`, `selection`, `history`, `media`, `srt`, `align`, `measure` (text measured with the font's tables), `placement` (boxes of lines and texts, least move, overlaps) |
+| Configuration and notices | `settings` (uses `base`, `hwenc`, `machine`), `fonts` (uses `ass`, `base`; keeps where the installed font files are and reads a face when a text uses it), `notices` (uses `ffmpeg`, `packaging`) |
 | Shared helpers: `base` | `base::io` (capped reading, atomic writing), `base::private` (private folders and files, `Work`), `base::pos` (`Pos`, `POS_MAX`, `Anchor360`, `align_h`, `align_v`), `base::names` (cache, partial and speech-model file names), `base::language` (language table), `base::testing` (test-only: `best_of`, the best of several timing samples; std only). It uses no module of videolore, so it is in no cycle |
 | Leaves (no dependency on other modules) | `time`, `machine`, `packaging`, `desktop`, `history`, `splash` |
 
@@ -59,7 +59,13 @@ flowchart TD
   app --> scratch & base
   ui --> base
   subtitles --> timeline & base
-  text --> subtitles & ass & base
+  text --> subtitles & ass & base & fonts & measure
+  fonts --> ass & base
+  placement --> project & subtitles & text & selection & ass & base
+  app --> placement
+  ui --> placement
+  render --> fonts
+  export --> fonts
 ```
 
 ### Cycles
@@ -176,27 +182,29 @@ engine; it is compiled without the `stt` feature, so it has no speech engine and
 | Module | Uses |
 |---|---|
 | `align` | media, srt, subtitles, time |
-| `app` | base, camera, desktop, export, ffmpeg, fonts, format, frame, history, hwenc, jobs, keyframes, lut, machine, media, music, outcheck, preview, project, proxy, render, scratch, selection, settings, srt, stt, subtitles, text, time, timeline |
+| `app` | placement, base, camera, desktop, export, ffmpeg, fonts, format, frame, history, hwenc, jobs, keyframes, lut, machine, media, music, outcheck, preview, project, proxy, render, scratch, selection, settings, srt, stt, subtitles, text, time, timeline |
 | `ass` | base, subtitles, time |
 | `camera` | base, media, time |
 | `dialogs` | app, project |
-| `export` | ass, base, ffmpeg, format, hwenc, media, outcheck, project, render, spherical, time |
+| `export` | ass, base, ffmpeg, fonts, format, hwenc, media, outcheck, project, render, spherical, time |
 | `ffmpeg` | time |
-| `fonts` | text |
+| `fonts` | ass, base |
 | `format` | media, time |
 | `frame` | base, keyframes, time |
 | `hwenc` | ffmpeg |
 | `jobs` | ffmpeg |
 | `keyframes` | time |
 | `lut` | base, media |
+| `measure` | (none; uses the `skrifa` and `harfrust` crates) |
 | `media` | base, ffmpeg, time |
 | `music` | media, time, timeline |
 | `notices` | ffmpeg, packaging |
+| `placement` | ass, base, project, selection, subtitles, text, time |
 | `outcheck` | ffmpeg, hwenc, render, time |
 | `preview` | base, export, ffmpeg, jobs, project, render, time |
 | `project` | base, camera, frame, keyframes, lut, media, music, subtitles, text, time, timeline |
 | `proxy` | base, ffmpeg, jobs, machine, media, settings, time |
-| `render` | ass, base, camera, ffmpeg, format, frame, hwenc, lut, media, music, project, proxy, subtitles, text, time, timeline |
+| `render` | ass, base, camera, ffmpeg, fonts, format, frame, hwenc, lut, media, music, project, proxy, subtitles, text, time, timeline |
 | `scratch` | base |
 | `selection` | subtitles, text |
 | `settings` | base, hwenc, machine |
@@ -204,6 +212,6 @@ engine; it is compiled without the `stt` feature, so it has no speech engine and
 | `srt` | subtitles, time |
 | `stt` | align, base, ffmpeg, jobs, media, settings, srt, subtitles, time |
 | `subtitles` | base, media, time, timeline |
-| `text` | ass, base, subtitles, time |
+| `text` | ass, base, fonts, measure, subtitles, time |
 | `timeline` | base, frame, keyframes, media, time |
-| `ui` | app, ass, base, camera, export, ffmpeg, format, frame, hwenc, keyframes, lut, media, music, notices, project, selection, settings, splash, stt, subtitles, text, time, timeline |
+| `ui` | app, placement, ass, base, camera, export, ffmpeg, format, frame, hwenc, keyframes, lut, media, music, notices, project, selection, settings, splash, stt, subtitles, text, time, timeline |

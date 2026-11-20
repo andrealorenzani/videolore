@@ -1144,3 +1144,5 @@ fn word_error_rate_is_computed_on_words() {
     assert_eq!(wer(&r, &words("the quick fox")), 0.25);
     assert_eq!(wer(&r, &words("a quick brown fox jumps")), 0.5);
 }
+#[path = "ffmpeg_integration/v21.rs"]
+mod v21;

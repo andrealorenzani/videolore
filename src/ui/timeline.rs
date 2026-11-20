@@ -592,7 +592,18 @@ fn marker_lane(
     visible: Rect,
     cmds: &mut Vec<Command>,
 ) {
-    let all = markers::layout(&app.project, z, x0, (visible.min.x, visible.max.x));
+    let mut all = markers::layout(&app.project, z, x0, (visible.min.x, visible.max.x));
+    // lines whose boxes overlap another line shown at the same time are marked (REQ-169)
+    let overlaps = cache.overlapping_lines(app).clone();
+    let warned: Vec<bool> = all
+        .iter()
+        .map(|m| matches!(m.instance, Instance::Line(id, _) if overlaps.contains(&id)))
+        .collect();
+    for (m, w) in all.iter_mut().zip(&warned) {
+        if *w {
+            m.tooltip = format!("{} {}", m.tooltip, super::effects::OVERLAPS);
+        }
+    }
     let mid = lane.center().y;
     for m in &all {
         let chosen = app.popups.instance == Some(m.instance)
@@ -697,6 +708,17 @@ fn marker_lane(
                     Stroke::new(1.0, Color32::GRAY),
                 );
             }
+        }
+    }
+    for (m, w) in all.iter().zip(&warned) {
+        if *w {
+            painter.text(
+                pos2(m.x + 10.0, mid - 12.0),
+                Align2::CENTER_CENTER,
+                super::icons::WARNING,
+                FontId::proportional(10.0),
+                Color32::from_rgb(255, 190, 60),
+            );
         }
     }
     // every marker type has its icon on its shape (REQ-142)

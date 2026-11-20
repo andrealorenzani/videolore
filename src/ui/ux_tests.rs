@@ -179,6 +179,33 @@ impl Harness {
         self.idle(2);
     }
 
+    /// Presses at `from` and moves to `to` without releasing (a drag in progress).
+    pub fn press_and_move(&mut self, from: Pos2, to: Pos2) {
+        let ev = |pos, pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        self.frame(vec![Event::PointerMoved(from)]);
+        self.frame(vec![ev(from, true)]);
+        for i in 1..=5 {
+            let p = from + (to - from) * (i as f32 / 5.0);
+            self.frame(vec![Event::PointerMoved(p)]);
+        }
+    }
+
+    /// Releases the primary button at `at`.
+    pub fn release(&mut self, at: Pos2) {
+        self.frame(vec![Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed: false,
+            modifiers: Modifiers::NONE,
+        }]);
+        self.idle(2);
+    }
+
     pub fn key(&mut self, k: Key, m: Modifiers) {
         self.frame(vec![Event::Key {
             key: k,
@@ -214,7 +241,7 @@ fn loaded() -> (tempfile::TempDir, AppState) {
 }
 
 /// Widgets of `after` that were not in `before` (what a click opened).
-fn opened(before: &[Node], after: &[Node]) -> Vec<Node> {
+pub(super) fn opened(before: &[Node], after: &[Node]) -> Vec<Node> {
     after
         .iter()
         .filter(|n| {
@@ -233,12 +260,12 @@ fn best<'a>(nodes: &'a [Node], label: &str) -> Option<&'a Node> {
         .min_by_key(|n| (n.label != label, !n.interactive, n.role == Role::TextRun))
 }
 
-fn find_in<'a>(nodes: &'a [Node], label: &str) -> Option<&'a Node> {
+pub(super) fn find_in<'a>(nodes: &'a [Node], label: &str) -> Option<&'a Node> {
     best(nodes, label)
 }
 
 /// Opens the menu `title`; returns its widgets.
-fn open_menu(h: &mut Harness, title: &str) -> Vec<Node> {
+pub(super) fn open_menu(h: &mut Harness, title: &str) -> Vec<Node> {
     let before = h.nodes.clone();
     let t = h
         .nodes
@@ -250,7 +277,7 @@ fn open_menu(h: &mut Harness, title: &str) -> Vec<Node> {
     opened(&before, &h.nodes)
 }
 
-fn close_menus(h: &mut Harness) {
+pub(super) fn close_menus(h: &mut Harness) {
     h.key(Key::Escape, Modifiers::NONE);
     h.idle(1);
 }

@@ -316,6 +316,9 @@ pub fn volume_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut 
 const LINE_ROW: f32 = 20.0;
 
 /// The Subtitles popup: style, language, generation, and the list of lines.
+/// The warning of a line whose box overlaps another line shown at the same time (REQ-169).
+pub const OVERLAPS: &str = "Overlaps another line shown at the same time";
+
 pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
     let subs = &app.project.subtitles;
     ui.horizontal_wrapped(|ui| {
@@ -408,6 +411,9 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
     ui.separator();
     ui.strong(count(shown.len(), "line", "lines"))
         .on_hover_text("Ctrl/Cmd+click a line to select several");
+    // the gestures that select several (REQ-171)
+    ui.weak(super::status::SELECTION_HINT);
+    let overlaps = cache.overlapping_lines(app).clone();
     if shown.is_empty() {
         ui.weak("No subtitles on the timeline.");
         return;
@@ -422,10 +428,25 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
                 let on = app.popups.instance == Some(i)
                     || app.selection.primary_line() == Some(l.line)
                     || app.selection.contains(&l.line);
-                let text = format!("{}  {}", timecode(l.start), l.text);
+                let warn = overlaps.contains(&l.line);
+                let text = if warn {
+                    format!(
+                        "{} {}  {}",
+                        super::icons::WARNING,
+                        timecode(l.start),
+                        l.text
+                    )
+                } else {
+                    format!("{}  {}", timecode(l.start), l.text)
+                };
+                let tip = if warn {
+                    format!("{text}\n{OVERLAPS}")
+                } else {
+                    text.clone()
+                };
                 if ui
                     .add(Button::selectable(on, text.as_str()).truncate())
-                    .on_hover_text(text)
+                    .on_hover_text(tip)
                     .clicked()
                 {
                     if ui.input(|x| x.modifiers.command) {

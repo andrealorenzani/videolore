@@ -24,7 +24,7 @@ use crate::subtitles::{NewLine, Word};
 use crate::time::Micros;
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -84,8 +84,11 @@ pub const MODEL_FILE: &str = SPEECH_MODEL_FILES[0];
 
 /// Sample rate the speech model expects.
 pub const SAMPLE_RATE: u32 = 16_000;
-/// Audio given to the model at once.
+/// Audio each piece of the recognition owns: the words that start in it are the piece's.
 pub const CHUNK: Micros = Micros(120_000_000);
+/// Audio read beyond each end of a piece, so that a word cut by the boundary is heard whole
+/// by the piece that owns its start (REQ-178; words are shorter than this).
+pub const OVERLAP: Micros = Micros(2_000_000);
 /// A pause longer than this starts a new line.
 pub const LINE_PAUSE: Micros = Micros(600_000);
 /// Longest line, in words and characters.
@@ -628,12 +631,21 @@ pub enum SttEvent {
     Cancelled,
 }
 
-/// Message after matching when some lines kept evenly spread words.
+/// Message after matching when some lines kept evenly spread words. When at least half of
+/// the lines did (REQ-179), it adds that the video's subtitle text does not follow the
+/// speech closely, so the word timing is approximate.
 pub fn unmatched_message(unmatched: usize, total: usize) -> String {
-    format!(
+    let mut m = format!(
         "{unmatched} of {total} lines could not be matched to the speech; their words are \
          spread evenly over the line"
-    )
+    );
+    if unmatched * 2 >= total {
+        m.push_str(
+            ". The video's subtitle text does not follow the speech closely, so the word \
+             timing is approximate; the text is kept as it is",
+        );
+    }
+    m
 }
 
 /// Reads the text subtitle track `ordinal` of `source` with `ffmpeg` (cues overlapping
@@ -686,7 +698,6 @@ fn recognise(
 ) -> Result<Vec<Word>, SttError> {
     let audio = work.join("audio.f32");
     let name = crate::media::display_name(&r.path);
-    let chunk_bytes = (CHUNK.0 as u64 * u64::from(SAMPLE_RATE) / 1_000_000 * 4) as usize;
     let out = runner
         .run(&job.ffmpeg, &extraction_args(&r.path, &audio, r.range))
         .map_err(|e| match e.kind() {
@@ -697,15 +708,24 @@ fn recognise(
         return Err(SttError::Extraction(name));
     }
     let base = r.range.map(|(from, _)| from).unwrap_or(Micros::ZERO);
-    let total = std::fs::metadata(&audio).map_err(io_err)?.len() as usize;
-    let chunks = total.div_ceil(chunk_bytes).max(1);
+    let rate = u64::from(SAMPLE_RATE);
+    let samples_of = |t: Micros| t.0 as u64 * rate / 1_000_000;
+    let total = (std::fs::metadata(&audio).map_err(io_err)?.len() / 4) as usize;
+    let (piece, margin) = (samples_of(CHUNK) as usize, samples_of(OVERLAP) as usize);
+    let chunks = total.div_ceil(piece).max(1);
     let mut f = std::fs::File::open(&audio).map_err(io_err)?;
     let mut words = Vec::new();
-    let mut buf = vec![0u8; chunk_bytes];
     for c in 0..chunks {
         if cancel.load(Ordering::SeqCst) {
             return Err(SttError::Cancelled);
         }
+        // the piece owns [c * CHUNK, (c + 1) * CHUNK); it hears a little more on each side
+        let (from, to) = (
+            (c * piece).saturating_sub(margin),
+            ((c + 1) * piece + margin).min(total),
+        );
+        f.seek(SeekFrom::Start(from as u64 * 4)).map_err(io_err)?;
+        let mut buf = vec![0u8; to.saturating_sub(from) * 4];
         let mut got = 0;
         while got < buf.len() {
             let k = f.read(&mut buf[got..]).map_err(io_err)?;
@@ -716,12 +736,21 @@ fn recognise(
         }
         let (samples, _) = buf[..got - got % 4].as_chunks::<4>();
         let pcm: Vec<f32> = samples.iter().map(|b| f32::from_le_bytes(*b)).collect();
-        let offset = base + Micros(CHUNK.0 * c as i64);
+        let offset = base + Micros((from as u64 * 1_000_000 / rate) as i64);
         let t = transcriber.transcribe(&pcm, offset, language.as_deref(), cancel)?;
         if language.is_none() {
             *language = t.language;
         }
-        words.extend(t.words);
+        // a word belongs to the piece it starts in: kept once, never cut (REQ-178)
+        let (own_from, own_to) = (
+            base + Micros(CHUNK.0 * c as i64),
+            base + Micros(CHUNK.0 * (c as i64 + 1)),
+        );
+        words.extend(
+            t.words
+                .into_iter()
+                .filter(|w| w.start >= own_from && (w.start < own_to || c + 1 == chunks)),
+        );
         progress((c + 1) as f32 / chunks as f32);
     }
     let _ = std::fs::remove_file(&audio);
@@ -1057,6 +1086,8 @@ pub mod whisper {
                 if text.is_empty() || text.starts_with('[') || text.starts_with('(') {
                     continue;
                 }
+                // timestamps are in centiseconds; the alignment of the first token with the
+                // audio (DTW) is the start of the word when the model has it
                 // timestamps are in centiseconds
                 words.push(Word {
                     start: offset + Micros(seg.start_timestamp() * 10_000),
@@ -1281,14 +1312,15 @@ pub(crate) mod tests {
         let r = run(&job(1), &runner, Some(&mut t), None, &cancel, &tx).unwrap();
         let (lang, lines) = (r.language.clone(), r.lines());
         assert_eq!(lang.as_deref(), Some("it"));
-        // 250 s in chunks of 120 s; the detected language is used after the first chunk
+        // 250 s in pieces of 120 s that hear 2 s more at each end; the detected language is
+        // used after the first piece
         let seen = seen.lock().unwrap().clone();
         assert_eq!(
             seen,
             vec![
-                (1_920_000, Micros::ZERO, None),
-                (1_920_000, Micros(120_000_000), Some("it".into())),
-                (160_000, Micros(240_000_000), Some("it".into())),
+                (1_952_000, Micros::ZERO, None),
+                (1_984_000, Micros(118_000_000), Some("it".into())),
+                (192_000, Micros(238_000_000), Some("it".into())),
             ]
         );
         let progress: Vec<SttEvent> = rx.try_iter().collect();
@@ -1305,6 +1337,176 @@ pub(crate) mod tests {
         assert!(a.contains(&"file:/m/1.mp4".to_string()));
         assert!(a.windows(2).any(|w| w == ["-map", "0:a:0"]));
         assert!(a.windows(2).any(|w| w == ["-ar", "16000"]));
+    }
+
+    /// A transcriber that knows the words of a 5-minute speech and hears what lies in the
+    /// audio it is given: a word wholly inside is heard whole, one cut by an end of the
+    /// audio is heard as a fragment (as a real model does).
+    struct Speech {
+        words: Vec<(f64, f64, String)>,
+    }
+
+    impl Transcriber for Speech {
+        fn transcribe(
+            &mut self,
+            pcm: &[f32],
+            offset: Micros,
+            _: Option<&str>,
+            _: &Arc<AtomicBool>,
+        ) -> Result<Transcript, SttError> {
+            let from = offset.as_secs_f64();
+            let to = from + pcm.len() as f64 / f64::from(SAMPLE_RATE);
+            let words = self
+                .words
+                .iter()
+                .filter(|(s, e, _)| *e > from && *s < to)
+                .map(|(s, e, t)| {
+                    let whole = *s >= from && *e <= to;
+                    Word {
+                        start: Micros::from_secs_f64(s.max(from)),
+                        end: Micros::from_secs_f64(e.min(to)),
+                        text: if whole { t.clone() } else { format!("{t}~") },
+                    }
+                })
+                .collect();
+            Ok(Transcript {
+                language: Some("en".into()),
+                words,
+            })
+        }
+    }
+
+    // covers: REQ-178
+    #[test]
+    fn words_at_the_boundary_of_a_piece_are_neither_lost_nor_doubled() {
+        // a word every 0.7 s for 5 minutes, and words that lie across each boundary
+        let mut words: Vec<(f64, f64, String)> = (0..427)
+            .map(|k| {
+                (
+                    0.7 * f64::from(k),
+                    0.7 * f64::from(k) + 0.4,
+                    format!("w{k}"),
+                )
+            })
+            .filter(|(s, e, _)| {
+                !(119.0..121.0).contains(s) && !(239.0..241.0).contains(s) && *e < 299.0
+            })
+            .collect();
+        for (i, b) in [120.0f64, 240.0].into_iter().enumerate() {
+            words.push((b - 0.3, b + 0.3, format!("across{i}")));
+            words.push((b + 0.5, b + 0.9, format!("after{i}")));
+            words.push((b - 1.0, b - 0.6, format!("before{i}")));
+        }
+        words.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut t = Speech {
+            words: words.clone(),
+        };
+        let (tx, _rx) = channel();
+        let r = run(
+            &job(1),
+            &extractor(300),
+            Some(&mut t),
+            None,
+            &Arc::new(AtomicBool::new(false)),
+            &tx,
+        )
+        .unwrap();
+        let heard: Vec<(f64, String)> = r
+            .lines()
+            .into_iter()
+            .flat_map(|l| l.words)
+            .map(|w| (w.start.as_secs_f64(), w.text))
+            .collect();
+        // every word of the speech, once, whole
+        assert_eq!(heard.len(), words.len(), "no word lost or doubled");
+        for ((s, _, text), (hs, ht)) in words.iter().zip(&heard) {
+            assert_eq!(text, ht);
+            assert!((s - hs).abs() < 0.001, "{text}: {s} {hs}");
+        }
+        assert!(heard.iter().all(|(_, t)| !t.contains('~')), "no fragment");
+        // the pieces overlap by 2 s at each end, as planned (+3.3% audio)
+        assert_eq!(OVERLAP, Micros(2_000_000));
+    }
+
+    /// A transcriber that hears the words of the speech fixture (`tests/fixtures/align`).
+    struct Fixture;
+
+    impl Transcriber for Fixture {
+        fn transcribe(
+            &mut self,
+            _: &[f32],
+            offset: Micros,
+            _: Option<&str>,
+            _: &Arc<AtomicBool>,
+        ) -> Result<Transcript, SttError> {
+            let words: serde_json::Value =
+                serde_json::from_str(include_str!("../tests/fixtures/align/reference.json"))
+                    .unwrap();
+            let words = words
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|w| {
+                    let start = w["start"].as_f64().unwrap();
+                    Word {
+                        start: offset + Micros::from_secs_f64(start),
+                        end: offset + Micros::from_secs_f64(start + 0.4),
+                        text: w["word"].as_str().unwrap().to_string(),
+                    }
+                })
+                .collect();
+            Ok(Transcript {
+                language: Some("en".into()),
+                words,
+            })
+        }
+    }
+
+    /// The runner of a 23 s sound and a subtitle track with the text `srt`.
+    fn runner_with(srt: &'static str) -> FakeRunner {
+        FakeRunner::default().on(move |_, a| {
+            let out = a.last()?.strip_prefix("file:")?.to_string();
+            if a.iter().any(|x| x == "srt") {
+                std::fs::write(out, srt).ok()?;
+            } else {
+                std::fs::write(out, vec![0u8; 23 * SAMPLE_RATE as usize * 4]).ok()?;
+            }
+            crate::ffmpeg::fake::ok("")
+        })
+    }
+
+    // covers: REQ-179
+    #[test]
+    fn a_track_that_does_not_follow_the_speech_says_so_with_the_count_and_one_that_does_does_not() {
+        let mut j = job(1);
+        j.ranges[0].mode = Mode::Align { track: 0 };
+        let run_with = |srt: &'static str| {
+            let (tx, _rx) = channel();
+            run(
+                &j,
+                &runner_with(srt),
+                Some(&mut Fixture),
+                None,
+                &Arc::new(AtomicBool::new(false)),
+                &tx,
+            )
+            .unwrap()
+        };
+        // the committed track follows the speech: every line is matched, no extra message
+        let follows = run_with(include_str!("../tests/fixtures/align/track.srt"));
+        assert_eq!(follows.unmatched, (0, 4));
+        // a paraphrase: every line falls back, and the message says so with the count
+        let para = run_with(include_str!("../tests/fixtures/align/paraphrase.srt"));
+        assert_eq!(para.unmatched, (4, 4));
+        let m = unmatched_message(para.unmatched.0, para.unmatched.1);
+        assert!(m.starts_with("4 of 4 lines could not be matched"), "{m}");
+        assert!(m.contains("does not follow the speech closely"), "{m}");
+        assert!(m.contains("word timing is approximate"), "{m}");
+        assert!(m.contains("the text is kept"), "{m}");
+        // exactly half of the lines is enough, less is not
+        assert!(unmatched_message(2, 4).contains("does not follow the speech closely"));
+        assert!(!unmatched_message(1, 4).contains("does not follow"));
+        assert!(!unmatched_message(1, 3).contains("does not follow"));
     }
 
     // covers: REQ-015

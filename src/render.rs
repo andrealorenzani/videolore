@@ -129,6 +129,9 @@ pub struct Segment {
     /// Apply LUT of this clip (1.6.0, REQ-135; a whole-video LUT is one copy per clip since
     /// 1.6.1). A LUT that cannot be read is ignored in a preview and stops an export.
     pub lut_clip: Option<std::sync::Arc<crate::lut::Lut>>,
+    /// The frame rate of the source picture (REQ-155): the frame that holds the first
+    /// rendered instant starts before it and must not be dropped.
+    pub grid: Option<crate::time::Fps>,
 }
 
 /// The LUT of `target` for a render: `None` without one; a file that cannot be used is an
@@ -162,6 +165,33 @@ impl Segment {
     /// Length actually rendered.
     pub fn rendered(&self) -> Micros {
         self.len - self.skip
+    }
+
+    /// How long before the first rendered instant the source frame that holds it starts
+    /// (REQ-155): zero for a clip drawn from its start, for a 360 clip and for a source
+    /// without a known frame rate. The picture is read from that frame, so a paused still
+    /// in the last frame of a clip, or playback started inside a frame, has a picture.
+    pub fn lead(&self) -> Micros {
+        let (Some(f), None) = (self.grid, &self.sphere) else {
+            return Micros::ZERO;
+        };
+        if self.skip <= Micros::ZERO {
+            return Micros::ZERO;
+        }
+        let t = (self.src_in + self.skip).0 as i128;
+        let per = 1_000_000i128 * f.den as i128;
+        let n = t * f.num as i128 / per;
+        let first = (n * per + f.num as i128 / 2) / f.num as i128;
+        Micros((t - first).max(0) as i64)
+    }
+
+    /// How much earlier than the first rendered instant the picture is read: the lead plus
+    /// a millisecond so that rounding cannot drop the frame again.
+    fn read_back(&self) -> Micros {
+        match self.lead() {
+            Micros(0) => Micros::ZERO,
+            l => l + Micros(1_000),
+        }
     }
 }
 
@@ -210,6 +240,7 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                     .is_360()
                     .then(|| anchored_doc(project, m, start, end, from))
                     .flatten(),
+                grid: m.format.fps,
                 frame: {
                     let stack = tl.frame_stack(i);
                     (tl.frame_aspect.is_some() || !stack.is_empty()).then_some(SegFrame {
@@ -531,6 +562,9 @@ pub struct Graph {
 pub fn write_command_files(dir: &Path, files: &[(String, String)]) -> io::Result<()> {
     for (name, content) in files {
         std::fs::write(dir.join(name), content)?;
+        if name.ends_with(".ass") {
+            crate::fonts::copy_used(dir, content)?;
+        }
     }
     Ok(())
 }
@@ -587,6 +621,13 @@ fn lut_chain(s: &Segment, i: usize, pix_fmt: &str, files: &mut Vec<(String, Stri
 /// chain that makes the fitted picture (without its output format). Pushes the chains of
 /// the picture, its scale and the background, and returns the chain that overlays them
 /// (the caller adds fades and the label).
+/// Radius of the blur on the small copy. `boxblur` uses it for the luma and, unless told
+/// otherwise, the chroma planes; ffmpeg wants it under half of the smaller side of a plane,
+/// and the chroma planes are half the size (yuv420).
+fn blur_radius(sw: u32, sh: u32) -> u32 {
+    frame::BLUR_RADIUS.min((sw.min(sh) / 4).saturating_sub(1))
+}
+
 fn compose_frame(
     parts: &mut Vec<String>,
     i: usize,
@@ -603,14 +644,13 @@ fn compose_frame(
     if blur {
         parts.push(format!("{picture},split=2[pa{i}][pb{i}]"));
         let (sw, sh) = (
-            (w / frame::BLUR_DIVISOR).max(2) & !1,
-            (h / frame::BLUR_DIVISOR).max(2) & !1,
+            (w / frame::BLUR_DIVISOR).max(frame::BLUR_MIN_SIDE) & !1,
+            (h / frame::BLUR_DIVISOR).max(frame::BLUR_MIN_SIDE) & !1,
         );
+        let r = blur_radius(sw, sh);
         parts.push(format!(
             "[pb{i}]scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},\
-             boxblur={r}:2,scale={w}:{h},setsar=1[b{i}]",
-            // the radius may not pass half of the smaller chroma plane
-            r = frame::BLUR_RADIUS.min((sw.min(sh) / 4).max(1))
+             boxblur={r}:2,scale={w}:{h},setsar=1[b{i}]"
         ));
     } else {
         let rgb = match f.aspect.map(|a| a.fill) {
@@ -656,7 +696,13 @@ fn compose_frame(
 pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -> Graph {
     let spans: Vec<(PathBuf, Micros, Micros)> = segs
         .iter()
-        .map(|s| (s.path.clone(), s.src_in + s.skip, s.src_in + s.len))
+        .map(|s| {
+            (
+                s.path.clone(),
+                s.src_in + s.skip - s.read_back(),
+                s.src_in + s.len,
+            )
+        })
         .collect();
     let (mut inputs, idx) = group_inputs(&spans);
     let bed = bed.filter(|_| spec.audio);
@@ -704,6 +750,17 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
         let k = idx[i];
         let off = (s.src_in + s.skip - inputs[k].start).ff();
         let d = s.rendered().ff();
+        // the picture starts at the source frame that holds the first instant (REQ-155)
+        let back = s.read_back();
+        let (voff, vd) = (
+            (s.src_in + s.skip - back - inputs[k].start).ff(),
+            (s.rendered() + back).ff(),
+        );
+        // that frame keeps its own time, as late as the first instant at the earliest
+        let shift = format!(
+            "PTS-STARTPTS+{}/TB",
+            (s.skip - s.lead()).max(Micros::ZERO).ff()
+        );
         if spec.video {
             let src = &vlabels[k][vused[k]];
             vused[k] += 1;
@@ -779,18 +836,16 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                     // the picture fitted to the frame, with no bars: the frame effect
                     // draws the background and places the picture
                     Some(f) => format!(
-                        "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB{fit},\
+                        "{src}trim=start={voff}:duration={vd},setpts={shift}{fit},\
                          setsar=1,fps={fps}{lut}{anchored}",
                         fit = frame::fit_filter((w, h), f.aspect.as_ref()),
-                        o = s.skip.ff(),
                         fps = g.fps.ff(),
                     ),
                     None => format!(
-                        "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS+{o}/TB,\
+                        "{src}trim=start={voff}:duration={vd},setpts={shift},\
                          scale={w}:{h}:force_original_aspect_ratio=decrease{lut},\
                          pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f}{anchored},\
                          format={pf}",
-                        o = s.skip.ff(),
                         f = g.fps.ff(),
                         pf = spec.pix_fmt,
                     ),
@@ -806,7 +861,13 @@ pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -
                 Micros::ZERO
             };
             fades(&mut c, "fade", s, early);
-            c.push_str(&format!(",setpts=PTS-STARTPTS[v{i}]"));
+            // the picture read from the frame before the first instant ends with the clip
+            let cut = if back > Micros::ZERO {
+                format!(",trim=duration={d}")
+            } else {
+                String::new()
+            };
+            c.push_str(&format!(",setpts=PTS-STARTPTS{cut}[v{i}]"));
             parts.push(c);
             concat_in.push_str(&format!("[v{i}]"));
         }
@@ -3130,6 +3191,59 @@ pub(crate) mod tests {
         );
         assert!(g.graph.contains("[pb0]scale=84:150:force_original_aspect_ratio=increase,crop=84:150,boxblur=3:2,scale=676:1200,setsar=1[b0]"));
         assert!(!g.graph.contains("color=c="));
+    }
+
+    // covers: REQ-126
+    #[test]
+    fn the_blur_radius_stays_inside_ffmpegs_bounds_for_every_small_side() {
+        for side in (frame::BLUR_MIN_SIDE..=600).step_by(2) {
+            for other in [frame::BLUR_MIN_SIDE, side, 600] {
+                let r = blur_radius(side, other);
+                // the chroma planes are half the size and ffmpeg wants radius < side / 2
+                assert!(
+                    r >= 1 && r < (side.min(other) / 2) / 2,
+                    "{r} for {side}x{other}"
+                );
+            }
+        }
+        assert_eq!(blur_radius(8, 14), 1);
+        assert_eq!(blur_radius(84, 150), 3);
+    }
+
+    // covers: REQ-155
+    #[test]
+    fn a_picture_from_inside_a_frame_is_read_from_the_frame_that_holds_it() {
+        let p = project(&[(2, 640, 360, 25)]);
+        let at = |t: i64| {
+            let r = still_args(
+                &p,
+                Micros(t),
+                &Geometry {
+                    width: 640,
+                    height: 360,
+                    fps: Fps::new(25, 1).unwrap(),
+                },
+                FfVersion::Dev,
+                Path::new("g.txt"),
+                Source::Export,
+            )
+            .unwrap();
+            strs(&r.args).join(" ")
+        };
+        // 1.98 s is inside the frame that starts at 1.96 s: it is read from there
+        let late = at(1_980_000);
+        assert!(late.contains("-ss 1.959000"), "{late}");
+        assert!(
+            late.contains("trim=start=0.000000:duration=0.041000,setpts=PTS-STARTPTS+1.960000/TB")
+        );
+        assert!(late.contains("setpts=PTS-STARTPTS,trim=duration=0.020000[v0]"));
+        // on a frame, or from the start of a clip, nothing changes
+        let on = at(1_920_000);
+        assert!(on.contains("-ss 1.920000"), "{on}");
+        assert!(!on.contains("trim=duration="));
+        assert!(at(0).contains("-ss 0.000000"));
+        let seg = &segments(&p, Micros(1_980_000), Source::Export).unwrap()[0];
+        assert_eq!(seg.lead(), Micros(20_000));
     }
 
     // covers: REQ-127

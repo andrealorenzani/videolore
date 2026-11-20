@@ -23,8 +23,8 @@
 - ai-docs/code-history.md § 0.3.0 notes — L139-148 (10 lines)
 - ai-docs/code-history.md § Packaging / CI — L149-153 (5 lines)
 - ai-docs/code-modules.md § ai-notes: code — module facts (dense, per module) — L1-4 (4 lines)
-- ai-docs/code-modules.md § Module facts — L5-41 (37 lines)
-- ai-docs/code-req-tests.md § ai-notes: code — requirement -> test files (generated) — L1-83 (83 lines)
+- ai-docs/code-modules.md § Module facts — L5-42 (38 lines)
+- ai-docs/code-req-tests.md § ai-notes: code — requirement -> test files (generated) — L1-91 (91 lines)
 
 ## Index of docs/code*.md
 - docs/code-360.md § Code — boxes, text size and 360° video (1.2.6) — L1-5 (5 lines)
@@ -37,12 +37,12 @@
 - docs/code-360.md § Known limits — L101-107 (7 lines)
 - docs/code-architecture.md § Code — module architecture — L1-8 (8 lines)
 - docs/code-architecture.md § Layers — L9-24 (16 lines)
-- docs/code-architecture.md § Module dependency graph — L25-64 (40 lines)
-- docs/code-architecture.md § Cycles — L65-91 (27 lines)
-- docs/code-architecture.md § Import → timeline → preview → export — L92-124 (33 lines)
-- docs/code-architecture.md § Threads and channels — L125-152 (28 lines)
-- docs/code-architecture.md § videolore player — L153-171 (19 lines)
-- docs/code-architecture.md § Dependencies of each module — L172-209 (38 lines)
+- docs/code-architecture.md § Module dependency graph — L25-70 (46 lines)
+- docs/code-architecture.md § Cycles — L71-97 (27 lines)
+- docs/code-architecture.md § Import → timeline → preview → export — L98-130 (33 lines)
+- docs/code-architecture.md § Threads and channels — L131-158 (28 lines)
+- docs/code-architecture.md § videolore player — L159-177 (19 lines)
+- docs/code-architecture.md § Dependencies of each module — L178-217 (40 lines)
 - docs/code-effects.md § Code — effects on clips, the video's own subtitles, positions, SRT (1.2.0) — L1-4 (4 lines)
 - docs/code-effects.md § Applying an effect — L5-27 (23 lines)
 - docs/code-effects.md § Fades at the video's edges — L28-41 (14 lines)
@@ -97,7 +97,8 @@
 - docs/code-index.md § Interface — L86-93 (8 lines)
 - docs/code-index.md § videolore player — L94-102 (9 lines)
 - docs/code-index.md § Packaging and build — L103-109 (7 lines)
-- docs/code-index.md § Integration tests (real ffmpeg) — L110-113 (4 lines)
+- docs/code-index.md § Integration tests (real ffmpeg) — L110-114 (5 lines)
+- docs/code-index.md § Readable text, placement and accuracy (2.0.3) — L115-130 (16 lines)
 - docs/code-lut.md § Code — Apply LUT (1.6.0) — L1-4 (4 lines)
 - docs/code-lut.md § Where things are — L5-18 (14 lines)
 - docs/code-lut.md § The LUT file — L19-29 (11 lines)
@@ -127,6 +128,15 @@
 - docs/code-player.md § Packaging (ADR-108, 115) — L60-69 (10 lines)
 - docs/code-player.md § Known limits — L70-76 (7 lines)
 - docs/code-player.md § Start screen (1.6.2, REQ-150) — L77-84 (8 lines)
+- docs/code-readable-text.md § Code — readable text, placement and subtitle accuracy (2.0.3) — L1-10 (10 lines)
+- docs/code-readable-text.md § Step 0 — blur chroma radius (CI regression) — L11-21 (11 lines)
+- docs/code-readable-text.md § REQ-155 — the paused picture at the end of a clip — L22-34 (13 lines)
+- docs/code-readable-text.md § Measuring the text (REQ-156, 157, 159, 163) — L35-58 (24 lines)
+- docs/code-readable-text.md § Fonts (REQ-163, 164, 165, 166) — L59-73 (15 lines)
+- docs/code-readable-text.md § Readability and project format 10 (REQ-158, 167) — L74-86 (13 lines)
+- docs/code-readable-text.md § Commands and handles (REQ-159 to 162) — L87-97 (11 lines)
+- docs/code-readable-text.md § Placement (REQ-168 to 176) — L98-113 (16 lines)
+- docs/code-readable-text.md § Subtitle accuracy (REQ-177 to 179) — L114-133 (20 lines)
 - docs/code-splash-icons.md § Code — splash screen and icons (1.6.0, splash shared with the player in 1.6.2) — L1-4 (4 lines)
 - docs/code-splash-icons.md § Splash — L5-37 (33 lines)
 - docs/code-splash-icons.md § Icons — L38-75 (38 lines)
@@ -137,16 +147,17 @@
 - docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L99-111 (13 lines)
 - docs/code-testing.md § Integration test files — L112-139 (28 lines)
 - docs/code-testing.md § Other test notes — L140-161 (22 lines)
-- docs/code-testing.md § Suite size and time — L162-168 (7 lines)
-- docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-10 (10 lines)
-- docs/code-text.md § Where things are — L11-23 (13 lines)
-- docs/code-text.md § Model and file — L24-38 (15 lines)
-- docs/code-text.md § Effects as ASS events — L39-53 (15 lines)
-- docs/code-text.md § Texts fixed to the sphere — L54-77 (24 lines)
-- docs/code-text.md § Export of a project with 360 clips — L78-94 (17 lines)
-- docs/code-text.md § Selection and Context Menu — L95-105 (11 lines)
-- docs/code-text.md § Tests — L106-115 (10 lines)
-- docs/code-text.md § Known limits — L116-122 (7 lines)
+- docs/code-testing.md § Suite size and time — L162-169 (8 lines)
+- docs/code-testing.md § 2.0.3 additions — L170-176 (7 lines)
+- docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-12 (12 lines)
+- docs/code-text.md § Where things are — L13-25 (13 lines)
+- docs/code-text.md § Model and file — L26-40 (15 lines)
+- docs/code-text.md § Effects as ASS events — L41-55 (15 lines)
+- docs/code-text.md § Texts fixed to the sphere — L56-79 (24 lines)
+- docs/code-text.md § Export of a project with 360 clips — L80-96 (17 lines)
+- docs/code-text.md § Selection and Context Menu — L97-107 (11 lines)
+- docs/code-text.md § Tests — L108-117 (10 lines)
+- docs/code-text.md § Known limits — L118-124 (7 lines)
 - docs/code-ui.md § Code — the window (UI) — L1-8 (8 lines)
 - docs/code-ui.md § Window structure — L9-23 (15 lines)
 - docs/code-ui.md § Layout — L24-47 (24 lines)
@@ -156,14 +167,22 @@
 - docs/code-ui.md § Settings file — L108-114 (7 lines)
 - docs/code-ui.md § Since 1.2.0 — L115-125 (11 lines)
 - docs/code-ui.md § Preview picture (1.2.6) — L126-134 (9 lines)
-- docs/code.md § Code — L1-30 (30 lines)
-- docs/code.md § Build, test, run — L31-46 (16 lines)
-- docs/code.md § System requirements for building — L47-56 (10 lines)
-- docs/code.md § Settings and machine detection — L57-67 (11 lines)
-- docs/code.md § CPU baseline for speech recognition — L68-77 (10 lines)
-- docs/code.md § Cargo features — L78-88 (11 lines)
-- docs/code.md § Finding ffmpeg — L89-96 (8 lines)
-- docs/code.md § Dependencies — L97-122 (26 lines)
+- docs/code.md § Code — L1-31 (31 lines)
+- docs/code.md § Build, test, run — L32-47 (16 lines)
+- docs/code.md § System requirements for building — L48-57 (10 lines)
+- docs/code.md § Settings and machine detection — L58-68 (11 lines)
+- docs/code.md § CPU baseline for speech recognition — L69-78 (10 lines)
+- docs/code.md § Cargo features — L79-89 (11 lines)
+- docs/code.md § Finding ffmpeg — L90-97 (8 lines)
+- docs/code.md § Dependencies — L98-123 (26 lines)
+
+## State (2.0.3, plan ai-docs/architecture-plan-2.0.3.md; doc docs/code-readable-text.md)
+- Done: step 0 blur (boxblur=r:2 means luma radius r AND chroma radius r by default, NOT chroma power: radius under half of a plane side, chroma planes half size; `blur_radius`, BLUR_MIN_SIDE 8), REQ-155 (Segment.grid/lead/read_back; setpts max() rejected: fps drops the frame), `measure` (skrifa+harfrust, Shaped/fit/at_size), fonts registry (resolve/install/copy_used, 8 files, 64 MiB), text layout/Readability/height, format 10 + TextMigration, text edge handles (ResizeTextBox/ResizeTextWidth keep the opposite edge: centre moves), live box + readout, `placement` + app/placing.rs (MoveSelection, MoveInside, align_plan, place_after_text_edit), UI (status hint/outside text, stack click, dashed outline, overlap marks), REQ-178 pieces (OVERLAP 2 s, byte seek), REQ-179 message.
+- NOT done: REQ-177 (reworded by Andrea D56: >= 90% of MATCHED words within 0.3 s). Follow-up: onset snap built (align::onsets / snap_to_onsets, 10 ms RMS, 0.1 x p95, 80 ms silence; window [t-1.0, t-0.2], one onset per word) and measured on the non-DTW token times: 7/23 within 0.3 s (nearest onset +-0.5/1.0 s: 8/23): token times off by up to 1.1 s both ways; REMOVED, strict test stays #[ignore]. Third attempt (speech regions from the envelope + DP placing words by length, offline prototype with the logged token times, scratch only): 12/23 neutral, 21-22/23 for 4 of 120 settings (lam 1-3, skip 1-3, rate 8 chars/s, K<=3 words per region) = overfit to one clip with pauses; not built (continuous speech has long regions). Earlier (decision point): Measured 2026-11-20 pinned ffmpeg 9.0.2 + tiny-q5_1: 23/28 matched (5 words misheard by the Fast file), mean 0.48 s, max 1.10 s; DTW Tiny preset: max 0.75 s, mean 0.56 s, all words +0.43..0.75 s late (t_dtw of first token); energy onsets (10 ms RMS, 0.1 x p95, 80 ms silence) match reference within 0.03 s -> candidate lever: latest onset in [t-1.0, t-0.2]; share (90%) needs a bigger model or fuzzy matching. DTW code reverted. Strict test stays #[ignore]; fixture sha check + VIDEOLORE_REQUIRE_STT added; no 5-minute real fixture (needs espeak-ng, not on the dev box).
+- Deviations: layouts are NOT passed from app into render (text reads faces through the fonts process cache); REQ-159 example "two-line text grows 20% -> 40%" needs a text that is not capped at 10% of the height (tests use a long text); REQ-173 reading: an Align on a style-place line stores an own place (enabled), greyed only when already centred; REQ-168 only applies to subtitle lines (a text item's box does not depend on its text).
+- Test finding: libass uses OS/2 usWinAscent+usWinDescent for the font size (GDI mimic); with the system fontconfig, Bold=1 vs 0 can pick a different system Noto Sans; we write \b1 only for the bundled font and \b0 for installed ones.
+- Load gates made robust: hw check retries (4 pairs), UI responsiveness gate allows 2 frames > 200 ms (REQ-056).
+- Local env: pinned ffmpeg fetched with scripts/fetch-ffmpeg.sh linux-x86_64 into the scratchpad (VIDEOLORE_FFMPEG); tiny model downloaded to the scratchpad (sha checked); `hw::the_real_hardware_check_is_quick_and_stable` fails under llvm-cov with parallel load (16 s) and passes alone; `real_speech_is_transcribed` needs espeak-ng (CI installs it).
 
 ## State (2.0.2, verify the release; plan ai-docs/architecture-plan-2.0.2.md)
 - Done: REQ-154 tests (pub SUMMARY_MAX/FLOOR, summary_height, summary_fits_at_floor in splash_window; 3 tests in ui/splash_ux_tests.rs, 1 in player/src/ui_tests.rs); src/base/testing.rs `best_of` (cfg(test), std only) on project fifo, media stuck probe, machine detect; hw wait loops and preview waits 120 s; tests/ffmpeg_integration.rs `pinned_version`/`assert_pinned` (REQUIRE=1 only, Once) + v20.rs (REQ-144 paused frame at 1.7 s and 1.92 s, REQ-137 format 8 fixture tests/fixtures/project-v8-2.0.2.vlproj, REQ-121 libmp3lame + filters); package.sh `--stub` (dist/stub/, linux only); build.yml: pinned ffmpeg for tests (cache by lock hash, VIDEOLORE_FFMPEG/FFPROBE + PATH), `cargo about --version` step, job `package-config`.
@@ -197,12 +216,13 @@
 - cargo-deny 0.20.2 + cargo-about 0.9.3 (`--features cli`) in ~/.cargo/bin.
 
 ## Deps (rustc 1.100; requirements pinned to latest release in Cargo.toml, alphabetical)
-eframe 0.37.0 (no default feats: glow, default_fonts, wayland, x11). rfd 0.18 (xdg-portal). cpal 0.18.2 opt `audio`. serde/serde_json, thiserror 2, directories 6, tempfile 3, sha2 0.11.1 (normal dep now), sysinfo 0.40.4 (no default, "system"; System::new() returns Result in 0.40!), ureq 3.5.2 opt (no default, rustls), whisper-rs 0.16.0 opt. Features default=[audio,stt], stt=[dep:whisper-rs, dep:ureq].
+eframe 0.37.0 (no default feats: glow, default_fonts, wayland, x11). rfd 0.18 (xdg-portal). cpal 0.18.2 opt `audio`. serde/serde_json, thiserror 2, directories 6, tempfile 3, sha2 0.11.1 (normal dep now), sysinfo 0.40.4 (no default, "system"; System::new() returns Result in 0.40!), ureq 3.5.2 opt (no default, rustls), whisper-rs 0.16.0 opt, skrifa 0.44.0 + harfrust 0.12.0 (2.0.3, already in the lock through epaint; measure.rs), fontdb 0.24.0. Features default=[audio,stt], stt=[dep:whisper-rs, dep:ureq].
 macOS-only: objc2 0.6.5, objc2-foundation 0.3.2 (std, NSAppleEventDescriptor, NSAppleEventManager, NSNotification, NSObject, NSString, NSURL), winit 0.30.13 (no default; only for EventLoopBuilderExtMacOS::with_default_menu(false); eframe doesn't re-export winit).
 Dev-dependency: syn 2 (full, visit) for tests/module_cycles.rs only (already in lock). egui_kittest NOT used: headless `ctx.run_ui(RawInput,..)`.
 deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, CDLA-Permissive-2.0 (webpki-roots), GPL-3.0-only (us). about.toml same list + workarounds ring/rustls; about.hbs prints "videolore (this program)" instead of version (else notices freshness breaks on every bump). notices.sh runs `cargo about generate --locked --all-features --offline`. Regenerate rust-crates.txt after ANY Cargo.lock change.
 
 ## Gotchas
+- 2.0.3: tests that install fonts share the process-wide `fonts` registry (parallel tests): use unique nine-character family names and `fonts::install_patched` (keeps the folder for the process). `include!` of tests/support/patched_font.rs needs `extern crate self as videolore` in lib.rs (cfg(test)). Cargo test filters match the module path: `placing_ux_tests::name`, not `placing_ux::name`.
 - Docs index above: regenerate with a small script: for every docs/code*.md heading (#..####, outside code fences) line range = heading line to the line before the next heading.
 - Visibility: methods moved into an app/ child module need pub(super) (child-private otherwise); `use super::*` in children sees app's private imports.
 - whisper portable build (Andrea's decision, 0.2.x): .cargo/config.toml [env] GGML_NATIVE=OFF + SSE42/AVX/AVX2/FMA/F16C/BMI2=ON explicitly (ggml sets INS_ENB OFF if GGML_NATIVE_DEFAULT OFF, i.e. CMAKE_CROSSCOMPILING or SOURCE_DATE_EPOCH -> would fall to SSE-only; explicit avoids that). Verified flags.make: -march=x86-64 -msse4.2 -mf16c -mfma -mbmi2 -mavx -mavx2. ARM (macOS): NATIVE OFF + no GGML_CPU_ARM_ARCH -> no -march, Apple clang default apple-m1 (NEON/dotprod/fp16); x86 vars ignored. MSVC: GGML_AVX2 -> /arch:AVX2 + defs. mac/win whisper build NOT verified locally (no SDK) -> CI build/package jobs. build.rs has no rerun-if-env-changed for GGML_*: after edits `cargo clean -p whisper-rs-sys` (+--release, rm target/llvm-cov-target) and bump rust-cache prefix-key (all 4 uses: v2-rust-ggml-portable). Test packaging::whisper_is_built_for_a_portable_cpu_baseline include_str!s config + build.yml.
@@ -218,6 +238,7 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 - Integration tests share ONE process: own_rss() counts every parallel test (whisper ~170MB peak, measured up to +159MB in the memory test). REQ-039 test therefore re-execs current_exe on the #[ignore] helper `memory_peak_of_one_preview` (env VIDEOLORE_MEMORY_PROBE=file, prints VIDEOLORE_PEAK=n on the libtest line -> parse with split_once). Was a wrong guess for the 0.2.0 CI failure (real cause: abort-callback UB above) but a genuine flakiness fix; kept.
 
 ## Debt
+- 2.0.3: text.rs ~1500 lines (event builder could move to text/events.rs); a scan that finishes after a project opened leaves texts measured with the bundled font until the next render (no repaint trigger); the scan keeps the whole fontdb in memory (names + paths only); `ui::placement` boxes of lines are measured by egui, `placement::line_rect` by `measure` (small differences); menu clicks are not driven by pointer in the new ux tests (the harness does not fire lower menu items; commands are dispatched); REQ-165 on macOS and Windows and REQ-166 timing are manual checks; texts hidden by blink keep a box for hit tests (not offered to the click stack).
 - Player: no settings file, no remembered volume/window; proxies are silent; macOS/Windows untested; About shares the editor's third-party text.
 - LUT: DOMAIN, strength, perf unmeasured; lut3d on ffmpeg 9.x checked by the v16 tests on the pinned build in CI (2.0.2).
 - 1.2: alignment accuracy gate (above). Text edit after a drag can push a box over the edge (no re-clamp); positioned lines overlapping in time overlap on screen; default-place boxes of simultaneous lines are computed at the same spot (libass stacks them) -> preview hit boxes approximate. app.rs still ~2900 lines. Selection highlight in preview only as outline.

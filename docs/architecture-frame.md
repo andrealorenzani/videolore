@@ -62,6 +62,10 @@ Any Change aspect, Scale or Move makes the export a re-encode, even at the defau
 - The blurred background adds at most 10% to the composition time (estimate).
 - Memory: no new buffer; frames up to 4096 px on the longer side.
 
+## 2.0.3 (planned): blur fill on small pictures
+- A blurred background is made from a picture of at least 8 pixels on each side (it was 2), and its blur radius for the colour planes is limited to what the picture can take. Before, a frame about 64 pixels wide or less with a blurred fill made the export fail with an ffmpeg error. Pictures of normal size are unchanged.
+- Test: the blurred fill of a 68 by 120 frame exports; the radius rule holds for sizes from 8 to 600 pixels.
+
 ## Security
 - All inputs are checked: keyframe numbers within their ranges, shapes and fits from closed lists, colours as `#RRGGBB`.
 - Frame sizes come only from the base size and the chosen shape, never from numbers stored in a file; the 4096 px cap bounds memory and encoder load.

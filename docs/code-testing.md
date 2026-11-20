@@ -166,3 +166,11 @@ tests (2 ignored), 62 integration tests (3 ignored), 33 player tests, 3 player i
 tests; 13-16 s for the library tests, 45-62 s for the integration tests and 72-99 s for the whole `cargo test --workspace` (they use about
 270 s of processor time, so the run is bound by the processor, not by waiting). The slowest
 tests export 1920x1080 views of 360° videos (about 25 s each).
+
+## 2.0.3 additions
+
+- `tests/ffmpeg_integration/v21.rs`: the text size against the drawn pixels (measure, cap, preview = export), readability pixels on a white frame, blink, an installed font (a copy of the bundled font under another name and another `usWinAscent`, `tests/support/patched_font.rs`, never installed in the system, so only the copy in the work `fonts/` lets the renderer find it), a missing font, the centre of a line after a second line. `v20` has the paused picture at the end of a clip.
+- Unit and interface tests: `measure::tests`, `placement::tests`, `app::placing_tests`, `ui::placing_ux_tests`, `fonts::tests`; `stt::tests` has the recognition pieces (a fake transcriber that hears what lies in the audio it is given, fragments at its ends).
+- `VIDEOLORE_REQUIRE_STT=1` (CI): a missing speech model fails the speech tests instead of skipping them; the speech fixture is checked by SHA-256 (`v12::check_fixture`).
+- Locally the speech test `real_speech_is_transcribed` needs `espeak-ng`; with `VIDEOLORE_REQUIRE_FFMPEG=1` its absence fails (as in CI, where it is installed).
+- Load-sensitive gates: `hw::the_real_hardware_check_is_quick_and_stable` tries a slow pair of checks up to four times; `ui::tests::stays_responsive_while_exporting_and_transcribing` allows at most two frames over 200 ms and none over a second.

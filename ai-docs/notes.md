@@ -1,41 +1,42 @@
 # ai-notes: documenter notes
 
-Owner: documenter. Index refreshed in the 1.6.3 RELEASE-CLEAN (line ranges from `grep -n '^#'`; refresh after every change of a managed doc).
+Owner: documenter. Index refreshed in the 2.0.3 code part (README, roadmap and changelog) and in the 1.6.3 RELEASE-CLEAN (line ranges from `grep -n '^#'`; refresh after every change of a managed doc).
 
 ## Index of managed docs
 README.md, docs/roadmap.md, docs/changelog.md and docs/workflow.md (no sub-documents). Other docs/*.md belong to their owners.
 
-- README.md § videolore — L1-22 (22 lines)
-- README.md § What it is — L24-25 (2 lines)
-- README.md § System requirements — L27-31 (5 lines)
-- README.md § Installation — L33-38 (6 lines)
-- README.md § Windows (x86_64) — L40-44 (5 lines)
-- README.md § macOS (Apple Silicon) — L46-50 (5 lines)
-- README.md § Linux (x86_64, Ubuntu LTS and Fedora) — L52-57 (6 lines)
-- README.md § From source — L59-66 (8 lines)
-- README.md § Usage — L68-108 (41 lines)
-- README.md § Known limitations — L110-166 (57 lines)
-- README.md § Latest changes — L168-172 (5 lines)
-- README.md § License — L174-178 (5 lines)
-- README.md § Ode to the creator — L180-191 (12 lines)
-- docs/roadmap.md § Roadmap — L1-3 (3 lines)
-- docs/roadmap.md § Priority 1 — Release checks and the paused picture — L5-12 (8 lines)
-- docs/roadmap.md § Priority 2 — Text and subtitles on the picture — L14-40 (27 lines)
-- docs/roadmap.md § Priority 3 — Subtitle accuracy and subtitle features — L42-59 (18 lines)
-- docs/roadmap.md § Priority 4 — Editing speed and safety — L61-77 (17 lines)
-- docs/roadmap.md § Priority 5 — Export speed and hardware — L79-102 (24 lines)
-- docs/roadmap.md § Priority 6 — Installation and platforms — L104-118 (15 lines)
-- docs/roadmap.md § Priority 7 — Interface — L120-134 (15 lines)
-- docs/roadmap.md § Priority 8 — Video player — L136-146 (11 lines)
-- docs/roadmap.md § Priority 9 — 360 video — L148-169 (22 lines)
-- docs/roadmap.md § Priority 10 — Effects and frame — L171-197 (27 lines)
-- docs/roadmap.md § Priority 11 — Quality, tests and measurements — L199-226 (28 lines)
-- docs/roadmap.md § Priority 12 — Splash, project page and release process — L228-243 (16 lines)
-- docs/roadmap.md § Not planned — L245-256 (12 lines)
-- docs/changelog.md § Changelog — L1-3 (3 lines)
-- docs/changelog.md § 2.0.2 — 2026-11-20 20:34 +0000 — L5-8 (4 lines)
-- docs/changelog.md § 2.0.1 — 2026-11-20 20:06 +0000 — L10-13 (4 lines)
-- docs/changelog.md § 2.0.0 — 2026-11-20 19:50 +0000 — L15-16 (2 lines)
+- README.md § videolore — L1-23 (23 lines)
+- README.md § What it is — L24-26 (3 lines)
+- README.md § System requirements — L27-32 (6 lines)
+- README.md § Installation — L33-39 (7 lines)
+- README.md § Windows (x86_64) — L40-45 (6 lines)
+- README.md § macOS (Apple Silicon) — L46-51 (6 lines)
+- README.md § Linux (x86_64, Ubuntu LTS and Fedora) — L52-58 (7 lines)
+- README.md § From source — L59-67 (9 lines)
+- README.md § Usage — L68-109 (42 lines)
+- README.md § Known limitations — L110-165 (56 lines)
+- README.md § Latest changes — L166-171 (6 lines)
+- README.md § License — L172-177 (6 lines)
+- README.md § Ode to the creator — L178-189 (12 lines)
+- docs/roadmap.md § Roadmap — L1-4 (4 lines)
+- docs/roadmap.md § Priority 1 — Release checks — L5-15 (11 lines)
+- docs/roadmap.md § Priority 2 — Text and subtitles on the picture — L16-26 (11 lines)
+- docs/roadmap.md § Priority 3 — Subtitle accuracy and subtitle features — L27-44 (18 lines)
+- docs/roadmap.md § Priority 4 — Editing speed and safety — L45-62 (18 lines)
+- docs/roadmap.md § Priority 5 — Export speed and hardware — L63-87 (25 lines)
+- docs/roadmap.md § Priority 6 — Installation and platforms — L88-103 (16 lines)
+- docs/roadmap.md § Priority 7 — Interface — L104-119 (16 lines)
+- docs/roadmap.md § Priority 8 — Video player — L120-131 (12 lines)
+- docs/roadmap.md § Priority 9 — 360 video — L132-154 (23 lines)
+- docs/roadmap.md § Priority 10 — Effects and frame — L155-182 (28 lines)
+- docs/roadmap.md § Priority 11 — Quality, tests and measurements — L183-216 (34 lines)
+- docs/roadmap.md § Priority 12 — Splash, project page and release process — L217-233 (17 lines)
+- docs/roadmap.md § Not planned — L234-245 (12 lines)
+- docs/changelog.md § Changelog — L1-4 (4 lines)
+- docs/changelog.md § 2.0.3 — 2026-11-20 22:05 +0000 — L5-16 (12 lines)
+- docs/changelog.md § 2.0.2 — 2026-11-20 20:34 +0000 — L17-21 (5 lines)
+- docs/changelog.md § 2.0.1 — 2026-11-20 20:06 +0000 — L22-26 (5 lines)
+- docs/changelog.md § 2.0.0 — 2026-11-20 19:50 +0000 — L27-28 (2 lines)
 - docs/workflow.md § Agentic workflow — L1-3 (3 lines)
 - docs/workflow.md § Agents — L5-20 (16 lines)
 - docs/workflow.md § Commands — L22-30 (9 lines)
@@ -149,3 +150,14 @@ Player
 - 2.0.2 business (2026-11-20 20:34 +0000): version set to 2.0.2 (consistent); changelog entry Changed (business plan: REQ-154, QG-07..10, verification checklist, Andrea's decisions, batch renumbering); roadmap: code signing and custom resolutions moved to Not planned, hardware-for-more-formats, whole-video copies and 360 speed items reworded as decided, manual checks kept with a pointer to business-verification.md; docs/roadmap_tasks.md renumbered (batch N = 2.0.(N+1), 2.0.1 delivered), decisions moved to a decided list, licence sentence of batch 1 removed, cycle items added to continuous; README unchanged (no user-facing change); docs-check ok.
 - 2.0.2 code (part code): coverage badge 95.6%; changelog 2.0.2 code bullet and REQ-154 wording corrected to implemented; README latest changes now 2.0.2, 1.6.2, 1.6.1 (1.6.0 dropped); roadmap batch 1 delivered items removed (manual checks, Windows and macOS runs, moving-camera measurement on 9.0.2 kept or added), paused-picture defect added as first 2.0.3 item, UI frame gates, hardware probe fakes and notices-after-bump added; roadmap_tasks 2.0.2 marked delivered; notes index refreshed; docs-check ok.
 - 2.0.2 close (2026-11-20 22:00 +0000): version 2.0.2 consistent (version.sh check ok), docs-check ok; README latest changes checked (2.0.2, 1.6.2, 1.6.1; 2.0.0 and 2.0.1 are not user-facing), poem unchanged; roadmap priority 1 item 'Check the reworked release flow' restored (removed by mistake in batch 1); docs/roadmap_tasks.md does not list it yet (Product Manager's file, reported).
+- 2.0.3 business (2026-11-20 22:05 +0000): version set to 2.0.3 (consistent), notices version line regenerated; changelog 2.0.3 business entry (batches 2 to 4 as one development, REQ-155..179 planned); roadmap: maintainer measurements and speech-model decision added to Priority 1 and 3 (items for the font, levels and 20 MB measurements already existed in Priority 2 and 3, not duplicated); docs/roadmap_tasks.md notes that 2.0.3 carries batches 2 to 4; index refreshed; README unchanged (no user-facing change delivered); docs-check ok. Inconsistency left for the Product Manager: docs/business-text.md, business-subtitles.md and business.md still label the placement and accuracy batches as planned 2.0.4 and 2.0.5.
+- 2.0.3 architecture (2026-11-20 22:25 +0000): version 2.0.3 unchanged; changelog 2.0.3 architecture bullet, format 10 and refit notes, Removed outline, CI fix of e32376d (Fixed); roadmap_tasks headings and table relabelled (batches 2 to 4 built in 2.0.3, batches 5 to 15 renumbered at next release); roadmap: speech model item turned into the REQ-177 decision point, libass and box padding check, text module split, test font licence and cycle-note re-check added; roadmap and changelog index refreshed; docs-check ok; README unchanged (no user-facing change built yet). Open: docs/business-text.md, business-subtitles.md and business.md still say the placement and accuracy batches are 2.0.4 and 2.0.5 (Product Manager).
+- 2.0.3 code (2026-11-20 23:55 +0000): version 2.0.3 unchanged; coverage badge 95.8 (line coverage; feature coverage 154/154); changelog 2.0.3 bullets (added readable text and placement warnings, code, REQ-177 status, fixed paused picture); README: badge, Latest changes 2.0.3, 2.0.2, 1.6.2, usage items 6, 11, 13 and known limitations updated (overlap warnings, text size and width, format 10); roadmap: delivered batch items removed (readable text, placement, accuracy), REQ-177 kept as the decision point, future work added (other UI frame gates, five-minute speech test, font scan repaint, text module split, line box rule); roadmap tasks: batches 2 to 4 marked delivered; docs-check ok.
+
+- 2.0.3 close (2026-11-20 23:58 +0000): version.sh check consistent (2.0.3); docs-check ok; README latest changes checked (2.0.3, 2.0.2, 1.6.2; 1.6.3 is workflow-only per its release notes), poem unchanged, no AI/agent terms (the Actions workflow URL in the build badge is kept); rust-version 1.100 matches badge; no file changed in this call.
+
+## Open items (documenter, 2.0.3)
+- The known-limitations hand-off above is from 1.6.3; the next RELEASE-CLEAN rewrites it from the README.
+- Roadmap item "Text items and picture moves" (Priority 2) is kept: it is not in the REQ-155..179 list. Andrea or the Product Manager to confirm whether it is delivered.
+- Roadmap item "Migrated text sizes" is kept for the option to offer the old size again; the status message (REQ-167) is delivered.
+- Roadmap item "Gated alignment test on CI's versions" is kept: not checked whether the real-speech test runs on CI with the pinned espeak.

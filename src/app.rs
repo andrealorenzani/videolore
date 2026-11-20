@@ -150,6 +150,14 @@ pub enum Edge {
     End,
 }
 
+/// The edge of a text box that is dragged (REQ-159, REQ-161); the opposite one stays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TextEdge {
+    Left,
+    Right,
+    Bottom,
+}
+
 /// Answer to "This video already contains subtitles…".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceChoice {
@@ -1155,8 +1163,14 @@ impl AppState {
             Command::SetEdgeFade { .. } => !tl.clips.is_empty(),
             Command::ResetPosition => self.selection_is_changed(),
             Command::ResetObjects => self.selection_is_changed() || self.reset_applies_to_camera(),
-            Command::AlignSelected(_) => {
-                !self.selected_lines().is_empty() || !self.selected_texts().is_empty()
+            Command::MoveInside => {
+                let (lines, texts) = self.inside_plan();
+                !lines.is_empty() || !texts.is_empty()
+            }
+            Command::MoveSelection { .. } => true,
+            Command::AlignSelected(axis) => {
+                let (lines, texts) = self.align_plan(*axis);
+                !lines.is_empty() || !texts.is_empty()
             }
             Command::SetPov | Command::DragCamera { .. } | Command::ZoomCamera(_) => {
                 self.sphere_at_playhead().is_some()
@@ -1649,7 +1663,15 @@ impl AppState {
                 if cur.text == crate::subtitles::clean_text(&text) {
                     return Ok(());
                 }
-                self.edit(now, label, |e| e.subtitles.set_text(id, &text).map_err(err))
+                // the box keeps its centre and stays inside the picture (REQ-168, REQ-174)
+                let place = self.place_after_text_edit(id, &text);
+                self.edit(now, label, |e| {
+                    e.subtitles.set_text(id, &text).map_err(err)?;
+                    match place {
+                        Some(p) => e.subtitles.set_position(&[id], Some(p)).map_err(err),
+                        None => Ok(()),
+                    }
+                })
             }
             Command::RetimeSubtitle {
                 line,
@@ -2048,7 +2070,15 @@ impl AppState {
             Command::MoveText { id, start, ttl } => self.move_text(id, start, ttl, now),
             Command::DeleteTexts(ids) => self.delete_texts(ids, now),
             Command::SetTextBoxes { ids, place } => self.set_text_boxes(ids, place, now),
-            Command::ResizeTextWidth { ids, width } => self.resize_text_width(ids, width, now),
+            Command::ResizeTextWidth { ids, width } => {
+                self.resize_text_box(ids, TextEdge::Right, width, now)
+            }
+            Command::ResizeTextBox { ids, edge, value } => {
+                self.resize_text_box(ids, edge, value, now)
+            }
+            Command::SetReadability { ids, readability } => {
+                self.set_readability(ids, readability, now)
+            }
             Command::ResizeTextAnchorWidth { ids, width_cd } => {
                 self.resize_text_anchor_width(ids, width_cd, now)
             }
@@ -2087,6 +2117,12 @@ impl AppState {
                 self.reset_lines(ids, now)
             }
             Command::ResetObjects => self.reset_objects(now),
+            Command::MoveSelection {
+                lines,
+                texts,
+                place,
+            } => self.move_selection(lines, texts, place, now),
+            Command::MoveInside => self.move_inside(now),
             Command::AlignSelected(axis) => self.align_selected(axis, now),
             Command::ResizeLines {
                 ids,
@@ -2364,7 +2400,18 @@ impl AppState {
                 }
             }
             Command::ResetObjects => sphere::ALREADY_ORIGINAL,
-            Command::AlignSelected(_) => sphere::SELECT_ON_PICTURE,
+            Command::AlignSelected(_)
+                if self.selected_lines().is_empty() && self.selected_texts().is_empty() =>
+            {
+                sphere::SELECT_ON_PICTURE
+            }
+            Command::AlignSelected(_) => sphere::ALREADY_CENTRED,
+            Command::MoveInside
+                if self.selected_lines().is_empty() && self.selected_texts().is_empty() =>
+            {
+                sphere::SELECT_ON_PICTURE
+            }
+            Command::MoveInside => placing::ALL_INSIDE,
             Command::SetPov | Command::DragCamera { .. } | Command::ZoomCamera(_) => {
                 sphere::NOT_A_360
             }
@@ -2453,7 +2500,7 @@ impl AppState {
     }
 
     fn open_now(&mut self, path: PathBuf, now: Instant) -> Result<(), String> {
-        let (p, missing) = project::load(&path).map_err(|e| e.to_string())?;
+        let (p, missing, migration) = project::load_noted(&path).map_err(|e| e.to_string())?;
         self.remember_recent(&path);
         self.load_project(p, Some(path), now);
         if !missing.is_empty() {
@@ -2462,7 +2509,8 @@ impl AppState {
                 missing.join("\n")
             ));
         }
-        self.status = "Project opened".into();
+        // a project from before 2.0.3: one message about its text items, once (REQ-167)
+        self.status = migration.map_or_else(|| "Project opened".into(), |m| m.message());
         Ok(())
     }
 
@@ -3048,6 +3096,7 @@ mod effects;
 mod export_flow;
 mod frame;
 mod lut;
+mod placing;
 mod sphere;
 mod subs_create;
 mod texts;
@@ -3061,6 +3110,8 @@ mod frame_tests;
 mod hw_tests;
 #[cfg(test)]
 mod lut_tests;
+#[cfg(test)]
+mod placing_tests;
 #[cfg(test)]
 mod settings_tests;
 #[cfg(test)]

@@ -5,6 +5,7 @@
 //! deleting, moving and resizing their box in the preview. Every change is one undo step.
 
 use super::*;
+use crate::base::pos::POS_MAX;
 use crate::text::{self, TextId, TextItem};
 
 /// Disabled reason of adding a text outside the video.
@@ -46,6 +47,7 @@ impl AppState {
             item.effects = draft.effects;
             item.colour = draft.colour;
             item.font = draft.font;
+            item.readability = draft.readability;
             item.anchor = anchor;
             added = Some(e.texts.add(item).map_err(terr)?);
             Ok(())
@@ -124,35 +126,86 @@ impl AppState {
         })
     }
 
-    /// The right edge of a box dragged in the preview: the width of every item in `ids`,
-    /// between 10% and 100% of the picture (REQ-116). One undo step.
-    pub(super) fn resize_text_width(
+    /// An edge of a box dragged in the preview (REQ-116, REQ-159, REQ-161): the width (right
+    /// or left edge) or the height (bottom edge) of every item in `ids`, within 10% to 100%
+    /// of the picture width and 5% to 100% of its height. The opposite edge stays where it
+    /// is, so the centre moves by half of the change and the box on screen is the box that
+    /// was dragged. One undo step.
+    pub(super) fn resize_text_box(
         &mut self,
         ids: Vec<TextId>,
-        width: u16,
+        edge: TextEdge,
+        value: u16,
         now: Instant,
     ) -> Result<(), String> {
         if ids.is_empty() || ids.iter().any(|i| self.project.texts.get(*i).is_none()) {
             return Err(SELECT_A_TEXT.into());
         }
-        let width = width.clamp(text::WIDTH_MIN, text::WIDTH_MAX);
+        let resized = |t: &TextItem| {
+            let mut t = t.clone();
+            // one thousandth of the picture is ten place units; the centre moves by half
+            let shift = |old: u16, new: u16| (i32::from(new) - i32::from(old)) * 5;
+            let moved = |v: u16, d: i32| (i32::from(v) + d).clamp(0, i32::from(POS_MAX)) as u16;
+            match edge {
+                TextEdge::Right | TextEdge::Left => {
+                    let w = value.clamp(text::WIDTH_MIN, text::WIDTH_MAX);
+                    let d = shift(t.width, w);
+                    t.place.x = moved(t.place.x, if edge == TextEdge::Right { d } else { -d });
+                    t.width = w;
+                }
+                TextEdge::Bottom => {
+                    let h = value.clamp(text::HEIGHT_MIN, text::HEIGHT_MAX);
+                    t.place.y = moved(t.place.y, shift(t.height, h));
+                    t.height = h;
+                }
+            }
+            t
+        };
         if ids
             .iter()
-            .all(|i| self.project.texts.get(*i).is_some_and(|t| t.width == width))
+            .all(|i| self.project.texts.get(*i).is_some_and(|t| resized(t) == *t))
         {
             return Ok(());
         }
         self.edit(now, "Resize text", |e| {
             for id in &ids {
-                let mut item = e.texts.get(*id).ok_or("no such text")?.clone();
-                item.width = width;
+                let item = resized(e.texts.get(*id).ok_or("no such text")?);
                 e.texts.replace(item).map_err(terr)?;
             }
             Ok(())
         })
     }
 
-    /// Like [`Self::resize_text_width`] for texts fixed to the sphere: their width is an
+    /// The readability (none, outline or background box) of every item in `ids`
+    /// (REQ-158). One undo step.
+    pub(super) fn set_readability(
+        &mut self,
+        ids: Vec<TextId>,
+        readability: text::Readability,
+        now: Instant,
+    ) -> Result<(), String> {
+        if ids.is_empty() || ids.iter().any(|i| self.project.texts.get(*i).is_none()) {
+            return Err(SELECT_A_TEXT.into());
+        }
+        if ids.iter().all(|i| {
+            self.project
+                .texts
+                .get(*i)
+                .is_some_and(|t| t.readability == readability)
+        }) {
+            return Ok(());
+        }
+        self.edit(now, "Text readability", |e| {
+            for id in &ids {
+                let mut item = e.texts.get(*id).ok_or("no such text")?.clone();
+                item.readability = readability;
+                e.texts.replace(item).map_err(terr)?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Like [`Self::resize_text_box`] for texts fixed to the sphere: their width is an
     /// angle (10 to 360 degrees).
     pub(super) fn resize_text_anchor_width(
         &mut self,

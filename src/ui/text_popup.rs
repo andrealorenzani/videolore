@@ -7,9 +7,14 @@
 
 use super::UiCache;
 use crate::app::{AppState, Command, Popup};
-use crate::text::{EFFECT_DEFAULT, EFFECT_MAX, EFFECT_MIN, MIN_TTL, SlideDir, TextId, TextItem};
+use crate::text::{
+    EFFECT_DEFAULT, EFFECT_MAX, EFFECT_MIN, MIN_TTL, Readability, SlideDir, TextId, TextItem,
+};
 use crate::time::Micros;
 use eframe::egui::{self, Ui};
+
+/// The note under the font choice when its font is not installed (REQ-164).
+pub const FONT_MISSING: &str = "Font not installed: the bundled font is used";
 
 /// The label of the "Add" button.
 pub const ADD: &str = "Add";
@@ -135,8 +140,20 @@ fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String)
             });
     });
     if !app.fonts.is_installed(&item.font) {
-        ui.weak("This font is not installed on this computer; another one is used.");
+        ui.weak(FONT_MISSING);
     }
+    ui.horizontal(|ui| {
+        ui.label("Readability");
+        egui::ComboBox::from_id_salt("text-readability")
+            .selected_text(item.readability.name())
+            .show_ui(ui, |ui| {
+                for r in Readability::ALL {
+                    done |= ui
+                        .selectable_value(&mut item.readability, r, r.name())
+                        .changed();
+                }
+            });
+    });
     done
 }
 

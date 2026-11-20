@@ -305,8 +305,8 @@ fn a_text_box_is_dragged_in_the_preview_in_one_undo_step() {
     let hs = corner_handles(&mut h);
     assert_eq!(
         hs.len(),
-        1,
-        "a handle on the right edge, none on the corners"
+        3,
+        "handles on the right, left and bottom edges, none on the corners"
     );
     let handle = hs[0].center();
     let before = h.app.project.texts.get(id).unwrap().clone();
@@ -314,7 +314,9 @@ fn a_text_box_is_dragged_in_the_preview_in_one_undo_step() {
     h.drag(handle, handle - vec2(150.0, 0.0));
     let t = h.app.project.texts.get(id).unwrap();
     assert!(t.width < before.width, "{} -> {}", before.width, t.width);
-    assert_eq!((t.place, t.anchor), (before.place, before.anchor));
+    // the left edge stays, so the centre moves by half of the change
+    assert_eq!((t.place.y, t.anchor), (before.place.y, before.anchor));
+    assert!(t.place.x < before.place.x);
     assert_eq!(h.app.history.undo_len(), n + 1);
     // dragged far to the left it stops at 10 % of the picture width
     let handle = corner_handles(&mut h)[0].center();
@@ -465,4 +467,173 @@ fn ctrl_e_opens_the_export_dialog_with_its_fields_inside_a_small_window() {
     h.idle(3);
     assert!(!h.has(d::EXPORT_360));
     assert!(h.has(d::SAME_AS_SOURCE));
+}
+
+/// The box of a text on the screen, from the picture and the stored box.
+fn box_on_screen(h: &Harness, id: TextId) -> Rect {
+    let pic = picture(h);
+    let t = h.app.project.texts.get(id).unwrap();
+    let r = super::placement::text_box(t, h.app.output_size().unwrap());
+    let scale = pic.width() / h.app.output_size().unwrap().0 as f32;
+    Rect::from_min_max(
+        pic.min + r.min.to_vec2() * scale,
+        pic.min + r.max.to_vec2() * scale,
+    )
+}
+
+// covers: REQ-160
+#[test]
+fn dragging_an_edge_draws_a_live_box_with_a_readout_and_stores_it_on_release() {
+    let (_d, mut app) = loaded();
+    let id = text_at(&mut app, "Hello there", 4);
+    app.dispatch(Command::ClosePopup(Popup::Text), Instant::now())
+        .unwrap();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let pic = picture(&h);
+    let handle = corner_handles(&mut h)[0].center();
+    let n = h.app.history.undo_len();
+    let before = h.app.project.texts.get(id).unwrap().clone();
+    // halfway through a drag to half the picture width: nothing is stored, no undo step
+    let left = box_on_screen(&h, id).left();
+    let goal = pos2(left + pic.width() * 0.5, handle.y);
+    h.press_and_move(handle, goal);
+    assert_eq!(h.app.history.undo_len(), n, "no undo step during the drag");
+    assert_eq!(h.app.project.texts.get(id).unwrap(), &before);
+    h.release(goal);
+    // the stored box is the live box: 50% of the picture width
+    let t = h.app.project.texts.get(id).unwrap();
+    assert!((i32::from(t.width) - 500).abs() <= 8, "{}", t.width);
+    assert_eq!(h.app.history.undo_len(), n + 1);
+    // the readout names the width, the height and the text size
+    let frame = h.app.output_size().unwrap();
+    let r = super::placement::text_box(t, frame);
+    let text = super::picture::readout(t, r, frame);
+    assert!(
+        text.contains("50% wide") || text.contains("49% wide") || text.contains("51% wide"),
+        "{text}"
+    );
+    assert!(
+        text.contains("20% high") && text.contains("text "),
+        "{text}"
+    );
+}
+
+// covers: REQ-159, REQ-161
+#[test]
+fn the_bottom_and_left_handles_change_the_box_in_one_undo_step_each() {
+    let (_d, mut app) = loaded();
+    let id = text_at(&mut app, "Hello there", 4);
+    app.dispatch(Command::ClosePopup(Popup::Text), Instant::now())
+        .unwrap();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let hs = corner_handles(&mut h);
+    let (bottom, left) = (hs[2].center(), hs[1].center());
+    let before = h.app.project.texts.get(id).unwrap().clone();
+    let n = h.app.history.undo_len();
+    // bottom edge down: taller, same width, top edge stays
+    h.drag(bottom, bottom + vec2(0.0, 40.0));
+    let t = h.app.project.texts.get(id).unwrap().clone();
+    assert!(t.height > before.height, "{} {}", t.height, before.height);
+    assert_eq!(t.width, before.width);
+    assert_eq!(h.app.history.undo_len(), n + 1);
+    // left edge to the left: wider, the right edge stays
+    let left = left + vec2(0.0, (t.height - before.height) as f32 * 0.0);
+    let right_before = i32::from(t.place.x) + i32::from(t.width) * 5;
+    h.drag(left, left - vec2(60.0, 0.0));
+    let u = h.app.project.texts.get(id).unwrap();
+    assert!(u.width > t.width, "{} {}", u.width, t.width);
+    assert_eq!(i32::from(u.place.x) + i32::from(u.width) * 5, right_before);
+    assert_eq!(h.app.history.undo_len(), n + 2);
+    h.key(Key::Z, Modifiers::COMMAND);
+    h.key(Key::Z, Modifiers::COMMAND);
+    assert_eq!(h.app.project.texts.get(id).unwrap(), &before);
+}
+
+// covers: REQ-162
+#[test]
+fn a_blink_hides_the_box_of_a_text_but_a_selected_one_keeps_a_dashed_outline() {
+    use crate::text::{TextId as Tid, TextItem};
+    let mut t = TextItem::new(Tid(1), "Hello".into(), s(4));
+    t.effects.blink = Some(Micros(500_000));
+    let frame = (1920, 1080);
+    // shown for 0.5 s, hidden for 0.5 s
+    let (_, shown) = super::picture::text_flags(&t, s(4) + Micros(250_000), frame);
+    let (_, hidden) = super::picture::text_flags(&t, s(4) + Micros(750_000), frame);
+    assert!(!shown && hidden);
+    // a text without a blink is never hidden
+    t.effects.blink = None;
+    assert!(!super::picture::text_flags(&t, s(4) + Micros(750_000), frame).1);
+    // the warning is on a text that does not fit even at the smallest size
+    t.text = "word ".repeat(300);
+    t.height = 50;
+    assert!(super::picture::text_flags(&t, s(4), frame).0);
+    // the picture draws it: a hidden selected text shows dashes, a hidden other one nothing
+    let (_d, mut app) = loaded();
+    let id = text_at(&mut app, "Blinking", 4);
+    let mut item = app.project.texts.get(id).unwrap().clone();
+    item.effects.blink = Some(Micros(500_000));
+    item.ttl = s(1);
+    app.project.texts.replace(item).unwrap();
+    app.dispatch(Command::ClosePopup(Popup::Text), Instant::now())
+        .unwrap();
+    app.dispatch(Command::Seek(s(4) + Micros(750_000)), Instant::now())
+        .unwrap();
+    let dashes = |h: &mut Harness| {
+        let raw = eframe::egui::RawInput {
+            screen_rect: Some(h.screen()),
+            ..Default::default()
+        };
+        let now = Instant::now();
+        let (app, cache) = (&mut h.app, &mut h.cache);
+        let mut out = h.ctx.run_ui(raw, |ui| frame_ui(ui, app, cache, now));
+        let n = out
+            .shapes
+            .iter()
+            .filter(|s| matches!(s.shape, eframe::egui::Shape::LineSegment { .. }))
+            .count();
+        out.textures_delta.clear();
+        out.drop_without_applying_deltas();
+        n
+    };
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let selected = dashes(&mut h);
+    h.app
+        .dispatch(Command::ClearSelection, Instant::now())
+        .unwrap();
+    let unselected = dashes(&mut h);
+    assert!(
+        selected >= unselected + 8,
+        "dashes around the hidden selected box: {selected} / {unselected}"
+    );
+}
+
+// covers: REQ-158, REQ-164
+#[test]
+fn the_text_popup_offers_readability_and_notes_a_missing_font() {
+    let (_d, mut app) = loaded();
+    app.fonts = crate::fonts::Fonts::with(vec!["Here Sans".into()]);
+    let id = text_at(&mut app, "Hi", 4);
+    let mut item = app.project.texts.get(id).unwrap().clone();
+    item.font = "Gone Sans".into();
+    app.project.texts.replace(item).unwrap();
+    app.dispatch(Command::OpenText(id), Instant::now()).unwrap();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    assert!(h.has("Readability"), "{:#?}", h.labels());
+    assert!(h.has("Outline"), "a new text starts with an outline");
+    assert!(
+        h.has("Font not installed: the bundled font is used"),
+        "{:#?}",
+        h.labels()
+    );
+    // choosing the readability stores it in one undo step
+    let n = h.app.history.undo_len();
+    h.click_label("Outline");
+    h.click_label("Background box");
+    assert_eq!(
+        h.app.project.texts.get(id).unwrap().readability,
+        crate::text::Readability::Box
+    );
+    assert_eq!(h.app.history.undo_len(), n + 1);
+    // the saved font name is still the missing one
+    assert_eq!(h.app.project.texts.get(id).unwrap().font, "Gone Sans");
 }

@@ -9,11 +9,13 @@
 use super::boxes::{self, BoxItem, Corner, HANDLE_TOLERANCE, Hit, ObjectId};
 use super::frame_handles::{self, Grab};
 use super::{UiCache, actions::ActionId, menu, placement, subtitle_font};
-use crate::app::{AppState, Command, FrameDrag, FrameFx, FrameValue, ResizeDrag};
+use crate::app::{AppState, Command, FrameDrag, FrameFx, FrameValue, ResizeDrag, TextEdge};
 use crate::subtitles::{LineId, SIZE_NORMAL};
+use crate::time::Micros;
 use eframe::egui::{
     self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2,
 };
+use std::time::Instant;
 
 /// A corner drag in progress: what was grabbed and how the box looked at the start.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,9 +34,10 @@ pub struct BoxResize {
 pub struct TextBoxDrag {
     /// Every text that moves with the grabbed one.
     pub ids: Vec<crate::text::TextId>,
-    /// True when the right-edge handle is dragged (the width changes), else the whole box
-    /// moves.
-    pub edge: bool,
+    /// The subtitle lines of a mixed selection that move with it (REQ-172).
+    pub lines: Vec<LineId>,
+    /// The edge that is dragged (the width or height changes), else the whole box moves.
+    pub edge: Option<boxes::Side>,
     /// The box at the start (frame pixels).
     pub rect: Rect,
     /// Pointer minus box centre at the start.
@@ -43,6 +46,36 @@ pub struct TextBoxDrag {
     /// The camera when the box belongs to a text fixed to the sphere: moving it then
     /// changes the point of the sphere, not the flat place.
     pub cam: Option<crate::camera::Camera>,
+}
+
+/// Whether the box of a text carries the warning (it runs past its box even at the
+/// smallest size, REQ-159) and whether its blink hides it at `playhead` (REQ-162).
+pub fn text_flags(
+    item: &crate::text::TextItem,
+    playhead: Micros,
+    frame: (u32, u32),
+) -> (bool, bool) {
+    (
+        item.anchor.is_none() && !crate::text::layout(item, frame.0, frame.1).fits,
+        crate::text::alpha_at(item, playhead - item.start) == 0.0,
+    )
+}
+
+/// The warning drawn on the box of a text that does not fit it (REQ-159).
+pub const TOO_LONG: &str = "Text does not fit the box";
+
+/// A dashed outline of `rect` (screen pixels).
+pub fn dashed_rect(ui: &Ui, rect: Rect, stroke: Stroke) {
+    let pts = [
+        rect.left_top(),
+        rect.right_top(),
+        rect.right_bottom(),
+        rect.left_bottom(),
+        rect.left_top(),
+    ];
+    for s in egui::Shape::dashed_line(&pts, stroke, 6.0, 4.0) {
+        ui.painter().add(s);
+    }
 }
 
 /// Side of the square corner handles (screen pixels).
@@ -65,6 +98,48 @@ pub fn hit(
         .rev()
         .find(|b| b.rect.contains(p))
         .map(|b| (*b, Hit::Body))
+}
+
+/// A second click within this many screen pixels and seconds of the last pick is on the
+/// same spot (REQ-170).
+pub const SAME_SPOT_PX: f32 = 4.0;
+pub const SAME_SPOT_SECS: f32 = 1.0;
+
+/// The box a click at `at` (frame pixels; `screen` on the screen) picks: a handle first, else
+/// the boxes under the point, topmost first; a second click on the same spot as the last
+/// pick takes the next one in turn, so no box is unreachable because another covers it
+/// (REQ-170).
+#[allow(clippy::too_many_arguments)]
+pub fn pick_at(
+    show_boxes: bool,
+    items: &[BoxItem],
+    at: Pos2,
+    tol: f32,
+    frame: (u32, u32),
+    last: Option<(Pos2, Instant, ObjectId)>,
+    screen: Pos2,
+    now: Instant,
+) -> Option<BoxItem> {
+    let (top, hit) = hit(show_boxes, items, at, tol, frame)?;
+    if hit != Hit::Body {
+        return Some(top);
+    }
+    // the boxes under the point, topmost first (hidden texts are not there to pick)
+    let stack: Vec<BoxItem> = items
+        .iter()
+        .rev()
+        .filter(|b| b.rect.contains(at) && !b.hidden)
+        .copied()
+        .collect();
+    let Some((p, t, id)) = last else {
+        return Some(top);
+    };
+    let same = p.distance(screen) <= SAME_SPOT_PX
+        && now.saturating_duration_since(t).as_secs_f32() <= SAME_SPOT_SECS;
+    match stack.iter().position(|b| b.id == id) {
+        Some(i) if same && stack.len() > 1 => Some(stack[(i + 1) % stack.len()]),
+        _ => Some(top),
+    }
 }
 
 /// The boxes of the lines on screen, with their sizes (frame pixels).
@@ -105,6 +180,8 @@ pub fn items(app: &AppState, ui: &Ui, frame: (u32, u32)) -> Vec<BoxItem> {
                 .and_then(|l| l.size)
                 .unwrap_or(SIZE_NORMAL),
             width_only: false,
+            warn: false,
+            hidden: false,
         })
         .collect();
     v.extend(
@@ -116,11 +193,20 @@ pub fn items(app: &AppState, ui: &Ui, frame: (u32, u32)) -> Vec<BoxItem> {
             &mut measure,
         )
         .into_iter()
-        .map(|(id, rect)| BoxItem {
-            id: ObjectId::Text(id),
-            rect,
-            size: SIZE_NORMAL,
-            width_only: true,
+        .map(|(id, rect)| {
+            let item = shown.texts.get(id);
+            BoxItem {
+                id: ObjectId::Text(id),
+                rect,
+                size: SIZE_NORMAL,
+                width_only: true,
+                // a text that runs past its box (REQ-159); a blink that hides it (REQ-162)
+                warn: item.is_some_and(|t| {
+                    t.anchor.is_none() && !crate::text::layout(t, frame.0, frame.1).fits
+                }),
+                hidden: item
+                    .is_some_and(|t| crate::text::alpha_at(t, app.playhead - t.start) == 0.0),
+            }
         }),
     );
     v
@@ -164,6 +250,34 @@ pub fn interact(
             ObjectId::Text(id) => app.selection.contains_text(id),
         };
         let s = placement::to_screen(b.rect, picture, frame);
+        // a text hidden by its blink shows only when selected, dashed (REQ-162)
+        if b.hidden && !selected {
+            continue;
+        }
+        if b.hidden {
+            dashed_rect(ui, s, Stroke::new(2.0, ui.visuals().selection.stroke.color));
+            continue;
+        }
+        if boxes::partly_outside(b.rect, frame) {
+            // part of the box is outside the picture (REQ-175)
+            dashed_rect(ui, s, Stroke::new(2.0, Color32::from_rgb(255, 170, 40)));
+        }
+        if b.warn {
+            // the text does not fit its box (REQ-159)
+            ui.painter().rect_stroke(
+                s,
+                2.0,
+                Stroke::new(2.0, Color32::from_rgb(230, 70, 60)),
+                StrokeKind::Outside,
+            );
+            ui.painter().text(
+                s.left_top() + vec2(3.0, 2.0),
+                egui::Align2::LEFT_TOP,
+                TOO_LONG,
+                egui::FontId::proportional(12.0),
+                Color32::from_rgb(255, 120, 110),
+            );
+        }
         if show {
             let color = if selected {
                 ui.visuals().selection.stroke.color
@@ -217,14 +331,25 @@ pub fn interact(
         }
     }
 
-    // a click inside a box selects its object (Ctrl/Cmd/Shift+click adds or removes it);
-    // a click on the empty picture clears the selection (REQ-090)
+    // a click inside a box selects its object; a second click on the same spot selects the
+    // next box of the stack under it (REQ-170); Ctrl/Cmd/Shift+click adds or removes it; a
+    // click on the empty picture clears the selection (REQ-090)
     if resp.clicked()
         && let Some(p) = resp.interact_pointer_pos()
     {
-        match hit(show, &items, to_frame(p), tol, frame) {
-            Some((b, _)) => {
-                let toggle = ui.input(|i| i.modifiers.command || i.modifiers.shift);
+        let toggle = ui.input(|i| i.modifiers.command || i.modifiers.shift);
+        match pick_at(
+            show,
+            &items,
+            to_frame(p),
+            tol,
+            frame,
+            cache.last_pick,
+            p,
+            Instant::now(),
+        ) {
+            Some(b) => {
+                cache.last_pick = Some((p, Instant::now(), b.id));
                 cmds.push(match (b.id, toggle) {
                     (ObjectId::Line(id), true) => Command::ToggleLine(id),
                     (ObjectId::Line(id), false) => Command::SelectLine(Some(id)),
@@ -232,7 +357,10 @@ pub fn interact(
                     (ObjectId::Text(id), false) => Command::SelectText(id),
                 });
             }
-            None => cmds.push(Command::ClearSelection),
+            None => {
+                cache.last_pick = None;
+                cmds.push(Command::ClearSelection);
+            }
         }
     }
 
@@ -251,6 +379,7 @@ pub fn interact(
                 Some((b, h)) => match b.id {
                     ObjectId::Text(id) => {
                         cache.text_box_drag = Some(TextBoxDrag {
+                            lines: app.drag_group_lines_of_text(id),
                             ids: app
                                 .selection
                                 .drag_targets(crate::selection::ObjRef::Text(id))
@@ -260,7 +389,10 @@ pub fn interact(
                                     crate::selection::ObjRef::Line(_) => None,
                                 })
                                 .collect(),
-                            edge: h == Hit::Edge,
+                            edge: match h {
+                                Hit::Edge(side) => Some(side),
+                                _ => None,
+                            },
                             rect: b.rect,
                             grab: f - b.rect.center(),
                             frame,
@@ -273,7 +405,7 @@ pub fn interact(
                         });
                     }
                     ObjectId::Line(line) => match h {
-                        Hit::Edge => {}
+                        Hit::Edge(_) => {}
                         Hit::Corner(_) | Hit::Side(_) => {
                             cache.box_resize = Some(BoxResize {
                                 line,
@@ -288,6 +420,7 @@ pub fn interact(
                             cache.subtitle_drag = Some(placement::Drag {
                                 line,
                                 ids: app.drag_group(line),
+                                texts: app.drag_group_texts_of_line(line),
                                 grab: f - b.rect.center(),
                                 size: b.rect.size(),
                                 frame,
@@ -346,7 +479,7 @@ pub fn interact(
     }
 
     frame_drag(ui, app, cache, cmds, &resp, picture);
-    text_box_drag(ui, cache, cmds, &resp, picture);
+    text_box_drag(ui, app, cache, cmds, &resp, picture);
     resize_drag(ui, app, cache, cmds, &resp, picture, frame);
     move_drag(ui, app, cache, cmds, &resp, picture, frame);
 
@@ -354,6 +487,7 @@ pub fn interact(
         for id in [
             ActionId::AlignHorizontal,
             ActionId::AlignVertical,
+            ActionId::MoveInside,
             ActionId::ResetObjects,
             ActionId::SetPov,
         ] {
@@ -387,7 +521,7 @@ fn resize_drag(
     let out = match d.grip {
         Hit::Side(side) => boxes::resize_side(d.rect, d.size, side, at, frame),
         Hit::Corner(corner) => boxes::resize(d.rect, d.size, corner, at, frame),
-        Hit::Edge | Hit::Body => boxes::resize(d.rect, d.size, Corner::BottomRight, at, frame),
+        Hit::Edge(_) | Hit::Body => boxes::resize(d.rect, d.size, Corner::BottomRight, at, frame),
     };
     let s = placement::to_screen(out.rect, picture, frame);
     ui.painter().rect_stroke(
@@ -469,6 +603,11 @@ fn move_drag(
                         pitch_cd: (pitch * 100.0).round() as i32,
                     });
                 }
+                None if !d.texts.is_empty() => cmds.push(Command::MoveSelection {
+                    lines: d.ids,
+                    texts: d.texts,
+                    place: pos,
+                }),
                 None => cmds.push(Command::SetLinePositions {
                     ids: d.ids,
                     pos: Some(pos),
@@ -483,10 +622,33 @@ fn move_drag(
     }
 }
 
-/// A text box being moved or resized: an outline follows the pointer, one undo step on
-/// release (REQ-111).
+/// The readout of a box being resized (REQ-160): its size in percent of the picture and the
+/// text size that results.
+pub fn readout(item: &crate::text::TextItem, rect: Rect, frame: (u32, u32)) -> String {
+    let h = f64::from(frame.1);
+    let min = (h * f64::from(crate::text::MIN_FIT) / 1000.0).max(6.0);
+    let max = (h * f64::from(crate::text::MAX_FIT) / 1000.0).max(min);
+    let l = crate::text::layout_in(
+        &item.text,
+        &item.font,
+        f64::from(rect.width()),
+        f64::from(rect.height()),
+        min,
+        max,
+    );
+    format!(
+        "{:.0}% wide, {:.0}% high, text {:.1}%",
+        f64::from(rect.width()) / f64::from(frame.0.max(1)) * 100.0,
+        f64::from(rect.height()) / h * 100.0,
+        l.px / h * 100.0
+    )
+}
+
+/// A text box being moved or resized: the box is drawn live at its current size with a
+/// readout, nothing is stored until the release, which is one undo step (REQ-111, REQ-160).
 fn text_box_drag(
     ui: &Ui,
+    app: &AppState,
     cache: &mut UiCache,
     cmds: &mut Vec<Command>,
     resp: &egui::Response,
@@ -502,9 +664,9 @@ fn text_box_drag(
         return;
     };
     let pointer = placement::to_frame(p, picture, d.frame);
-    let (rect, width) = if d.edge {
-        let (r, w) = boxes::resize_width(d.rect, pointer, d.frame);
-        (r, Some(w))
+    let (rect, value) = if let Some(edge) = d.edge {
+        let (r, v) = boxes::resize_edge(d.rect, edge, pointer, d.frame);
+        (r, Some(v))
     } else {
         let c = if d.cam.is_some() {
             placement::clamp_centre(pointer - d.grab, d.rect.size(), d.frame)
@@ -513,21 +675,36 @@ fn text_box_drag(
         };
         (Rect::from_center_size(c, d.rect.size()), None)
     };
+    let screen = placement::to_screen(rect, picture, d.frame);
     ui.painter().rect_stroke(
-        placement::to_screen(rect, picture, d.frame),
+        screen,
         2.0,
         Stroke::new(2.0, Color32::YELLOW),
         StrokeKind::Outside,
     );
-    ui.ctx().set_cursor_icon(if d.edge {
-        CursorIcon::ResizeHorizontal
-    } else {
-        CursorIcon::Grabbing
+    if d.edge.is_some()
+        && let Some(item) = d.ids.first().and_then(|id| app.project.texts.get(*id))
+    {
+        let text = readout(item, rect, d.frame);
+        let at = screen.left_top() - vec2(0.0, 18.0);
+        let galley =
+            ui.painter()
+                .layout_no_wrap(text, egui::FontId::proportional(13.0), Color32::WHITE);
+        ui.painter().rect_filled(
+            Rect::from_min_size(at, galley.size()).expand(2.0),
+            2.0,
+            Color32::from_black_alpha(190),
+        );
+        ui.painter().galley(at, galley, Color32::WHITE);
+    }
+    ui.ctx().set_cursor_icon(match d.edge {
+        Some(e) => boxes::side_cursor(e),
+        None => CursorIcon::Grabbing,
     });
     if resp.drag_stopped() {
         cache.text_box_drag = None;
-        match (d.cam, width) {
-            (Some(cam), Some(_)) => {
+        match (d.cam, value) {
+            (Some(cam), Some(_)) if d.edge != Some(boxes::Side::Bottom) => {
                 // a text fixed to the sphere: the width is an angle
                 let focal = (f64::from(d.frame.0) / 2.0) / (cam.fov_deg().to_radians() / 2.0).tan();
                 let per_deg = focal * std::f64::consts::PI / 180.0;
@@ -536,7 +713,24 @@ fn text_box_drag(
                     width_cd: (f64::from(rect.width()) / per_deg * 100.0).round() as u32,
                 });
             }
-            (None, Some(width)) => cmds.push(Command::ResizeTextWidth { ids: d.ids, width }),
+            (None, Some(v)) => cmds.push(match d.edge {
+                Some(boxes::Side::Left) => Command::ResizeTextBox {
+                    ids: d.ids,
+                    edge: TextEdge::Left,
+                    value: v,
+                },
+                Some(boxes::Side::Bottom) => Command::ResizeTextBox {
+                    ids: d.ids,
+                    edge: TextEdge::Bottom,
+                    value: v,
+                },
+                _ => Command::ResizeTextWidth {
+                    ids: d.ids,
+                    width: v,
+                },
+            }),
+            // the height of a text fixed to the sphere is an angle set by its box (not dragged)
+            (Some(_), Some(_)) => {}
             // a text fixed to the sphere goes to the point of the sphere under the box
             (Some(cam), None) => {
                 let c = rect.center();
@@ -553,6 +747,12 @@ fn text_box_drag(
                     pitch_cd: (pitch * 100.0).round() as i32,
                 });
             }
+            // lines and texts selected together move as one group (REQ-172)
+            (None, None) if !d.lines.is_empty() => cmds.push(Command::MoveSelection {
+                lines: d.lines,
+                texts: d.ids,
+                place: boxes::centre_pos(rect, d.frame),
+            }),
             (None, None) => cmds.push(Command::SetTextBoxes {
                 ids: d.ids,
                 place: boxes::centre_pos(rect, d.frame),

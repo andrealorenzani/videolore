@@ -603,11 +603,23 @@ fn the_real_hardware_check_is_quick_and_stable() {
         );
         (s, t.elapsed())
     };
-    let (first, took) = run();
-    let (second, took2) = run();
-    // the total running time at most, plus process start-up and slot bookkeeping
+    // the total running time at most, plus process start-up and slot bookkeeping; on a busy
+    // computer a whole pair of checks can be slow once, so a slow pair is tried again (a check
+    // that is slow every time still fails, with its times)
     let bound = limits.total + Duration::from_millis(1500);
-    assert!(took < bound && took2 < bound, "{took:?} {took2:?}");
+    let mut times = Vec::new();
+    let (mut first, mut second);
+    loop {
+        let (a, took) = run();
+        let (b, took2) = run();
+        (first, second) = (a, b);
+        times.push((took, took2));
+        if (took < bound && took2 < bound) || times.len() >= 4 {
+            break;
+        }
+    }
+    let (took, took2) = *times.last().expect("one attempt at least");
+    assert!(took < bound && took2 < bound, "{times:?}");
     assert_eq!(first.h264, second.h264, "{first:?}\n{second:?}");
     assert_eq!(first.hevc, second.hevc, "{first:?}\n{second:?}");
     if std::env::var("CI").as_deref() == Ok("true") && platform.render_nodes.is_empty() {

@@ -16,6 +16,18 @@ Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 ti
 - Speech-to-text needs C++ toolchain + libclang on every CI platform (slow, fragile builds; whisper-rs-sys bindgen).
 - Test runs: local rule-7 suite runs tests twice (cargo test + coverage.sh) [open, ADR-035]; the single llvm-cov run is CI only.
 
+## Readable text, placement, accuracy (2.0.3 plan; plan ai-docs/architecture-plan-2.0.3.md)
+- [2.0.3 decided 2026-11-20] Q-1 = B: the 2.0.2 text outline (8% black) disappears for old texts on opening (REQ-158 as written); Future work: the REQ-167 message may mention it. Q-2 = A: old texts change size on opening (REQ-156/157, REQ-167 count, no restore).
+- [2.0.3 plan, D56] REQ-177 reworded: >= 90% of the MATCHED words within 0.3 s at Fast after the one-sided onset snap (ADR-164); the snap may not reach it (measured DTW was 0.43 to 0.75 s late; onsets within 0.03 s of the reference); then Andrea decides (larger model, D54). The PE stops and reports at that point; no silent gate change.
+- [2.0.3 plan] libass may prefer the system font over the copy in the work `fonts/` folder (ADR-156): Linux test; macOS and Windows by hand (REQ-165).
+- [2.0.3 plan] libass box padding for BorderStyle 3 and the outline width as padding (ADR-157): confirm by a pixel test; if not, the Box padding is drawn by a second outline value.
+- [2.0.3 plan] "fill" of a box is the line box (lines x hhea ascender-descender), not the ink height (assumption, ADR-154); a reviewer may expect ink.
+- [2.0.3 plan] harfrust/skrifa on odd fonts: any failure gives the bundled font (test); a font whose name ID 1 differs from its family name in fontdb may not be found by libass (ADR-156 detail).
+- [2.0.3 plan] piece margins of 2 s: words longer than 2 s could be lost at a boundary (none expected in speech; the synthetic test covers 1.5 s words).
+- [2.0.3 plan, D56] the one-sided snap misses words the Fast model mishears (5 of 28 on the reference); they are not matched and are not gated. Onset snap depends on the audio energy: noisy speech may give wrong onsets (test with noise is a PE decision).
+- [2.0.3 plan] the blur fix (ADR-152) relies on the ffmpeg bound derived from one message; verified on 9.0.2 by a size sweep; other ffmpeg builds (system override) may differ.
+- [2.0.3 plan] text.rs (1211 lines) and render.rs (3439) grow: PE may split the event builder (text/events.rs) if text.rs passes ~1500 lines.
+
 ## Hardware export (0.4.0+)
 - No GPU in CI: real hardware only via QG-05 manual matrix; unverified combinations are known limitations.
 - NVIDIA needs driver >= 610 (SDK 13.1 headers); older -> probe fails fast, software export, Advanced explains. Likely common late 2026.
@@ -59,7 +71,7 @@ Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 ti
 - libass vs fontdb family names may differ (silent fallback in export only); text on the sphere narrows toward the poles (accepted, Q1 = A); slide leaves the view (ADR-077); blink event cost (capped); egui vs libass wrap.
 - 360 video export slow (no speed promised); 360 file without spherical information stays flat (1.4.0).
 - Spherical marker: MP4/MOV only (own writer, ADR-078); MKV/WebM unmarked; bundled 9.x not measured.
-- Text best-fit size is an estimate (85–115% of the box); migration by search may shrink large multi-line texts (confirmed by product owner).
+- Text best-fit size is an estimate (85–115% of the box) until 2.0.3 (ADR-154 measured fit, plan); migration by search may shrink large multi-line texts (confirmed by product owner, 1.4.0); REQ-167 count in 2.0.3.
 - afftdn may muffle speech (gate measured on fixture).
 
 ## Frames, LUT, player, splash (1.5.0–1.6.2)

@@ -50,6 +50,11 @@ No new crate was added in 1.5.0 (frame effects use the existing `egui` colour pi
 
 Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDLA-Permissive-2.0). Both are listed in the notices and allowed by the CI licence check.
 
+## Font crates for measuring text (2.0.3, planned)
+- `skrifa` 0.44 (MIT or Apache-2.0) reads a font's metrics and glyph widths; `harfrust` 0.12 (MIT) shapes the text, kerning included, as the subtitle path does. Both are already in the program's lock file (through the GUI library), so no new package is downloaded; they become direct dependencies. Their minimum Rust version (1.85) is below the policy of the latest stable toolchain.
+- Not added: `rustybuzz`, `ttf-parser`, `fontdue` and `ab_glyph` (a second shaper or rasteriser for one measure).
+- The whisper.cpp word-timing presets use the existing `whisper-rs` 0.16 binding; no new crate.
+
 ## Bundled with the installers (not Rust)
 | Component | Licence | Why |
 |---|---|---|

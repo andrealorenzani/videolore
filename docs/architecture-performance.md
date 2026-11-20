@@ -110,6 +110,11 @@ An automated test runs an export and subtitle generation together, with speech r
 ## Hardware video encoding (since 0.4.0)
 Faster export with the computer's video hardware, the "Export: Faster / Best quality" choice, the background hardware check, the output check and the automatic software redo are described in [hardware export](architecture-hardware-export.md). "Best quality" is the recommendation on every computer, so "Use recommended settings" now resets four choices (Export back to "Best quality") and also reruns the hardware check and clears remembered hardware failures.
 
+## 2.0.3 targets (planned)
+- Text sizes are measured once per text, font and box, and kept until one of them changes: no measuring per picture. Fonts are read when a text uses them, not at start-up; the window does not wait for the font list.
+- The two-second margins of the recognition pieces add about 3% of the work at the Fast level (the subtitle speed target allows 5%).
+- The speech engine's word timing setting may use more memory; the measured value is recorded in the risks.
+
 ## Risks
 - Speeds and memory of the larger speech models are estimates; thresholds may change after measurement.
 - On virtual machines or containers whose core count changes between starts, the computer looks "different": recommended settings are recomputed silently, custom ones only produce a notice.

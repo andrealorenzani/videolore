@@ -54,6 +54,11 @@ Part of [Architecture](architecture.md). Planned for version 2.0.2 (the batch "V
 - AV1 and VP9 encoding and hardware decoding are in scope (2.0.10; the pinned build is checked for the encoders then).
 - Installers stay unsigned.
 
+## 2.0.3 (planned): speech test and blur fix
+- The CI check job fails on the blurred-fill export of a small frame (a bundled 9.0.2 regression found on the runner); the fix is the first step of 2.0.3.
+- The strict speech-accuracy test runs in CI without being skipped; CI sets `VIDEOLORE_REQUIRE_STT=1`, so a missing model or fixture fails instead of skipping. The fixture files are checked by their SHA-256 sums; the generator (espeak-ng) is recorded beside them and is not needed to run the tests.
+- The 2.0.3 manual checks are the three-system font list (five fonts drawn as chosen) and the 20 MB font window delay, as in the business verification list.
+
 ## Risks
 - Pinned ffmpeg downloads add CI time and depend on the download site; the archive is cached by the lock hash.
 - The integration tests run on Linux only with the pinned build; Windows and macOS builds of 9.0.2 are not tested by the suite.

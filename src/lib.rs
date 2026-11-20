@@ -11,6 +11,10 @@
 //! "open document" handler (`desktop::macos`). Each block there carries a SAFETY comment.
 #![deny(unsafe_code)]
 
+// lets the test font helper shared with the integration tests name the crate the same way
+#[cfg(test)]
+extern crate self as videolore;
+
 pub mod align;
 pub mod app;
 pub mod ass;
@@ -29,11 +33,13 @@ pub mod jobs;
 pub mod keyframes;
 pub mod lut;
 pub mod machine;
+pub mod measure;
 pub mod media;
 pub mod music;
 pub mod notices;
 pub mod outcheck;
 pub mod packaging;
+pub mod placement;
 pub mod preview;
 pub mod project;
 pub mod proxy;

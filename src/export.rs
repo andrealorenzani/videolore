@@ -821,7 +821,8 @@ impl Attempt<'_> {
     }
 }
 
-/// Writes `subs.ass` and `fonts/NotoSans-Bold.ttf` into `dir` (ffmpeg's working folder).
+/// Writes `subs.ass` and `fonts/NotoSans-Bold.ttf` into `dir` (ffmpeg's working folder),
+/// with the files of the installed fonts the texts use (REQ-165).
 pub fn write_subtitles(dir: &Path, doc: &str) -> std::io::Result<()> {
     std::fs::write(dir.join(ass::ASS_FILE), doc)?;
     let fonts = dir.join(ass::FONTS_DIR);
@@ -830,7 +831,7 @@ pub fn write_subtitles(dir: &Path, doc: &str) -> std::io::Result<()> {
     if !font.is_file() {
         std::fs::write(font, ass::FONT)?;
     }
-    Ok(())
+    crate::fonts::copy_used(dir, doc)
 }
 
 fn execute(

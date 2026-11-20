@@ -111,3 +111,20 @@ functions (`file:symbol`), the tests and the requirements they cover (`REQ-NNN`,
 
 - `tests/ffmpeg_integration.rs` — shared `Env`, fixtures, basics (REQ-001, 002, 011..023, 036..039, 043, 052)
 - `tests/ffmpeg_integration/v12.rs` (effects, own subtitles), `v126.rs` (360), `v13.rs` (texts), `v14.rs` (export dialog, Clean audio), `v15.rs` (frame), `v16.rs` (LUT), `v20.rs` (2.0.2: paused frame at a fade REQ-144, format 8 project REQ-137, encoders and filters REQ-121), `hw.rs` (hardware paths); `tests/ffmpeg_integration.rs:assert_pinned` (the pinned ffmpeg in CI, QG-08)
+
+## Readable text, placement and accuracy (2.0.3)
+
+Details in [code-readable-text.md](code-readable-text.md).
+
+- Blur radius (step 0) — `src/render.rs:blur_radius`, `src/frame.rs:BLUR_MIN_SIDE`; tests `render::tests::the_blur_radius_stays_inside_ffmpegs_bounds_for_every_small_side`, `tests/ffmpeg_integration/v15.rs` (REQ-126)
+- Paused picture at a clip end — `src/render.rs:Segment::lead`, `read_back`, `Segment.grid`; tests `render::tests::a_picture_from_inside_a_frame_is_read_from_the_frame_that_holds_it`, `v20::a_paused_picture_in_the_last_frames_of_a_clip_is_shown` (REQ-155)
+- Text measure — `src/measure.rs:Shaped::new`, `fit`, `at_size`, `line_units`; `src/text.rs:layout`, `layout_in`, `layout_at`, `fit_px`, `legacy_fit_px`, `TextLayout`; tests `measure::tests`, `text::tests`, `v21::the_size_is_measured_with_the_font_and_capped_at_ten_percent_of_the_height`, `v21::the_preview_draws_the_text_as_large_as_the_export` (REQ-116, 156, 157, 159, 163)
+- Fonts — `src/fonts.rs:resolve`, `install`, `install_dir`, `copy_used`, `bundled`, `Face`; tests `fonts::tests`, `v21::an_installed_font_is_the_one_drawn_and_it_is_measured_for_its_box`, `v21::a_missing_font_is_drawn_in_the_bundled_font_and_the_project_keeps_its_name` (REQ-163..166)
+- Readability — `src/text.rs:Readability`, `TextItem.readability`, `TextItem.height`; `src/ass.rs:text_styles`, `TEXT_BOX_STYLE`, `AssEvent.boxed`; `src/app/texts.rs:set_readability`; tests `v21::outline_and_background_box_are_drawn_and_none_draws_nothing`, `v21::a_blinking_text_hides_its_box_and_outline_with_it`, `text::tests::readability_is_written_as_none_outline_or_a_box` (REQ-158, 162)
+- Project format 10 and the migration note — `src/project.rs:SCHEMA_VERSION`, `TextMigration`, `from_json_noted`, `load_noted`; `src/app.rs:open_now`; tests `project::tests::a_project_from_before_2_0_3_reports_its_texts_once`, `app::text_tests::opening_a_project_from_before_2_0_3_says_once_what_changed_in_its_texts` (REQ-158, 167)
+- Text box handles — `src/app/texts.rs:resize_text_box`, `Command::ResizeTextBox`, `TextEdge`; `src/ui/boxes.rs:text_edge_at`, `resize_edge`; `src/ui/picture.rs:text_box_drag`, `readout`, `text_flags`; tests `app::text_tests`, `ui::text_ux_tests` (REQ-159..162)
+- Placement rules — `src/placement.rs:Rect`, `line_rect`, `text_rect`, `least_inside`, `place_after_text_edit`, `overlapping_lines`, `partly_outside_at`; `src/app/placing.rs:move_selection`, `move_inside`, `partly_outside`, `overlapping_lines`; tests `placement::tests`, `app::placing_tests`, `v21::a_second_line_of_a_subtitle_keeps_the_centre_of_its_box_in_the_export` (REQ-168, 169, 172, 174..176)
+- Placement UI — `src/ui/status.rs:SELECTION_HINT`, `outside_text`; `src/ui/mod.rs:UiCache::overlapping_lines`; `src/ui/picture.rs:pick_at`, `dashed_rect`; `ActionId::MoveInside`; tests `ui::placing_ux_tests` (REQ-169..172, 175)
+- Align on the style's place — `src/app/sphere.rs:align_plan`, `ALREADY_CENTRED` (REQ-173)
+- Recognition pieces and messages — `src/stt.rs:recognise`, `CHUNK`, `OVERLAP`, `unmatched_message`; tests `stt::tests::words_at_the_boundary_of_a_piece_are_neither_lost_nor_doubled`, `stt::tests::a_track_that_does_not_follow_the_speech_says_so_with_the_count_and_one_that_does_does_not` (REQ-178, 179)
+- Accuracy gate (not met) — `tests/ffmpeg_integration/v12.rs:alignment_matches_real_speech` (ignored), `check_fixture`, `speech_model`; fixture `tests/fixtures/align/` (REQ-177, REQ-095)

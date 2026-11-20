@@ -29,6 +29,8 @@ pub const MAX_OFFSET: i16 = 20_000;
 pub const BLUR_DIVISOR: u32 = 8;
 /// Box blur radius on the small copy.
 pub const BLUR_RADIUS: u32 = 3;
+/// Smallest side of the small copy (even), so both radii stay valid.
+pub const BLUR_MIN_SIDE: u32 = 8;
 
 /// The shape of the frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

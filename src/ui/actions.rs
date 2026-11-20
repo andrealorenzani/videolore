@@ -68,6 +68,7 @@ pub enum ActionId {
     ApplyWholeLut,
     AlignHorizontal,
     AlignVertical,
+    MoveInside,
     ResetObjects,
     SetPov,
     ToggleBoxes,
@@ -416,6 +417,12 @@ pub const ACTIONS: &[Action] = &[
         "Centre the selected objects on the picture, top to bottom"
     ),
     action!(
+        MoveInside,
+        "Move inside the picture",
+        [],
+        "Move the selected items by the least distance that puts each wholly inside the picture"
+    ),
+    action!(
         ResetObjects,
         "Reset",
         [cmd_shift(Key::R)],
@@ -554,6 +561,7 @@ impl ActionId {
             ApplyWholeCleanAudio => apply(EffectKind::CleanAudio, Target::WholeVideo),
             AlignHorizontal => Command::AlignSelected(Axis::Horizontal),
             AlignVertical => Command::AlignSelected(Axis::Vertical),
+            MoveInside => Command::MoveInside,
             ResetObjects => Command::ResetObjects,
             SetPov => Command::SetPov,
             ToggleBoxes => Command::ToggleBoxes,
@@ -611,6 +619,7 @@ impl ActionId {
             AddText => i::TEXT_T,
             AlignHorizontal => i::ALIGN_CENTER_HORIZONTAL,
             AlignVertical => i::ALIGN_CENTER_VERTICAL,
+            MoveInside => i::CORNERS_OUT,
             ResetObjects => i::ARROW_COUNTER_CLOCKWISE,
             SetPov => i::CROSSHAIR,
             ToggleBoxes => i::BOUNDING_BOX,

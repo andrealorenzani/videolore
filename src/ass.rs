@@ -211,6 +211,8 @@ pub struct AssEvent {
     pub text: String,
     /// Left and right margin of the event (sets the wrap width), when it has its own.
     pub margins: Option<(u32, u32)>,
+    /// Drawn with the background-box style (REQ-158).
+    pub boxed: bool,
 }
 
 /// Font size in pixels of an item on a picture `height` pixels high.
@@ -220,17 +222,30 @@ pub fn font_px(height: u32, size: u16) -> u32 {
         .max(6)
 }
 
-/// Style of the text items (REQ-111): white, black outline, centred; everything else
-/// comes from the tags of each event.
-fn text_style(width: u32, height: u32) -> String {
+/// Styles of the text items (REQ-111, REQ-158): white, centred, no wrap of the renderer's
+/// own; the outline or box width, the font and the size come from the tags of each event.
+/// `Text` has a black outline; `TextBox` has a box behind the lines, black and 60% opaque
+/// (libass draws the box in the outline colour), with the box width as its padding.
+fn text_styles(width: u32, height: u32, boxed: bool) -> String {
     let size = font_px(height, crate::subtitles::SIZE_NORMAL);
-    format!(
-        "Style: Text,Noto Sans,{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,\
-         100,100,0,0,1,{},0,5,{ml},{ml},0,1\n",
-        outline(size),
-        ml = margin_lr(width)
-    )
+    let ml = margin_lr(width);
+    let row = |name: &str, outline_c: &str, border: u8| {
+        format!(
+            "Style: {name},Noto Sans,{size},&H00FFFFFF,&H00FFFFFF,{outline_c},&HFF000000,0,0,0,0,\
+             100,100,0,0,{border},{},0,5,{ml},{ml},0,1\n",
+            outline(size)
+        )
+    };
+    let mut s = row(TEXT_STYLE, "&H00000000", 1);
+    if boxed {
+        s.push_str(&row(TEXT_BOX_STYLE, "&H66000000", 3));
+    }
+    s
 }
+
+/// Style names of the text items.
+pub const TEXT_STYLE: &str = "Text";
+pub const TEXT_BOX_STYLE: &str = "TextBox";
 
 /// [`document`] plus the events of text items (timeline times, like the lines).
 pub fn document_with_texts(
@@ -252,7 +267,7 @@ pub fn document_with_texts(
         if texts.is_empty() {
             String::new()
         } else {
-            text_style(width, height)
+            text_styles(width, height, texts.iter().any(|e| e.boxed))
         }
     );
     let at = |t: Micros| (t - shift).max(Micros::ZERO);
@@ -291,9 +306,10 @@ pub fn document_with_texts(
     for e in texts.iter().filter(|e| e.end > shift) {
         let (ml, mr) = e.margins.unwrap_or((0, 0));
         s.push_str(&format!(
-            "Dialogue: 1,{},{},Text,,{ml},{mr},0,,{{{}}}{}\n",
+            "Dialogue: 1,{},{},{},,{ml},{mr},0,,{{{}}}{}\n",
             ass_time(at(e.start)),
             ass_time(at(e.end)),
+            if e.boxed { TEXT_BOX_STYLE } else { TEXT_STYLE },
             e.tags,
             e.text
         ));

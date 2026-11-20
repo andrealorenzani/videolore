@@ -894,3 +894,241 @@ fn a_subtitle_line_added_on_a_360_clip_is_fixed_to_the_sphere_automatic_ones_are
         .is_err()
     );
 }
+
+// covers: REQ-159
+#[test]
+fn the_bottom_edge_changes_the_height_between_5_and_100_percent_and_the_top_stays() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app_with_clips(dir.path());
+    let now = Instant::now();
+    // two lines that are long enough for the box, not for the 10% size cap
+    let a = add(
+        &mut app,
+        "The quick brown fox jumps over the lazy dog again and again\nand a second long line of words to fill the box",
+    );
+    let top = |app: &AppState| {
+        let t = app.project.texts.get(a).unwrap();
+        f64::from(t.place.y) - f64::from(t.height) * 5.0
+    };
+    let before = top(&app);
+    let fit_before = crate::text::fit_px(app.project.texts.get(a).unwrap(), 1920, 1080);
+    let edge = |value| Command::ResizeTextBox {
+        ids: vec![a],
+        edge: TextEdge::Bottom,
+        value,
+    };
+    app.dispatch(edge(400), now).unwrap();
+    let t = app.project.texts.get(a).unwrap();
+    assert_eq!(t.height, 400);
+    assert_eq!(
+        t.width,
+        crate::text::DEFAULT_WIDTH,
+        "the width does not change"
+    );
+    assert_eq!(top(&app), before, "the top edge stays");
+    assert!(
+        crate::text::fit_px(t, 1920, 1080) > fit_before,
+        "the text follows the height"
+    );
+    assert_eq!(app.undo_text(), "Undo Resize text");
+    // a box dragged to 3% stops at 5%; 100% is the most
+    app.dispatch(edge(30), now).unwrap();
+    assert_eq!(app.project.texts.get(a).unwrap().height, 50);
+    app.dispatch(edge(5000), now).unwrap();
+    assert_eq!(app.project.texts.get(a).unwrap().height, 1000);
+    // one undo restores the height and the place
+    let undo = app.history.undo_len();
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(app.history.undo_len(), undo - 1);
+    assert_eq!(app.project.texts.get(a).unwrap().height, 50);
+    // a long text in a 5% box does not fit: the warning is the layout's
+    let mut long = add(&mut app, &"word ".repeat(80));
+    app.dispatch(
+        Command::ResizeTextBox {
+            ids: vec![long],
+            edge: TextEdge::Bottom,
+            value: 50,
+        },
+        now,
+    )
+    .unwrap();
+    let l = crate::text::layout(app.project.texts.get(long).unwrap(), 1920, 1080);
+    assert!(!l.fits, "a long text in a 5% box shows the warning");
+    long = a;
+    assert!(crate::text::layout(app.project.texts.get(long).unwrap(), 1920, 1080).fits);
+    for ids in [vec![], vec![TextId(99)]] {
+        assert!(
+            app.dispatch(
+                Command::ResizeTextBox {
+                    ids,
+                    edge: TextEdge::Bottom,
+                    value: 100
+                },
+                now
+            )
+            .is_err()
+        );
+    }
+}
+
+// covers: REQ-161
+#[test]
+fn the_left_edge_changes_the_width_and_the_right_edge_stays() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app_with_clips(dir.path());
+    let now = Instant::now();
+    let a = add(&mut app, "hello");
+    // a box 40% wide with its left edge at 50% and its right edge at 90%
+    let t = app.project.texts.get(a).unwrap().clone();
+    let mut set = t.clone();
+    set.width = 400;
+    set.place.x = 7000;
+    app.project.texts.replace(set).unwrap();
+    let edges = |app: &AppState| {
+        let t = app.project.texts.get(a).unwrap();
+        let c = f64::from(t.place.x) / 10.0;
+        (c - f64::from(t.width) / 2.0, c + f64::from(t.width) / 2.0)
+    };
+    assert_eq!(edges(&app), (500.0, 900.0));
+    let left = |value| Command::ResizeTextBox {
+        ids: vec![a],
+        edge: TextEdge::Left,
+        value,
+    };
+    // dragged to 30%: 60% wide, the right edge still at 90%
+    app.dispatch(left(600), now).unwrap();
+    assert_eq!(app.project.texts.get(a).unwrap().width, 600);
+    assert_eq!(edges(&app), (300.0, 900.0));
+    // past 10% it stops at 10%
+    app.dispatch(left(20), now).unwrap();
+    assert_eq!(app.project.texts.get(a).unwrap().width, 100);
+    assert_eq!(edges(&app).1, 900.0);
+    // one undo step restores the box
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(edges(&app), (300.0, 900.0));
+    // the right edge moves the right side and keeps the left
+    app.dispatch(
+        Command::ResizeTextWidth {
+            ids: vec![a],
+            width: 800,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(edges(&app).0, 300.0);
+}
+
+// covers: REQ-158
+#[test]
+fn readability_is_chosen_per_text_in_one_undo_step() {
+    use crate::text::Readability;
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app_with_clips(dir.path());
+    let now = Instant::now();
+    let a = add(&mut app, "hello");
+    assert_eq!(
+        app.project.texts.get(a).unwrap().readability,
+        Readability::Outline,
+        "a new text starts with an outline"
+    );
+    let set = |r| Command::SetReadability {
+        ids: vec![a],
+        readability: r,
+    };
+    app.dispatch(set(Readability::Box), now).unwrap();
+    assert_eq!(
+        app.project.texts.get(a).unwrap().readability,
+        Readability::Box
+    );
+    assert_eq!(app.undo_text(), "Undo Text readability");
+    let undo = app.history.undo_len();
+    app.dispatch(set(Readability::Box), now).unwrap();
+    assert_eq!(app.history.undo_len(), undo, "the same choice is no change");
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(
+        app.project.texts.get(a).unwrap().readability,
+        Readability::Outline
+    );
+    // a draft keeps its choice when the text is added
+    let mut d = draft("boxed");
+    d.readability = Readability::None;
+    app.dispatch(Command::AddText(d), now).unwrap();
+    let b = app.selection.primary_text().unwrap();
+    assert_eq!(
+        app.project.texts.get(b).unwrap().readability,
+        Readability::None
+    );
+    for ids in [vec![], vec![TextId(77)]] {
+        assert!(
+            app.dispatch(
+                Command::SetReadability {
+                    ids,
+                    readability: Readability::None
+                },
+                now
+            )
+            .is_err()
+        );
+    }
+}
+
+// covers: REQ-167
+#[test]
+fn opening_a_project_from_before_2_0_3_says_once_what_changed_in_its_texts() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app_with_clips(dir.path());
+    let now = Instant::now();
+    let long = "A long text fitted by a guess about character widths, with several words\nand a second line that is also quite long";
+    add(&mut app, long);
+    let file = dir.path().join("old.vlproj");
+    project::save(&app.project, &file).unwrap();
+    // make it a file of 2.0.2: format 9, without the fields of format 10
+    let mut v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    v["schema_version"] = 9.into();
+    for t in v["texts"].as_array_mut().unwrap() {
+        t.as_object_mut().unwrap().remove("readability");
+        t.as_object_mut().unwrap().remove("height");
+    }
+    std::fs::write(&file, v.to_string()).unwrap();
+    let mut other = state(FakeDialogs::default());
+    other.open_now(file.clone(), now).unwrap();
+    assert!(
+        other.status.contains("1 text item changed size") && other.status.contains("outline"),
+        "{}",
+        other.status
+    );
+    // the text is None (no outline) and widening the box makes it larger
+    let id = other.project.texts.items[0].id;
+    assert_eq!(
+        other.project.texts.get(id).unwrap().readability,
+        crate::text::Readability::None
+    );
+    let before = crate::text::fit_px(other.project.texts.get(id).unwrap(), 1920, 1080);
+    other
+        .dispatch(
+            Command::ResizeTextWidth {
+                ids: vec![id],
+                width: 1000,
+            },
+            now,
+        )
+        .unwrap();
+    assert!(crate::text::fit_px(other.project.texts.get(id).unwrap(), 1920, 1080) > before);
+    // saved, it is format 10: opening it again shows no message
+    let saved = dir.path().join("new.vlproj");
+    other.save_to(saved.clone()).unwrap();
+    let mut third = state(FakeDialogs::default());
+    third.open_now(saved, now).unwrap();
+    assert_eq!(third.status, "Project opened");
+    // a project without texts shows no message either
+    let mut empty = app_with_clips(dir.path());
+    empty.dispatch(Command::DeleteTexts(vec![id]), now).ok();
+    let plain = dir.path().join("plain.vlproj");
+    let mut p2 = empty.project.clone();
+    p2.texts = Default::default();
+    project::save(&p2, &plain).unwrap();
+    let mut fourth = state(FakeDialogs::default());
+    fourth.open_now(plain, now).unwrap();
+    assert_eq!(fourth.status, "Project opened");
+}
