@@ -48,7 +48,7 @@ jobs:
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
-          prefix-key: v1-rust-ggml-portable
+          prefix-key: v2-rust-ggml-portable
       - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: cargo-llvm-cov,cargo-deny@0.20.2,cargo-about@0.9.3
@@ -141,7 +141,7 @@ jobs:
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
-          prefix-key: v1-rust-ggml-portable
+          prefix-key: v2-rust-ggml-portable
       - run: cargo build --locked --workspace --all-targets
 
   build:
@@ -185,7 +185,7 @@ jobs:
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
-          prefix-key: v1-rust-ggml-portable
+          prefix-key: v2-rust-ggml-portable
       - name: Build release executables (the editor and videolore player)
         run: cargo build --release --locked --workspace --target ${{ matrix.target }}
       - name: Name the executables
@@ -247,7 +247,7 @@ jobs:
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
-          prefix-key: v1-rust-ggml-portable
+          prefix-key: v2-rust-ggml-portable
       - name: cargo-packager (pinned in packaging/tools.lock)
         if: runner.os != 'Linux'
         run: cargo install cargo-packager --locked --version 0.11.8
