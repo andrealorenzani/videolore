@@ -80,10 +80,15 @@ There are no secrets, accounts or telemetry.
 - Frame sizes come from the base size and the chosen shape, capped at 4096 px on the longer side; numbers stored in a project cannot make the frame larger.
 - Values outside their ranges in a project file are corrected on load with a note, and never crash the program.
 
-## Apply LUT, player and assets (1.6.0, planned)
+## Apply LUT, player and assets (1.6.0)
 - A `.cube` file is untrusted input: read as a regular file, at most 16 MiB, UTF-8 only, strict tokens and counts, finite values only; never a panic (property tests). The checked cube is written into the private work folder under fixed names, and no user text enters a filter. A missing or broken file stops an export before any output is written. See [LUT](architecture-lut.md).
 - The player plays untrusted media through the same `ffmpeg` process model as the editor (child processes, job limit, private folders). It never writes next to the video, never reads a `.vlproj` (refused by extension), and has no network code: CI checks that its dependency graph has no `ureq` or `whisper-rs`. See [player](architecture-player.md).
 - The splash image, its summary and the icon font are compiled in: no file is read at run time and no network is used. The GIF decoder reads only the bundled file. See [splash](architecture-splash.md) and [icons](architecture-icons.md).
+
+## Changes in 1.6.1
+- The project conversion from format 8 reads untrusted numbers: keyframe counts, times and values are checked and capped (200 per clip) before the copies are made; a damaged file is refused, never a crash. See [project files](architecture-projects.md).
+- CI: `cargo-about` comes as a pinned prebuilt binary from the already pinned install action (no new action, no apt cache action). Apt packages are installed from the runner's default repositories only, with retries and a timeout. See [build](architecture-build.md#ci-time-planned-for-161-qg-06).
+- The splash files of 1.6.1 are compiled in; the picture is the 1.6.0 one until a new picture with its origin and licence is supplied.
 
 ## Unsafe code
 Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in two reviewed places: the cancel callback passed to whisper.cpp and the macOS "open document" handler.

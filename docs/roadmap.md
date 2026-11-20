@@ -29,7 +29,6 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Volume over time** — volume that changes along the timeline (automation), instead of one level per clip and one for the music. (source: 1.1.0, postponed from the 1.1.0 request)
 - **Effects on music clips** — per-clip music volume and fades on music; today only the video clips take effects. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **One-sided boundary fades** — a fade only in or only out at a clip boundary, instead of a fade in both directions. (source: 1.2.0, out of scope of the 1.2.0 request)
-- **Start and end fades follow the clip** — the fades from and to black stay at the edges of the video when clips move; let them follow the first or last clip. (source: 1.2.0, known limitation)
 - **Clean audio strength setting** — Clean audio is on or off per clip, with no amount control; add one if the fixed effect is too strong or too weak for some clips. Quiet speech (about -32 dB) can lose up to about 2.5 dB, so a gentler setting may suit it. (source: 1.4.0, out of scope of the 1.4.0 request; known limitation)
 - **Clean the music track** — Clean audio works on the video's sound only; cleaning the music track is not planned yet. (source: 1.4.0, out of scope of the 1.4.0 request)
 - **Speech enhancement** — voice isolation or speech enhancement beyond noise reduction. (source: 1.4.0, out of scope of the 1.4.0 request)
@@ -38,17 +37,20 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Blur strength setting** — the blurred fill of Change aspect uses one fixed blur; let the user set its strength if the fixed one is too strong or too weak. (source: 1.5.0, out of scope of the 1.5.0 request)
 - **Crop tool** — crop a picture by dragging its edges, instead of only scaling and moving it inside the frame. (source: 1.5.0, out of scope of the 1.5.0 request)
 - **Free aspect ratios** — Change aspect offers the fixed ratios of its list only; let the user type any ratio. (source: 1.5.0, out of scope of the 1.5.0 request)
-- **Aspect ratio per clip** — Change aspect applies to the whole video, one frame size per project; let each clip have its own frame where the edit needs it. (source: 1.5.0, out of scope of the 1.5.0 request)
-- **Whole-video keyframes follow cuts at the start** — whole-video Scale and Move keyframes are in timeline time and do not move when the start of the video is cut, unlike clip keyframes in source time; let them move with the cut. (source: 1.5.0, known limitation)
+- **Aspect ratio per clip** — Change aspect applies to the whole video, one frame size per project; let each clip have its own frame where the edit needs it. It stays project-wide in 1.6.1, also when a whole-video effect is applied to the clips. (source: 1.5.0, out of scope of the 1.5.0 request; 1.6.1 decision to keep it project-wide)
 - **Copy keyframes between clips** — keyframes are made by hand for each clip; copy a clip's Scale and Move keys to other clips. (source: 1.5.0, known limitation)
 - **LUT strength setting** — mix the LUT with the source picture so the user can set how strong it is; Apply LUT is at full strength today. (source: 1.6.0, out of scope of the 1.6.0 request)
 - **Other LUT formats** — read `.3dl` and `.csp` files as well as `.cube`; 1.6.0 reads `.cube` only. (source: 1.6.0, known limitation)
 - **LUT copied into the project** — keep a copy of the LUT file in the project, so a moved or deleted file does not break it; the project stores the path only today. (source: 1.6.0, out of scope of the 1.6.0 request)
 - **Missing LUT file on export** — export stops with a message while a LUT file is missing; offer to find the file, or to export without the LUT with a warning. (source: 1.6.0, known limitation)
 - **Colour management for LUTs** — apply a LUT in the colour space its author made it for, so a LUT made for another workflow looks as intended. (source: 1.6.0, known limitation)
+- **Whole-video copies diverge after separate clip edits** — since 1.6.1 a whole-video Scale or Move gives each clip its own copy of the keyframes; once a clip's copy is changed alone, the whole-video popup shows and changes only the first clip's copy. Show the copies apart, or let the popup edit all of them. (source: 1.6.1, known limitation)
+- **Message when clips are added after a whole-video effect** — since 1.6.1 a clip added after a whole-video effect does not get it, without any sign; show a notice or offer to apply the effect to the new clips. (source: 1.6.1, idea, not planned yet)
 - **LUT input ranges other than 0 to 1** — a `.cube` file whose `DOMAIN_MIN` and `DOMAIN_MAX` are not 0 and 1 is refused; read such files by scaling the input range. (source: 1.6.0, known limitation)
 - **LUT libraries** — keep a list of favourite LUT files, or a folder to pick them from, without browsing each time. (source: 1.6.0, out of scope of the 1.6.0 request)
 - **LUT order with the frame effect** — the LUT is applied to the fitted picture before the frame effect, so the blurred or coloured fill of Change aspect is not graded; decide whether the LUT should cover the fill too. (source: 1.6.0, accepted deviation)
+- **Exact conversion of combined Scale and Move** — a 1.6.0 clip that had its own Scale or Move and the whole video's one is converted to one combined path, exact only at the key times; if a user reports a changed old project, store the exact result instead. (source: 1.6.1, design option not taken)
+- **Double-click on a clip that already has the LUT** — a double-click gives the clip the chosen LUT again and replaces the one it has; decide whether it should keep the clip's settings or ask first. (source: 1.6.1, decision: replace by default, minor)
 
 ## 360 video
 - **Automatic subtitles keep their preset place in 360 video export** — in a 360 video export, automatic subtitle lines stay at the preset place (the lower third, about 30° below the front) and do not follow the view; let the user anchor them or choose the place. (source: 1.3.0, known limitation)
@@ -87,6 +89,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Measured best-fit text** — the best-fit size estimates each character as 0.6 em wide, so a text may fill 85–115% of its box; measure the glyph widths (a direct `ttf-parser` dependency) only if the fill is visibly off. (source: 1.4.0, estimate risk)
 - **Migrated text sizes** — text items made in 1.3.0 take the best-fit size of their box when a project opens in 1.4.0, so large multi-line texts shrink; offer the old size again only if users need it. (source: 1.4.0, known limitation)
 - **Text items and picture moves** — text items keep their place when the picture is scaled or moved with Scale and Move (they are not keyframed), so a text may end over the edge of the picture; let texts follow the picture, or warn. (source: 1.5.0, known limitation)
+- **Resize text items from the left edge** — a text item's width changes only from its right edge; let its left edge resize it too. (source: 1.6.1, known limitation)
 
 ## Subtitles
 - **Meet the accuracy target of reused subtitles** — the word timing of a video's own subtitles is approximate: 82% of the words were matched and the start error averaged 0.48 s, against a target of 90% and 0.3 s. Improve the word timing (DTW timestamps, sound-onset snapping, or a larger model), then re-enable the strict test `alignment_matches_real_speech`. (source: 1.2.0, known limitation, REQ-095)
@@ -165,6 +168,7 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Faster blurred fill and Scale in the preview** — with a blurred fill or Scale, the preview renders the whole still again on every change of the picture state, so dragging is slow; render only the changed part, or keep the blurred background. (source: 1.5.0, known limitation)
 - **Measured quality goals** — the numbers of the quality goals (detection time, regressions, speed) are assumptions to confirm with measurements. (source: 0.3.0, assumption)
 - **Measure the Apply LUT cost** — the targets (a 1080p preview within 20% of the playback rate without a LUT, an export at most 1.5 times the re-encode without one) are assumptions; measure them on real clips and a 33-point and a 65-point LUT. (source: 1.6.0, measurement to do)
+- **Shorter check job on push** — the 1.6.0 run took 28 min in total (an outlier), and the apt step of its check job took 20 min; 1.6.1 installs only the missing packages, with retries and a timeout. Typical runs now take about 5.9 min. Measure the next runs against these baselines and report QG-06; the 30% time target stays an assumption until measured. (source: 1.6.1, CI time measurement, QG-06)
 
 ## Quality
 - **Check the installer configuration on every push** — install cargo-packager 0.11.8 in a Linux job, run `scripts/package.sh <target> --config-only` and build the deb and app formats from stub binaries, so packaging errors are not found only at release time. (source: 0.4.3, release of 0.4.2)
@@ -187,6 +191,10 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Run the 1.6.0 ffmpeg integration tests on the bundled ffmpeg 9.x** — the tests in `tests/ffmpeg_integration/v16.rs` are checked on the development ffmpeg only; run them on the bundled 9.x build before the 1.6.0 release. (source: 1.6.0, check before release)
 - **Widen the hardware probe timeouts** — two hardware tests use 30 ms probe timeouts and can fail under heavy load; make them independent of the load on the machine. (source: 1.6.0, test failure risk)
 - **Check that 1.5.x refuses project format 8** — with the real 1.5.0 build, open a project saved with 1.6.0 (it uses a LUT) and confirm it is refused with the newer-version message and left untouched. (source: 1.6.0, check before release)
+- **Pin the ffmpeg version used by the tests** — the CI test job takes ffmpeg from the runner's package repository, so its version can change between runs; pin it to the bundled version (planned for 1.6.2). (source: 1.6.1, CI time measurement)
+- **Verify the cargo-about install action** — the CI gets cargo-about 0.9.3 from the taiki-e install action, and its support for this tool is not verified; if it fails, install with `cargo install --locked cargo-about --version 0.9.3 --features cli`. (source: 1.6.1, CI check to do)
+- **Speech fixture for CI tests** — the CI test job installs espeak-ng for the real-speech tests; the committed speech fixture could be read instead, which saves install time. (source: 1.6.1, CI time measurement)
+- **Paused frame at a fade in the ffmpeg tests** — the fix that keeps a paused preview from staying black has no ffmpeg integration test for the paused frame at a fade yet. (source: 1.6.1, test gap)
 
 ## Packaging
 - **Run the installer job before each release** — a manual run, or on pull requests that touch `scripts/package.sh`, `packaging/` or `assets/icon/`; the 0.4.2 macOS and Windows failures were found only at release time. (source: 0.4.3, release of 0.4.2)
@@ -213,13 +221,14 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Lighter ffmpeg build for the player** — the player's installers carry their own copy of the pinned `ffmpeg` and `ffprobe`, and their size is not measured yet; measure it and build a smaller `ffmpeg` for the player if it is large. (source: 1.6.0, measurement to do)
 - **Player sound for very large videos** — very large videos play from a silent preview copy in the player; keep the sound, or make the preview copy with sound. (source: 1.6.0, accepted deviation)
 - **Player's own third-party list** — the player's About screen shows the editor's third-party notices; give the player a list of its own bundled components. (source: 1.6.0, known limitation)
+- **Player image not in git** — `assets/splash/videolore-player.gif` is untracked; decide whether it is used, then commit it or remove it. (source: 1.6.1, open decision)
 
 ## Splash screen
 - **Do not show again** — an option to turn the splash off, or to show it only once per version. (source: 1.6.0, out of scope of the 1.6.0 request)
 - **Splash summary from the changelog** — the summary is written by hand for each release; take it from the changelog entry so it is not written twice. (source: 1.6.0, known limitation)
 - **Missing splash image or summary** — the image must be in the repository before a version is built; decide what the splash shows when the image or the summary is missing. (source: 1.6.0, open question)
 - **Animated splash image** — the 1.6.0 image is a static GIF, kept as supplied; a multi-frame GIF would animate with no code change. Decide whether to ship an animated one. (source: 1.6.0, decision: static in 1.6.0)
-- **Splash image origin and licence** — the origin and licence of the splash image are not yet recorded in the notices; confirm them and record them before the 1.6.0 release. (source: 1.6.0, check before release)
+- **Splash image origin and licence** — the origin and licence of the splash image are not yet recorded in the notices; confirm them and record them before the 1.6.0 release. The 1.6.1 splash reuses the same image, so the same check covers it. (source: 1.6.0, check before release; 1.6.1 reuse)
 
 ## Project page
 - **Smaller project page images** — the page's GIF images total about 341 KB; animated WebP or AV1 would cut that weight, but browser support must be checked first and a second set of image files would be needed. (source: 1.4.1, project page image review)
@@ -235,3 +244,4 @@ Known limitations and improvements identified so far, to consider for future ver
 - **Slower speech engine for old processors** — dropped on 2026-11-14: processors without AVX2 get a clear message and subtitle lines can still be added by hand.
 - **Merge the business and architecture planning into one step** — saves one fresh start per feature, but the notes still dominate the cost and one owner would hold two private notes files, against the ownership rule. Decided on 2026-11-15.
 - **Keeping layout and recent projects in versions before 1.1.0** — versions before 1.1.0 do not know the saved layout and the recent-projects list, so they drop both when they save their settings. Accepted on 2026-11-15: downgrades are rare and the projects themselves are not affected.
+- **Starting the executables job in parallel with the checks** — would cut the time of a push by the length of the checks, but it would build executables that have not passed the checks; rejected on 2026-11-19 (1.6.1 CI time work).

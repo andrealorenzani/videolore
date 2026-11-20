@@ -13,15 +13,17 @@
 - docs/code-360.md § Known limits — L100-106 (7 lines)
 - docs/code-effects.md § Code — effects on clips, the video's own subtitles, positions, SRT (1.2.0) — L1-3 (3 lines)
 - docs/code-effects.md § Applying an effect — L5-26 (22 lines)
-- docs/code-effects.md § Fades at the video's edges — L28-37 (10 lines)
-- docs/code-effects.md § Clip volume — L39-47 (9 lines)
-- docs/code-effects.md § Subtitles for a clip or the whole video — L49-69 (21 lines)
-- docs/code-effects.md § Reading a track — L71-77 (7 lines)
-- docs/code-effects.md § Matching words (`align`) — L79-96 (18 lines)
-- docs/code-effects.md § Subtitle positions — L98-118 (21 lines)
-- docs/code-effects.md § SRT export — L120-125 (6 lines)
-- docs/code-effects.md § Timeline ruler — L127-132 (6 lines)
-- docs/code-effects.md § Project format 3 — L134-142 (9 lines)
+- docs/code-effects.md § Fades at the video's edges — L28-40 (13 lines)
+- docs/code-effects.md § Whole-video effects are copies on the clips (1.6.1, REQ-147, REQ-148) — L42-54 (13 lines)
+- docs/code-effects.md § Clip volume — L56-64 (9 lines)
+- docs/code-effects.md § Subtitles for a clip or the whole video — L66-86 (21 lines)
+- docs/code-effects.md § Reading a track — L88-94 (7 lines)
+- docs/code-effects.md § Matching words (`align`) — L96-113 (18 lines)
+- docs/code-effects.md § Subtitle positions — L115-135 (21 lines)
+- docs/code-effects.md § SRT export — L137-142 (6 lines)
+- docs/code-effects.md § Timeline ruler — L144-149 (6 lines)
+- docs/code-effects.md § Project format 3 — L151-159 (9 lines)
+- docs/code-effects.md § Project format 9 (1.6.1, REQ-149) — L161-174 (14 lines)
 - docs/code-export.md § Code — Export dialog, Clean audio and text boxes (1.4.0) — L1-5 (5 lines)
 - docs/code-export.md § Where things are — L7-16 (10 lines)
 - docs/code-export.md § Export dialog — L18-34 (17 lines)
@@ -81,15 +83,15 @@
 - docs/code-splash-icons.md § Icons — L27-63 (37 lines)
 - docs/code-splash-icons.md § Tests — L65-70 (6 lines)
 - docs/code-testing.md § Code — tests and CI — L1-1 (1 lines)
-- docs/code-testing.md § Tests — L3-80 (78 lines)
-- docs/code-testing.md § Coverage — L82-88 (7 lines)
-- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L90-100 (11 lines)
-- docs/code-testing.md § 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`) — L102-118 (17 lines)
-- docs/code-testing.md § 1.2.6 tests — L120-127 (8 lines)
-- docs/code-testing.md § 1.6.0 tests — L129-139 (11 lines)
-- docs/code-testing.md § 1.5.0 tests — L141-145 (5 lines)
-- docs/code-testing.md § 1.4.0 tests — L147-152 (6 lines)
-- docs/code-testing.md § 1.3.0 tests — L154-159 (6 lines)
+- docs/code-testing.md § Tests — L3-86 (84 lines)
+- docs/code-testing.md § Coverage — L88-94 (7 lines)
+- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L96-106 (11 lines)
+- docs/code-testing.md § 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`) — L108-124 (17 lines)
+- docs/code-testing.md § 1.2.6 tests — L126-133 (8 lines)
+- docs/code-testing.md § 1.6.0 tests — L135-145 (11 lines)
+- docs/code-testing.md § 1.5.0 tests — L147-151 (5 lines)
+- docs/code-testing.md § 1.4.0 tests — L153-158 (6 lines)
+- docs/code-testing.md § 1.3.0 tests — L160-165 (6 lines)
 - docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-9 (9 lines)
 - docs/code-text.md § Where things are — L11-22 (12 lines)
 - docs/code-text.md § Model and file — L24-37 (14 lines)
@@ -116,6 +118,16 @@
 - docs/code.md § Cargo features — L75-84 (10 lines)
 - docs/code.md § Finding ffmpeg — L86-92 (7 lines)
 - docs/code.md § Dependencies — L94-119 (26 lines)
+## State (1.6.1)
+- 1.6.1 implemented (tests green, flip planned->implemented = documenter): REQ-034 kept, 082, 083, 129, 130, 135, 144..149. Line cov 95.5% (workspace), feature cov 138/138 implemented (flip pending for the planned ones).
+- ROOT CAUSE of the 10 GB OOM (kernel kills at 23:42/45/49): NOT 1.6.1 code. `media::tests::text_subtitle_tracks_are_recorded_and_pictures_ignored` built 10 000 JSON streams with 1 MB titles (`"x".repeat(1_000_000)`) = 10 GB. Fixed in the test: 1 000 x 100 KB (still far above the caps). Repro: capped run hangs/killed at that test. HARD RULE: every cargo run via `scratchpad/run.sh` (systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 + timeout); `scratchpad/t.sh [filter]` builds + runs the lib tests capped. Env: fake alsa.pc + libclang symlinks in scratchpad (pc/, lib/); `target/` binaries live under target/debug/build/videolore/<hash>/out/ (custom target config).
+- Code: Clip.fade_in/fade_out (no start_fade/end_fade); Timeline has no whole_* (FrameTarget::Whole = all clips; whole_edit for keys); SCHEMA_VERSION 9; src/project/v9.rs (Legacy::take, apply, merge_path, combine_scale/move); Preview::supersede + `posted:(key,gen)` (REQ-144); ui/boxes.rs visible_part/Hit::Edge; ui/frame_handles.rs scale_to_edge; splash 1.6.1.gif/.txt; build.yml (dpkg check, timeouts 30, cargo-about via taiki-e: UNMEASURED, action support of cargo-about not verified).
+- Golden: new tests/fixtures/export-argv-1.1.0-in-1.6.1.txt and -1.2.5-in-1.6.1.txt (only diff: volume per clip instead of after the join); old files kept (overwriting was denied by the sandbox).
+- Test changes (old semantics -> new, no weakening): fades belong to the clip (cut first clip removes start fade), whole LUT replaces a clip's own, popup range = longest clip, no whole-video LUT marker (each clip has one), v8 conversions need schema_version 8 in hostile tests, ffmpeg v12/v16 tests updated.
+- New tests: timeline a_whole_video_scale_is_a_copy..., a_whole_video_move_and_lut_...; app/effects_tests a_whole_video_effect_is_one_copy_per_clip...; v9.rs (4); preview REQ-144 (2).
+- Not done: step 4 of CI plan (espeak fixture) skipped (optional); CI time not measured (no push); REQ-144 ffmpeg integration test (paused frame at a fade) not added: unit tests with the fake runner only.
+- Debt: whole-video popup shows first clip only; whole copies diverge silently; no note when a clip is added after a whole-video effect.
+
 ## State (1.6.0)
 - Workspace: root `videolore` (lib+editor) + `player/` = `videolore-player` (lib + thin main). 1.6.0 implemented: REQ-133..143 + REQ-069/075 reworded. Coverage 95.5% lines (workspace, VIDEOLORE_REQUIRE_FFMPEG=1), feature 143/143. Plan: architecture-plan-1.6.0.md (ADR-105..119, 14 steps all done).
 

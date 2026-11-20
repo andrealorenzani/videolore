@@ -20,7 +20,8 @@ use eframe::egui::{
 pub struct BoxResize {
     pub line: LineId,
     pub ids: Vec<LineId>,
-    pub corner: Corner,
+    /// What was grabbed: a corner or (box partly outside the picture) a visible side.
+    pub grip: Hit,
     pub rect: Rect,
     pub size: u16,
     pub frame: (u32, u32),
@@ -49,9 +50,15 @@ const HANDLE_SIDE: f32 = 7.0;
 
 /// What is under a frame point: with boxes shown the corner handles first, else only the
 /// text (moving by dragging the text stays possible without boxes).
-pub fn hit(show_boxes: bool, items: &[BoxItem], p: Pos2, tol: f32) -> Option<(BoxItem, Hit)> {
+pub fn hit(
+    show_boxes: bool,
+    items: &[BoxItem],
+    p: Pos2,
+    tol: f32,
+    frame: (u32, u32),
+) -> Option<(BoxItem, Hit)> {
     if show_boxes {
-        return boxes::hit_test(items, p, tol);
+        return boxes::hit_test(items, p, tol, frame);
     }
     items
         .iter()
@@ -169,11 +176,13 @@ pub fn interact(
                 Stroke::new(if selected { 2.0 } else { 1.0 }, color),
                 StrokeKind::Outside,
             );
-            let handles: Vec<Rect> = if b.width_only {
-                vec![boxes::edge_handle_rect(s, HANDLE_SIDE)]
-            } else {
-                boxes::handle_rects(s, HANDLE_SIDE).to_vec()
-            };
+            // the handles sit on the visible part of the box (REQ-145, REQ-146)
+            let handles = boxes::handle_points(b.rect, frame, b.width_only)
+                .into_iter()
+                .map(|at| {
+                    let at = placement::to_screen(Rect::from_min_max(at, at), picture, frame);
+                    Rect::from_center_size(at.min, vec2(HANDLE_SIDE, HANDLE_SIDE))
+                });
             for h in handles {
                 ui.painter().rect_filled(h, 1.0, Color32::WHITE);
                 ui.painter().rect_stroke(
@@ -201,7 +210,7 @@ pub fn interact(
         || cache.text_box_drag.is_some()
         || cache.camera_drag;
     if !dragging && let Some(p) = resp.hover_pos() {
-        match hit(show, &items, to_frame(p), tol) {
+        match hit(show, &items, to_frame(p), tol, frame) {
             Some((_, h)) => ctx.set_cursor_icon(boxes::cursor(h, false)),
             None if sphere => ctx.set_cursor_icon(CursorIcon::Grab),
             None => {}
@@ -213,7 +222,7 @@ pub fn interact(
     if resp.clicked()
         && let Some(p) = resp.interact_pointer_pos()
     {
-        match hit(show, &items, to_frame(p), tol) {
+        match hit(show, &items, to_frame(p), tol, frame) {
             Some((b, _)) => {
                 let toggle = ui.input(|i| i.modifiers.command || i.modifiers.shift);
                 cmds.push(match (b.id, toggle) {
@@ -238,7 +247,7 @@ pub fn interact(
         cache.camera_drag = false;
         if let Some(o) = origin {
             let f = to_frame(o);
-            match hit(show, &items, f, tol) {
+            match hit(show, &items, f, tol, frame) {
                 Some((b, h)) => match b.id {
                     ObjectId::Text(id) => {
                         cache.text_box_drag = Some(TextBoxDrag {
@@ -265,11 +274,11 @@ pub fn interact(
                     }
                     ObjectId::Line(line) => match h {
                         Hit::Edge => {}
-                        Hit::Corner(corner) => {
+                        Hit::Corner(_) | Hit::Side(_) => {
                             cache.box_resize = Some(BoxResize {
                                 line,
                                 ids: app.drag_group(line),
-                                corner,
+                                grip: h,
                                 rect: b.rect,
                                 size: b.size,
                                 frame,
@@ -374,13 +383,12 @@ fn resize_drag(
         }
         return;
     };
-    let out = boxes::resize(
-        d.rect,
-        d.size,
-        d.corner,
-        placement::to_frame(p, picture, frame),
-        frame,
-    );
+    let at = placement::to_frame(p, picture, frame);
+    let out = match d.grip {
+        Hit::Side(side) => boxes::resize_side(d.rect, d.size, side, at, frame),
+        Hit::Corner(corner) => boxes::resize(d.rect, d.size, corner, at, frame),
+        Hit::Edge | Hit::Body => boxes::resize(d.rect, d.size, Corner::BottomRight, at, frame),
+    };
     let s = placement::to_screen(out.rect, picture, frame);
     ui.painter().rect_stroke(
         s,
@@ -388,8 +396,7 @@ fn resize_drag(
         Stroke::new(2.0, Color32::YELLOW),
         StrokeKind::Outside,
     );
-    ui.ctx()
-        .set_cursor_icon(boxes::cursor(Hit::Corner(d.corner), true));
+    ui.ctx().set_cursor_icon(boxes::cursor(d.grip, true));
     let drag = ResizeDrag {
         ids: d.ids.clone(),
         line: d.line,
@@ -575,7 +582,14 @@ fn draw_frame_handles(ui: &Ui, app: &AppState, picture: Rect, frame: (u32, u32))
             Stroke::new(1.5, Color32::LIGHT_BLUE),
             StrokeKind::Outside,
         );
-        for h in boxes::handle_rects(s, HANDLE_SIDE) {
+        let rect = frame_handles::to_rect(fr, frame);
+        let squares = boxes::handle_points(rect, frame, false)
+            .into_iter()
+            .map(|at| {
+                let at = placement::to_screen(Rect::from_min_max(at, at), picture, frame);
+                Rect::from_center_size(at.min, vec2(HANDLE_SIDE, HANDLE_SIDE))
+            });
+        for h in squares {
             painter.rect_filled(h, 0.0, Color32::LIGHT_BLUE);
             painter.rect_stroke(
                 h,
@@ -602,9 +616,9 @@ fn grab_at(app: &AppState, f: Pos2, tol: f32, frame: (u32, u32)) -> Option<Grab>
     let scale_t = app.frame_target_at_playhead(FrameFx::Scale);
     let move_t = app.frame_target_at_playhead(FrameFx::Move);
     let rect = frame_handles::to_rect(fr, frame);
-    let hit = frame_handles::hit(rect, scale_t.is_some(), move_t.is_some(), f, tol)?;
+    let hit = frame_handles::hit(rect, frame, scale_t.is_some(), move_t.is_some(), f, tol)?;
     let target = match hit {
-        frame_handles::Hit::Corner(_) => scale_t?,
+        frame_handles::Hit::Corner(_) | frame_handles::Hit::Edge(_) => scale_t?,
         frame_handles::Hit::Target => move_t?,
     };
     Some(Grab {
@@ -644,6 +658,10 @@ fn frame_drag(
             let s = frame_handles::scale_to(&g, c, p);
             (FrameValue::Scale(s), frame_handles::scaled_rect(&g, s))
         }
+        frame_handles::Hit::Edge(side) => {
+            let s = frame_handles::scale_to_edge(&g, side, p);
+            (FrameValue::Scale(s), frame_handles::scaled_rect(&g, s))
+        }
         frame_handles::Hit::Target => {
             let m = frame_handles::move_to(&g, p);
             let (fx, fy) = m.fraction();
@@ -663,6 +681,7 @@ fn frame_drag(
     );
     ui.ctx().set_cursor_icon(match g.hit {
         frame_handles::Hit::Corner(c) => boxes::cursor(Hit::Corner(c), true),
+        frame_handles::Hit::Edge(s) => boxes::side_cursor(s),
         frame_handles::Hit::Target => CursorIcon::Grabbing,
     });
     let drag = FrameDrag {

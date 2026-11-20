@@ -44,6 +44,17 @@ pub struct Clip {
     /// Background noise of the clip's own sound is reduced (1.4.0, REQ-114; absent = off).
     #[serde(default)]
     pub clean_audio: bool,
+    /// A fade in from black at this clip's start, used when the clip is the first one
+    /// (1.6.1, REQ-083: it belongs to the clip; absent = none).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fade_in: bool,
+    /// A fade out to black at this clip's end, used when the clip is the last one.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fade_out: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Clip {
@@ -57,6 +68,8 @@ impl Clip {
             volume: FULL_VOLUME,
             muted: false,
             clean_audio: false,
+            fade_in: false,
+            fade_out: false,
         }
     }
 
@@ -123,7 +136,10 @@ pub const DIFFERENT_FRAMES: &str = "The clips have different frame settings";
 /// Why two clips cannot be merged: their Apply LUT files differ (1.6.0).
 pub const DIFFERENT_LUTS: &str = "The clips have different colour effects";
 
-/// What a Scale or Move is applied to (REQ-130).
+/// What a Scale, Move or Apply LUT is applied to (REQ-130). Since 1.6.1 `Whole` is not a
+/// state of its own: reading it gives the first clip's copy and a change reaches the copy of
+/// every clip (REQ-148); the time of a `Whole` key is clip time shifted by the first
+/// clip's source start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FrameTarget {
     Whole,
@@ -155,13 +171,6 @@ pub struct Timeline {
     /// Boundaries with a fade, as (left clip, right clip). Only adjacent pairs are kept.
     pub fades: BTreeSet<(ClipId, ClipId)>,
     pub next_clip_id: u64,
-    /// Fade from black at the very start of the video (1.2.0). Attached to the video's
-    /// start, not to a clip: it stays there whatever is edited later.
-    #[serde(default)]
-    pub start_fade: bool,
-    /// Fade to black at the very end of the video (1.2.0).
-    #[serde(default)]
-    pub end_fade: bool,
     /// Change aspect of the whole video (1.5.0, REQ-124); `None` = no effect.
     #[serde(
         default,
@@ -169,18 +178,9 @@ pub struct Timeline {
         skip_serializing_if = "Option::is_none"
     )]
     pub frame_aspect: Option<FrameAspect>,
-    /// Scale keyframes of the whole video, in timeline time (ADR-094).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub whole_scale: Vec<Key<Scale>>,
-    /// Move keyframes of the whole video, in timeline time.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub whole_move: Vec<Key<Pos>>,
     /// Scale and Move keyframes of the clips, sorted by clip id; empty entries are removed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clip_frames: Vec<ClipFrames>,
-    /// Apply LUT of the whole video (1.6.0, REQ-135): path of a `.cube` file.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub whole_lut: Option<String>,
     /// Apply LUT of the clips, sorted by clip id; empty entries are removed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clip_luts: Vec<ClipLut>,
@@ -233,18 +233,18 @@ impl Timeline {
     }
 
     /// Fade-in and fade-out lengths for clip `index` (zero when absent). The first clip
-    /// fades in with the start fade, the last one fades out with the end fade.
+    /// fades in when its own fade-in is set, the last one fades out when its fade-out is.
     pub fn fades_of(&self, index: usize) -> (Micros, Micros) {
         let Some(c) = self.clips.get(index) else {
             return (Micros::ZERO, Micros::ZERO);
         };
         let last = index + 1 == self.clips.len();
-        let fin = if (index > 0 && self.has_fade(index - 1)) || (index == 0 && self.start_fade) {
+        let fin = if (index > 0 && self.has_fade(index - 1)) || (index == 0 && c.fade_in) {
             c.fade_len()
         } else {
             Micros::ZERO
         };
-        let fout = if self.has_fade(index) || (last && self.end_fade) {
+        let fout = if self.has_fade(index) || (last && c.fade_out) {
             c.fade_len()
         } else {
             Micros::ZERO
@@ -302,9 +302,12 @@ impl Timeline {
             Clip {
                 id,
                 src_in: cut,
+                // the start fade stays with the left half, the end fade with the right one
+                fade_in: false,
                 ..c
             },
         );
+        self.clips[i].fade_out = false;
         self.rename_fade_left(c.id, id);
         self.prune_fades();
         // both halves keep the whole path (ADR-101)
@@ -313,7 +316,7 @@ impl Timeline {
         }
         // and the colour effect
         if let Some(p) = self.lut_of(FrameTarget::Clip(c.id)).map(str::to_string) {
-            self.put_lut(FrameTarget::Clip(id), Some(p));
+            self.put_lut(id, Some(p));
         }
         Ok(id)
     }
@@ -355,7 +358,15 @@ impl Timeline {
             }
         };
         let id = self.new_id();
-        self.clips.insert(index, Clip { id, ..*template });
+        self.clips.insert(
+            index,
+            Clip {
+                id,
+                fade_in: false,
+                fade_out: false,
+                ..*template
+            },
+        );
         self.prune_fades();
         Ok(id)
     }
@@ -405,6 +416,7 @@ impl Timeline {
         let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
         let b = self.clips.remove(i + 1);
         self.clips[i].src_out = b.src_out;
+        self.clips[i].fade_out = b.fade_out;
         self.fades.remove(&(id, b.id));
         self.rename_fade_left(b.id, id);
         self.prune_fades();
@@ -476,10 +488,10 @@ impl Timeline {
             set((id, self.clips[i + 1].id));
         }
         if i == 0 {
-            self.start_fade = on;
+            self.clips[i].fade_in = on;
         }
         if i + 1 == self.clips.len() {
-            self.end_fade = on;
+            self.clips[i].fade_out = on;
         }
         Ok(())
     }
@@ -490,80 +502,120 @@ impl Timeline {
             return false;
         };
         let left = if i == 0 {
-            self.start_fade
+            self.clips[i].fade_in
         } else {
             self.has_fade(i - 1)
         };
         let right = if i + 1 == self.clips.len() {
-            self.end_fade
+            self.clips[i].fade_out
         } else {
             self.has_fade(i)
         };
         left && right
     }
 
-    /// Fade from black at the very start and to black at the very end of the video.
+    /// The fade from black at the very start of the video: the first clip's own (REQ-083).
+    pub fn start_fade(&self) -> bool {
+        self.clips.first().is_some_and(|c| c.fade_in)
+    }
+
+    /// The fade to black at the very end of the video: the last clip's own.
+    pub fn end_fade(&self) -> bool {
+        self.clips.last().is_some_and(|c| c.fade_out)
+    }
+
+    /// Sets the fade from black of the first clip (its own fade-in).
+    pub fn set_start_fade(&mut self, on: bool) -> Result<(), EditError> {
+        self.clips
+            .first_mut()
+            .map(|c| c.fade_in = on)
+            .ok_or(EditError::EmptyTimeline)
+    }
+
+    /// Sets the fade to black of the last clip (its own fade-out).
+    pub fn set_end_fade(&mut self, on: bool) -> Result<(), EditError> {
+        self.clips
+            .last_mut()
+            .map(|c| c.fade_out = on)
+            .ok_or(EditError::EmptyTimeline)
+    }
+
+    /// Sets or removes the fade in of the first clip and the fade out of the last clip
+    /// (the whole-video Fade IN/OUT, REQ-147).
     pub fn set_edge_fades(&mut self, on: bool) -> Result<(), EditError> {
         if self.clips.is_empty() {
             return Err(EditError::EmptyTimeline);
         }
-        self.start_fade = on;
-        self.end_fade = on;
+        if let Some(c) = self.clips.first_mut() {
+            c.fade_in = on;
+        }
+        if let Some(c) = self.clips.last_mut() {
+            c.fade_out = on;
+        }
         Ok(())
     }
 
     /// True when any fade (boundary, start or end) is set.
     pub fn has_any_fade(&self) -> bool {
-        !self.fades.is_empty() || self.start_fade || self.end_fade
+        !self.fades.is_empty() || self.start_fade() || self.end_fade()
     }
 
-    /// Removes every fade (boundaries, start and end).
+    /// Removes every fade (boundaries, start and end flags of every clip).
     pub fn clear_fades(&mut self) {
         self.fades.clear();
-        self.start_fade = false;
-        self.end_fade = false;
+        for c in &mut self.clips {
+            c.fade_in = false;
+            c.fade_out = false;
+        }
     }
 
     // ---- Apply LUT (1.6.0) ----
 
-    /// The LUT file path of the whole video or of a clip.
+    /// The LUT file path of a clip; for the whole video, the first clip's (REQ-147).
     pub fn lut_of(&self, t: FrameTarget) -> Option<&str> {
-        match t {
-            FrameTarget::Whole => self.whole_lut.as_deref(),
-            FrameTarget::Clip(id) => self
-                .clip_luts
-                .iter()
-                .find(|l| l.clip == id)
-                .map(|l| l.path.as_str()),
-        }
+        let id = match t {
+            FrameTarget::Whole => self.clips.first()?.id,
+            FrameTarget::Clip(id) => id,
+        };
+        self.clip_luts
+            .iter()
+            .find(|l| l.clip == id)
+            .map(|l| l.path.as_str())
     }
 
-    /// Sets (`Some`) or removes (`None`) the LUT of a target; an unknown clip is refused.
+    /// Sets (`Some`) or removes (`None`) the LUT of a clip, or of every clip for the whole
+    /// video; an unknown clip is refused.
     pub fn set_lut(&mut self, t: FrameTarget, path: Option<String>) -> Result<(), EditError> {
-        if let FrameTarget::Clip(id) = t {
-            self.get(id).ok_or(EditError::NoSuchClip)?;
+        match t {
+            FrameTarget::Clip(id) => {
+                self.get(id).ok_or(EditError::NoSuchClip)?;
+                self.put_lut(id, path);
+            }
+            FrameTarget::Whole => {
+                if self.clips.is_empty() {
+                    return Err(EditError::EmptyTimeline);
+                }
+                let ids: Vec<ClipId> = self.clips.iter().map(|c| c.id).collect();
+                for id in ids {
+                    self.put_lut(id, path.clone());
+                }
+            }
         }
-        self.put_lut(t, path);
         Ok(())
     }
 
-    fn put_lut(&mut self, t: FrameTarget, path: Option<String>) {
+    fn put_lut(&mut self, id: ClipId, path: Option<String>) {
         let path = path.filter(|p| !p.is_empty());
-        match t {
-            FrameTarget::Whole => self.whole_lut = path,
-            FrameTarget::Clip(id) => {
-                self.clip_luts.retain(|l| l.clip != id);
-                if let Some(path) = path {
-                    self.clip_luts.push(ClipLut { clip: id, path });
-                    self.clip_luts.sort_by_key(|l| l.clip);
-                }
-            }
+        self.clip_luts.retain(|l| l.clip != id);
+        if let Some(path) = path {
+            self.clip_luts.push(ClipLut { clip: id, path });
+            self.clip_luts.sort_by_key(|l| l.clip);
         }
     }
 
     /// True when any Apply LUT exists (the export is then a re-encode, REQ-136).
     pub fn any_lut(&self) -> bool {
-        self.whole_lut.is_some() || !self.clip_luts.is_empty()
+        !self.clip_luts.is_empty()
     }
 
     // ---- Change aspect, Scale and Move (1.5.0) ----
@@ -590,16 +642,27 @@ impl Timeline {
         }
     }
 
+    /// The clip whose keys the whole-video popup shows (REQ-148): the first clip that has
+    /// a Scale or a Move.
+    fn whole_ref(&self) -> Option<&Clip> {
+        self.clips.iter().find(|c| {
+            let (s, m) = self.keys_of(c.id);
+            !s.is_empty() || !m.is_empty()
+        })
+    }
+
+    /// The Scale keys of a clip; for the whole video, those of the first clip that has
+    /// keys (source time of that clip).
     pub fn scale_keys(&self, t: FrameTarget) -> &[Key<Scale>] {
         match t {
-            FrameTarget::Whole => &self.whole_scale,
+            FrameTarget::Whole => self.whole_ref().map_or(&[], |c| self.keys_of(c.id).0),
             FrameTarget::Clip(id) => self.keys_of(id).0,
         }
     }
 
     pub fn move_keys(&self, t: FrameTarget) -> &[Key<Pos>] {
         match t {
-            FrameTarget::Whole => &self.whole_move,
+            FrameTarget::Whole => self.whole_ref().map_or(&[], |c| self.keys_of(c.id).1),
             FrameTarget::Clip(id) => self.keys_of(id).1,
         }
     }
@@ -612,6 +675,38 @@ impl Timeline {
         }
     }
 
+    /// Runs `f` on the keys of every clip that has some of this kind, at the same clip
+    /// time as the reference clip's `at` (REQ-148). A clip that ends before that time is
+    /// left alone. The result is the one of the first clip handled; the other clips' keys
+    /// that cannot take the change (a key at that time, the last key) stay as they are.
+    fn whole_edit<T: Copy>(
+        &mut self,
+        pick: fn(&mut ClipFrames) -> &mut Vec<Key<T>>,
+        at: Micros,
+        mut f: impl FnMut(&mut Vec<Key<T>>, Micros) -> Result<(), keyframes::KeyError>,
+    ) -> Result<(), EditError> {
+        self.check_target(FrameTarget::Whole)?;
+        let ref_in = self.whole_ref().map_or(Micros::ZERO, |c| c.src_in);
+        let ct = (at - ref_in).max(Micros::ZERO);
+        let mut first: Option<Result<(), keyframes::KeyError>> = None;
+        for i in 0..self.clips.len() {
+            let c = self.clips[i];
+            let Some(mut e) = self.frames_of(c.id).cloned() else {
+                continue;
+            };
+            let at_i = c.src_in + ct;
+            if pick(&mut e).is_empty() || at_i > c.src_out {
+                continue;
+            }
+            let r = f(pick(&mut e), at_i);
+            first.get_or_insert(r);
+            if r.is_ok() {
+                self.put_frames(e);
+            }
+        }
+        first.unwrap_or(Ok(())).map_err(EditError::Key)
+    }
+
     /// Runs `f` on the scale keys of `t` (an entry of a clip is made when missing and
     /// dropped again when it ends up empty).
     fn with_scale<R>(
@@ -620,19 +715,17 @@ impl Timeline {
         f: impl FnOnce(&mut Vec<Key<Scale>>) -> R,
     ) -> Result<R, EditError> {
         self.check_target(t)?;
-        Ok(match t {
-            FrameTarget::Whole => f(&mut self.whole_scale),
-            FrameTarget::Clip(id) => {
-                let mut e = self.frames_of(id).cloned().unwrap_or(ClipFrames {
-                    clip: id,
-                    scale: vec![],
-                    moved: vec![],
-                });
-                let r = f(&mut e.scale);
-                self.put_frames(e);
-                r
-            }
-        })
+        let FrameTarget::Clip(id) = t else {
+            return Err(EditError::NoSuchClip);
+        };
+        let mut e = self.frames_of(id).cloned().unwrap_or(ClipFrames {
+            clip: id,
+            scale: vec![],
+            moved: vec![],
+        });
+        let r = f(&mut e.scale);
+        self.put_frames(e);
+        Ok(r)
     }
 
     fn with_move<R>(
@@ -641,33 +734,41 @@ impl Timeline {
         f: impl FnOnce(&mut Vec<Key<Pos>>) -> R,
     ) -> Result<R, EditError> {
         self.check_target(t)?;
-        Ok(match t {
-            FrameTarget::Whole => f(&mut self.whole_move),
-            FrameTarget::Clip(id) => {
-                let mut e = self.frames_of(id).cloned().unwrap_or(ClipFrames {
-                    clip: id,
-                    scale: vec![],
-                    moved: vec![],
-                });
-                let r = f(&mut e.moved);
-                self.put_frames(e);
-                r
-            }
-        })
+        let FrameTarget::Clip(id) = t else {
+            return Err(EditError::NoSuchClip);
+        };
+        let mut e = self.frames_of(id).cloned().unwrap_or(ClipFrames {
+            clip: id,
+            scale: vec![],
+            moved: vec![],
+        });
+        let r = f(&mut e.moved);
+        self.put_frames(e);
+        Ok(r)
     }
 
-    /// Where a new Scale or Move of `t` starts: the clip's first source instant, or 0.
+    /// Where a new Scale or Move of a clip starts: its first source instant.
     pub fn frame_start(&self, t: FrameTarget) -> Micros {
         match t {
-            FrameTarget::Whole => Micros::ZERO,
+            FrameTarget::Whole => self.whole_ref().map_or(Micros::ZERO, |c| c.src_in),
             FrameTarget::Clip(id) => self.get(id).map_or(Micros::ZERO, |c| c.src_in),
         }
     }
 
-    /// The time of a key of `t` at timeline position `at` (the clip's source time).
+    /// The time of a key of `t` at timeline position `at`: the clip's source time; for the
+    /// whole video, the same clip time in the reference clip (REQ-148), so `at` is the clip
+    /// time of the clip under it.
     pub fn key_time(&self, t: FrameTarget, at: Micros) -> Option<Micros> {
         match t {
-            FrameTarget::Whole => Some(at),
+            FrameTarget::Whole => {
+                let (i, start) = self.locate(at).or_else(|| {
+                    let last = self.clips.len().checked_sub(1)?;
+                    Some((last, self.start_of(last)))
+                })?;
+                let c = &self.clips[i];
+                let local = (at - start).clamp(Micros::ZERO, c.len());
+                Some(self.frame_start(FrameTarget::Whole) + local)
+            }
             FrameTarget::Clip(id) => {
                 let i = self.index_of(id)?;
                 let c = &self.clips[i];
@@ -676,51 +777,109 @@ impl Timeline {
         }
     }
 
-    /// Adds Scale (100 %, one keyframe at the start) to `t`; false when it is there.
+    /// Adds Scale (100 %, one keyframe at the start) to a clip, or to every clip that has
+    /// none for the whole video (one copy per clip, REQ-148); false when nothing was added.
     pub fn add_scale(&mut self, t: FrameTarget) -> Result<bool, EditError> {
-        let at = self.frame_start(t);
-        self.with_scale(t, |k| {
-            if !k.is_empty() {
-                return false;
-            }
-            k.push(Key {
-                t: at,
-                v: Scale::NORMAL,
-            });
-            true
-        })
+        self.add_normal(
+            t,
+            |c| c.scale.is_empty(),
+            |c, at| {
+                c.scale.push(Key {
+                    t: at,
+                    v: Scale::NORMAL,
+                })
+            },
+        )
     }
 
-    /// Adds Move (centred, one keyframe at the start) to `t`; false when it is there.
+    /// Adds Move (centred, one keyframe at the start); false when it is there.
     pub fn add_move(&mut self, t: FrameTarget) -> Result<bool, EditError> {
-        let at = self.frame_start(t);
-        self.with_move(t, |k| {
-            if !k.is_empty() {
-                return false;
-            }
-            k.push(Key {
-                t: at,
-                v: frame::CENTRE,
+        self.add_normal(
+            t,
+            |c| c.moved.is_empty(),
+            |c, at| {
+                c.moved.push(Key {
+                    t: at,
+                    v: frame::CENTRE,
+                })
+            },
+        )
+    }
+
+    fn add_normal(
+        &mut self,
+        t: FrameTarget,
+        lacks: impl Fn(&ClipFrames) -> bool,
+        push: impl Fn(&mut ClipFrames, Micros),
+    ) -> Result<bool, EditError> {
+        self.check_target(t)?;
+        let ids: Vec<(ClipId, Micros)> = match t {
+            FrameTarget::Whole => self.clips.iter().map(|c| (c.id, c.src_in)).collect(),
+            FrameTarget::Clip(id) => vec![(id, self.frame_start(t))],
+        };
+        let mut any = false;
+        for (id, at) in ids {
+            let mut e = self.frames_of(id).cloned().unwrap_or(ClipFrames {
+                clip: id,
+                scale: vec![],
+                moved: vec![],
             });
-            true
-        })
+            if lacks(&e) {
+                push(&mut e, at);
+                self.put_frames(e);
+                any = true;
+            }
+        }
+        Ok(any)
     }
 
     pub fn remove_scale(&mut self, t: FrameTarget) -> Result<(), EditError> {
-        if self.scale_keys(t).is_empty() {
+        if self.scale_keys(t).is_empty() && !self.any_keys(t, true) {
             return Err(EditError::NoSuchEffect);
         }
-        self.with_scale(t, |k| k.clear())
+        self.remove_kind(t, true)
     }
 
     pub fn remove_move(&mut self, t: FrameTarget) -> Result<(), EditError> {
-        if self.move_keys(t).is_empty() {
+        if self.move_keys(t).is_empty() && !self.any_keys(t, false) {
             return Err(EditError::NoSuchEffect);
         }
-        self.with_move(t, |k| k.clear())
+        self.remove_kind(t, false)
     }
 
-    /// Sets the Scale key at `at` (adds it when there is none); limits are applied.
+    /// True when some clip of the target has keys of this kind.
+    fn any_keys(&self, t: FrameTarget, scale: bool) -> bool {
+        let has = |id: ClipId| {
+            let (s, m) = self.keys_of(id);
+            if scale { !s.is_empty() } else { !m.is_empty() }
+        };
+        match t {
+            FrameTarget::Whole => self.clips.iter().any(|c| has(c.id)),
+            FrameTarget::Clip(id) => has(id),
+        }
+    }
+
+    fn remove_kind(&mut self, t: FrameTarget, scale: bool) -> Result<(), EditError> {
+        self.check_target(t)?;
+        let ids: Vec<ClipId> = match t {
+            FrameTarget::Whole => self.clips.iter().map(|c| c.id).collect(),
+            FrameTarget::Clip(id) => vec![id],
+        };
+        for id in ids {
+            if let Some(mut e) = self.frames_of(id).cloned() {
+                if scale {
+                    e.scale.clear();
+                } else {
+                    e.moved.clear();
+                }
+                self.put_frames(e);
+            }
+        }
+        Ok(())
+    }
+
+    /// Sets the Scale key at `at` (adds it when there is none); limits are applied. For the
+    /// whole video the key is set at the same clip time in every copy.
     pub fn set_scale_key(
         &mut self,
         t: FrameTarget,
@@ -731,8 +890,14 @@ impl Timeline {
         if self.scale_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
-        self.with_scale(t, |k| keyframes::set(k, at, v))?
-            .map_err(EditError::Key)
+        match t {
+            FrameTarget::Whole => {
+                self.whole_edit(|e| &mut e.scale, at, |k, t| keyframes::set(k, t, v))
+            }
+            FrameTarget::Clip(_) => self
+                .with_scale(t, |k| keyframes::set(k, at, v))?
+                .map_err(EditError::Key),
+        }
     }
 
     pub fn set_move_key(&mut self, t: FrameTarget, at: Micros, v: Pos) -> Result<(), EditError> {
@@ -743,8 +908,14 @@ impl Timeline {
         if self.move_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
-        self.with_move(t, |k| keyframes::set(k, at, v))?
-            .map_err(EditError::Key)
+        match t {
+            FrameTarget::Whole => {
+                self.whole_edit(|e| &mut e.moved, at, |k, t| keyframes::set(k, t, v))
+            }
+            FrameTarget::Clip(_) => self
+                .with_move(t, |k| keyframes::set(k, at, v))?
+                .map_err(EditError::Key),
+        }
     }
 
     /// Adds a Scale key (never replaces one).
@@ -758,27 +929,47 @@ impl Timeline {
         if self.scale_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
-        self.with_scale(t, |k| keyframes::add(k, at, v))?
-            .map_err(EditError::Key)
+        match t {
+            FrameTarget::Whole => {
+                self.whole_edit(|e| &mut e.scale, at, |k, t| keyframes::add(k, t, v))
+            }
+            FrameTarget::Clip(_) => self
+                .with_scale(t, |k| keyframes::add(k, at, v))?
+                .map_err(EditError::Key),
+        }
     }
 
     pub fn add_move_key(&mut self, t: FrameTarget, at: Micros, v: Pos) -> Result<(), EditError> {
         if self.move_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
-        self.with_move(t, |k| keyframes::add(k, at, v))?
-            .map_err(EditError::Key)
+        match t {
+            FrameTarget::Whole => {
+                self.whole_edit(|e| &mut e.moved, at, |k, t| keyframes::add(k, t, v))
+            }
+            FrameTarget::Clip(_) => self
+                .with_move(t, |k| keyframes::add(k, at, v))?
+                .map_err(EditError::Key),
+        }
     }
 
     /// Removes the Scale key at `at`; the last key stays.
     pub fn remove_scale_key(&mut self, t: FrameTarget, at: Micros) -> Result<(), EditError> {
-        self.with_scale(t, |k| keyframes::remove(k, at))?
-            .map_err(EditError::Key)
+        match t {
+            FrameTarget::Whole => self.whole_edit(|e| &mut e.scale, at, keyframes::remove),
+            FrameTarget::Clip(_) => self
+                .with_scale(t, |k| keyframes::remove(k, at))?
+                .map_err(EditError::Key),
+        }
     }
 
     pub fn remove_move_key(&mut self, t: FrameTarget, at: Micros) -> Result<(), EditError> {
-        self.with_move(t, |k| keyframes::remove(k, at))?
-            .map_err(EditError::Key)
+        match t {
+            FrameTarget::Whole => self.whole_edit(|e| &mut e.moved, at, keyframes::remove),
+            FrameTarget::Clip(_) => self
+                .with_move(t, |k| keyframes::remove(k, at))?
+                .map_err(EditError::Key),
+        }
     }
 
     /// Sets or removes Change aspect.
@@ -794,34 +985,19 @@ impl Timeline {
     /// is always re-encoded).
     pub fn has_frame_effect(&self) -> bool {
         self.frame_aspect.is_some()
-            || !self.whole_scale.is_empty()
-            || !self.whole_move.is_empty()
             || self.clips.iter().any(|c| {
                 let (s, m) = self.keys_of(c.id);
                 !s.is_empty() || !m.is_empty()
             })
     }
 
-    /// The Scale and Move keys that act on the clip at `index`: the whole video's, then
-    /// the clip's (REQ-131).
+    /// The Scale and Move keys that act on the clip at `index`: its own copy only, since a
+    /// clip has at most one Scale and one Move (REQ-130, REQ-131).
     pub fn frame_stack(&self, index: usize) -> Stack {
         let mut st = Stack::default();
         let Some(c) = self.clips.get(index) else {
             return st;
         };
-        let start = self.start_of(index);
-        if !self.whole_scale.is_empty() {
-            st.scale.push(Track {
-                keys: self.whole_scale.clone(),
-                offset: start,
-            });
-        }
-        if !self.whole_move.is_empty() {
-            st.moved.push(Track {
-                keys: self.whole_move.clone(),
-                offset: start,
-            });
-        }
         let (s, m) = self.keys_of(c.id);
         if !s.is_empty() {
             st.scale.push(Track {
@@ -1103,7 +1279,7 @@ pub(crate) mod tests {
         let ids: Vec<ClipId> = t.clips.iter().map(|c| c.id).collect();
         t.set_clip_fades(ids[1], true).unwrap();
         assert!(t.has_fade(0) && t.has_fade(1));
-        assert!(!t.start_fade && !t.end_fade);
+        assert!(!t.start_fade() && !t.end_fade());
         assert!(t.clip_has_fades(ids[1]));
         assert!(!t.clip_has_fades(ids[0]));
         // removing it from the clip removes both edges
@@ -1111,11 +1287,11 @@ pub(crate) mod tests {
         assert!(!t.has_any_fade());
         // (b) the first clip: fade from black at the start + its boundary
         t.set_clip_fades(ids[0], true).unwrap();
-        assert!(t.start_fade && t.has_fade(0) && !t.has_fade(1) && !t.end_fade);
+        assert!(t.start_fade() && t.has_fade(0) && !t.has_fade(1) && !t.end_fade());
         assert_eq!(t.fades_of(0), (MAX_FADE, MAX_FADE));
         // the last clip: its boundary + fade to black at the end
         t.set_clip_fades(ids[2], true).unwrap();
-        assert!(t.end_fade && t.has_fade(1));
+        assert!(t.end_fade() && t.has_fade(1));
         assert_eq!(t.fades_of(2), (MAX_FADE, MAX_FADE));
         assert_eq!(
             t.set_clip_fades(ClipId(99), true),
@@ -1138,15 +1314,20 @@ pub(crate) mod tests {
         assert!(t.fades.is_empty(), "no boundary fades");
         assert_eq!(t.fades_of(0), (MAX_FADE, Micros::ZERO));
         assert_eq!(t.fades_of(2), (Micros::ZERO, MAX_FADE));
-        // cutting the first clip: the new first clip fades in from black
+        // deleting the first clip removes its start fade (REQ-083): it belongs to the clip
         let first = t.clips[0].id;
         t.remove(first).unwrap();
-        assert_eq!(t.fades_of(0).0, MAX_FADE);
-        // moving the first clip to the end: the start fade stays at the start
-        let first = t.clips[0].id;
-        t.move_to(first, 9).unwrap();
-        assert_eq!(t.fades_of(0).0, MAX_FADE);
+        assert_eq!(t.fades_of(0).0, Micros::ZERO);
         assert_eq!(t.fades_of(1), (Micros::ZERO, MAX_FADE));
+        // moving the first clip to the end: its start fade moves with it (a boundary fade
+        // is not there, so nothing shows at the start)
+        let mut u = three();
+        u.set_edge_fades(true).unwrap();
+        let first = u.clips[0].id;
+        u.move_to(first, 9).unwrap();
+        assert_eq!(u.fades_of(0).0, Micros::ZERO);
+        assert_eq!(u.fades_of(2), (Micros::ZERO, Micros::ZERO));
+        assert!(u.clips[2].fade_in && !u.start_fade());
         // a clip shorter than 1 s fades over half its length
         let mut short = Timeline::default();
         short.append(&media(1, 4, true)).unwrap();
@@ -1155,7 +1336,7 @@ pub(crate) mod tests {
         short.set_edge_fades(true).unwrap();
         assert_eq!(short.fades_of(0), (Micros(300_000), Micros(300_000)));
         t.set_edge_fades(false).unwrap();
-        assert!(!t.start_fade && !t.end_fade);
+        assert!(!t.start_fade() && !t.end_fade());
     }
 
     // covers: REQ-084, REQ-020, REQ-008
@@ -1212,8 +1393,11 @@ pub(crate) mod tests {
         t.set_lut(FrameTarget::Whole, Some("/l/w.cube".into()))
             .unwrap();
         assert!(t.any_lut());
-        assert_eq!(t.lut_of(FrameTarget::Clip(a)), Some("/l/a.cube"));
+        // the whole-video LUT is a copy on each clip and replaces the clip's own (REQ-147)
+        assert_eq!(t.lut_of(FrameTarget::Clip(a)), Some("/l/w.cube"));
         assert_eq!(t.lut_of(FrameTarget::Whole), Some("/l/w.cube"));
+        t.set_lut(FrameTarget::Clip(a), Some("/l/a.cube".into()))
+            .unwrap();
         // split: both halves have it, and can merge back
         let right = t.split(s(2), F).unwrap();
         assert_eq!(t.lut_of(FrameTarget::Clip(right)), Some("/l/a.cube"));
@@ -1224,7 +1408,7 @@ pub(crate) mod tests {
         assert_eq!(t.merge_block_reason(a), Some(DIFFERENT_LUTS));
         t.set_lut(FrameTarget::Clip(right), None).unwrap();
         assert_eq!(t.merge_block_reason(a), Some(DIFFERENT_LUTS));
-        t.set_lut(FrameTarget::Clip(a), None).unwrap();
+        t.set_lut(FrameTarget::Whole, None).unwrap();
         t.merge(a).unwrap();
         assert!(t.clip_luts.is_empty(), "empty entries are removed");
         // removing a clip drops its entry; an empty path removes
@@ -1283,7 +1467,7 @@ pub(crate) mod tests {
         assert_eq!((c.volume, c.muted), (100, false));
         let t: Timeline =
             serde_json::from_str(r#"{"clips":[],"fades":[],"next_clip_id":0}"#).unwrap();
-        assert!(!t.start_fade && !t.end_fade);
+        assert!(!t.start_fade() && !t.end_fade());
     }
 
     fn one() -> (Timeline, ClipId) {
@@ -1320,6 +1504,7 @@ pub(crate) mod tests {
         assert!(t.has_frame_effect());
         t.remove_scale(c).unwrap();
         assert_eq!(t.remove_scale(c), Err(EditError::NoSuchEffect));
+        t.remove_move(FrameTarget::Whole).unwrap();
         assert!(t.clip_frames.is_empty(), "empty entries are removed");
         assert_eq!(
             t.add_scale(FrameTarget::Clip(ClipId(99))),
@@ -1329,6 +1514,74 @@ pub(crate) mod tests {
             Timeline::default().add_move(FrameTarget::Whole),
             Err(EditError::EmptyTimeline)
         );
+    }
+
+    // covers: REQ-147, REQ-148
+    #[test]
+    fn a_whole_video_scale_is_a_copy_on_each_clip_changed_together_and_alone() {
+        let mut t = track(); // clips of 4 s and 6 s
+        let (a, b) = (t.clips[0].id, t.clips[1].id);
+        let w = FrameTarget::Whole;
+        assert!(t.add_scale(w).unwrap());
+        assert!(!t.add_scale(w).unwrap(), "no second copy");
+        assert_eq!(t.scale_keys(FrameTarget::Clip(a)).len(), 1);
+        assert_eq!(t.scale_keys(FrameTarget::Clip(b)).len(), 1);
+        // a key at 5 s of clip time reaches only the clip that is long enough
+        t.add_scale_key(w, s(5), sc(2000)).unwrap();
+        assert_eq!(t.scale_keys(FrameTarget::Clip(a)).len(), 1);
+        assert_eq!(t.scale_keys(FrameTarget::Clip(b)).len(), 2);
+        // a key at 2 s: both copies; a value change sets it in each
+        t.add_scale_key(w, s(2), sc(1500)).unwrap();
+        t.set_scale_key(w, s(2), sc(1800)).unwrap();
+        for id in [a, b] {
+            let k = t.scale_keys(FrameTarget::Clip(id));
+            assert!(k.iter().any(|x| x.t == s(2) && x.v.permille == 1800));
+        }
+        // a clip's own copy changes that clip only; the popup shows the first clip's keys
+        t.set_scale_key(FrameTarget::Clip(b), s(2), sc(700))
+            .unwrap();
+        assert_eq!(t.scale_keys(FrameTarget::Clip(a))[1].v.permille, 1800);
+        assert_eq!(t.scale_keys(w), t.scale_keys(FrameTarget::Clip(a)));
+        // removing the key at 2 s removes it from each copy; the last key stays
+        t.remove_scale_key(w, s(2)).unwrap();
+        assert_eq!(t.scale_keys(FrameTarget::Clip(a)).len(), 1);
+        assert_eq!(t.scale_keys(FrameTarget::Clip(b)).len(), 2);
+        // deleting a clip takes its copy; a clip added later has none
+        t.remove(a).unwrap();
+        assert!(t.frames_of(a).is_none());
+        let c = t.append(&media(9, 3, true)).unwrap();
+        assert!(t.frames_of(c).is_none());
+        // Remove effect on the whole video: every clip's copy
+        t.remove_scale(w).unwrap();
+        assert!(t.clip_frames.is_empty());
+    }
+
+    // covers: REQ-147
+    #[test]
+    fn a_whole_video_move_and_lut_are_one_copy_per_clip_and_fades_stay_with_clips() {
+        let mut t = track();
+        let (a, b) = (t.clips[0].id, t.clips[1].id);
+        let w = FrameTarget::Whole;
+        // a clip that has a Move keeps its own and gets no second copy
+        t.add_move(FrameTarget::Clip(b)).unwrap();
+        t.set_move_key(FrameTarget::Clip(b), t.clips[1].src_in, Pos { x: 1, y: 2 })
+            .unwrap();
+        assert!(t.add_move(w).unwrap());
+        assert_eq!(t.move_keys(FrameTarget::Clip(b))[0].v, Pos { x: 1, y: 2 });
+        assert_eq!(t.move_keys(FrameTarget::Clip(a))[0].v, frame::CENTRE);
+        // the Apply LUT: one copy per clip, later clips have none
+        t.set_lut(w, Some("/l/a.cube".into())).unwrap();
+        let c = t.append(&media(9, 3, true)).unwrap();
+        assert_eq!(t.lut_of(FrameTarget::Clip(a)), Some("/l/a.cube"));
+        assert_eq!(t.lut_of(FrameTarget::Clip(c)), None);
+        // the whole-video fade sits on the first and the last clip
+        t.set_edge_fades(true).unwrap();
+        assert!(t.clips[0].fade_in && t.clips[2].fade_out && !t.clips[1].fade_in);
+        assert!(!t.clips[0].fade_out && !t.clips[2].fade_in);
+        // a split keeps the start fade on the left half and the end fade on the right one
+        let right = t.split(s(1), F).unwrap();
+        assert!(t.get(a).unwrap().fade_in && !t.get(a).unwrap().fade_out);
+        assert!(!t.get(right).unwrap().fade_in);
     }
 
     // covers: REQ-129

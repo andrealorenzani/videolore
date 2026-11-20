@@ -126,9 +126,8 @@ pub struct Segment {
     /// Change aspect, Scale and Move that act on this clip (1.5.0); `None`: the clip is
     /// drawn as before (fitted to the output picture with black bars).
     pub frame: Option<SegFrame>,
-    /// Apply LUT of the whole video and of this clip (1.6.0, REQ-135): the whole video's is
-    /// applied first. A LUT that cannot be read is ignored in a preview and stops an export.
-    pub lut_whole: Option<std::sync::Arc<crate::lut::Lut>>,
+    /// Apply LUT of this clip (1.6.0, REQ-135; a whole-video LUT is one copy per clip since
+    /// 1.6.1). A LUT that cannot be read is ignored in a preview and stops an export.
     pub lut_clip: Option<std::sync::Arc<crate::lut::Lut>>,
 }
 
@@ -188,10 +187,8 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 return Err(RenderError::SphereTooLarge);
             }
             let (fade_in, fade_out) = tl.fades_of(i);
-            let lut_whole = lut_for(tl, crate::timeline::FrameTarget::Whole, src)?;
             let lut_clip = lut_for(tl, crate::timeline::FrameTarget::Clip(c.id), src)?;
             out.push(Segment {
-                lut_whole,
                 lut_clip,
                 media: m.id,
                 path: src.path_of(m),
@@ -203,7 +200,7 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 fade_out,
                 gain: crate::music::clip_gain(c),
                 clean: c.clean_audio,
-                to_black: tl.end_fade && i + 1 == tl.clips.len() && !tl.has_fade(i),
+                to_black: tl.end_fade() && i + 1 == tl.clips.len() && !tl.has_fade(i),
                 sphere: m
                     .format
                     .is_360()
@@ -577,9 +574,6 @@ fn lut_chain(s: &Segment, i: usize, pix_fmt: &str, files: &mut Vec<(String, Stri
             files.push((name, l.to_cube()));
         }
     };
-    if let Some(l) = &s.lut_whole {
-        add("lut-whole.cube".to_string(), l);
-    }
     if let Some(l) = &s.lut_clip {
         add(format!("lut-clip-{i}.cube"), l);
     }
@@ -1601,9 +1595,9 @@ pub struct FrameKey {
     /// Change aspect and the picture's scale and place at this position, in millionths
     /// (1.5.0); `None` with no frame effect.
     pub placement: Option<FramePlacement>,
-    /// Fingerprints of the Apply LUT tables of the whole video and of the clip (1.6.0): a
-    /// changed file re-renders the picture once.
-    pub luts: (Option<String>, Option<String>),
+    /// Fingerprint of the clip's Apply LUT table (1.6.0): a changed file re-renders the
+    /// picture once.
+    pub luts: Option<String>,
 }
 
 /// The frame effect state of a [`FrameKey`].
@@ -1653,10 +1647,7 @@ pub fn frame_key(
             .flatten()
             .map(|l| l.hash().to_string())
     };
-    let luts = (
-        hash(crate::timeline::FrameTarget::Whole),
-        hash(crate::timeline::FrameTarget::Clip(c.id)),
-    );
+    let luts = hash(crate::timeline::FrameTarget::Clip(c.id));
     Some(FrameKey {
         luts,
         placement,
@@ -2640,11 +2631,11 @@ pub(crate) mod tests {
             &g,
         );
         assert!(last.unwrap().fade.is_some());
-        // after cutting the first clip the new first clip fades in
+        // the start fade belongs to the first clip: cutting it removes the fade (REQ-083)
         let first_id = p.timeline.clips[0].id;
         p.timeline.remove(first_id).unwrap();
         let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
-        assert_eq!(segs[0].fade_in, Micros(500_000));
+        assert_eq!(segs[0].fade_in, Micros::ZERO);
     }
 
     fn sphere_project() -> Project {
@@ -3316,7 +3307,7 @@ pub(crate) mod tests {
     // covers: REQ-135
     // covers: REQ-136
     #[test]
-    fn the_lut_stages_follow_the_order_whole_then_clip_and_never_use_a_user_name() {
+    fn each_clip_has_one_lut_stage_and_never_uses_a_user_name() {
         use crate::timeline::FrameTarget;
         let dir = tempfile::tempdir().unwrap();
         let mut p = project(&[(2, 1280, 720, 30), (2, 1280, 720, 30)]);
@@ -3324,28 +3315,34 @@ pub(crate) mod tests {
         assert!(!plain.graph.contains("lut3d") && plain.command_files.is_empty());
         let a = lut_file(dir.path(), "my warm look; rm.cube");
         let id = p.timeline.clips[1].id;
+        // the whole-video LUT is a copy on each clip (REQ-147)
         p.timeline
             .set_lut(FrameTarget::Whole, Some(a.clone()))
             .unwrap();
-        p.timeline.set_lut(FrameTarget::Clip(id), Some(a)).unwrap();
         let g = lut_graph(&p, Source::Export);
-        // before the pad (black bars keep their colour), whole before clip, then back to yuv
+        // before the pad (black bars keep their colour), then back to yuv
         assert!(
             g.graph.contains(
-                "decrease,format=gbrp,lut3d=file=lut-whole.cube:interp=tetrahedral,\
-             lut3d=file=lut-clip-1.cube:interp=tetrahedral,format=yuv420p,pad="
+                "decrease,format=gbrp,lut3d=file=lut-clip-0.cube:interp=tetrahedral,\
+             format=yuv420p,pad="
             ),
             "{}",
             g.graph
         );
         assert!(g.graph.contains("[0:v:0]") && !g.graph.contains("warm"));
-        // the first segment has the whole LUT only; the whole cube is written once
-        assert_eq!(g.graph.matches("lut-whole.cube").count(), 2);
+        assert_eq!(g.graph.matches("lut-clip-0.cube").count(), 1);
         assert_eq!(g.graph.matches("lut-clip-1.cube").count(), 1);
         let names: Vec<&str> = g.command_files.iter().map(|f| f.0.as_str()).collect();
-        assert_eq!(names, ["lut-whole.cube", "lut-clip-1.cube"]);
+        assert_eq!(names, ["lut-clip-0.cube", "lut-clip-1.cube"]);
         assert!(g.command_files[0].1.starts_with("LUT_3D_SIZE 2\n"));
+        // one clip alone
+        p.timeline.set_lut(FrameTarget::Whole, None).unwrap();
+        p.timeline.set_lut(FrameTarget::Clip(id), Some(a)).unwrap();
+        let g = lut_graph(&p, Source::Export);
+        assert!(!g.graph.contains("lut-clip-0.cube") && g.graph.contains("lut-clip-1.cube"));
         // a frame effect: the LUT acts on the fitted picture before the overlay
+        let b = lut_file(dir.path(), "b.cube");
+        p.timeline.set_lut(FrameTarget::Whole, Some(b)).unwrap();
         p.timeline
             .set_frame_aspect(Some(tall(Fit::Width, Fill::Blur)))
             .unwrap();
@@ -3425,14 +3422,14 @@ pub(crate) mod tests {
         let g = output_geometry(&p, &enc()).unwrap();
         let key = |p: &Project| frame_key(p, s(1), Source::Export, &g).unwrap();
         let none = key(&p);
-        assert_eq!(none.luts, (None, None));
+        assert_eq!(none.luts, None);
         let path = lut_file(dir.path(), "k.cube");
         p.timeline
             .set_lut(FrameTarget::Whole, Some(path.clone()))
             .unwrap();
         let with = key(&p);
         assert_ne!(none, with);
-        assert!(with.luts.0.is_some() && with.luts.1.is_none());
+        assert!(with.luts.is_some());
         assert_eq!(with, key(&p));
         std::fs::write(&path, crate::lut::tests::identity(3)).unwrap();
         assert_ne!(with, key(&p));

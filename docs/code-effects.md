@@ -27,14 +27,31 @@ the timeline.
 
 ## Fades at the video's edges
 
-`Timeline.start_fade` / `end_fade` belong to the **video**, not to a clip: after cutting or
-moving the first clip the video still starts from black. `Timeline::fades_of(i)` reports them as
-the fade-in of the first clip and the fade-out of the last one, so the renderer, the preview's
-frame key and the timeline drawing need no special case. One exception in `render`: the picture
-of the end fade starts two frames early (`Segment::to_black`), so that the very last frame is
-black even when a source starts a few milliseconds late; the sound fade is unchanged.
-Each edge fade has its own marker and popup (`Instance::FadeStart` / `FadeEnd`,
-`Command::SetEdgeFade`); "Remove all fades" removes them too.
+Since 1.6.1 the fade in from black and the fade out to black belong to **clips**: `Clip.fade_in`
+(used when the clip is the first one) and `Clip.fade_out` (used when it is the last one), both
+absent from the file when false. Cutting or moving the first clip takes its start fade with it.
+`Timeline::fades_of(i)` reports them as the fade-in of the first clip and the fade-out of the
+last one, so the renderer, the preview's frame key and the timeline drawing need no special
+case; `start_fade()` / `end_fade()` read the first and last clip's flags and `set_edge_fades`
+is the whole-video Fade. A split keeps the start fade on the left half and the end fade on the
+right one. One exception in `render`: the picture of the end fade starts two frames early
+(`Segment::to_black`), so that the very last frame is black even when a source starts a few
+milliseconds late; the sound fade is unchanged. Each edge fade has its own marker and popup
+(`Instance::FadeStart` / `FadeEnd`, `Command::SetEdgeFade`); "Remove all fades" removes them too.
+
+## Whole-video effects are copies on the clips (1.6.1, REQ-147, REQ-148)
+
+There is no whole-video state any more, except Change aspect. A double-click applies an effect
+to every clip at that moment, with the same code as for one clip: Volume sets the level of each
+clip (`Command::SetMix` writes the clips; the project keeps only the music level), Apply LUT
+puts the path in every `clip_luts` entry (replacing a clip's own), Scale and Move add one
+copy per clip with a key at 0 (a clip that has one is skipped, so there is no second copy),
+the Fade sets the flags above. A clip added later has nothing; deleting a clip drops its entries.
+`FrameTarget::Whole` stays in the API as a way to say "all clips": reading gives the first clip's
+copy and a change reaches all copies (`Timeline::whole_edit`: the key time is clip time shifted
+by the first clip's source start, and a copy shorter than that time is skipped). The picture
+handles edit the clip under the playhead (`frame_target_at_playhead`); the whole-video popup
+shows the first clip's keys on a timeline as long as the longest clip (`key_range`).
 
 ## Clip volume
 
@@ -134,9 +151,24 @@ widest label, and only the visible ones are made.
 ## Project format 3
 
 Written always since 1.2.0. New, all optional when reading: `volume` and `muted` of a clip,
-`start_fade` / `end_fade` of the timeline, `position` of a subtitle line, `subtitle_tracks` of a
+`start_fade` / `end_fade` of the timeline (since 1.6.1 `fade_in` / `fade_out` of a clip), `position` of a subtitle line, `subtitle_tracks` of a
 media format (absent = not checked yet). Files of 1.1 and earlier load with the defaults and
-export exactly as before (`tests/fixtures/export-argv-1.1.0.txt`). Videolore 1.1 refuses format
+export exactly as before (`tests/fixtures/export-argv-1.1.0.txt`; since 1.6.1 the video's sound level of such a file is the level of each clip, so the volume is applied per clip: `export-argv-1.1.0-in-1.6.1.txt`). Videolore 1.1 refuses format
 3 with its "newer version" message. A clip volume above 100 or a position outside `0..=10000`
 is refused; subtitle track descriptions are made safe instead (language code checked, title
 without control characters and at most 64 characters, at most 16 tracks).
+
+## Project format 9 (1.6.1, REQ-149)
+
+`src/project/v9.rs` converts a file of format 8 or older in memory when it opens (no undo step,
+no change mark): the whole-video fields are read aside (`Legacy::take`; a value of the wrong
+type is a damaged file) and `apply` writes them into the clips. Scale and Move keys (timeline
+time) become clip time and are sampled at the clip's start and end, so the picture is the same;
+the video's sound level is multiplied into each clip's level (rounded to 1%); `start_fade` /
+`end_fade` become the first clip's `fade_in` and the last clip's `fade_out`; the whole-video LUT
+becomes each clip's LUT. Exception (Q-F): a clip with its own Scale or Move and a whole-video
+one gets ONE path (`merge_path`): times are 0, the clip length, its own key times and the
+shifted whole-video key times inside the clip (at most 200, own keys first), scales multiplied,
+moves added, exact at those times and a line between; a clip with its own LUT keeps it. One
+status-line note says how many clips were combined or kept their LUT. Format 9 is refused by
+1.6.0 ("newer version"); 1.6.1 writes no `whole_*` field.

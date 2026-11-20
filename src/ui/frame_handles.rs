@@ -5,7 +5,7 @@
 //! the picture with a square handle at each corner, and a round target at its centre. The
 //! geometry is pure (frame pixels), so the interaction can be tested without a window.
 
-use super::boxes::Corner;
+use super::boxes::{Corner, Side, partly_outside, side_at, visible_part};
 use crate::frame::{MAX_OFFSET, MAX_SCALE, MIN_SCALE, Scale};
 use crate::subtitles::Pos;
 use crate::timeline::FrameTarget;
@@ -15,6 +15,8 @@ use eframe::egui::{Pos2, Rect, Vec2, pos2, vec2};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Hit {
     Corner(Corner),
+    /// A visible side of the box (REQ-145): the part of the box on the picture.
+    Edge(Side),
     Target,
 }
 
@@ -43,18 +45,30 @@ pub fn to_rect(f: crate::frame::FractionRect, frame: (u32, u32)) -> Rect {
     )
 }
 
-/// The handle under `p`: a corner of the Scale box first, then the Move target. `tol` is
-/// in frame pixels.
-pub fn hit(rect: Rect, scale: bool, moved: bool, p: Pos2, tol: f32) -> Option<Hit> {
-    if scale
-        && let Some(c) = Corner::ALL
+/// The handle under `p`: a corner of the Scale box that is on the picture first, then a
+/// visible side of the box, then the Move target. `tol` is in frame pixels.
+pub fn hit(
+    rect: Rect,
+    frame: (u32, u32),
+    scale: bool,
+    moved: bool,
+    p: Pos2,
+    tol: f32,
+) -> Option<Hit> {
+    if scale {
+        let on_picture = |c: Pos2| !partly_outside(Rect::from_min_max(c, c), frame);
+        if let Some(c) = Corner::ALL
             .into_iter()
-            .map(|c| (c, c.of(rect).distance(p)))
-            .filter(|(_, d)| *d <= tol)
-            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|c| (c, c.of(rect)))
+            .filter(|(_, at)| on_picture(*at) && at.distance(p) <= tol)
+            .min_by(|a, b| a.1.distance(p).total_cmp(&b.1.distance(p)))
             .map(|(c, _)| c)
-    {
-        return Some(Hit::Corner(c));
+        {
+            return Some(Hit::Corner(c));
+        }
+        if let Some(s) = side_at(rect, frame, p, tol) {
+            return Some(Hit::Edge(s));
+        }
     }
     (moved && rect.center().distance(p) <= tol * 1.5).then_some(Hit::Target)
 }
@@ -86,16 +100,42 @@ pub fn scale_to(g: &Grab, corner: Corner, p: Pos2) -> Scale {
     let eff = permille / old;
     let (w, h) = (w0 * eff, h0 * eff);
     let centre = pos2(o.x + sx * w / 2.0, o.y + sy * h / 2.0);
+    finish(g, permille as u16, centre)
+}
+
+/// The Scale value with the picture's centre at `centre` (frame pixels).
+fn finish(g: &Grab, permille: u16, centre: Pos2) -> Scale {
     let moved = centre - g.rect.center();
     let off = |d: f32, size: u32, cur: i16| {
         (i32::from(cur) + (d / size.max(1) as f32 * 10_000.0).round() as i32)
             .clamp(-i32::from(MAX_OFFSET), i32::from(MAX_OFFSET)) as i16
     };
     Scale {
-        permille: permille as u16,
+        permille,
         dx: off(moved.x, g.frame.0, g.scale.dx),
         dy: off(moved.y, g.frame.1, g.scale.dy),
     }
+}
+
+/// The Scale value after dragging the visible `side` of the box to `p` (REQ-145): the
+/// middle of the opposite visible side stays where it is, width and height change together
+/// (the ratio is kept at every step) and the factor stays within the limits. The visible
+/// part is the whole box when it is on the picture, so this is the box edge itself then.
+pub fn scale_to_edge(g: &Grab, side: Side, p: Pos2) -> Scale {
+    let vis = visible_part(g.rect, g.frame).unwrap_or(g.rect);
+    let o = side.opposite().mid(vis);
+    let len = side.extent(vis).max(1.0);
+    let f = if p.x.is_finite() && p.y.is_finite() {
+        ((p - o).dot(side.outward()) / len).max(0.0)
+    } else {
+        1.0
+    };
+    let old = f32::from(g.scale.permille).max(1.0);
+    let permille = (old * f)
+        .round()
+        .clamp(f32::from(MIN_SCALE), f32::from(MAX_SCALE));
+    let eff = permille / old;
+    finish(g, permille as u16, o + (g.rect.center() - o) * eff)
 }
 
 /// The Move value after dragging the target to `p`: the picture's centre follows the
@@ -133,6 +173,8 @@ mod tests {
             frame: (1000, 500),
         }
     }
+
+    const F: (u32, u32) = (1000, 500);
 
     fn rect() -> Rect {
         Rect::from_min_max(pos2(300.0, 100.0), pos2(700.0, 300.0))
@@ -212,17 +254,93 @@ mod tests {
         );
     }
 
+    // covers: REQ-145
+    #[test]
+    fn the_visible_edges_of_a_box_cut_by_the_frame_are_handles() {
+        // 16:9 picture (320x180 here) in a 9:16 frame (180x320) with Fit on height: the box
+        // is 569 px wide on a 180 px frame, so the sides are cut
+        let frame = (180, 320);
+        let rect = Rect::from_center_size(pos2(90.0, 160.0), vec2(569.0, 320.0));
+        // no corner of the box is on the picture; the visible sides are the handles
+        assert_eq!(
+            hit(rect, frame, true, false, pos2(1.0, 160.0), 6.0),
+            Some(Hit::Edge(Side::Left))
+        );
+        assert_eq!(
+            hit(rect, frame, true, false, pos2(179.0, 160.0), 6.0),
+            Some(Hit::Edge(Side::Right))
+        );
+        assert_eq!(hit(rect, frame, true, false, pos2(90.0, 160.0), 6.0), None);
+        // dragging the visible left side inwards by 60 px: visible width 180 -> 120 = 2/3
+        let g = Grab {
+            frame,
+            ..grab(rect, Scale::NORMAL)
+        };
+        let s = scale_to_edge(&g, Side::Left, pos2(60.0, 160.0));
+        assert_eq!(s.permille, 667);
+        // the ratio is kept at every step
+        let r = scaled_rect(&g, s);
+        assert!((r.width() / r.height() - 569.0 / 320.0).abs() < 1e-2);
+        // the picture point on the opposite (right, visible) side stays where it is
+        let at = |r: Rect| (180.0 - r.left()) / r.width();
+        assert!((at(r) - at(rect)).abs() < 1e-2);
+    }
+
+    // covers: REQ-145
+    #[test]
+    fn a_scale_of_300_percent_comes_back_in_one_drag_by_the_visible_edge() {
+        // the box is 3x the 1000x500 frame, centred: its edges are all outside
+        let rect = Rect::from_center_size(pos2(500.0, 250.0), vec2(3000.0, 1500.0));
+        let scale = Scale {
+            permille: 3000,
+            dx: 0,
+            dy: 0,
+        };
+        let g = Grab {
+            frame: F,
+            ..grab(rect, scale)
+        };
+        assert_eq!(
+            hit(rect, F, true, false, pos2(2.0, 250.0), 8.0),
+            Some(Hit::Edge(Side::Left))
+        );
+        // pointer 1/3 of the frame width from the right edge: factor 1/3 -> 100%
+        let s = scale_to_edge(&g, Side::Left, pos2(2000.0 / 3.0, 250.0));
+        assert_eq!(s.permille, 1000);
+        // the opposite visible side did not move; the centre stays on the same line
+        assert_eq!(s.dy, 0);
+        // and the limits hold
+        assert_eq!(
+            scale_to_edge(&g, Side::Left, pos2(999.0, 250.0)).permille,
+            100
+        );
+        assert_eq!(
+            scale_to_edge(&g, Side::Left, pos2(f32::NAN, 0.0)).permille,
+            3000
+        );
+        // a Scale box on the picture: the box edge itself, dragged outwards
+        let g = grab(rect_inside(), Scale::NORMAL);
+        let s = scale_to_edge(&g, Side::Right, pos2(900.0, 200.0));
+        assert_eq!(s.permille, 1500);
+        let r = scaled_rect(&g, s);
+        assert!((r.left() - 300.0).abs() < 1.0, "{r:?}");
+    }
+
+    fn rect_inside() -> Rect {
+        Rect::from_min_max(pos2(300.0, 100.0), pos2(700.0, 300.0))
+    }
+
     #[test]
     fn corners_come_before_the_target() {
         let r = rect();
         assert_eq!(
-            hit(r, true, true, pos2(702.0, 301.0), 8.0),
+            hit(r, F, true, true, pos2(702.0, 301.0), 8.0),
             Some(Hit::Corner(Corner::BottomRight))
         );
-        assert_eq!(hit(r, true, true, r.center(), 8.0), Some(Hit::Target));
-        assert_eq!(hit(r, false, true, pos2(702.0, 301.0), 8.0), None);
-        assert_eq!(hit(r, true, false, r.center(), 8.0), None);
-        assert_eq!(hit(r, true, true, pos2(0.0, 0.0), 8.0), None);
+        assert_eq!(hit(r, F, true, true, r.center(), 8.0), Some(Hit::Target));
+        assert_eq!(hit(r, F, false, true, pos2(702.0, 301.0), 8.0), None);
+        assert_eq!(hit(r, F, true, false, r.center(), 8.0), None);
+        assert_eq!(hit(r, F, true, true, pos2(0.0, 0.0), 8.0), None);
         let f = to_rect((0.25, 0.5, 0.75, 1.0), (200, 100));
         assert_eq!((f.min, f.max), (pos2(50.0, 50.0), pos2(150.0, 100.0)));
     }

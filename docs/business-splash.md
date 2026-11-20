@@ -24,6 +24,7 @@ Added in 1.6.0. A splash screen opens at every start of the editor without a pro
 - The summary text is written by hand for each release; a release without an updated summary shows the previous one.
 - The splash image `assets/splash/<version>.gif` and its summary `assets/splash/<version>.txt` (a heading and at most five lines) must be in the repository before that version is built; the build fails without them.
 - The origin and licence of the splash image are not yet confirmed; they must be checked before the release.
+- (1.6.1) Version 1.6.1 uses the 1.6.0 image, copied as `assets/splash/1.6.1.gif` (Andrea confirmed this; no new image was supplied), and its own summary `assets/splash/1.6.1.txt`. The origin and licence of that image are the same open point as above.
 
 ## Out of scope
 - A "do not show again" option, a splash in the video player, animated text, sound.

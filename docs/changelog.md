@@ -2,6 +2,27 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 1.6.1 — 2026-11-19 23:13 +0000
+
+### Changed
+- **Whole-video effects (business)**: an effect applied to the whole video (double-click) is applied to every clip on the timeline at that moment and stays with those clips; clips added later do not get it. Whole-video Fade IN/OUT is a fade in at the first clip and a fade out at the last clip, so start and end fades now belong to the clips. A whole-video Scale or Move gives each clip its own copy of the keyframes, and a whole-video Apply LUT gives each clip its own LUT. The picture's Scale box and the subtitle and text boxes resize from their visible edges when they are partly outside the picture. The effects part of the requirements moved to `docs/business-effects.md`. The splash of 1.6.1 has a new summary and reuses the 1.6.0 image.
+- **Projects (architecture)**: project format 9 stores whole-video effects on the clips (each clip has its own start and end fade, Scale and Move keyframes and LUT). Format 8 files from 1.6.0 are converted once on open, with one status note: a clip's own Scale or Move and the whole video's become one combined path, and a clip's own LUT wins over the whole video's. Projects from 1.6.0 otherwise open with the same result.
+- **Build (CI)**: the check job has a 30-minute timeout, installs only the missing apt packages with `--no-install-recommends` and retries, and gets cargo-about 0.9.3 from the taiki-e install action (support not verified yet; fallback in the roadmap).
+
+### Fixed
+- **Paused preview**: a paused preview no longer stays black. A skipped or superseded request left a stale posted key, so the picture at the playhead was not drawn again (REQ-144).
+
+### Quality
+- A test that built about 10 GB of subtitle titles now builds 1000 tracks of 100 KB each; its assertions are unchanged.
+- New golden argument fixtures for the 1.6.1 export, named `export-argv-<version>-in-1.6.1.txt`, beside the frozen ones of earlier versions.
+- Line coverage 95.5%; every requirement marked implemented has a test.
+
+### Known limitations
+- Clips added after a whole-video effect do not get it, and nothing says so.
+- After a clip's keyframes are changed alone, the whole-video Scale or Move popup shows and changes only the first clip's keyframes.
+- A text item's width changes only from its right edge.
+- A 1.6.0 clip with its own and a whole-video Scale or Move becomes one combined path: exact at the keyframe times, a straight line between them.
+
 ## 1.6.0 — 2026-11-19 21:27 +0000
 
 A splash screen at every start of the editor, a separate video player (videolore-player) for watching videos, the Apply LUT colour effect, and icons across the interface. Projects saved by this version (project format 8) need version 1.6.0 or later.

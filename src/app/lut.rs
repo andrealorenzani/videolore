@@ -59,9 +59,12 @@ impl AppState {
     /// The LUT files of the project that are not there (names for a message).
     pub fn missing_luts(&self) -> Vec<String> {
         let tl = &self.project.timeline;
-        tl.whole_lut
-            .iter()
-            .chain(tl.clip_luts.iter().map(|l| &l.path))
+        // a whole-video LUT is the same file on several clips: named once
+        let mut paths: Vec<&String> = tl.clip_luts.iter().map(|l| &l.path).collect();
+        paths.sort();
+        paths.dedup();
+        paths
+            .into_iter()
             .filter(|p| !Path::new(p.as_str()).exists())
             .map(|p| crate::lut::display_name(p))
             .collect()

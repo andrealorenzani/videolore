@@ -30,6 +30,11 @@ Part of [Architecture](architecture.md). Built in 1.2.6 (REQ-096..099). The 360 
 - The box of a subtitle line keeps its size rule (25–400%, corners resize within the picture); only the drag limit changed.
 - When the boxes are hidden (View > Show boxes off), dragging the text itself still moves it, as before.
 
+## Visible edges (1.6.1, REQ-145, REQ-146)
+- A box partly outside the picture (Change aspect cuts a side, a subtitle line or text item sits on the edge, or Scale is above 100%) keeps its handles on the **visible part**: a corner outside the frame is reached through the visible part of its edges.
+- The visible edge of a box is a resize handle. A subtitle line's edge is proportional like its corners (25% to 400%, the opposite edge fixed). A text item keeps only its width handle, on the visible part of its right edge; it gets no left handle.
+- The Scale box of a picture uses the same rule (see [frame](architecture-frame.md#visible-edges-161)). One drag is one undo step.
+
 ## Tests
 - Pure: handle hit-testing, resize with the opposite corner fixed, limits (25%, 400%, picture edge), align, reset, group size.
 - Pure (1.3.0): the Context Menu rule table (nothing, line, 360 playhead, text only, both).

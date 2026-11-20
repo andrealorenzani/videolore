@@ -58,12 +58,17 @@ impl KeyBar {
     }
 }
 
-/// The range of key times a popup shows: the kept part of a clip (source time) or the
-/// whole video; and the timeline time of the range's start (to place the playhead).
+/// The range of key times a popup shows: the kept part of a clip (source time) or, for the
+/// whole video, the first clip's keys over the longest clip; and the timeline time of the range's start (to place the playhead).
 pub fn key_range(app: &AppState, t: FrameTarget) -> Option<(Micros, Micros, Micros)> {
     let tl = &app.project.timeline;
     match t {
-        FrameTarget::Whole => Some((Micros::ZERO, tl.duration(), Micros::ZERO)),
+        // the first clip with keys, on a timeline as long as the longest clip (REQ-148)
+        FrameTarget::Whole => {
+            let from = tl.frame_start(FrameTarget::Whole);
+            let longest = tl.clips.iter().map(|c| c.len()).max()?;
+            Some((from, from + longest, Micros::ZERO))
+        }
         FrameTarget::Clip(id) => {
             let i = tl.index_of(id)?;
             let c = &tl.clips[i];

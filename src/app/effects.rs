@@ -52,7 +52,7 @@ impl AppState {
                 let tl = &self.project.timeline;
                 let already = match clip {
                     Some(id) => tl.clip_has_fades(id),
-                    None => tl.start_fade && tl.end_fade,
+                    None => tl.start_fade() && tl.end_fade(),
                 };
                 if !already {
                     self.edit(now, effect_label(effect), |e| match clip {
@@ -211,18 +211,18 @@ impl AppState {
             return Err(EditError::EmptyTimeline.to_string());
         }
         let current = match edge {
-            Edge::Start => tl.start_fade,
-            Edge::End => tl.end_fade,
+            Edge::Start => tl.start_fade(),
+            Edge::End => tl.end_fade(),
         };
         if current == on {
             return Ok(());
         }
         self.edit(now, fade_label(!on), |e| {
             match edge {
-                Edge::Start => e.timeline.start_fade = on,
-                Edge::End => e.timeline.end_fade = on,
+                Edge::Start => e.timeline.set_start_fade(on),
+                Edge::End => e.timeline.set_end_fade(on),
             }
-            Ok(())
+            .map_err(err)
         })
     }
 

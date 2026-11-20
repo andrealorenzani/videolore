@@ -44,7 +44,13 @@
   music, mix and word-timed subtitles) and `project-v1.vlproj` must give exactly the export
   arguments and subtitle document in `tests/fixtures/export-argv-1.1.0.txt`, captured with the
   1.1.0 code. Regenerate it only on purpose
-  (`cargo test --lib write_golden_1_1 -- --ignored`).
+  (`cargo test --lib write_golden_1_1 -- --ignored`). Since 1.6.1 the tests compare with
+  `export-argv-1.1.0-in-1.6.1.txt` (and `export-argv-1.2.5-in-1.6.1.txt`), where the video's
+  sound level is applied per clip; the 1.1.0 and 1.2.5 files stay as the historical record.
+- **Memory:** a hostile-input test must not build its input at the size of the attack (the
+  subtitle track test once built 10 GB of JSON and brought a machine down). When running the
+  suite on a small machine, cap it, e.g. `systemd-run --user --scope -p MemoryMax=6G
+  -p MemorySwapMax=0 -- cargo test --workspace`.
 - **Settings and hostile input:** the settings decisions are pure functions tested with corpora
   (bad JSON, unknown values, huge numbers, nesting, relative paths, newer formats, 0.2.x files);
   project files are tested with a hostile corpus (truncated, nested, out-of-range numbers,

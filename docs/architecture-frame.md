@@ -21,7 +21,7 @@ The same `ffmpeg` graph builds the preview and the export, so they match. Projec
 Per flat clip (and per camera view of a 360 clip), in this order, the same in preview and export:
 1. The picture at base size (the usual fit, without the black padding).
 2. The background at frame size: the colour, or a copy of the same video scaled to cover the frame and blurred. The blur is computed on a copy at one eighth of the frame size, which keeps its cost low. The strength is fixed.
-3. The picture, scaled and moved by the value of the whole video's Scale and Move multiplied (scales) or added (moves) to the clip's own values. Values change per frame from the keyframes.
+3. The picture, scaled and moved by the clip's own Scale and Move. Values change per frame from the keyframes. (Until 1.6.0 the whole video's values were multiplied and added to these; since 1.6.1 there is no whole-video track, see below.)
 4. Fade IN/OUT (also to black over the background) and then the rest of the export as before.
 5. Subtitle lines and text items, at their places as fractions of the frame, drawn last on the whole video.
 
@@ -70,6 +70,17 @@ Any Change aspect, Scale or Move makes the export a re-encode, even at the defau
 ## Dependencies
 No new crate. The `ffmpeg` filters used (`color`, `split`, `scale`, `boxblur`, `overlay`, `format`) are core filters in the bundled builds. The colour picker is part of `egui`, which is already used.
 
+## Visible edges (1.6.1)
+- The Scale box works through its visible edges (REQ-145): the part of each edge inside the frame is a handle, so a side cut by Change aspect or a Scale above 100% can still be dragged. Corners are hit first, then the visible edges, then the Move target.
+- Dragging an edge scales the picture proportionally: the factor is the pointer's distance from the opposite edge over the box's side at the start, applied to both sides; the opposite side stays fixed. Limits 10% and 400%, one drag is one undo step. The corners are drawn on the visible part of the picture.
+- Pure geometry in `ui/frame_handles` (`Hit` gets an edge variant; `scale_to` takes the axis of the edge). Subtitle and text boxes use the same visible-part rule (see [boxes](architecture-boxes.md#visible-edges-161)).
+
+## Whole-video Scale and Move (1.6.1)
+- There is no whole-video Scale or Move in the format any more (REQ-148). A double-click gives each clip its own copy: its keyframes are in the source time of the clip, from the clip's start on, like the clip's own keys, so a trim or cut never moves a copy (its keys stay on the same part of the source). The whole-video popup shows the first clip's keyframes on a timeline as long as the longest clip, and each change in it is applied to every copy at the same clip time (add where the copy is long enough, set, or remove keeping each copy's last key).
+- A change in one clip's popup or on the picture changes that clip only. A later whole-video change sets all copies again. The popup shows only the first clip's keys after one clip was changed alone (known limit).
+- A clip has at most one Scale and one Move, so the stacking of the whole video and the clip is gone: the composition uses the clip's own values only.
+- Conversion of 1.6.0 files (format 8) into copies is in [project files](architecture-projects.md). Keyframes beyond 200 per clip are refused by the cap. A 1.6.0 clip that had its own Scale or Move as well as the whole video's gets one combined path: the scales are multiplied and the moves added, at the key times of both paths (exact at those times, between them an approximation). A clip that had its own Apply LUT keeps it, and the whole-video LUT is not applied to that clip. The status line at opening says which clips changed (see [project files](architecture-projects.md#loading-and-validation)).
+
 ## Tests
 - Pure: keyframe values (hold, linear, limits, unique times), frame sizes from the requirement examples (1600x1200 to 9:16 both ways), even sides and the 4096 cap, timeline rules for split, copy, merge and remove, project format 7 load and save, damaged values.
 - Command: the expressions and the filter text for one and for several keyframes; no-effect commands unchanged; 360 video export without the effects; re-encode forced.
@@ -80,7 +91,7 @@ No new crate. The `ffmpeg` filters used (`color`, `split`, `scale`, `boxblur`, `
 - `ffmpeg` time-dependent sizes may need the fallback (see above); checked on the bundled build before the code is written.
 - Large frames (4K in a tall shape) make exports slower and may be refused by a hardware encoder; the software redo handles that.
 - Keyframes in a small popup are harder to use; the timeline has a minimum width.
-- Whole-video keyframes do not follow cuts at the start; a keyframe after a removed part keeps its time.
+- Copies of a whole-video Scale or Move are kept through trims and cuts, as the clip's own keys are (source time): a key before a new start is hidden, not lost, and a key after a removed part keeps its source time.
 - Text items keep their place when the picture moves (not keyframed), so a text may end up over the edge of the picture.
 
 ## Decided: size limit of the frame

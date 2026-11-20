@@ -4,39 +4,43 @@
 
 ## Index (human docs, one line per heading; read a range with sed -n 'A,Bp')
 - docs/business.md § (title, purpose, users) — L1-15 (15 lines; 1.6.0 player para L8)
-- docs/business.md § Documents — L16-31 (16 lines; 1.6.0 LUT, splash, player, icons L24-27)
-- docs/business.md § Constraints — L32-36 (5 lines)
-- docs/business.md § Key decisions (general) — L37-63 (27 lines; 1.6.0 x3 L57-59)
-- docs/business.md § Known limitations (1.2.0 … 1.6.0) — L64-92 (29 lines; 1.6.0 L65)
-- docs/business.md § Out of scope — L93-104 (12 lines; 1.6.0 L102-103)
+- docs/business.md § Documents — L16-32 (17 lines; 1.6.0 LUT, splash, player, icons L25-28; 1.6.1 Effects line L19)
+- docs/business.md § Constraints — L33-37 (5 lines)
+- docs/business.md § Key decisions (general) — L38-65 (28 lines; 1.6.0 x3 L58-60; 1.6.1 L61)
+- docs/business.md § Known limitations (1.2.0 … 1.6.0) — L66-94 (29 lines; 1.6.0 L67, splash 1.6.1 image in same line)
+- docs/business.md § Out of scope — L95-106 (12 lines; 1.6.0 L97-98)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
-- docs/business-editing.md § Media and projects (REQ-001..004, 026..029, 094, 105, 113, 123) — L17-30 (14 lines)
-- docs/business-editing.md § Timeline — L31-41 (11 lines)
-- docs/business-editing.md § Preview — L42-46 (5 lines)
-- docs/business-editing.md § Layout and commands — L47-49 (3 lines)
-- docs/business-editing.md § Responsiveness and performance — L50-55 (6 lines)
-- docs/business-editing.md § Key decisions — L56-73 (18 lines; 1.5.0 and 1.6.0 format lines L67-68)
-- docs/business-editing.md § Known limitations — L74-81 (8 lines)
-- docs/business-editing.md § Out of scope — L82-85 (4 lines)
+- docs/business-editing.md § Media and projects (REQ-001..004, 026..029, 094, 105, 113, 123, 149) — L17-31 (15 lines)
+- docs/business-editing.md § Timeline (REQ-005..012, 083 implemented 1.6.1) — L32-42 (11 lines)
+- docs/business-editing.md § Preview (REQ-013, 034, 035, 144) — L43-48 (6 lines)
+- docs/business-editing.md § Layout and commands — L49-51 (3 lines)
+- docs/business-editing.md § Responsiveness and performance — L52-57 (6 lines)
+- docs/business-editing.md § Key decisions — L58-75 (18 lines; 1.5.0 and 1.6.0 format lines L69-70)
+- docs/business-editing.md § Known limitations — L76-83 (8 lines)
+- docs/business-editing.md § Out of scope — L84-87 (4 lines)
 - docs/business-ui.md § intro — L1-6 (6 lines)
 - docs/business-ui.md § Features — L7-23 (17 lines)
 - docs/business-ui.md § Requirements — L24-25 (2 lines)
 - docs/business-ui.md § Layout (REQ-024, 066-068) — L26-31 (6 lines)
 - docs/business-ui.md § Menus, toolbar, shortcuts and status bar (REQ-025, 069-074) — L32-46 (15 lines)
-- docs/business-ui.md § Effects (REQ-075, 107, 076, 077, 082) — L47-64 (18 lines)
-- docs/business-ui.md § Timeline ruler (REQ-093) — L65-67 (3 lines)
-- docs/business-ui.md § Clips, context menus, recent projects, drag and drop (REQ-078..081) — L68-73 (6 lines)
-- docs/business-ui.md § Key decisions — L74-85 (12 lines)
-- docs/business-ui.md § Impact on existing features — L86-98 (13 lines)
-- docs/business-ui.md § Since 1.2.0 — L99-105 (7 lines)
-- docs/business-ui.md § Changed in 1.3.0 — L106-114 (9 lines)
-- docs/business-ui.md § Changed in 1.4.0 (REQ-069, 075, 100, 106, 114, 118) — L115-121 (7 lines)
-- docs/business-ui.md § Changed in 1.5.0 (REQ-069, 075, 076, 077, 079, 082) — L122-127 (6 lines)
-- docs/business-ui.md § Changed in 1.6.0 (REQ-069, 075, 077, 079, 082, 142, 143) — L128-133 (6 lines)
-- docs/business-ui.md § Known limitations — L134-140 (7 lines)
-- docs/business-ui.md § Out of scope — L141-150 (10 lines)
+- docs/business-ui.md § Effects (pointer only; REQ-075, 107, 082, 147, 076, 077 moved to business-effects.md) — L47-49 (3 lines)
+- docs/business-ui.md § Timeline ruler (REQ-093) — L50-52 (3 lines)
+- docs/business-ui.md § Clips, context menus, recent projects, drag and drop (REQ-078..081) — L53-58 (6 lines)
+- docs/business-ui.md § Key decisions — L59-70 (12 lines)
+- docs/business-ui.md § Impact on existing features — L71-83 (13 lines)
+- docs/business-ui.md § Since 1.2.0 — L84-90 (7 lines)
+- docs/business-ui.md § Changed in 1.3.0 — L91-99 (9 lines)
+- docs/business-ui.md § Changed in 1.4.0 (REQ-069, 075, 100, 106, 114, 118) — L100-106 (7 lines)
+- docs/business-ui.md § Changed in 1.5.0 (REQ-069, 075, 076, 077, 079, 082) — L107-112 (6 lines)
+- docs/business-ui.md § Changed in 1.6.0 (REQ-069, 075, 077, 079, 082, 142, 143) — L113-118 (6 lines)
+- docs/business-ui.md § Changed in 1.6.1 (REQ-082, 145, 146, 147 implemented 1.6.1; whole-video Scale/Move copies = REQ-148 pointer L121) — L119-123 (5 lines)
+- docs/business-ui.md § Known limitations — L124-130 (7 lines)
+- docs/business-ui.md § Out of scope — L131-140 (10 lines)
+- docs/business-effects.md § intro (NEW 1.6.1 split from business-ui) — L1-6 (6 lines)
+- docs/business-effects.md § Requirements — L7-8 (2 lines)
+- docs/business-effects.md § Effects (REQ-075, 107, 082, 147 implemented 1.6.1, 076, 077) — L9-26 (18 lines)
 - docs/business-text.md § intro — L1-8 (8 lines)
 - docs/business-text.md § Features — L9-16 (8 lines)
 - docs/business-text.md § Requirements (REQ-108..111, 115, 116) — L17-18 (2 lines)
@@ -51,24 +55,24 @@
 - docs/business-picture.md § intro (1.5.0 para added) — L1-12 (12 lines)
 - docs/business-picture.md § Features — L13-21 (9 lines)
 - docs/business-picture.md § Requirements — L22-23 (2 lines)
-- docs/business-picture.md § Boxes, size and Context Menu (REQ-096..099, 106, 117) — L24-31 (8 lines)
-- docs/business-picture.md § 360 video (REQ-100..105, 112) — L32-40 (9 lines)
-- docs/business-picture.md § Key decisions — L41-50 (10 lines)
-- docs/business-picture.md § Impact on existing features — L51-64 (14 lines)
-- docs/business-picture.md § Known limitations — L65-79 (15 lines)
-- docs/business-picture.md § Out of scope — L80-84 (5 lines)
+- docs/business-picture.md § Boxes, size and Context Menu (REQ-096..099, 106, 117, 146 implemented 1.6.1) — L24-32 (9 lines)
+- docs/business-picture.md § 360 video (REQ-100..105, 112) — L33-41 (9 lines)
+- docs/business-picture.md § Key decisions — L42-51 (10 lines)
+- docs/business-picture.md § Impact on existing features — L52-65 (14 lines)
+- docs/business-picture.md § Known limitations — L66-80 (15 lines)
+- docs/business-picture.md § Out of scope — L81-85 (5 lines)
 - docs/business-frame.md § intro — L1-6 (6 lines)
 - docs/business-frame.md § Features — L7-13 (7 lines)
 - docs/business-frame.md § Requirements (intro line) — L14-15 (2 lines)
 - docs/business-frame.md § Change aspect (REQ-124..126) — L16-20 (5 lines)
-- docs/business-frame.md § Scale and Move (REQ-127..129) — L21-25 (5 lines)
-- docs/business-frame.md § Effects list, menus and markers (REQ-130) — L26-28 (3 lines)
-- docs/business-frame.md § Picture rules and export (REQ-131) — L29-31 (3 lines)
-- docs/business-frame.md § Project file (REQ-132) — L32-34 (3 lines)
-- docs/business-frame.md § Key decisions — L35-42 (8 lines)
-- docs/business-frame.md § Impact on existing features — L43-51 (9 lines)
-- docs/business-frame.md § Known limitations — L52-60 (9 lines; 1.5.0 STATUS +2 bullets)
-- docs/business-frame.md § Out of scope — L62-65 (4 lines)
+- docs/business-frame.md § Scale and Move (REQ-127, 128; 129, 145, 148 implemented 1.6.1) — L21-27 (7 lines)
+- docs/business-frame.md § Effects list, menus and markers (REQ-130 implemented 1.6.1, stacking sentence removed) — L28-30 (3 lines)
+- docs/business-frame.md § Picture rules and export (REQ-131) — L31-33 (3 lines)
+- docs/business-frame.md § Project file (REQ-132) — L34-36 (3 lines)
+- docs/business-frame.md § Key decisions — L37-46 (10 lines; 1.6.1 whole-video copy line L44, Q-F line L45)
+- docs/business-frame.md § Impact on existing features — L47-55 (9 lines; REQ-148/149 pointer L49)
+- docs/business-frame.md § Known limitations — L56-66 (11 lines; 2 whole-video/handles bullets L63-64; Q-F approximation bullet L65)
+- docs/business-frame.md § Out of scope — L67-70 (4 lines)
 - docs/business-subtitles.md § intro — L1-4 (4 lines)
 - docs/business-subtitles.md § Features — L5-18 (14 lines)
 - docs/business-subtitles.md § Requirements — L19-20 (2 lines)
@@ -101,24 +105,24 @@
 - docs/business-performance.md § Requirements / Automatic setup — L21-29 (9 lines)
 - docs/business-performance.md § Performance — L30-38 (9 lines)
 - docs/business-performance.md § Safety — L39-43 (5 lines)
-- docs/business-performance.md § Quality goals — L44-69 (26 lines)
-- docs/business-performance.md § Key decisions — L70-83 (14 lines)
-- docs/business-performance.md § Known limitations — L84-89 (6 lines)
-- docs/business-performance.md § Out of scope — L90-96 (7 lines)
+- docs/business-performance.md § Quality goals (QG-01..05; QG-06 planned 1.6.1) — L44-71 (28 lines)
+- docs/business-performance.md § Key decisions — L72-85 (14 lines)
+- docs/business-performance.md § Known limitations — L86-91 (6 lines)
+- docs/business-performance.md § Out of scope — L92-98 (7 lines)
 - docs/business-splash.md § intro — L1-5 (5 lines; NEW 1.6.0)
 - docs/business-splash.md § Features — L7-11 (5 lines)
 - docs/business-splash.md § Requirements / Splash screen (REQ-133, 134) — L12-17 (6 lines)
 - docs/business-splash.md § Key decisions — L18-22 (5 lines)
-- docs/business-splash.md § Known limitations — L23-27 (5 lines; 1.6.0 STATUS +2 bullets)
-- docs/business-splash.md § Out of scope — L28-29 (2 lines)
+- docs/business-splash.md § Known limitations — L23-28 (6 lines; 1.6.0 STATUS +2 bullets; 1.6.1 +1 bullet L27)
+- docs/business-splash.md § Out of scope — L29-30 (2 lines)
 - docs/business-lut.md § intro — L1-5 (5 lines; NEW 1.6.0)
 - docs/business-lut.md § Features — L7-12 (6 lines)
-- docs/business-lut.md § Requirements / Apply LUT (REQ-135) — L13-17 (5 lines)
+- docs/business-lut.md § Requirements / Apply LUT (REQ-135 implemented 1.6.1: whole-video LUT = copy per clip, Q-F exception) — L13-17 (5 lines)
 - docs/business-lut.md § LUT files and export (REQ-136) — L18-20 (3 lines)
 - docs/business-lut.md § Project file (REQ-137) — L21-23 (3 lines)
 - docs/business-lut.md § Key decisions — L24-28 (5 lines)
-- docs/business-lut.md § Known limitations — L29-33 (5 lines)
-- docs/business-lut.md § Out of scope — L34-35 (2 lines)
+- docs/business-lut.md § Known limitations — L29-34 (6 lines; 1.6.1 one-LUT-per-clip bullet L34)
+- docs/business-lut.md § Out of scope — L35-36 (2 lines)
 - docs/business-player.md § intro — L1-5 (5 lines; NEW 1.6.0)
 - docs/business-player.md § Features — L7-13 (7 lines)
 - docs/business-player.md § Requirements / The program (REQ-138) — L14-18 (5 lines)
@@ -135,6 +139,51 @@
 - docs/business-icons.md § Known limitations — L25-27 (3 lines)
 - docs/business-icons.md § Out of scope — L28-29 (2 lines)
 Line ranges re-checked at the 1.4.0 STATUS (grep -n '^#' + line count); convention: heading to the line before the next heading; re-check with grep -n '^#' after any edit.
+
+## 1.6.1 PLAN (target 1.6.1, Andrea request 2026-11-19) — 1 SEVERE (Q1), rest MINOR
+- NEW (planned): REQ-144 preview never black when paused (editing, Preview). REQ-145 visible edges of the Scale box = resize, proportional (frame). REQ-146 subtitle line / text item partly outside picture: visible edge + handle reachable (picture, Boxes). REQ-147 whole-video effect = applied to each clip on the timeline, stays with those clips, new clips do not get it, Fade exception, one undo (ui, Effects). REQ-149 project format 1.6.1 (editing, Media and projects).
+- REWORDED (set planned, were implemented): REQ-082 (whole video = each clip, list of 7 effects), REQ-083 (whole-video fades = first clip start / last clip end; start/end fades attached to clip, not video edges; acceptance c changed). Impact text: editing Transitions feature, business-ui Changed in 1.6.1, frame Features + key decision, picture Boxes, splash limitation, performance QG-06, business.md key decision (1.6.1).
+- Next free ID: REQ-150. REQ-148 RESERVED for the whole-video keyframe rule (Q1), not written yet. QG next: QG-07.
+- Request mapping:
+  - R1 CI packages/time: no product REQ (build only, no user-visible change). New QG-06 (target 30% shorter than 1.6.0 run, ASSUMPTION, not a gate, no covers). Product rule kept: checks and executables unchanged; Linux packages still run on Ubuntu LTS + Fedora (REQ-040). Which packages are needed = Architect/PE, not PM. Andrea's question "are all packages required" answered by PE/Architect; PM only says: build-only packages are not product requirements.
+  - R2 black screen when paused: REQ-144 (fix). Cause not decided here (PE/Architect). Risk for PE: REQ-034 (render only when the frame at the playhead changes) is a suspect, not a decision. Test must cover pause after seek, after edit, at playback end, with effects and fades.
+  - R3 visible edge = resize: REQ-145 (picture Scale box, edge drag proportional, opposite side fixed, handles on visible part) and REQ-146 (subtitle/text boxes). Interpretation "visible edge" = the edge of the picture where it is inside the frame or the box extends beyond the frame. Text item keeps width-only right handle (REQ-116), no new left handle.
+  - R4 whole-video effects: REQ-147 + REQ-083 + REQ-149 (+ Q1 keyframes).
+- SEVERE Q1 (RESOLVED = A in 1.6.1 REFINE below): keyframes of a whole-video Scale or Move once applied to clips. Options: A) each clip gets its own copy of the keyframes in clip time (copied at application, edited per clip; whole-video popup edits all copies at once or lists clips); B) one keyframe path on the whole timeline, each clip reads the value at its timeline position, ripple moves the path, deleting a clip removes only its part; C) per-clip copies as A, whole-video popup removed for Scale/Move (apply = copy of the current value). PM lean: A (matches "effect belongs to clips", clip keyframes already in source time REQ-129/132). Keyframe visualisation depends on the answer (popup timeline, clip markers).
+- MINOR defaults (Andrea can overrule): M1 every whole-video effect of the list is applied to each clip present (Fade, Subtitles, Volume, Clean audio, Scale, Move, Apply LUT); subtitles per clip keep REQ-085 rules. M2 Change aspect stays project-wide (one frame per video; not a clip effect) — exception to "only one exception" (Andrea wrote fade is the only exception; flagged). M3 whole fades attach to first clip start / last clip end (reverses 1.2.0 D33 / old REQ-083(c) "still black after cutting clip 1"); fades move with their clip. M4 1.6.0 projects: whole-video effects become the same effect on existing clips at load; 1.6.1 format bump, 1.6.0 refuses (like REQ-132); alternative (keep old whole-range rule for old files) rejected: two rules forever. M5 no second copy of an effect on a clip that has it. M6 edge drag: proportional, opposite side fixed, 10-400% limit, one undo; left text edge not a handle. M7 REQ-144 scope = fix only, no preview redesign. M8 splash 1.6.1: see below.
+- Splash 1.6.1 needs: `assets/splash/1.6.1.gif` + `assets/splash/1.6.1.txt` (heading + max 5 lines), else build fails (business-splash known limitation). No new image supplied. DEFAULT (MINOR, Andrea to confirm): copy 1.6.0.gif as 1.6.1.gif (same image, origin/licence still unconfirmed) + new 1.6.1 summary text drafted by PM at STATUS (after implemented list known). If Andrea wants a new picture, he supplies the gif.
+- Rejected/considered: keep whole-video as one range (old); new product REQ for CI speed; removing checks to save time; per-clip Change aspect; a left handle on text items; live preview redesign for REQ-144.
+- Product risks 1.6.1: users may expect a new clip to get the whole-video effect (documented as rule; no message yet); double-click now creates many instances (one undo step covers it); moving the first clip now moves its fade (accepted); 1.6.0 projects with whole-video keyframes depend on Q1; splash reused image = same picture as 1.6.0 (stale look); visible-edge handles may clash with picture drag (Move) or clip drags (test in PE).
+- Future work to pass on: whole-video keyframes (Q1); Change aspect per clip (only if Andrea asks); a message when clips are added after a whole-video effect (idea, not planned).
+
+## 1.6.1 REFINE (target 1.6.1, Andrea answers 2026-11-19) — no SEVERE
+- DECIDED Q1 = A: a whole-video Scale or Move gives each clip its own copy of the keyframes, in clip time (0 = clip start, as REQ-129 clip keys). Copy edited in its clip's popup and on the picture (clip under playhead only). Whole-video popup edits all copies at once. Deleting a clip deletes its copy. New clips get none (REQ-147). Written: REQ-148 (planned, frame Scale and Move; id was reserved). REQ-129 and REQ-130 reworded -> (planned) (whole-video popup wording; stacking rule removed). REQ-147 exception + REQ-082 (b) note. Next free ID: REQ-150.
+- MINOR defaults taken for Q1 (Andrea can overrule; PE/Architect may read them): whole-video popup shows the first clip's keys, timeline as long as the longest clip; Add keyframe goes into each copy long enough (keys beyond a clip's length not added); value change sets the key at that clip time in each copy (adds one where missing); Remove keyframe removes it from each copy, a copy keeps its last key; double-click opens the whole-video popup; one undo step for all copies; copies follow trims/cuts like clip keys (REQ-129).
+- Rejected: alternative B (one path over the whole timeline, ripple) and C (no whole-video popup for Scale/Move).
+- Limitation added (frame): after a clip's keys are changed alone, the whole-video popup shows only the first clip's keys.
+- Splash 1.6.1 (Andrea confirmed): `assets/splash/1.6.1.gif` = copy of 1.6.0.gif, no new image. Origin and licence still open (splash limitation, business.md limitation). `assets/splash/1.6.1.txt` must exist before the build; PM owns no asset, so PE/Architect writes it from this draft (heading + max 5 lines); PM redrafts at STATUS if the implemented list changes:
+  "New in this version" / "Preview no longer turns black when paused." / "Drag a visible edge of a Scale, subtitle or text box to resize it." / "Whole-video effects apply to each clip on the timeline and stay with it." / "Whole-video fades start at the first clip and end at the last clip."
+- Split (rule 3d): docs/business-ui.md was 155 lines. Effects part (REQ-075, 107, 082, 147, 076, 077) moved to NEW docs/business-effects.md (no text change except REQ-082 (b) and REQ-147 exception). business-ui.md now 140 lines with an Effects pointer. business.md Documents gets the Effects line.
+- Index refreshed: business.md, business-ui.md, business-effects.md (new), business-frame.md. business-splash.md line count unchanged.
+- Future work: whole-video copies that diverge (first-clip popup view); a message when a clip is added after a whole-video effect (idea, not planned).
+
+## 1.6.1 REFINE 2 (target 1.6.1, Andrea decision Q-F 2026-11-19) — no SEVERE
+- Q-F applied to human docs (rule text: architecture-plan-1.6.1.md § Decided: Q-F): REQ-149 (planned, business-editing) gets the exception (a) Scale/Move combined path on the clip (scales multiplied, moves added, keys = clip start/end + own keys + whole keys shifted to clip time inside the clip; exact at those times, straight line between; max 200, own keys first then shifted whole keys in time order; combined scale within 10-400%; clip without own key = whole-video copy unchanged) and (b) Apply LUT: clip's own LUT wins, whole-video LUT not applied to that clip; status line note at opening (clips combined / clips kept own LUT; none when no clip changed; no undo step, no change mark). Acceptance conflict case: clip 0-4 s own Scale 100%->200%, whole Scale 100% at 0 s, 200% at 2 s -> 100% at 0, 300% at 2, 400% at 4, 200% at 1 s (1.6.0: 187.5%).
+- REQ-130 (planned): one sentence added: a converted 1.6.0 clip gets one combined path (REQ-149). "Never stacks" rule unchanged.
+- REQ-135 REWORDED -> set (planned) (was implemented in 1.6.0): a whole-video LUT is no longer a separate layer (REQ-147 copies it to each clip); the "whole first, then clip" order sentence removed; marker of whole video removed; conflict acceptance added (clip own LUT A shown, others B).
+- MINOR (PM default, Andrea can overrule): a double-click giving a clip a LUT it already has replaces it (architect plan rule "replaces as 1.6.0 rule says"; 1.6.0 rule says a new LUT is set on choice). Written in REQ-135.
+- MINOR (kept from plan): 200-key priority (clip's own first, then shifted whole keys in time order) is a human-visible approximation rule, written in REQ-149; 0 and clip length always kept.
+- Human docs edited: docs/business-editing.md (REQ-149 in place; line count unchanged, index L17-31 valid), docs/business-frame.md (REQ-130 sentence, Key decisions 1.6.1 Q-F line L45, Impact REQ-149 pointer L49, Known limitations Q-F bullet L65), docs/business-lut.md (REQ-135, Features L9-10, key decision L25, limitation L34). Index refreshed.
+- Rejected: option B (drop the whole-video value on the clip), option C (bake the LUT, second track; Andrea rejected it).
+- Future work: if a user reports a changed picture in an old project with both effects, reconsider exact baking (option C) (plan line 115). Next free ID REQ-150 (unchanged).
+
+## 1.6.1 STATUS (target 1.6.1, PE report 2026-11-20)
+- IMPLEMENTED (flipped in docs, all `(planned)` -> `(implemented)`): REQ-082, 083, 129, 130, 135, 144, 145, 146, 147, 148, 149. REQ-034 already implemented, kept. No `(planned)` REQ left in docs/business*.md. Next free ID REQ-150 (unchanged). Wording: no "planned" text left in business*.md; "since 1.6.1" pointers kept.
+- Index refreshed in place (no line count changed; 083, 082/147, 146, 129/145/148, 130, 135 now "implemented 1.6.1").
+- Splash check (assets/splash/1.6.1.txt, PE-written from the PM draft, not PM's file): matches delivered behaviour except line 3. "Drag a visible edge of a Scale, subtitle or text box to resize it." is inexact: a text item has only a width handle on its visible right edge (REQ-146, REQ-116). Proposed line 3 (for PE/command to apply, max 5 lines kept): "Drag a visible edge of a Scale or subtitle box, or the right edge of a text box, to resize it." Lines 2, 4, 5 match REQ-144, REQ-147, REQ-083. Not added: LUT and Scale/Move copies (REQ-135, REQ-148) (MINOR: summary kept to four points).
+- Accepted deviation (Andrea, ai-docs/code.md 1.6.1): frozen 1.1.0 / 1.2.5 export fixtures differ only in where `volume=` sits in the argv (same sound). Engineering detail, not user-visible: NOT written in human docs.
+- QG-06 (CI build time, 1.6.1): not reported by PE; wording left as "planned 1.6.1" in index (business-performance.md L70 has no "(planned)" marker). Open: PE/command to say whether it was measured; not a REQ, no covers.
+- Future work: whole-video copies that diverge (first-clip popup view; REQ-148 limitation); text item visible top/bottom edges do nothing (only right edge, by design); a message when a clip is added after a whole-video effect (idea); Change aspect per clip (only if Andrea asks); whole-video LUT/Scale copies not on the splash summary (decide at 1.6.2 if wanted); splash image origin/licence still open.
 
 ## 1.6.0 STATUS (target 1.6.0, PE report 2026-11-19)
 - IMPLEMENTED: 133-143 (new docs business-splash/lut/player/icons) + 069, 075 reworded. PE flipped them to (implemented); wording checked; no stale "planned" text left in docs/business*.md. Next free ID REQ-144.

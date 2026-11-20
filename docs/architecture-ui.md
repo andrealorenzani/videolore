@@ -90,7 +90,7 @@ The interface is tested headless (no window): egui's accessibility tree, which l
 - Global keys such as Delete, Backspace and the arrows must not fire while typing; this is checked by tests for each key.
 - The menu bar inside the window looks less native on macOS, where Hide and Minimize remain unavailable.
 
-## Icons, splash and the Apply LUT popup (1.6.0, planned)
+## Icons, splash and the Apply LUT popup (1.6.0)
 - Every toolbar button, menu item, Effects row, marker type and popup or dialog title gets an icon from one bundled font; the icon's command table is the same one that drives menus and shortcuts (see [icons](architecture-icons.md)).
 - The splash opens at editor start as an in-app popup with the same closing rules (see [splash](architecture-splash.md)).
 - Apply LUT has a popup with Choose file, the file name (full path in a tooltip) and Remove effect (see [LUT](architecture-lut.md)).

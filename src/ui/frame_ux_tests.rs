@@ -68,7 +68,10 @@ fn the_scale_row_opens_a_popup_that_offers_apply_then_the_keyframe_buttons() {
     );
     assert!(h.has("Scale is not applied here."), "{:#?}", h.labels());
     h.click_label("Apply");
-    assert_eq!(h.app.project.timeline.whole_scale.len(), 1);
+    assert_eq!(
+        h.app.project.timeline.scale_keys(FrameTarget::Whole).len(),
+        1
+    );
     h.idle(2);
     for l in ["Add keyframe", "Remove keyframe", "Remove effect"] {
         assert!(h.has(l), "{l} in {:#?}", h.labels());
@@ -80,13 +83,25 @@ fn the_scale_row_opens_a_popup_that_offers_apply_then_the_keyframe_buttons() {
     // Add keyframe at the playhead, then Remove keyframe (selected by the add)
     let n = h.app.history.undo_len();
     h.click_label("Add keyframe");
-    assert_eq!(h.app.project.timeline.whole_scale.len(), 2);
+    assert_eq!(
+        h.app.project.timeline.scale_keys(FrameTarget::Whole).len(),
+        2
+    );
     assert_eq!(h.app.history.undo_len(), n + 1);
     h.click_label("Remove keyframe");
-    assert_eq!(h.app.project.timeline.whole_scale.len(), 1);
+    assert_eq!(
+        h.app.project.timeline.scale_keys(FrameTarget::Whole).len(),
+        1
+    );
     // Remove effect
     h.click_label("Remove effect");
-    assert!(h.app.project.timeline.whole_scale.is_empty());
+    assert!(
+        h.app
+            .project
+            .timeline
+            .scale_keys(FrameTarget::Whole)
+            .is_empty()
+    );
     assert!(!h.app.popups.is_open(Popup::Instance));
 }
 
@@ -306,8 +321,9 @@ fn the_range_of_a_clip_popup_is_its_kept_part() {
     let (_d, app) = loaded();
     let c1 = app.project.timeline.clips[1].id;
     assert_eq!(
+        // the whole-video popup: the first clip's keys on a timeline as long as the longest clip
         key_range(&app, FrameTarget::Whole),
-        Some((s(0), s(10), s(0)))
+        Some((s(0), s(5), s(0)))
     );
     assert_eq!(
         key_range(&app, FrameTarget::Clip(c1)),

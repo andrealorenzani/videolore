@@ -129,7 +129,7 @@ fn dragging_apply_lut_on_clip_2_opens_its_popup_and_choosing_a_file_sets_it() {
 
 // covers: REQ-135
 #[test]
-fn a_double_click_applies_to_the_whole_video_and_has_no_marker() {
+fn a_double_click_gives_each_clip_its_own_lut_and_its_marker() {
     let (_d, app, lut) = setup();
     let mut h = Harness::new(app, 1280.0, 800.0);
     let row = h.find("Apply LUT").unwrap();
@@ -144,11 +144,15 @@ fn a_double_click_applies_to_the_whole_video_and_has_no_marker() {
         h.app.project.timeline.lut_of(FrameTarget::Whole),
         Some(lut.as_str())
     );
-    assert!(
-        crate::ui::markers::layout(&h.app.project, 40.0, 0.0, (0.0, 10_000.0))
-            .iter()
-            .all(|m| m.kind != crate::ui::markers::MarkerKind::Lut)
-    );
+    // every clip has its own copy and its own marker (REQ-147)
+    let n = h.app.project.timeline.clips.len();
+    let markers = crate::ui::markers::layout(&h.app.project, 40.0, 0.0, (0.0, 10_000.0));
+    let luts = markers
+        .iter()
+        .filter(|m| m.kind == crate::ui::markers::MarkerKind::Lut)
+        .count();
+    assert_eq!(luts, n);
+    assert_eq!(h.app.project.timeline.clip_luts.len(), n);
     // the popup title says what it applies to, with an icon
     assert!(h.app.popup_title(Popup::Instance).contains("whole video"));
 }

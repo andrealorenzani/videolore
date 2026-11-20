@@ -138,12 +138,12 @@ fn a_lut_on_clip_2_of_3_changes_only_that_clip_in_the_preview_and_the_export() {
     assert!(close(got, RED, 4));
 }
 
-// covers: REQ-135
+// covers: REQ-135, REQ-147
 #[test]
-fn the_whole_videos_lut_is_applied_before_the_clips() {
+fn the_whole_videos_lut_is_a_copy_on_each_clip_and_a_clips_own_replaces_it() {
     let Some(env) = setup() else { return };
     let mut p = three_clips(&env, "red");
-    // whole: red -> blue; clip: blue -> green. Whole first gives green, clip first blue.
+    // whole: red -> blue on every clip; then clip 2 gets red -> red (its own replaces the copy)
     let whole = cube(&env, "w.cube", |[r, g, b]| [b, g, r]);
     let clip = cube(&env, "c.cube", |[r, g, b]| [r, b, g]);
     let id = p.timeline.clips[1].id;
@@ -153,10 +153,11 @@ fn the_whole_videos_lut_is_applied_before_the_clips() {
         .unwrap();
     let t = |s: f64| preview_centre(&env, &p, Micros::from_secs_f64(s));
     assert!(close(t(1.0), BLUE, 4), "{:?}", t(1.0));
-    assert!(close(t(3.0), GREEN, 4), "{:?}", t(3.0));
+    assert!(close(t(3.0), RED, 4), "{:?}", t(3.0));
+    assert!(close(t(5.0), BLUE, 4), "{:?}", t(5.0));
     let (out, w) = export_to(&env, &p, "order.mp4");
     let got = px(&env.frame_rgb(&out, 3.0), w, 80, 60);
-    assert!(close(got, GREEN, 8), "{got:?}");
+    assert!(close(got, RED, 8), "{got:?}");
 }
 
 // covers: REQ-135

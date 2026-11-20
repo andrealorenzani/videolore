@@ -90,7 +90,7 @@ pub const ADD_TEXT_TOOLTIP: &str = "Opens a popup to add a text at the playhead"
 /// Number of fades of every kind (boundaries, start, end).
 pub fn fade_count(app: &AppState) -> usize {
     let tl = &app.project.timeline;
-    tl.fades.len() + usize::from(tl.start_fade) + usize::from(tl.end_fade)
+    tl.fades.len() + usize::from(tl.start_fade()) + usize::from(tl.end_fade())
 }
 
 /// True when the popup of `effect` is open (for the picture effects: the one it shows).
@@ -251,11 +251,11 @@ pub fn fades_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     }
     for (on, i, text) in [
         (
-            tl.start_fade,
+            tl.start_fade(),
             Instance::FadeStart,
             "Fade from black at the start",
         ),
-        (tl.end_fade, Instance::FadeEnd, "Fade to black at the end"),
+        (tl.end_fade(), Instance::FadeEnd, "Fade to black at the end"),
     ] {
         if on
             && ui
@@ -287,7 +287,7 @@ pub fn fades_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
 /// The Volume popup: two sliders and two mute switches. Dragging changes the value
 /// locally; one undo step is recorded when the slider is released.
 pub fn volume_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
-    let mut mix = cache.mix_drag.unwrap_or(app.project.mix);
+    let mut mix = cache.mix_drag.unwrap_or(app.volume_mix());
     let mut commit = false;
     let mut dragging = false;
     for (label, volume, muted) in [
@@ -307,7 +307,7 @@ pub fn volume_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut 
         cmds.push(Command::SetMix(mix));
     } else if dragging {
         cache.mix_drag = Some(mix);
-    } else if cache.mix_drag.is_some_and(|m: Mix| m == app.project.mix) {
+    } else if cache.mix_drag.is_some_and(|m: Mix| m == app.volume_mix()) {
         cache.mix_drag = None;
     }
 }
@@ -594,8 +594,8 @@ pub fn clean_audio_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
 pub fn edge_fade_body(ui: &mut Ui, app: &AppState, edge: Edge, cmds: &mut Vec<Command>) {
     let tl = &app.project.timeline;
     let on = match edge {
-        Edge::Start => tl.start_fade,
-        Edge::End => tl.end_fade,
+        Edge::Start => tl.start_fade(),
+        Edge::End => tl.end_fade(),
     };
     if !on {
         ui.label("This fade no longer exists.");

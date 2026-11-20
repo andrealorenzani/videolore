@@ -239,7 +239,12 @@ fn hardware_tail_reaches_the_graph_script() {
 
 /// The 1.1 project files of the compatibility check (REQ-094): their export argv and
 /// burned-in subtitles, as written by videolore 1.1.0.
-const GOLDEN_1_1: &str = include_str!("../../tests/fixtures/export-argv-1.1.0.txt");
+///
+/// Since 1.6.1 (REQ-149) the video's sound level of an old project becomes the level of each
+/// clip, so the same gain is applied in each clip's chain instead of after the join; nothing
+/// else differs from `export-argv-1.1.0.txt`, which is kept as the 1.1.0 record. This file is
+/// that output as 1.6.1 writes it.
+const GOLDEN_1_1: &str = include_str!("../../tests/fixtures/export-argv-1.1.0-in-1.6.1.txt");
 
 /// A committed 1.1 project (schema 2) with fades, music, mix and word-timed subtitles.
 pub(crate) const V2_FIXTURE: &str = include_str!("../../tests/fixtures/project-v2-1.1.vlproj");
@@ -267,8 +272,10 @@ fn render_fixtures() -> String {
 /// A committed 1.2.5 project (schema 3): volumes, edge fades, a positioned line.
 pub(crate) const V3_FIXTURE: &str = include_str!("../../tests/fixtures/project-v3-1.2.5.vlproj");
 
-/// What videolore 1.2.5 exported for [`V3_FIXTURE`] (frozen before 1.2.6).
-const GOLDEN_1_2_5: &str = include_str!("../../tests/fixtures/export-argv-1.2.5.txt");
+/// What videolore 1.2.5 exported for [`V3_FIXTURE`] (frozen before 1.2.6; kept as
+/// `export-argv-1.2.5.txt`), with the one change of 1.6.1: the video's sound level is the level
+/// of each clip (REQ-149), see [`GOLDEN_1_1`].
+const GOLDEN_1_2_5: &str = include_str!("../../tests/fixtures/export-argv-1.2.5-in-1.6.1.txt");
 
 fn render_files(files: &[(&str, &str)]) -> String {
     let mut text = String::new();

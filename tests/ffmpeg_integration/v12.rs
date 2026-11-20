@@ -49,12 +49,12 @@ fn whole_video_fade_starts_and_ends_in_black() {
     let quiet = env.audio_peak(&r, 0.0, 0.04);
     let loud = env.audio_peak(&r, 1.0, 0.2);
     assert!(quiet * 4 < loud, "quiet {quiet} loud {loud}");
-    // the fade stays at the start after the first clip is cut
+    // the start fade belongs to the first clip: cutting it removes the fade (REQ-083)
     let first = p.timeline.clips[0].id;
     p.timeline.remove(first).unwrap();
     let (r, _) = env.export(&p, &env.dir.path().join("edges2.mp4"));
     let means = env.luma_means(&r.unwrap(), 640, 360);
-    assert!(means[0] < 20.0 && *means.last().unwrap() < 20.0);
+    assert!(means[0] > 60.0 && *means.last().unwrap() < 20.0);
 }
 
 /// A muted clip is silent, the next one is not; 50 % is a quarter of the level.

@@ -657,7 +657,8 @@ fn music_track_commands_are_undoable_and_independent_of_video_edits() {
     app.dispatch(Command::SetMix(mix), now).unwrap();
     assert_eq!(app.project.mix.music_volume, 100);
     let undo_len = app.history.undo_len();
-    app.dispatch(Command::SetMix(app.project.mix), now).unwrap();
+    app.dispatch(Command::SetMix(app.volume_mix()), now)
+        .unwrap();
     assert_eq!(
         app.history.undo_len(),
         undo_len,

@@ -287,12 +287,15 @@ fn a_change_on_the_picture_without_a_selected_key_makes_one_at_the_playhead() {
     app.dispatch(Command::Undo, now()).unwrap();
     assert_eq!(app.project.timeline.move_keys(w).len(), 1);
     // the picture's rectangle follows (frame fractions), and the handles belong to the
-    // clip's own effect before the whole video's
+    // clip under the playhead (its copy of the whole-video effect, REQ-148)
     app.dispatch(Command::Redo, now()).unwrap();
     let (r, _) = app.picture_rect().unwrap();
     assert!(((r.0 + r.2) / 2.0 - 0.6).abs() < 1e-6);
-    assert_eq!(app.frame_target_at_playhead(FrameFx::Move), Some(w));
     let c0 = clip(&app, 0);
+    assert_eq!(
+        app.frame_target_at_playhead(FrameFx::Move),
+        Some(FrameTarget::Clip(c0))
+    );
     apply(&mut app, EffectKind::Move, Target::Clip(c0)).unwrap();
     assert_eq!(
         app.frame_target_at_playhead(FrameFx::Move),

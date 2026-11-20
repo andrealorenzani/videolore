@@ -90,7 +90,7 @@ Since 0.3.0, to remove GitHub's deprecation warnings and make builds reproducibl
 - Linux and Windows move to the newest BtbN build of the 9.0 branch (2026-11-13, version 9.0.2-57), pinned by SHA-256 in `packaging/ffmpeg.lock`.
 - That is a daily build, kept by BtbN for a shorter time than month-end builds: if it disappears before a later re-package, the package job fails loudly and the pin moves to the 2026-11-30 month-end build.
 
-## Two products (1.6.0, planned)
+## Two products (1.6.0)
 - `scripts/package.sh <target> [editor|player]`: the default is the editor, so existing calls are unchanged. The player is built from the workspace member `player/` (see [build](architecture-build.md)).
 - Editor: `videolore-<version>-…` (unchanged names). Player: `videolore-player-<version>-…` with the same kinds of file (AppImage and tar.gz on Linux, NSIS setup on Windows, disk image on macOS).
 - Identifiers: `io.github.andrealorenzani.videolore` (editor) and `io.github.andrealorenzani.videolore-player` (player), so both install side by side. The player has no file association and no Linux menu entry written by the program.

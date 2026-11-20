@@ -57,11 +57,11 @@ Calibration on a real Intel laptop showed that no single quantiser (and no bits-
 - **How:** for each format (H.264, HEVC), each candidate in order encodes 8 synthetic frames (640x360, generated inside `ffmpeg`, no file read) with exactly the settings of a real export, until one works. Typically 2 to 4 short runs.
 - **Limits (since 0.4.2):** times count from the start of each process (waiting for a free process slot does not count).
 
-  | Limit | Value | What happens |
-  |---|---|---|
-  | First try of a candidate | 1 s | if it does not answer in time, it is tried once more straight away (the next candidate waits, so the preference order never changes) |
-  | Retry | 4 s | if it still does not answer, it is noted "did not answer in time" and the next candidate is tried |
-  | Whole check | 10 s | untried candidates are noted "did not answer in time"; a try cut short by this limit is not retried |
+ | Limit | Value | What happens |
+ |---|---|---|
+ | First try of a candidate | 1 s | if it does not answer in time, it is tried once more straight away (the next candidate waits, so the preference order never changes) |
+ | Retry | 4 s | if it still does not answer, it is noted "did not answer in time" and the next candidate is tried |
+ | Whole check | 10 s | untried candidates are noted "did not answer in time"; a try cut short by this limit is not retried |
 
   One process at a time, at background priority, within the process limit (REQ-033); no network. An export started before the check finishes uses the normal method.
 - **Why the retry (0.4.2):** before 0.4.2 the limits were 1 s per candidate and 3 s in total. On a busy computer (an export, subtitle generation or a build using every core) a working encoder can take longer than 1 s to start, so the check reported "no hardware" at random. A time-out is therefore never a final "does not work".

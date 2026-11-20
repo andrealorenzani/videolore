@@ -241,7 +241,7 @@ mod tests {
         // the summary written for this version: a heading and at most 6 lines
         let lines = summary_lines();
         assert!(lines.len() >= 2 && lines.len() <= 6, "{lines:?}");
-        assert!(SUMMARY.contains("Apply LUT"));
+        assert!(SUMMARY.contains("Whole-video effects"));
         // the colour rule gives a readable colour over the real picture
         let m = mean_colour(&d.frames[0].rgba, d.size, TEXT_RECT);
         let c = text_colour(m);

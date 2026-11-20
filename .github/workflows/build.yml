@@ -19,6 +19,7 @@ jobs:
     name: fmt, clippy, test, coverage, version
     # Pinned runner image (the floating Ubuntu label moves to new releases on its own).
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       # Integration tests must not be skipped in CI.
       VIDEOLORE_REQUIRE_FFMPEG: "1"
@@ -34,7 +35,15 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy, llvm-tools-preview
       - name: System packages (ffmpeg for tests, ALSA headers, whisper.cpp build, speech fixture)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng
+        # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
+        # loudly if that ever changes); the package index is refreshed only when needed.
+        run: |
+          missing=""
+          for p in ffmpeg libasound2-dev libclang-dev espeak-ng; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          if [[ -n "$missing" ]]; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
+          fi
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
@@ -42,7 +51,7 @@ jobs:
           prefix-key: v1-rust-ggml-portable
       - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
-          tool: cargo-llvm-cov,cargo-deny@0.20.2
+          tool: cargo-llvm-cov,cargo-deny@0.20.2,cargo-about@0.9.3
       - name: Speech files for the real transcription tests (cached, checked by SHA-256)
         id: stt-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -92,7 +101,6 @@ jobs:
         run: cargo deny --locked check
       - name: Rust crate notices are up to date (editor and player)
         run: |
-          cargo install --locked cargo-about --version 0.9.3 --features cli
           scripts/notices.sh --check
       - name: Version is the same everywhere
         run: scripts/version.sh check
@@ -106,6 +114,7 @@ jobs:
     # exactly that version (the tests run once, in the check job).
     name: MSRV (rust-version from Cargo.toml)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Read rust-version
@@ -119,7 +128,15 @@ jobs:
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
       - name: System packages (ALSA headers, whisper.cpp build)
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config cmake libclang-dev
+        # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
+        # loudly if that ever changes); the package index is refreshed only when needed.
+        run: |
+          missing=""
+          for p in libasound2-dev libclang-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          if [[ -n "$missing" ]]; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
+          fi
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
@@ -140,6 +157,7 @@ jobs:
           - { os: macos-15, target: aarch64-apple-darwin, ext: "" }
           - { os: windows-2025, target: x86_64-pc-windows-msvc, ext: ".exe" }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -151,7 +169,15 @@ jobs:
           targets: ${{ matrix.target }}
       - name: System packages (ALSA headers, whisper.cpp build)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config cmake libclang-dev
+        # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
+        # loudly if that ever changes); the package index is refreshed only when needed.
+        run: |
+          missing=""
+          for p in libasound2-dev libclang-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          if [[ -n "$missing" ]]; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
+          fi
       - name: libclang for bindgen (Windows)
         if: runner.os == 'Windows'
         run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
@@ -205,7 +231,15 @@ jobs:
           toolchain: stable
       - name: System packages (ALSA headers, whisper.cpp build)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config cmake libclang-dev
+        # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
+        # loudly if that ever changes); the package index is refreshed only when needed.
+        run: |
+          missing=""
+          for p in libasound2-dev libclang-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          if [[ -n "$missing" ]]; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
+          fi
       - name: libclang for bindgen (Windows)
         if: runner.os == 'Windows'
         run: echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"

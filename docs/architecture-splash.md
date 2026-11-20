@@ -1,6 +1,6 @@
 # Architecture: splash screen
 
-Part of [Architecture](architecture.md). Requirements REQ-133 and REQ-134 ([business](business-splash.md)). Planned for 1.6.0.
+Part of [Architecture](architecture.md). Requirements REQ-133 and REQ-134 ([business](business-splash.md)). Since 1.6.0.
 
 ## Overview
 At every start of the editor without a file on the command line a splash window shows the release image, the text "Version X.Y" and a summary of the version's change. It is an in-app window on top of the main window, closed by its Close button, Esc or its title-bar close control. It never blocks the editor. The video player has no splash.
@@ -26,7 +26,12 @@ The text "Version X.Y" is drawn by the program over the rectangle x 74 to 408, y
 - The first-start notice (REQ-045), if due, appears after the splash is closed.
 - The GIF is decoded once, on first display, with the `image` crate's GIF decoder (about 100 ms budget). All frames are kept as textures; a repaint is requested only while the splash is open. The 1.6.0 image has one frame, so it is still. Decided 2026-11-19: the image is kept as supplied; a multi-frame file would animate with no code change.
 
-## Tests (planned)
+## 1.6.1 assets
+- `assets/splash/1.6.1.gif` is a copy of `1.6.0.gif` (the owner chose no new picture on 2026-11-19). Its origin and licence are still open, as above.
+- `assets/splash/1.6.1.txt` is the summary of the change: the heading "New in this version" and at most four short lines (within the six-line limit above).
+- Without these two files the build fails; they are added in the same change as the code.
+
+## Tests
 - Layout numbers: popup 400 px (plus or minus 1), popup height equal to the image height, scaling when the screen is small.
 - Text: "Version 1.6" for 1.6.0, fits inside the rectangle at its chosen size.
 - Assets: the summary file of the version exists; the GIF decodes to 486 x 506.

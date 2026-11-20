@@ -9,7 +9,7 @@ REQ-132); the design is in [architecture-frame.md](architecture-frame.md).
 |---|---|
 | `keyframes.rs` | Pure. `Key<T>`, `Lerp`, `at` (hold at both ends, straight line between), `add`, `set`, `remove` (the last key stays), `sanitise` (damaged keys), `MAX_KEYS` = 200 |
 | `frame.rs` | Pure. `FrameAspect` (`Shape`, `Fit`, `Fill`, `Rgb`), `frame_size`, `preview_size`, `picture_size`, `camera_size`, `fit_filter`; `Scale`, `Stack`/`Track` (the keys that act on one clip), `Placement`; the ffmpeg expressions (`scale_factor`, `offset_x`, `offset_y`) |
-| `timeline.rs` | `frame_aspect`, `whole_scale`, `whole_move`, `clip_frames` (`ClipFrames`), the edit methods (`add_scale`, `set_scale_key`, `remove_move_key`, ...), `frame_stack(index)`, `has_frame_effect`; split, remove and merge keep the keys consistent |
+| `timeline.rs` | `frame_aspect`, `clip_frames` (since 1.6.1 a whole-video Scale or Move is a copy on each clip, see [code-effects.md](code-effects.md)) (`ClipFrames`), the edit methods (`add_scale`, `set_scale_key`, `remove_move_key`, ...), `frame_stack(index)`, `has_frame_effect`; split, remove and merge keep the keys consistent |
 | `project.rs` | Schema 7, `validate_frames` (damaged values) |
 | `render.rs` | `Segment.frame` (`SegFrame`), `compose_frame` (background, picture, overlay), frame size in `plan_export_choice` and `output_geometry`, `FrameKey.placement` |
 | `app/frame.rs` | Commands of the effects, the keyframe popups' state, `picture_rect`, the value being dragged (`frame_drag`) |
@@ -91,6 +91,6 @@ the 360 and stream copy rules; `app/frame_tests.rs` the commands and undo steps;
 - The blur has one fixed strength; the preview of a blurred fill is rendered as a still on every
   change of the picture state.
 - On a 360 video export the effects are ignored.
-- Whole-video keys do not follow trims; text items and subtitles do not follow Scale or Move.
+- Per-clip copies of whole-video keys are in source time and follow trims like the clip's own keys; text items and subtitles do not follow Scale or Move.
 - The picture handles show only one effect per kind (the clip's, else the whole video's).
 - Keyframes are only straight lines; they cannot be copied from clip to clip.

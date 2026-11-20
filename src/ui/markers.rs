@@ -144,7 +144,7 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
     }
     if !tl.clips.is_empty() {
         let end = tl.duration();
-        if tl.start_fade {
+        if tl.start_fade() {
             out.push(Marker {
                 kind: MarkerKind::EdgeFade,
                 instance: Instance::FadeStart,
@@ -154,7 +154,7 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
                     .into(),
             });
         }
-        if tl.end_fade {
+        if tl.end_fade() {
             out.push(Marker {
                 kind: MarkerKind::EdgeFade,
                 instance: Instance::FadeEnd,

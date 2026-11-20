@@ -67,6 +67,8 @@ These are engineering targets (QG-01 to QG-04 since 0.3.0, QG-05 since 0.4.0); t
 
   Other combinations are not yet measured. Goal g is not met on integrated Intel graphics: the hardware export plus the output check is not quicker than the normal method there. Recommendation: re-baseline g after measuring a dedicated graphics card (for example a per-kind-of-graphics target instead of one 40% figure), and consider a cheaper output check later, as long as it still catches the faults listed in REQ-063.
 
+- **QG-06 Shorter automatic builds** (1.6.1): the automatic build and test run on GitHub should finish sooner. Only the system packages the build really needs are installed, and the slow steps are shortened. Target (assumption, measured and reported, not a release gate): the 1.6.1 run takes at least 30% less time than the 1.6.0 run on the same runner. Nothing is removed from the checks: formatting, lints, tests, line coverage of at least 85%, feature coverage of 100%, version and release checks and the executables still run, and the Linux packages still run on current Ubuntu LTS and Fedora (REQ-040).
+
 ## Key decisions
 - Detection runs inside videolore at first start, on every operating system; installers do no tuning. One way of working everywhere, and it can be tested.
 - One plain "How hard videolore works" choice instead of thread or process numbers; technical values never appear in the main part of Settings.

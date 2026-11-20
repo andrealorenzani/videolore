@@ -20,11 +20,14 @@ use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-/// Schema written by this version (8 since 1.6.0: Apply LUT paths; 7 since 1.5.0: Change aspect, Scale and Move with
+mod v9;
+
+/// Schema written by this version (9 since 1.6.1: every whole-video effect is a copy on each clip,
+/// edge fades are flags of the clips; 8 since 1.6.0: Apply LUT paths; 7 since 1.5.0: Change aspect, Scale and Move with
 /// keyframes; 6 since 1.4.0: text widths; 5 since 1.3.0: text items and 360 anchors; 4 since 1.2.6: subtitle sizes, the 360° switch and
 /// the camera paths; 3 since 1.2.0: clip volumes, fades at the video's edges, subtitle
 /// positions, subtitle tracks of media).
-pub const SCHEMA_VERSION: u64 = 8;
+pub const SCHEMA_VERSION: u64 = 9;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 16 * 1024 * 1024;
@@ -339,6 +342,12 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
     } else {
         Vec::new()
     };
+    // the whole-video effects of 1.6.0 and before are read aside (REQ-149, ADR-124)
+    let legacy = if version < 9 {
+        Some(v9::Legacy::take(&mut value)?)
+    } else {
+        None
+    };
     let mut file: ProjectFile =
         serde_json::from_value(value).map_err(|e| ProjectError::Invalid(e.to_string()))?;
     for (item, size) in file.texts.iter_mut().zip(legacy_sizes) {
@@ -417,7 +426,14 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
             return Err(invalid("fade refers to an unknown clip"));
         }
     }
+    let mut mix = file.mix;
+    if mix.video_volume > 100 || mix.music_volume > 100 {
+        return Err(invalid("volume above 100%"));
+    }
     validate_frames(&mut timeline, &media);
+    if let Some(old) = legacy {
+        v9::apply(&mut timeline, &mut mix, old, &mut missing);
+    }
     validate_luts(&mut timeline, &mut missing);
     let mut music = file.music;
     validate_music(&mut music, &media)?;
@@ -432,10 +448,6 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
         items: file.texts,
     };
     texts.validate().map_err(|m| invalid(&m))?;
-    let mix = file.mix;
-    if mix.video_volume > 100 || mix.music_volume > 100 {
-        return Err(invalid("volume above 100%"));
-    }
     let max_clip = clip_ids.iter().map(|c| c.0).max().unwrap_or(0);
     let max_media = ids.iter().map(|m| m.0).max().unwrap_or(0);
     let mut project = Project {
@@ -453,20 +465,10 @@ pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), Proje
 }
 
 /// Corrects damaged Change aspect, Scale and Move values without refusing the file
-/// (REQ-132): values are brought inside their limits, keys outside the media (clip keys) or
-/// the video (whole-video keys) are dropped, equal times keep the first key, at most 200
+/// (REQ-132): values are brought inside their limits, keys outside the media are dropped, equal times keep the first key, at most 200
 /// keys per path stay, entries of unknown clips and empty entries are removed.
 fn validate_frames(tl: &mut crate::timeline::Timeline, media: &[MediaItem]) {
     use crate::keyframes::sanitise;
-    let total = tl.duration();
-    for k in &mut tl.whole_scale {
-        k.v.clamp();
-    }
-    for k in &mut tl.whole_move {
-        clamp_pos(&mut k.v);
-    }
-    sanitise(&mut tl.whole_scale, total);
-    sanitise(&mut tl.whole_move, total);
     let entries = std::mem::take(&mut tl.clip_frames);
     let mut seen = BTreeSet::new();
     for mut e in entries {
@@ -503,15 +505,14 @@ fn validate_luts(tl: &mut crate::timeline::Timeline, notes: &mut Vec<String>) {
             return false;
         }
         if !Path::new(p).exists() {
-            notes.push(format!("{} (colour LUT file)", crate::lut::display_name(p)));
+            let note = format!("{} (colour LUT file)", crate::lut::display_name(p));
+            // one file on several clips (a whole-video LUT) is named once
+            if !notes.contains(&note) {
+                notes.push(note);
+            }
         }
         true
     };
-    if let Some(p) = tl.whole_lut.clone()
-        && !check(&p)
-    {
-        tl.whole_lut = None;
-    }
     let entries = std::mem::take(&mut tl.clip_luts);
     let mut seen = BTreeSet::new();
     for e in entries {
@@ -939,14 +940,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 8"));
+        assert!(text.contains("\"schema_version\": 9"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 9");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 10");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(9));
+        assert_eq!(e, ProjectError::TooNew(10));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -1106,11 +1107,12 @@ pub(crate) mod tests {
         );
         assert_eq!(p.timeline.clips.len(), 3);
         assert_eq!(p.timeline.fades.len(), 2, "boundary fades kept");
-        assert!(!p.timeline.start_fade && !p.timeline.end_fade);
-        assert!(p.timeline.clips.iter().all(|c| c.volume == 100 && !c.muted));
+        assert!(!p.timeline.start_fade() && !p.timeline.end_fade());
+        // the video level of 1.6.0 is now the level of each clip (REQ-149)
+        assert!(p.timeline.clips.iter().all(|c| c.volume == 80 && !c.muted));
         assert!(p.subtitles.lines.iter().all(|l| l.position.is_none()));
         assert!(p.media.iter().all(|m| m.format.subtitle_tracks.is_none()));
-        assert_eq!(p.mix.video_volume, 80);
+        assert_eq!(p.mix.video_volume, 100);
         // saved by 1.2: schema 3 with the new data, which 1.1 refuses (file untouched)
         let mut q = p.clone();
         q.timeline.set_edge_fades(true).unwrap();
@@ -1124,8 +1126,8 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 8"));
-        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(8)));
+        assert!(text.contains("\"schema_version\": 9"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(9)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         assert_eq!(
             opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
@@ -1166,6 +1168,7 @@ pub(crate) mod tests {
                 w["timeline"]["clips"][0]["muted"] = 3.into()
             }),
             ("start fade string", &|w| {
+                w["schema_version"] = 8.into();
                 w["timeline"]["start_fade"] = "yes".into()
             }),
             ("pos x", &|w| {
@@ -1202,6 +1205,7 @@ pub(crate) mod tests {
         let (q, _) = try_with(&|w| {
             w["timeline"]["clips"] = serde_json::json!([]);
             w["timeline"]["fades"] = serde_json::json!([]);
+            w["schema_version"] = 8.into();
             w["timeline"]["start_fade"] = true.into();
             w["subtitles"]["lines"] = serde_json::json!([]);
         })
@@ -1269,9 +1273,9 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 8"));
+        assert!(text.contains("\"schema_version\": 9"));
         assert!(text.contains("\"camera\"") && !text.contains("\"treat_as_360\""));
-        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(8)));
+        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(9)));
         assert_eq!(load(&file).unwrap().0, q);
         // a project without points of view writes no camera section
         let plain = dir.path().join("plain.vlproj");
@@ -1354,7 +1358,7 @@ pub(crate) mod tests {
         assert!(text.contains("\"texts\"") && text.contains("\"anchor\""));
         assert_eq!(load(&file).unwrap().0, q);
         // 1.2.6 refuses it, untouched
-        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(8)));
+        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(9)));
         // a project of 1.2.6 has no texts
         let old = text.replace("\"schema_version\": 6", "\"schema_version\": 4");
         let mut v: serde_json::Value = serde_json::from_str(&old).unwrap();
@@ -1404,10 +1408,10 @@ pub(crate) mod tests {
         v["subtitles"]["lines"][0]["anchor"]["pitch_cd"] = 99_999.into();
         assert!(from_json(&v.to_string(), dir.path()).is_err());
         // too new
-        let new = text.replace("\"schema_version\": 8", "\"schema_version\": 9");
+        let new = text.replace("\"schema_version\": 9", "\"schema_version\": 10");
         assert_eq!(
             from_json(&new, dir.path()).unwrap_err(),
-            ProjectError::TooNew(9)
+            ProjectError::TooNew(10)
         );
     }
 
@@ -1537,17 +1541,17 @@ pub(crate) mod tests {
 
     // covers: REQ-132
     #[test]
-    fn frame_effects_are_saved_in_format_8_and_reopen_identically() {
+    fn frame_effects_are_saved_in_format_9_and_reopen_identically() {
         let dir = tempfile::tempdir().unwrap();
         let p = framed(dir.path());
         let file = dir.path().join("f.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 8"));
+        assert!(text.contains("\"schema_version\": 9"));
         assert!(text.contains("\"frame_aspect\""));
         assert_eq!(load(&file).unwrap().0, p);
         // 1.4.1 and earlier refuse it
-        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(8)));
+        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(9)));
     }
 
     // covers: REQ-132
@@ -1559,7 +1563,7 @@ pub(crate) mod tests {
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 8", "\"schema_version\": 6");
+            .replace("\"schema_version\": 9", "\"schema_version\": 6");
         assert!(!text.contains("frame_aspect") && !text.contains("clip_frames"));
         let (q, _) = from_json(&text, dir.path()).unwrap();
         assert!(!q.timeline.has_frame_effect());
@@ -1582,12 +1586,15 @@ pub(crate) mod tests {
         let mut w = v.clone();
         w["timeline"]["clip_frames"][0]["scale"][0]["v"]["permille"] = 0.into();
         w["timeline"]["clip_frames"][0]["scale"][1]["v"]["permille"] = 10_000.into();
-        w["timeline"]["whole_move"][0]["v"]["x"] = 65_000.into();
+        w["timeline"]["clip_frames"][0]["moved"][0]["v"]["x"] = 65_000.into();
         let t = tl(&w);
         let id = t.clips[0].id;
         let keys = t.scale_keys(crate::timeline::FrameTarget::Clip(id));
         assert_eq!((keys[0].v.permille, keys[1].v.permille), (100, 4000));
-        assert_eq!(t.whole_move[0].v.x, 10_000);
+        assert_eq!(
+            t.move_keys(crate::timeline::FrameTarget::Clip(id))[0].v.x,
+            10_000
+        );
 
         // keys outside the media are dropped; equal times keep the first
         let mut w = v.clone();
@@ -1606,7 +1613,7 @@ pub(crate) mod tests {
 
         // more than 200 keys: the extra ones go; entries of unknown clips go
         let mut w = v.clone();
-        let one = w["timeline"]["whole_move"][0].clone();
+        let one = w["timeline"]["clip_frames"][0]["moved"][0].clone();
         let many: Vec<serde_json::Value> = (0..300)
             .map(|i| {
                 let mut k = one.clone();
@@ -1614,7 +1621,7 @@ pub(crate) mod tests {
                 k
             })
             .collect();
-        w["timeline"]["whole_move"] = many.into();
+        w["timeline"]["clip_frames"][0]["moved"] = many.into();
         let mut ghost = w["timeline"]["clip_frames"][0].clone();
         ghost["clip"] = 777.into();
         w["timeline"]["clip_frames"]
@@ -1622,8 +1629,11 @@ pub(crate) mod tests {
             .unwrap()
             .push(ghost);
         let t = tl(&w);
-        assert_eq!(t.whole_move.len(), 200);
-        assert_eq!(t.clip_frames.len(), 1);
+        assert_eq!(
+            t.move_keys(crate::timeline::FrameTarget::Clip(id)).len(),
+            200
+        );
+        assert_eq!(t.clip_frames.len(), 3);
 
         // an unknown shape reads as no effect
         let mut w = v.clone();
@@ -1631,7 +1641,7 @@ pub(crate) mod tests {
         assert!(tl(&w).frame_aspect.is_none());
         // garbage types are refused as damaged files, not crashes
         let mut w = v.clone();
-        w["timeline"]["whole_move"] = "lots".into();
+        w["timeline"]["clip_frames"][0]["moved"] = "lots".into();
         assert!(matches!(
             from_json(&w.to_string(), dir.path()),
             Err(ProjectError::Invalid(_))
@@ -1649,7 +1659,7 @@ pub(crate) mod tests {
 
     // covers: REQ-137
     #[test]
-    fn apply_lut_is_saved_in_format_8_and_old_files_open_unchanged() {
+    fn apply_lut_is_saved_in_format_9_and_old_files_open_unchanged() {
         let dir = tempfile::tempdir().unwrap();
         let mut p = sample(dir.path());
         let lut = dir.path().join("warm.cube");
@@ -1665,19 +1675,19 @@ pub(crate) mod tests {
         let file = dir.path().join("l.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 8"));
+        assert!(text.contains("\"schema_version\": 9"));
         let (q, notes) = load(&file).unwrap();
         assert_eq!(q, p);
         assert!(notes.is_empty());
         // 1.5.x refuses the file with its newer-version message and leaves it alone
-        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(8)));
+        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(9)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         // a project of 1.5 (no LUT keys) opens with no colour effect
         let plain = sample(dir.path());
         save(&plain, &file).unwrap();
         let old = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 8", "\"schema_version\": 7");
+            .replace("\"schema_version\": 9", "\"schema_version\": 7");
         assert!(!old.contains("whole_lut") && !old.contains("clip_luts"));
         let (r, _) = from_json(&old, dir.path()).unwrap();
         assert!(!r.timeline.any_lut());
@@ -1695,14 +1705,14 @@ pub(crate) mod tests {
         let t = |v: &serde_json::Value| from_json(&v.to_string(), dir.path());
         p.timeline
             .set_lut(
-                crate::timeline::FrameTarget::Clip(id),
-                Some("/nowhere/x.cube".into()),
+                crate::timeline::FrameTarget::Whole,
+                Some("/nowhere/w.cube".into()),
             )
             .unwrap();
         p.timeline
             .set_lut(
-                crate::timeline::FrameTarget::Whole,
-                Some("/nowhere/w.cube".into()),
+                crate::timeline::FrameTarget::Clip(id),
+                Some("/nowhere/x.cube".into()),
             )
             .unwrap();
         let file = dir.path().join("l.vlproj");
@@ -1718,6 +1728,7 @@ pub(crate) mod tests {
         );
         // damaged paths are cleared with a note
         let mut w = v.clone();
+        w["schema_version"] = 8.into();
         w["timeline"]["whole_lut"] = "".into();
         w["timeline"]["clip_luts"][0]["path"] = "a\u{0}b".into();
         let mut ghost = w["timeline"]["clip_luts"][0].clone();
@@ -1727,7 +1738,12 @@ pub(crate) mod tests {
             .unwrap()
             .push(ghost.clone());
         let (q, notes) = t(&w).unwrap();
-        assert!(!q.timeline.any_lut());
+        // the damaged entry of the first clip is gone; the other clips keep their (missing) file
+        assert!(
+            q.timeline
+                .lut_of(crate::timeline::FrameTarget::Clip(id))
+                .is_none()
+        );
         assert_eq!(notes.iter().filter(|n| n.contains("damaged")).count(), 2);
         // an unknown clip and a duplicate entry are dropped
         let mut w = v.clone();
@@ -1737,9 +1753,10 @@ pub(crate) mod tests {
             .unwrap()
             .extend([first, ghost]);
         let (q, _) = t(&w).unwrap();
-        assert_eq!(q.timeline.clip_luts.len(), 1);
+        assert_eq!(q.timeline.clip_luts.len(), q.timeline.clips.len());
         // a path that is not text is refused as a damaged file
         let mut w = v.clone();
+        w["schema_version"] = 8.into();
         w["timeline"]["whole_lut"] = 5.into();
         assert!(matches!(t(&w), Err(ProjectError::Invalid(_))));
         let mut w = v.clone();

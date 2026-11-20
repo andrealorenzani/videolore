@@ -11,7 +11,7 @@
 //! interaction code.
 
 use crate::subtitles::{LineId, POS_MAX, Pos, SIZE_MAX, SIZE_MIN, SIZE_NORMAL};
-use eframe::egui::{CursorIcon, Pos2, Rect};
+use eframe::egui::{CursorIcon, Pos2, Rect, Vec2, pos2, vec2};
 
 /// Pixels around a corner (and so around the box edge) that count as the handle.
 pub const HANDLE_TOLERANCE: f32 = 8.0;
@@ -73,10 +73,105 @@ impl Corner {
     }
 }
 
+/// One side of a box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Side {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+impl Side {
+    pub const ALL: [Side; 4] = [Side::Top, Side::Bottom, Side::Left, Side::Right];
+
+    /// The side on the other end of the box (the one that stays put when resizing).
+    pub fn opposite(self) -> Side {
+        match self {
+            Side::Top => Side::Bottom,
+            Side::Bottom => Side::Top,
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
+        }
+    }
+
+    /// The unit vector pointing out of the box through this side.
+    pub fn outward(self) -> Vec2 {
+        match self {
+            Side::Top => vec2(0.0, -1.0),
+            Side::Bottom => vec2(0.0, 1.0),
+            Side::Left => vec2(-1.0, 0.0),
+            Side::Right => vec2(1.0, 0.0),
+        }
+    }
+
+    /// The middle of this side of `r`.
+    pub fn mid(self, r: Rect) -> Pos2 {
+        match self {
+            Side::Top => r.center_top(),
+            Side::Bottom => r.center_bottom(),
+            Side::Left => r.left_center(),
+            Side::Right => r.right_center(),
+        }
+    }
+
+    /// The length of `r` across this side's normal (its width for left and right).
+    pub fn extent(self, r: Rect) -> f32 {
+        match self {
+            Side::Top | Side::Bottom => r.height(),
+            Side::Left | Side::Right => r.width(),
+        }
+    }
+
+    /// Distance from `p` to this side of `r` seen as a segment (`None` when `p` is not
+    /// within `tol` of it along the side).
+    fn distance(self, r: Rect, p: Pos2, tol: f32) -> Option<f32> {
+        let (along, across) = match self {
+            Side::Top | Side::Bottom => (p.x, (p.y - self.mid(r).y).abs()),
+            Side::Left | Side::Right => (p.y, (p.x - self.mid(r).x).abs()),
+        };
+        let (lo, hi) = match self {
+            Side::Top | Side::Bottom => (r.left(), r.right()),
+            Side::Left | Side::Right => (r.top(), r.bottom()),
+        };
+        (along >= lo - tol && along <= hi + tol && across <= tol).then_some(across)
+    }
+}
+
+/// The picture's rectangle in frame pixels.
+fn frame_rect(frame: (u32, u32)) -> Rect {
+    Rect::from_min_size(pos2(0.0, 0.0), vec2(frame.0 as f32, frame.1 as f32))
+}
+
+/// The part of `rect` that lies on the picture (`None` when none of it does).
+pub fn visible_part(rect: Rect, frame: (u32, u32)) -> Option<Rect> {
+    let v = rect.intersect(frame_rect(frame));
+    (v.width() > 0.0 && v.height() > 0.0).then_some(v)
+}
+
+/// True when `rect` reaches beyond the picture.
+pub fn partly_outside(rect: Rect, frame: (u32, u32)) -> bool {
+    !frame_rect(frame).contains_rect(rect)
+}
+
+/// The side of the visible part of `rect` under `p` (the nearest one within `tol`).
+pub fn side_at(rect: Rect, frame: (u32, u32), p: Pos2, tol: f32) -> Option<Side> {
+    let vis = visible_part(rect, frame)?;
+    let tol = tol.max(0.0);
+    Side::ALL
+        .into_iter()
+        .filter_map(|s| s.distance(vis, p, tol).map(|d| (s, d)))
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(s, _)| s)
+}
+
 /// What the pointer is over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hit {
     Corner(Corner),
+    /// A visible side of a box that reaches beyond the picture: resizes it in proportion
+    /// (REQ-146).
+    Side(Side),
     /// The handle on the right edge of a width-only box.
     Edge,
     Body,
@@ -97,13 +192,16 @@ pub fn handle_at(r: Rect, p: Pos2, tol: f32) -> Option<Hit> {
 
 /// The topmost box (last in the list) and what is hit in it. Corner handles of any box
 /// win over the body of a box above.
-pub fn hit_test(boxes: &[BoxItem], p: Pos2, tol: f32) -> Option<(BoxItem, Hit)> {
+pub fn hit_test(boxes: &[BoxItem], p: Pos2, tol: f32, frame: (u32, u32)) -> Option<(BoxItem, Hit)> {
     let corner = boxes.iter().rev().find_map(|b| {
         if b.width_only {
-            return (edge_handle_at(b.rect, p, tol)).then_some((*b, Hit::Edge));
+            return (edge_handle_at(b.rect, p, tol, frame)).then_some((*b, Hit::Edge));
         }
         match handle_at(b.rect, p, tol) {
             Some(h @ Hit::Corner(_)) => Some((*b, h)),
+            _ if partly_outside(b.rect, frame) => {
+                side_at(b.rect, frame, p, tol).map(|s| (*b, Hit::Side(s)))
+            }
             _ => None,
         }
     });
@@ -121,9 +219,18 @@ pub fn cursor(hit: Hit, dragging: bool) -> CursorIcon {
     match hit {
         Hit::Corner(Corner::TopLeft | Corner::BottomRight) => CursorIcon::ResizeNwSe,
         Hit::Corner(Corner::TopRight | Corner::BottomLeft) => CursorIcon::ResizeNeSw,
+        Hit::Side(s) => side_cursor(s),
         Hit::Edge => CursorIcon::ResizeHorizontal,
         Hit::Body if dragging => CursorIcon::Grabbing,
         Hit::Body => CursorIcon::Grab,
+    }
+}
+
+/// The cursor of a resize handle on `side`.
+pub fn side_cursor(side: Side) -> CursorIcon {
+    match side {
+        Side::Top | Side::Bottom => CursorIcon::ResizeVertical,
+        Side::Left | Side::Right => CursorIcon::ResizeHorizontal,
     }
 }
 
@@ -172,6 +279,33 @@ pub fn resize(r0: Rect, size0: u16, corner: Corner, p: Pos2, frame: (u32, u32)) 
     Resized { rect, factor, size }
 }
 
+/// Resizes box `r0` (size `size0`) by dragging its visible `side` to the pointer `p`, in
+/// proportion: the middle of the opposite visible side stays where it is and the size stays
+/// between 25% and 400% (REQ-146). Used when the corners are outside the picture.
+pub fn resize_side(r0: Rect, size0: u16, side: Side, p: Pos2, frame: (u32, u32)) -> Resized {
+    let size0 = size0.clamp(SIZE_MIN, SIZE_MAX);
+    let vis = visible_part(r0, frame).unwrap_or(r0);
+    let fixed = side.opposite().mid(vis);
+    let len = side.extent(vis).max(1.0);
+    let raw = if p.x.is_finite() && p.y.is_finite() {
+        (p - fixed).dot(side.outward()) / len
+    } else {
+        1.0
+    };
+    let lo = f32::from(SIZE_MIN) / f32::from(size0);
+    let hi = f32::from(SIZE_MAX) / f32::from(size0);
+    let factor = raw.clamp(lo, hi);
+    let centre = fixed + (r0.center() - fixed) * factor;
+    let size = (f32::from(size0) * factor)
+        .round()
+        .clamp(f32::from(SIZE_MIN), f32::from(SIZE_MAX)) as u16;
+    Resized {
+        rect: Rect::from_center_size(centre, r0.size() * factor),
+        factor,
+        size,
+    }
+}
+
 /// The stored position of a box (its centre) in frame pixels.
 pub fn centre_pos(r: Rect, frame: (u32, u32)) -> Pos {
     super::placement::to_pos(r.center(), frame)
@@ -201,14 +335,40 @@ pub const fn normal_size() -> u16 {
 
 /// True when `p` is on the right-edge handle of box `r` (the middle of its right edge,
 /// within `tol`).
-pub fn edge_handle_at(r: Rect, p: Pos2, tol: f32) -> bool {
+pub fn edge_handle_at(r: Rect, p: Pos2, tol: f32, frame: (u32, u32)) -> bool {
     let tol = tol.max(0.0);
-    (p.x - r.right()).abs() <= tol && p.y >= r.top() - tol && p.y <= r.bottom() + tol
+    let Some(v) = visible_part(r, frame) else {
+        return false;
+    };
+    (p.x - v.right()).abs() <= tol && p.y >= v.top() - tol && p.y <= v.bottom() + tol
 }
 
-/// The square of the right-edge handle of a width-only box.
-pub fn edge_handle_rect(r: Rect, side: f32) -> Rect {
-    Rect::from_center_size(r.right_center(), eframe::egui::vec2(side, side))
+/// The square of the right-edge handle of a width-only box: on its visible part, so a box
+/// whose right edge is outside the picture keeps the handle at the picture's edge.
+pub fn edge_handle_rect(r: Rect, side: f32, frame: (u32, u32)) -> Rect {
+    let at = visible_part(r, frame).unwrap_or(r).right_center();
+    Rect::from_center_size(at, eframe::egui::vec2(side, side))
+}
+
+/// Where the handle squares of a box go: the corners that are on the picture and, for a
+/// box that reaches beyond it, the middle of each visible side; for a width-only box, its
+/// right-edge handle (REQ-145, REQ-146).
+pub fn handle_points(r: Rect, frame: (u32, u32), width_only: bool) -> Vec<Pos2> {
+    if width_only {
+        return vec![edge_handle_rect(r, 0.0, frame).center()];
+    }
+    let fr = frame_rect(frame);
+    let mut v: Vec<Pos2> = Corner::ALL
+        .into_iter()
+        .map(|c| c.of(r))
+        .filter(|c| fr.contains(*c))
+        .collect();
+    if partly_outside(r, frame)
+        && let Some(vis) = visible_part(r, frame)
+    {
+        v.extend(Side::ALL.into_iter().map(|s| s.mid(vis)));
+    }
+    v
 }
 
 /// Resizes the width of a text box `r0` by dragging its right edge to the pointer `p` (frame
@@ -303,15 +463,141 @@ mod tests {
             size: 1000,
             width_only: false,
         };
-        let (hit, h) = hit_test(&[a, b], pos2(200.0, 150.0), 8.0).unwrap();
+        let (hit, h) = hit_test(&[a, b], pos2(200.0, 150.0), 8.0, (1000, 500)).unwrap();
         assert_eq!((hit.id, h), (b.id, Hit::Body));
-        let (hit, h) = hit_test(&[a, b], pos2(300.0, 200.0), 8.0).unwrap();
+        let (hit, h) = hit_test(&[a, b], pos2(300.0, 200.0), 8.0, (1000, 500)).unwrap();
         assert_eq!((hit.id, h), (a.id, Hit::Corner(Corner::BottomRight)));
-        assert!(hit_test(&[a, b], pos2(0.0, 0.0), 8.0).is_none());
-        assert!(hit_test(&[], pos2(0.0, 0.0), 8.0).is_none());
+        assert!(hit_test(&[a, b], pos2(0.0, 0.0), 8.0, (1000, 500)).is_none());
+        assert!(hit_test(&[], pos2(0.0, 0.0), 8.0, (1000, 500)).is_none());
         assert_eq!(normal_size(), 1000);
         assert_eq!(handle_rects(r, 6.0)[0].center(), r.left_top());
         assert_eq!(rect_at(pos2(10.0, 10.0), 4.0, 2.0).size(), vec2(4.0, 2.0));
+    }
+
+    const FRAME: (u32, u32) = (1000, 500);
+
+    fn item(rect: Rect, width_only: bool) -> BoxItem {
+        BoxItem {
+            id: ObjectId::Line(LineId(1)),
+            rect,
+            size: 1000,
+            width_only,
+        }
+    }
+
+    // covers: REQ-146
+    #[test]
+    fn the_visible_part_and_sides_of_a_box_partly_outside_the_picture() {
+        // a box centred on the right edge of the picture
+        let r = Rect::from_center_size(pos2(1000.0, 250.0), vec2(200.0, 100.0));
+        let v = visible_part(r, FRAME).unwrap();
+        assert_eq!((v.min, v.max), (pos2(900.0, 200.0), pos2(1000.0, 300.0)));
+        assert!(partly_outside(r, FRAME));
+        assert!(!partly_outside(v, FRAME));
+        assert!(visible_part(r.translate(vec2(500.0, 0.0)), FRAME).is_none());
+        // the sides are the ones of the visible part, the nearest wins
+        assert_eq!(side_at(r, FRAME, pos2(950.0, 201.0), 8.0), Some(Side::Top));
+        assert_eq!(
+            side_at(r, FRAME, pos2(950.0, 299.0), 8.0),
+            Some(Side::Bottom)
+        );
+        assert_eq!(side_at(r, FRAME, pos2(901.0, 250.0), 8.0), Some(Side::Left));
+        assert_eq!(
+            side_at(r, FRAME, pos2(999.0, 250.0), 8.0),
+            Some(Side::Right)
+        );
+        assert_eq!(side_at(r, FRAME, pos2(950.0, 250.0), 8.0), None);
+        assert_eq!(
+            side_at(r.translate(vec2(900.0, 0.0)), FRAME, pos2(0.0, 0.0), 8.0),
+            None
+        );
+        // helpers
+        for s in Side::ALL {
+            assert_eq!(s.opposite().opposite(), s);
+            assert_eq!(s.outward().dot(s.opposite().outward()), -1.0);
+        }
+        assert_eq!(Side::Top.extent(v), 100.0);
+        assert_eq!(Side::Left.extent(v), 100.0);
+        assert_eq!(Side::Top.mid(v), pos2(950.0, 200.0));
+        assert_eq!(side_cursor(Side::Top), CursorIcon::ResizeVertical);
+        assert_eq!(side_cursor(Side::Left), CursorIcon::ResizeHorizontal);
+        assert_eq!(
+            cursor(Hit::Side(Side::Bottom), false),
+            CursorIcon::ResizeVertical
+        );
+        // hit test: a visible side is a handle for a subtitle box that reaches outside ...
+        let b = item(r, false);
+        let (_, h) = hit_test(&[b], pos2(950.0, 201.0), 8.0, FRAME).unwrap();
+        assert_eq!(h, Hit::Side(Side::Top));
+        // ... a visible corner still wins ...
+        let (_, h) = hit_test(&[b], pos2(901.0, 201.0), 8.0, FRAME).unwrap();
+        assert_eq!(h, Hit::Corner(Corner::TopLeft));
+        // ... and a box wholly on the picture keeps its edge for moving
+        let inside = item(rect(), false);
+        let (_, h) = hit_test(&[inside], pos2(200.0, 101.0), 8.0, FRAME).unwrap();
+        assert_eq!(h, Hit::Body);
+        // handle squares: visible corners and the middle of each visible side; inside: corners only
+        let pts = handle_points(r, FRAME, false);
+        assert_eq!(pts.len(), 2 + 4);
+        assert!(pts.contains(&pos2(950.0, 200.0)));
+        assert_eq!(handle_points(rect(), FRAME, false).len(), 4);
+    }
+
+    // covers: REQ-146
+    #[test]
+    fn dragging_a_visible_side_resizes_in_proportion_with_the_opposite_side_fixed() {
+        let r = Rect::from_center_size(pos2(1000.0, 250.0), vec2(200.0, 100.0));
+        // top side of the visible part pulled up by 100 px: the visible height 100 -> 200
+        let out = resize_side(r, 1000, Side::Top, pos2(950.0, 100.0), FRAME);
+        assert_eq!(out.size, 2000);
+        assert!((out.factor - 2.0).abs() < 1e-4);
+        assert!((out.rect.width() / out.rect.height() - 2.0).abs() < 1e-4);
+        // the middle of the visible bottom side did not move
+        assert!((out.rect.bottom() - 300.0).abs() < 1e-3);
+        assert!((out.rect.center().x - 1000.0 - (1000.0 - 950.0) * 0.0 - 50.0).abs() < 1e-3);
+        // limits: 25% .. 400%, whatever the pointer does
+        assert_eq!(
+            resize_side(r, 1000, Side::Top, pos2(950.0, 299.0), FRAME).size,
+            250
+        );
+        assert_eq!(
+            resize_side(r, 1000, Side::Top, pos2(950.0, -9e5), FRAME).size,
+            4000
+        );
+        assert_eq!(
+            resize_side(r, 1000, Side::Top, pos2(f32::NAN, 0.0), FRAME).size,
+            1000
+        );
+        // a box on the picture: the side is the box side itself
+        let out = resize_side(rect(), 1000, Side::Right, pos2(500.0, 150.0), FRAME);
+        assert!((out.rect.left() - 100.0).abs() < 1e-3);
+        assert_eq!(out.size, 2000);
+    }
+
+    // covers: REQ-146
+    #[test]
+    fn a_text_box_keeps_its_width_handle_at_the_picture_edge() {
+        // the right edge is 100 px past the picture
+        let r = Rect::from_min_size(pos2(800.0, 100.0), vec2(300.0, 60.0));
+        let t = item(r, true);
+        let (_, h) = hit_test(&[t], pos2(998.0, 130.0), 8.0, FRAME).unwrap();
+        assert_eq!(h, Hit::Edge);
+        assert!(edge_handle_at(r, pos2(1000.0, 130.0), 8.0, FRAME));
+        assert!(!edge_handle_at(
+            r.translate(vec2(900.0, 0.0)),
+            pos2(0.0, 0.0),
+            8.0,
+            FRAME
+        ));
+        assert_eq!(
+            edge_handle_rect(r, 7.0, FRAME).center(),
+            pos2(1000.0, 130.0)
+        );
+        assert_eq!(handle_points(r, FRAME, true), vec![pos2(1000.0, 130.0)]);
+        // dragging it changes the width only
+        let (out, w) = resize_width(r, pos2(950.0, 130.0), FRAME);
+        assert_eq!((out.min, out.height()), (r.min, r.height()));
+        assert_eq!(w, 150);
     }
 
     // covers: REQ-116
@@ -325,15 +611,18 @@ mod tests {
             width_only: true,
         };
         // the corners do not resize it: they are only the body
-        let (_, h) = hit_test(&[t], pos2(102.0, 103.0), 8.0).unwrap();
+        let (_, h) = hit_test(&[t], pos2(102.0, 103.0), 8.0, (1000, 500)).unwrap();
         assert_eq!(h, Hit::Body);
         // the middle of the right edge (and a little above and below) is the handle
-        let (_, h) = hit_test(&[t], pos2(299.0, 150.0), 8.0).unwrap();
+        let (_, h) = hit_test(&[t], pos2(299.0, 150.0), 8.0, (1000, 500)).unwrap();
         assert_eq!(h, Hit::Edge);
-        let (_, h) = hit_test(&[t], pos2(304.0, 110.0), 8.0).unwrap();
+        let (_, h) = hit_test(&[t], pos2(304.0, 110.0), 8.0, (1000, 500)).unwrap();
         assert_eq!(h, Hit::Edge);
         assert_eq!(cursor(Hit::Edge, false), CursorIcon::ResizeHorizontal);
-        assert_eq!(edge_handle_rect(r, 7.0).center(), r.right_center());
+        assert_eq!(
+            edge_handle_rect(r, 7.0, (1000, 500)).center(),
+            r.right_center()
+        );
         // dragging: the left edge and the height stay; 1000 px wide frame
         let frame = (1000, 500);
         let (out, w) = resize_width(r, pos2(400.0, 999.0), frame);

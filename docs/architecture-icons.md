@@ -1,6 +1,6 @@
 # Architecture: icons
 
-Part of [Architecture](architecture.md). Requirements REQ-142 and REQ-143 ([business](business-icons.md)). Planned for 1.6.0.
+Part of [Architecture](architecture.md). Requirements REQ-142 and REQ-143 ([business](business-icons.md)). Since 1.6.0.
 
 ## Choice of set
 - **Phosphor Icons, Regular weight** (MIT licence for the icons and for the font). Bundled as one font file, `assets/icons/Phosphor-Regular.ttf`, with `LICENSE-Phosphor.txt` and `SOURCE.txt` (version, source address, SHA-256), next to the other bundled font.
@@ -13,7 +13,7 @@ Part of [Architecture](architecture.md). Requirements REQ-142 and REQ-143 ([busi
 - A disabled control greys its icon with its text (the same colour rule).
 - `ActionId` (the table of commands shared by menus, toolbar, shortcuts) has a required `icon` field, so a command without an icon does not compile.
 
-## Tests (planned)
+## Tests
 - Every icon constant exists in the font's character map (`ttf-parser`, a development dependency already in the tree through `fontdb`).
 - Every `ActionId`, toolbar entry, Effects row, marker type and popup title has an icon (a table test).
 - The font file's SHA-256 equals the value in `SOURCE.txt`.

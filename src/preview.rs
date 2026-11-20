@@ -512,7 +512,52 @@ impl Mailbox {
 }
 
 /// Result of a still render.
-type StillResult = (u64, FrameKey, Frame);
+/// `None` when the render failed (so the request is not considered in flight forever).
+type StillResult = (u64, FrameKey, Option<Frame>);
+
+/// Renders one still: `None` when it failed or was cancelled.
+fn render_still(
+    mailbox: &Mailbox,
+    config: &PreviewConfig,
+    cwd: &std::path::Path,
+    renders: &AtomicU64,
+    req: &StillRequest,
+) -> Option<Frame> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    if let Ok(mut r) = mailbox.running.lock() {
+        *r = Some((Arc::clone(&cancel), None));
+    }
+    if let Some(doc) = &req.subtitles {
+        write_subtitles(cwd, doc).ok()?;
+    }
+    render::write_command_files(cwd, &req.command_files).ok()?;
+    let runner = config.runner.cancellable(Arc::clone(&cancel));
+    let mut p = runner.spawn_in(&config.ffmpeg, &req.args, Some(cwd)).ok()?;
+    renders.fetch_add(1, Ordering::SeqCst);
+    let stdout = p.take_stdout();
+    let p = Arc::new(Mutex::new(p));
+    if let Ok(mut r) = mailbox.running.lock() {
+        match r.as_mut() {
+            // a newer request may have arrived meanwhile
+            Some((flag, slot)) if Arc::ptr_eq(flag, &cancel) => *slot = Some(Arc::clone(&p)),
+            _ => cancel.store(true, Ordering::SeqCst),
+        }
+    }
+    let g = req.geometry;
+    let mut buf = vec![0u8; g.width as usize * g.height as usize * 4];
+    let ok = !cancel.load(Ordering::SeqCst)
+        && stdout.is_some_and(|mut s| s.read_exact(&mut buf).is_ok())
+        && !cancel.load(Ordering::SeqCst);
+    if let Ok(mut p) = p.lock() {
+        p.kill();
+    }
+    ok.then_some(Frame {
+        pts: req.at,
+        width: g.width,
+        height: g.height,
+        rgba: buf,
+    })
+}
 
 fn still_thread(
     mailbox: Arc<Mailbox>,
@@ -525,54 +570,8 @@ fn still_thread(
         if req.generation != mailbox.latest.load(Ordering::SeqCst) {
             continue;
         }
-        let cancel = Arc::new(AtomicBool::new(false));
-        if let Ok(mut r) = mailbox.running.lock() {
-            *r = Some((Arc::clone(&cancel), None));
-        }
-        if let Some(doc) = &req.subtitles
-            && write_subtitles(&cwd, doc).is_err()
-        {
-            continue;
-        }
-        if render::write_command_files(&cwd, &req.command_files).is_err() {
-            continue;
-        }
-        let runner = config.runner.cancellable(Arc::clone(&cancel));
-        let Ok(mut p) = runner.spawn_in(&config.ffmpeg, &req.args, Some(&cwd)) else {
-            continue;
-        };
-        renders.fetch_add(1, Ordering::SeqCst);
-        let stdout = p.take_stdout();
-        let p = Arc::new(Mutex::new(p));
-        if let Ok(mut r) = mailbox.running.lock() {
-            match r.as_mut() {
-                // a newer request may have arrived meanwhile
-                Some((flag, slot)) if Arc::ptr_eq(flag, &cancel) => *slot = Some(Arc::clone(&p)),
-                _ => cancel.store(true, Ordering::SeqCst),
-            }
-        }
-        let g = req.geometry;
-        let mut buf = vec![0u8; g.width as usize * g.height as usize * 4];
-        let ok = !cancel.load(Ordering::SeqCst)
-            && stdout.is_some_and(|mut s| s.read_exact(&mut buf).is_ok())
-            && !cancel.load(Ordering::SeqCst);
-        if let Ok(mut p) = p.lock() {
-            p.kill();
-        }
-        if ok
-            && out
-                .send((
-                    req.generation,
-                    req.key,
-                    Frame {
-                        pts: req.at,
-                        width: g.width,
-                        height: g.height,
-                        rgba: buf,
-                    },
-                ))
-                .is_err()
-        {
+        let frame = render_still(&mailbox, &config, &cwd, &renders, &req);
+        if out.send((req.generation, req.key, frame)).is_err() {
             return;
         }
     }
@@ -618,10 +617,15 @@ pub struct Preview {
     mailbox: Arc<Mailbox>,
     stills: Option<Receiver<StillResult>>,
     renders: Arc<AtomicU64>,
+    /// The generation whose result may be shown (older results are stale and dropped).
     generation: u64,
+    /// Last generation handed out (never reused, so a dropped request cannot be confused
+    /// with a newer one).
+    issued: u64,
     wanted: Option<Wanted>,
     shown_key: Option<FrameKey>,
-    posted_key: Option<FrameKey>,
+    /// The render in flight: its key and generation (REQ-144).
+    posted: Option<(FrameKey, u64)>,
     scratch: Option<tempfile::TempDir>,
     /// Use proxies when ready.
     pub proxies: bool,
@@ -664,9 +668,10 @@ impl Preview {
             stills,
             renders,
             generation: 0,
+            issued: 0,
             wanted: None,
             shown_key: None,
-            posted_key: None,
+            posted: None,
             scratch,
             proxies: true,
             error: None,
@@ -688,7 +693,7 @@ impl Preview {
 
     /// True while something is about to change on screen (repaint soon).
     pub fn busy(&self) -> bool {
-        self.is_playing() || self.wanted.is_some() || self.posted_key.is_some()
+        self.is_playing() || self.wanted.is_some() || self.posted.is_some()
     }
 
     fn source(&self) -> Source {
@@ -775,8 +780,7 @@ impl Preview {
         self.start = from;
         self.wall_origin = now;
         self.state = PlayState::Playing;
-        self.wanted = None;
-        self.shown_key = None;
+        self.supersede();
         let r = self.launch(project, from);
         if let Err(e) = &r {
             self.state = PlayState::Paused;
@@ -833,8 +837,20 @@ impl Preview {
             self.wanted = None;
             return Ok(());
         };
-        if self.shown_key.as_ref() == Some(&key) || self.posted_key.as_ref() == Some(&key) {
+        // One rule (REQ-144): the newest request owns the screen. A request for the render in
+        // flight keeps it; a request for the picture already shown makes every other render
+        // obsolete; anything else supersedes what is posted or waiting.
+        if let Some((k, g)) = &self.posted
+            && *k == key
+        {
             self.wanted = None;
+            self.generation = *g;
+            return Ok(());
+        }
+        if self.shown_key.as_ref() == Some(&key) {
+            self.supersede();
+            self.shown_key = Some(key);
+            self.mailbox.post_cancel();
             return Ok(());
         }
         let script = self.dir("still").join("g.txt");
@@ -847,7 +863,10 @@ impl Preview {
             }
         };
         self.error = None;
-        self.generation += 1;
+        self.wanted = None;
+        self.posted = None;
+        self.issued += 1;
+        self.generation = self.issued;
         self.wanted = Some(Wanted {
             request: StillRequest {
                 generation: self.generation,
@@ -865,15 +884,22 @@ impl Preview {
 
     /// Forgets the shown picture (the next request renders even if the key is the same).
     pub fn forget_frame(&mut self) {
+        self.supersede();
+    }
+
+    /// Makes every render requested so far obsolete and forgets the shown picture.
+    fn supersede(&mut self) {
+        self.issued += 1;
+        self.generation = self.issued;
         self.shown_key = None;
-        self.posted_key = None;
+        self.posted = None;
         self.wanted = None;
     }
 
     fn poll_stills(&mut self, now: Instant) -> Option<Frame> {
         if let Some(w) = self.wanted.take() {
             if now >= w.due {
-                self.posted_key = Some(w.request.key.clone());
+                self.posted = Some((w.request.key.clone(), w.request.generation));
                 self.mailbox.post(w.request);
             } else {
                 self.wanted = Some(w);
@@ -883,9 +909,11 @@ impl Preview {
         if let Some(rx) = &self.stills {
             for (generation, key, frame) in rx.try_iter() {
                 if generation == self.generation && !self.is_playing() {
-                    self.shown_key = Some(key);
-                    self.posted_key = None;
-                    shown = Some(frame);
+                    self.posted = None;
+                    if let Some(frame) = frame {
+                        self.shown_key = Some(key);
+                        shown = Some(frame);
+                    }
                 }
             }
         }
@@ -1157,6 +1185,57 @@ mod tests {
         p.forget_frame();
         p.request_still(&proj, Micros(200_000), now).unwrap();
         assert!(p.busy());
+    }
+
+    /// The key of the picture at `at`, as the preview computes it.
+    fn key_at(p: &Preview, proj: &Project, at: Micros) -> FrameKey {
+        let cfg = p.config.clone().unwrap();
+        let eg = render::output_geometry(proj, &cfg.encoders).unwrap();
+        render::frame_key(proj, at, p.source(), &eg).unwrap()
+    }
+
+    // covers: REQ-144
+    #[test]
+    fn a_still_is_rendered_again_after_a_superseded_request() {
+        let mut p = Preview::new(config(1), Box::new(NullSink));
+        let t0 = Instant::now();
+        let proj = project();
+        // K0 is shown
+        p.request_still(&proj, Micros::ZERO, t0).unwrap();
+        poll_until(&mut p, t0 + STILL_DEBOUNCE, |p, _| p.shown_key.is_some());
+        // K1 is posted, then K2 supersedes it, then K0 (shown) is asked again
+        let due = t0 + Duration::from_secs(1);
+        p.request_still(&proj, Micros(400_000), due).unwrap();
+        p.poll(due + STILL_DEBOUNCE);
+        p.request_still(&proj, Micros(800_000), due).unwrap();
+        p.request_still(&proj, Micros::ZERO, due).unwrap();
+        // the old K1 render may finish now and is dropped; asking K1 again must render it
+        std::thread::sleep(Duration::from_millis(100));
+        p.request_still(&proj, Micros(400_000), due).unwrap();
+        let k1 = key_at(&p, &proj, Micros(400_000));
+        let f = poll_until(&mut p, due + STILL_DEBOUNCE * 2, |p, _| {
+            p.shown_key.as_ref() == Some(&k1)
+        })
+        .unwrap();
+        assert_eq!(f.pts, Micros(400_000));
+    }
+
+    // covers: REQ-144
+    #[test]
+    fn a_still_is_rendered_after_playing_and_pausing_on_a_posted_key() {
+        let mut p = Preview::new(config(1), Box::new(NullSink));
+        let t0 = Instant::now();
+        let proj = project();
+        // a render for 1 s is posted, then playback starts before its result is taken
+        p.request_still(&proj, Micros(1_000_000), t0).unwrap();
+        p.poll(t0 + STILL_DEBOUNCE);
+        p.play(&proj, Micros(1_000_000), t0).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        p.pause(t0);
+        p.request_still(&proj, Micros(1_000_000), t0).unwrap();
+        let k = key_at(&p, &proj, Micros(1_000_000));
+        let later = t0 + STILL_DEBOUNCE * 2;
+        poll_until(&mut p, later, |p, _| p.shown_key.as_ref() == Some(&k));
     }
 
     // covers: REQ-035

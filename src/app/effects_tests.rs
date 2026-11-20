@@ -82,6 +82,67 @@ fn wait_create(app: &mut AppState) {
     settle(app);
 }
 
+// covers: REQ-147, REQ-148, REQ-082
+#[test]
+fn a_whole_video_effect_is_one_copy_per_clip_one_undo_step_and_stays_with_its_clips() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = state(FakeDialogs::default());
+    three(&mut app, dir.path());
+    let now = Instant::now();
+    let c = ids(&app);
+    let before = app.project.edit();
+    // Scale on the whole video: each of the three clips gets its own copy, one undo step
+    let undo_len = app.history.undo_len();
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::Scale,
+            target: Target::WholeVideo,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), undo_len + 1);
+    for id in &c {
+        assert_eq!(
+            app.project
+                .timeline
+                .scale_keys(FrameTarget::Clip(*id))
+                .len(),
+            1
+        );
+    }
+    // a second double-click gives no second copy and no undo step
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::Scale,
+            target: Target::WholeVideo,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), undo_len + 1);
+    // the volume of the whole video is the volume of each clip, one step
+    let mut mix = app.volume_mix();
+    mix.video_volume = 50;
+    app.dispatch(Command::SetMix(mix), now).unwrap();
+    assert!(app.project.timeline.clips.iter().all(|k| k.volume == 50));
+    assert_eq!(app.project.mix.video_volume, 100);
+    app.dispatch(Command::Undo, now).unwrap();
+    assert!(app.project.timeline.clips.iter().all(|k| k.volume == 100));
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(app.project.edit(), before);
+    app.dispatch(Command::Redo, now).unwrap();
+    // deleting clip 2 removes its copy; a clip appended later has none
+    app.dispatch(Command::SelectClip(Some(c[1])), now).unwrap();
+    app.dispatch(Command::Delete, now).unwrap();
+    assert!(app.project.timeline.frames_of(c[1]).is_none());
+    assert!(app.project.timeline.frames_of(c[0]).is_some());
+    let a = app.project.media[0].id;
+    app.dispatch(Command::Append(Some(a)), now).unwrap();
+    let last = *ids(&app).last().unwrap();
+    assert!(app.project.timeline.frames_of(last).is_none());
+}
+
 // covers: REQ-082, REQ-083, REQ-011
 #[test]
 fn fade_on_a_clip_or_the_whole_video_is_one_undo_step() {
@@ -101,7 +162,7 @@ fn fade_on_a_clip_or_the_whole_video_is_one_undo_step() {
     )
     .unwrap();
     let tl = &app.project.timeline;
-    assert!(tl.has_fade(0) && tl.has_fade(1) && !tl.start_fade && !tl.end_fade);
+    assert!(tl.has_fade(0) && tl.has_fade(1) && !tl.start_fade() && !tl.end_fade());
     assert!(app.popups.is_open(Popup::Fades));
     assert_eq!(app.popups.target(Popup::Fades), Some(Target::Clip(c[1])));
     assert_eq!(app.popup_title(Popup::Fades), "Fade IN/OUT — b.mp4");
@@ -128,7 +189,7 @@ fn fade_on_a_clip_or_the_whole_video_is_one_undo_step() {
         now,
     )
     .unwrap();
-    assert!(app.project.timeline.start_fade && app.project.timeline.end_fade);
+    assert!(app.project.timeline.start_fade() && app.project.timeline.end_fade());
     assert!(app.project.timeline.fades.is_empty());
     assert_eq!(app.popup_title(Popup::Fades), "Fade IN/OUT — whole video");
     // each edge fade has its own popup and is removed alone
@@ -144,12 +205,14 @@ fn fade_on_a_clip_or_the_whole_video_is_one_undo_step() {
         now,
     )
     .unwrap();
-    assert!(app.project.timeline.start_fade && !app.project.timeline.end_fade);
+    assert!(app.project.timeline.start_fade() && !app.project.timeline.end_fade());
     assert!(app.instance_start(Instance::FadeEnd).is_none());
     assert_eq!(app.instance_start(Instance::FadeStart), Some(Micros::ZERO));
-    // (c) cutting the first clip: the start fade stays at the start
+    // (c) cutting the first clip removes its start fade with it (REQ-083)
     app.dispatch(Command::SelectClip(Some(c[0])), now).unwrap();
     app.dispatch(Command::Cut, now).unwrap();
+    assert_eq!(app.project.timeline.fades_of(0).0, Micros::ZERO);
+    app.dispatch(Command::Undo, now).unwrap();
     assert_eq!(app.project.timeline.fades_of(0).0, Micros(500_000));
     // Remove all fades removes the edge fades too, in one step
     assert!(app.is_enabled(&Command::RemoveAllFades));

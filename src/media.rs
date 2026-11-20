@@ -771,15 +771,16 @@ pub(crate) mod tests {
             "format": {"duration": "1"}}"#;
         let (_, f) = parse_ffprobe(pgs, Path::new("/a/b.mkv")).unwrap();
         assert_eq!(f.subtitle_tracks, Some(vec![]));
-        // hostile: thousands of tracks, huge titles; never more than the caps
+        // hostile: many tracks, huge titles; never more than the caps (sized so the test
+        // itself stays small: 1 000 tracks x 100 KB titles)
         let mut streams = vec![
             serde_json::json!({"codec_type": "video", "codec_name": "h264",
             "width": 64, "height": 64}),
         ];
-        for _ in 0..10_000 {
+        for _ in 0..1_000 {
             streams.push(
                 serde_json::json!({"codec_type": "subtitle", "codec_name": "subrip",
-                "tags": {"title": "x".repeat(1_000_000), "language": "e".repeat(40)}}),
+                "tags": {"title": "x".repeat(100_000), "language": "e".repeat(40)}}),
             );
         }
         let t = subtitle_tracks(&streams);

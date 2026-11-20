@@ -1,6 +1,6 @@
 # Architecture: videolore player
 
-Part of [Architecture](architecture.md). Requirements REQ-138 to REQ-141 ([business](business-player.md)). Planned for 1.6.0.
+Part of [Architecture](architecture.md). Requirements REQ-138 to REQ-141 ([business](business-player.md)). Since 1.6.0.
 
 ## Overview
 The player is a second program, `videolore-player`, with its own executable and its own installers for Windows, macOS and Linux. It plays one video file with the 360 view, subtitles and full screen. It never edits, saves or exports. It reuses the editor's playback engine, so a video looks the same in both programs.
@@ -34,7 +34,7 @@ The player is a second program, `videolore-player`, with its own executable and 
 - Identifiers differ from the editor's, so both programs install side by side.
 - Icon: the player uses the same icon artwork as the editor (decided 2026-11-19), so the two programs look alike in the Dock and taskbar.
 
-## Tests (planned)
+## Tests
 - Network and speech code absent from the player's dependency graph (CI check).
 - An MP4 opens and plays (real `ffmpeg`); `.vlproj` refused without reading the file.
 - The same drag on the same 360 file gives the same view in both programs (one shared function); the view stops at the limits; a flat video does not turn.

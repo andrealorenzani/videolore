@@ -1,0 +1,5 @@
+New in this version
+Preview no longer turns black when paused.
+Drag a visible edge of a Scale or subtitle box, or the right edge of a text box, to resize it.
+Whole-video effects apply to each clip on the timeline and stay with it.
+Whole-video fades start at the first clip and end at the last clip.

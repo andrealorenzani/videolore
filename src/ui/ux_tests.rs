@@ -1144,7 +1144,7 @@ fn an_effect_dragged_onto_a_clip_applies_to_that_clip_only() {
     let n = h.app.history.undo_len();
     h.drag(row.rect.center(), clips[1].rect.center());
     let tl = &h.app.project.timeline;
-    assert!(tl.has_fade(0) && tl.has_fade(1) && !tl.start_fade && !tl.end_fade);
+    assert!(tl.has_fade(0) && tl.has_fade(1) && !tl.start_fade() && !tl.end_fade());
     assert_eq!(h.app.history.undo_len(), n + 1);
     assert_eq!(
         tl.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
@@ -1179,7 +1179,7 @@ fn an_effect_dragged_onto_a_clip_applies_to_that_clip_only() {
     h.double_click(row.rect.center());
     let tl = &h.app.project.timeline;
     assert!(
-        tl.start_fade && tl.end_fade && tl.fades.is_empty(),
+        tl.start_fade() && tl.end_fade() && tl.fades.is_empty(),
         "{tl:?} {:?} {:?} {:#?}",
         h.app.status,
         h.app.popups,

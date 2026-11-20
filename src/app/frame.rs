@@ -127,17 +127,17 @@ impl AppState {
         keyframes::at(self.project.timeline.move_keys(target), t)
     }
 
-    /// The effect whose handles the preview shows at the playhead: the clip's own, else the
-    /// whole video's.
+    /// The effect whose handles the preview shows at the playhead: the copy of the clip
+    /// under it (a whole-video Scale or Move is one copy per clip, REQ-148).
     pub fn frame_target_at_playhead(&self, effect: FrameFx) -> Option<FrameTarget> {
         let tl = &self.project.timeline;
-        let has = |t: FrameTarget| match effect {
-            FrameFx::Scale => !tl.scale_keys(t).is_empty(),
-            FrameFx::Move => !tl.move_keys(t).is_empty(),
-        };
         let (i, _) = tl.locate(self.playhead)?;
         let clip = FrameTarget::Clip(tl.clips[i].id);
-        [clip, FrameTarget::Whole].into_iter().find(|t| has(*t))
+        let has = match effect {
+            FrameFx::Scale => !tl.scale_keys(clip).is_empty(),
+            FrameFx::Move => !tl.move_keys(clip).is_empty(),
+        };
+        has.then_some(clip)
     }
 
     /// The selected keyframe of the open popup, when it still exists.

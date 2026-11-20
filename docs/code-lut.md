@@ -7,7 +7,7 @@ Back to the [index](code.md). Requirements REQ-135, REQ-136, REQ-137.
 | Where | What |
 |---|---|
 | `src/lut.rs` | `.cube` parser (`parse`, `read`), `Lut` (a normalised 3D cube + hash), `cached(path)`, `path_ok`, `display_name` |
-| `src/timeline.rs` | `Timeline.whole_lut: Option<String>`, `clip_luts: Vec<ClipLut>`; `lut_of`, `set_lut`, `any_lut`; split/merge/remove rules; `DIFFERENT_LUTS` |
+| `src/timeline.rs` | `clip_luts: Vec<ClipLut>` (since 1.6.1 there is no whole-video LUT: `FrameTarget::Whole` writes every clip's entry); `lut_of`, `set_lut`, `any_lut`; split/merge/remove rules; `DIFFERENT_LUTS` |
 | `src/project.rs` | schema 8; `validate_luts` (damaged entries removed with a note, missing files named) |
 | `src/render.rs` | `Segment.lut_whole` / `lut_clip`, `lut_for`, `lut_chain` (graph), `RenderError::Lut`, `FrameKey.luts`, the re-encode rule in `plan_export_choice` |
 | `src/app/lut.rs` | `PickLut`, `SetLut`, `RemoveLut` commands, `missing_luts` |

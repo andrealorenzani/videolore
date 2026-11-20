@@ -1920,11 +1920,29 @@ impl AppState {
             Command::SetMix(mut mix) => {
                 mix.video_volume = mix.video_volume.min(100);
                 mix.music_volume = mix.music_volume.min(100);
-                if mix == self.project.mix {
+                let shown = self.volume_mix();
+                if mix == shown {
                     return Ok(());
                 }
+                // the video sound is the level of each clip (REQ-147); the project keeps
+                // only the music level
+                let video =
+                    (mix.video_volume, mix.video_muted) != (shown.video_volume, shown.video_muted);
                 self.edit(now, label, |e| {
-                    e.mix = mix;
+                    if e.timeline.clips.is_empty() {
+                        e.mix = mix;
+                        return Ok(());
+                    }
+                    e.mix.music_volume = mix.music_volume;
+                    e.mix.music_muted = mix.music_muted;
+                    if video {
+                        let ids: Vec<ClipId> = e.timeline.clips.iter().map(|c| c.id).collect();
+                        for id in ids {
+                            e.timeline
+                                .set_clip_volume(id, mix.video_volume, mix.video_muted)
+                                .map_err(err)?;
+                        }
+                    }
                     Ok(())
                 })
             }
@@ -2564,9 +2582,11 @@ impl AppState {
                 .into_iter()
                 .find(|x| x.line == id && x.clip == clip)
                 .map(|x| x.start),
-            Instance::FadeStart => (tl.start_fade && !tl.clips.is_empty()).then_some(Micros::ZERO),
+            Instance::FadeStart => {
+                (tl.start_fade() && !tl.clips.is_empty()).then_some(Micros::ZERO)
+            }
             Instance::FadeEnd => {
-                let last = tl.clips.last().filter(|_| tl.end_fade)?;
+                let last = tl.clips.last().filter(|_| tl.end_fade())?;
                 Some(tl.duration() - last.fade_len())
             }
             Instance::ClipVolume(c) | Instance::CleanAudio(c) => {
@@ -3204,6 +3224,17 @@ impl AppState {
         self.history.record(before, label);
         self.replace_edit(e, now);
         Ok(())
+    }
+
+    /// The levels the Volume popup shows: the music's, and the video sound as the first
+    /// clip's own level (a whole-video Volume sets the level of every clip, REQ-147).
+    pub fn volume_mix(&self) -> Mix {
+        let mut m = self.project.mix;
+        if let Some(c) = self.project.timeline.clips.first() {
+            m.video_volume = c.volume;
+            m.video_muted = c.muted;
+        }
+        m
     }
 
     fn replace_edit(&mut self, e: Edit, now: Instant) {

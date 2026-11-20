@@ -1,6 +1,6 @@
 # Architecture: Apply LUT
 
-Part of [Architecture](architecture.md). Requirements REQ-135 to REQ-137 ([business](business-lut.md)). Planned for 1.6.0.
+Part of [Architecture](architecture.md). Requirements REQ-135 to REQ-137 ([business](business-lut.md)). Since 1.6.0.
 
 ## Overview
 Apply LUT is a colour effect, one per clip and one for the whole video. The user chooses a `.cube` file; the project stores its path (not a copy). The file is read and checked when chosen, and again at each export. `ffmpeg` applies it with the `lut3d` filter in the same graph as preview and export.
@@ -46,7 +46,7 @@ The cube is written by the program into the private work folder with a fixed nam
 - Export with a LUT at most 1.5 times the time of the same re-encode without one (assumption, to measure).
 - The largest cube (65 points) is about 6 MB of text in the work folder, deleted with it.
 
-## Tests (planned)
+## Tests
 - Real `ffmpeg`: a known 3D LUT (channel swap) gives exact colours on a test frame; clip 2 of 3 changes only that clip; the 360 export shows the LUT colours; the export matches the preview graph.
 - App: one undo per action; LUT on the music track is ignored; marker at the clip start only; a second LUT on the same clip opens the existing popup.
 - Project: format 8 round trip; format 7 unchanged; damaged path cleared with a note.
