@@ -19,7 +19,7 @@ videolore player, is the package in `player/` and follows the same rule (see [co
 | `text`, `selection`, `fonts`, `spherical` | Text items and their ASS events, the selection of lines and texts, installed fonts, the 360 marker of exported MP4 files (see [code-text.md](code-text.md)) |
 | `ass` | Writes the ASS subtitle file: styles, text size `min(0.055·H, 0.09·W)`, word highlight with `\k` tags, escaping of `{ } \` |
 | `history` | Undo/redo by snapshots of `Edit` (timeline + music + subtitles + volumes), up to 100 steps, each with the name of its action ("Undo Split") |
-| `project` | `.vlproj` file (JSON, `schema_version` 5 since 1.3.0; older files load with defaults, newer ones are refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
+| `project` | `.vlproj` file (JSON, `schema_version` 9 since 1.6.1; older files load with defaults and `project/v9.rs` turns format 8 or older into 9, newer ones are refused untouched): atomic save, validated load, `ProjectDoc` for unsaved-changes detection |
 | `format` | Same-format check, lowest-quality output choice, codec to encoder mapping with H.264/AAC/MP4 fallback |
 | `render` | Export plan (stream copy or one re-encode), filter graphs (clips grouped by source, music bed and mix, subtitle burn-in), `hvc1` tag, export argv (normal method or a hardware method), preview argv, `FrameKey` |
 | `ffmpeg` | Locating binaries (setting, environment, bundled, `PATH`), version/filter/encoder checks, `Runner` trait (real processes or test fake), progress and keyframe parsers |
@@ -37,7 +37,7 @@ videolore player, is the package in `player/` and follows the same rule (see [co
 | `notices` | Bundled components with version, licence and source; the About text |
 | `packaging` | Pinned ffmpeg builds and tools (`packaging/*.lock`) and release asset names |
 | `desktop` | Linux menu entry / icon / `.vlproj` type for the AppImage and tar.gz; macOS Apple Event handler for double-clicked projects; queue of projects to open |
-| `app` | `AppState`, the single command dispatcher (`Command`, `AppState::dispatch`), background results in `tick()`; `app/effects.rs` (applying effects, clip volume, edge fades, line selection and positions, SRT export) `app/subs_create.rs` (creating subtitles for a clip or the whole video) and `app/sphere.rs` (360 camera, points of view, resize/align/reset) |
+| `app` | `AppState`, the single command dispatcher (`AppState::dispatch`), background results in `tick()`; `app/command.rs` (`Command` and its undo names), `app/export_flow.rs` (Export dialog context and starting an export), `app/effects.rs` (applying effects, clip volume, edge fades, line selection and positions, SRT export), `app/subs_create.rs` (creating subtitles for a clip or the whole video), `app/sphere.rs` (360 camera, points of view, resize/align/reset), `app/frame.rs`, `app/lut.rs`, `app/texts.rs` |
 | `ui` | The window (see [code-ui.md](code-ui.md)): action table (`actions`), menu bar (`menu`), toolbar (`toolbar`), status bar (`status`), resizable sections (`layout`), media list (`media`), timeline with marker lane and music track (`timeline`, `markers`), Effects section and effect popups (`effects`), floating windows (`popups`), Settings body and banner (`settings`), dialogs (`modals`), zoom, shortcuts (`keymap`), ruler labels (`ruler`), subtitle boxes and their measuring (`placement`), box geometry (`boxes`) and everything done on the preview picture (`picture`) |
 | `lut` | Apply LUT: the `.cube` parser (untrusted input), the normalised 3D cube and its hash, the parsed-file cache (see [code-lut.md](code-lut.md)) |
 | `splash` | The splash screen's pure parts (`Program` with `EDITOR` and `PLAYER`, layout, text and summary fit, colour, GIF decoding); the window is `ui/splash_window.rs`, shared with the player (see [code-splash-icons.md](code-splash-icons.md)) |
@@ -57,7 +57,7 @@ videolore player, is the package in `player/` and follows the same rule (see [co
   the marker. New, Open, closing the window and Quit go through `PendingAction`: when there are
   unsaved changes a dialog offers Save / Don't save / Cancel; a failed or cancelled save stops
   the action. The window's close button is intercepted with `ViewportCommand::CancelClose`.
-- **Nothing slow on the UI thread.** ffprobe (3 worker threads), proxies (1 thread), subtitle
+- **Nothing slow on the UI thread.** ffprobe (a pool of 6 threads, the process cap decides how many run), proxies (1 thread), subtitle
   generation, the model download, the ffmpeg check and the export run on other threads and
   report through channels that `AppState::tick` drains once per frame. Imported files appear at
   once as "analysing". New/Open cancel the jobs of the old project and replace their channels, so

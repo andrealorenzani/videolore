@@ -23,7 +23,7 @@ Implemented: requirements REQ-001..123 (see [business](business.md)). 0.3.0 adde
 | [architecture-boxes.md](architecture-boxes.md) | 1.2.6: boxes and corner handles, per-line size, Align and Reset commands, toolbar group, show-boxes setting, tests. 1.3.0: Context Menu and text boxes. 1.4.0: Context Menu for text items, width handle, dragging past the edges. |
 | [architecture-360.md](architecture-360.md) | 1.2.6: recognising 360 video, virtual camera and POVs, one `ffmpeg` engine for preview and export, preview copies, size limit, performance, tests, risks. 1.3.0: anchored text and subtitle lines on the sphere, export as 360 video. 1.4.0: the 360 switch is removed. |
 | [architecture-text.md](architecture-text.md) | 1.3.0: text items, their effects as ASS events, installed fonts, safety, tests. 1.4.0: width-only box, best fit, placement, migration. |
-| [architecture-projects.md](architecture-projects.md) | Project files: format versions 1–9 (9 since 1.6.1, 8 since 1.6.0, 7 since 1.5.0, see [frame](architecture-frame.md#project-format); 8 planned for 1.6.0 with [LUT](architecture-lut.md#storage-and-project-format-8)) and compatibility, loading and validation, unsaved changes. |
+| [architecture-projects.md](architecture-projects.md) | Project files: format versions 1–9 (9 since 1.6.1, 8 since 1.6.0, 7 since 1.5.0, see [frame](architecture-frame.md#project-format) and [LUT](architecture-lut.md#storage-and-project-format-8)) and compatibility, loading and validation, unsaved changes. |
 | [architecture-ui.md](architecture-ui.md) | The window (1.1.0): layout and resizable sections, menus, toolbar, shortcuts, status bar, effect popups, timeline markers, recent projects, drag and drop, interface tests. 1.3.0: one selection, Add Text popup. |
 | [architecture-performance.md](architecture-performance.md) | Machine detection, recommended settings, the "How hard videolore works" levels and what they control, the 0.3.0 performance review. |
 | [architecture-hardware-export.md](architecture-hardware-export.md) | Faster export with video hardware (0.4.0): supported hardware, encoder settings (including VA-API constant quality), background check (including the Linux libva check), output check, software redo, remembered failures, measured results, testing and known limitations. |
@@ -35,6 +35,8 @@ Implemented: requirements REQ-001..123 (see [business](business.md)). 0.3.0 adde
 | [architecture-dependencies.md](architecture-dependencies.md) | Rust crates, build features, external tools and bundled components, with reasons. |
 
 ## Components
+The module dependencies, the module graph, the threads and the import flow are in [code-architecture](code-architecture.md) (written by the Principal Engineer, checked against the code by the architect on 2026-11-20). The table gives the role of each module.
+
 | Module | Role |
 |---|---|
 | `time` | Exact time arithmetic and timestamp formatting (no floating point in cut math). |
@@ -48,7 +50,7 @@ Implemented: requirements REQ-001..123 (see [business](business.md)). 0.3.0 adde
 | `camera` (1.2.6) | Pure camera maths for 360 video: limits, POV path (linear, shortest way round), drag and zoom mapping, the command file for the `v360` filter (absolute commands, changed values only). Since 1.3.0 also the projection between the sphere and the view. |
 | `ass` | Writes the subtitle file (ASS format) used by `ffmpeg` for the chosen style. |
 | `history` | Undo and redo of the whole edit (video, music, subtitles, volumes); since 1.1.0 each step has a name ("Undo Split"). |
-| `project` | Save/load projects as versioned JSON (version 5 since 1.3.0; opens all older versions); unsaved-changes tracking. See [project files](architecture-projects.md). |
+| `project` | Save/load projects as versioned JSON (version 9 since 1.6.1; opens all older versions); unsaved-changes tracking. See [project files](architecture-projects.md). |
 | `format` | Output formats, codecs and which encoder to use, with fallbacks. |
 | `render` | Turns the edit into an export plan and the exact `ffmpeg` arguments; also the preview graphs. |
 | `ffmpeg` | Finds `ffmpeg`/`ffprobe` (bundled copy first), checks features, runs them, reads progress, cancels. |
@@ -108,7 +110,7 @@ Versioned JSON files, format version 7 since 1.5.0 (version 8 added in 1.6.0, se
 - **Time to live:** on load a text item is refused as damaged only outside 0.1 s to 24 hours (the plan said: longer than the video). A value longer than the video is accepted and the text is cut at the end of the video; when an item is added, edited or moved, its time to live is clamped to the video length. See [text](architecture-text.md#deviations-130).
 - **360 marker in MP4 and MOV:** ffmpeg 6.1.1 drops the source's spherical information on re-encode (measured), so `videolore` writes the Spherical Video V1 marker itself into MP4 and MOV exports. MKV and WebM 360 exports carry no marker. See [360 video](architecture-360.md#export-as-360-video-130).
 - **Anchored subtitle lines:** a subtitle line anchored on a 360 clip is drawn as plain white text, without its preset style (no box, no word highlight). See [360 video](architecture-360.md#anchored-text-and-subtitles-130).
-- **Selection:** one selection value in `src/selection.rs`, as the plan's design; see [user interface](architecture-ui.md#selection-130).
+- **Selection:** one selection value in `src/selection.rs`, as designed; see [user interface](architecture-ui.md#selection-130).
 
 ## Non-functional targets
 - `ffmpeg`/`ffprobe` processes never exceed the limit of the chosen level: 3 for Light and Balanced, 3 to 6 for Maximum (guaranteed by the job queue, tested with 20 imports + export + preview at every level).
@@ -139,7 +141,8 @@ Rust toolchain policy, the 1.6.0 workspace and versions, and the CI jobs: see [b
 
 ## Known risks
 Listed in each sub-document; the main ones:
-- The 0.3.0 choices made while Andrea was away were confirmed on 2026-11-14 (message only for old processors, with no slower engine planned; the two larger speech models and their thresholds; "Light" limits each job; Settings as a window inside the app). Hardware encoding, left out in 0.3.0, is built in 0.4.0. Still open: whether computer detection could also run in the installers (currently the app does it), the measured values of the quality goals, and a single local test-and-coverage run.
+- The 0.3.0 choices were confirmed on 2026-11-14: a message only for old processors (no slower fallback engine), the two larger speech models and their thresholds, "Light" limiting each job, and Settings as a window inside the app. Computer detection runs in the app on first start, not in the installers. Hardware encoding, left out in 0.3.0, is built in 0.4.0.
+- Still open: the measured values of the quality goals (estimates until measured) and a single local test-and-coverage run (the local suite runs the tests twice).
 - Hardware export cannot be tested on real graphics hardware in CI: it is tested with a simulated encoder and checked by hand per release. Encoder settings and the output-check threshold are assumptions until measured; damage only between the sampled frames is not detected automatically.
 - Speed and memory of the larger speech models are estimates; the recommendation thresholds may be adjusted after measurement.
 - Some behaviour can only be checked by hand on real machines: first launch of unsigned installers, double-click on a project on macOS while starting, Linux file managers.
@@ -151,5 +154,5 @@ Listed in each sub-document; the main ones:
 - 1.4.0: the text size of 1.3.0 text items becomes a best fit of their new box (confirmed by the product owner: migrate by search, so large multi-line texts may shrink); the best-fit size is an estimate (85–115% of the box); afftdn may muffle speech (gate measured); a 360 file without spherical information stays flat now that the switch is gone; projects saved by 1.4.0 cannot be opened by 1.3.0.
 - 1.5.0: the longer side of a frame is capped at 4096 px (decided 2026-11-19; 1920 px and no cap were not chosen); Scale and Move on a 360 clip act on its flat camera view only; time-dependent sizes were accepted by ffmpeg 6.1.1 (spike); the bundled 9.x build is not checked yet (see roadmap); projects saved by 1.5.0 cannot be opened by 1.4.1. See [frame](architecture-frame.md#risks).
 - 1.6.2: the splash text is sized to fit the panel and is never clipped or scrolled; a summary too long for the panel fails the test (no shipped text does). The two pictures are compiled into the library, so each program binary may grow by up to about 175 KB (an estimate, not yet measured). The test runs use a memory cap (see [build](architecture-build.md#test-memory-cap-162-development-machine)).
-- 1.6.0: the splash image has one frame today (static) and its origin is to be recorded in the notices; the LUT cube is checked against the bundled `ffmpeg` 9.x (`lut3d`, not yet verified); the player duplicates `ffmpeg` in its installer (size); the player's file handling is limited (no file association, one file at a time). See the sub-documents above.
+- 1.6.0: the splash image has one frame today (static) and its origin and licence are recorded in the notices as the author's own work under MIT (since 1.6.3); the LUT cube is checked against the bundled `ffmpeg` 9.x (`lut3d`, not yet verified); the player duplicates `ffmpeg` in its installer (size); the player's file handling is limited (no file association, one file at a time). See the sub-documents above.
 - egui releases often change its API; a new stable Rust can add lints: GUI code is kept thin and the code is fixed promptly.

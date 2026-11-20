@@ -761,8 +761,8 @@ impl Preview {
             None
         };
         let job = PlaybackJob {
-            runner: cfg.runner.clone(),
-            ffmpeg: cfg.ffmpeg.clone(),
+            runner: cfg.runner,
+            ffmpeg: cfg.ffmpeg,
             cwd,
             video: v.args,
             audio,

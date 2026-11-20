@@ -11,6 +11,8 @@ This page covers building and running; the details are in the sub-documents:
 
 | Document | Contents |
 |---|---|
+| [code-index.md](code-index.md) | Where each feature is: modules, main types and functions, tests and requirement IDs |
+| [code-architecture.md](code-architecture.md) | Module layers and dependency graph, the import → preview → export flow, threads and channels (mermaid diagrams) |
 | [code-modules.md](code-modules.md) | Module map, main patterns, background jobs, conventions |
 | [code-effects.md](code-effects.md) | Effects on a clip or the whole video (since 1.6.1 a copy on each clip, project format 9), clip volume, fades at the video's edges, the video's own subtitles and word matching, subtitle positions, SRT export, timeline ruler, project format 3 (all since 1.2.0) |
 | [code-360.md](code-360.md) | Boxes and corner handles, text size, align and reset, 360° video: camera maths, how the camera reaches ffmpeg, spike results, preview copies, project format 4 (all since 1.2.6) |
@@ -24,6 +26,7 @@ This page covers building and running; the details are in the sub-documents:
 | [code-testing.md](code-testing.md) | Unit, UI and integration tests, coverage, CI jobs |
 | [code-packaging.md](code-packaging.md) | Installers, bundled ffmpeg, notices, release assets, manual checklist per OS, known limitations |
 | [code-hardware.md](code-hardware.md) | "Export: Faster": video hardware methods and arguments, the hardware check, the output check and redo, failure memory, QG-05 checklist and results |
+| [code-hardware-qg05.md](code-hardware-qg05.md) | The manual real-hardware verification of "Export: Faster" (QG-05): checklist and results |
 
 ## Build, test, run
 

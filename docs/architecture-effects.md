@@ -35,7 +35,7 @@ Part of [Architecture](architecture.md). Since 1.2.0 (requirements REQ-082..084,
 - **Popup:** explains the effect and offers Remove. A clip with it shows a marker at its start (as the clip volume does).
 - **Edit rules:** split keeps it on both halves; copy, paste and moving keep it; Merge needs the same setting on both clips ("The clips have different clean audio settings"). Applying and removing are one undo step each.
 - **Export:** any clip with Clean audio forces a re-encode (REQ-023). Without it the export command is unchanged.
-- **Acceptance (measured on a committed test clip of speech with added noise):** noise-only parts at least 6 dB quieter; speech parts within 3 dB of the original (assumptions, see the plan).
+- **Acceptance (measured on a committed test clip of speech with added noise):** noise-only parts at least 6 dB quieter; speech parts within 3 dB of the original (assumptions).
 
 ## Whole video per clip (1.6.1)
 - A double-click on an effect (REQ-082) applies it to every video clip on the timeline at that moment, with the same result as applying it to that clip (REQ-147). The result belongs to the clip: deleting the clip removes it, a clip added later has none, and a clip that already has the effect gets no second copy. One double-click is one undo step.

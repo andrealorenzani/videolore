@@ -452,12 +452,9 @@ fn interact(
             let pos = placement::drag_to(&d, to_frame(p));
             if resp.drag_stopped() {
                 cmds.push(Command::DragLines(None));
-                cmds.push(Command::PlaceLines {
-                    ids: d.ids.clone(),
-                    pos,
-                });
+                cmds.push(Command::PlaceLines { ids: d.ids, pos });
             } else {
-                cmds.push(Command::DragLines(Some((d.ids.clone(), pos))));
+                cmds.push(Command::DragLines(Some((d.ids, pos))));
             }
         }
         ctx.set_cursor_icon(CursorIcon::Grabbing);

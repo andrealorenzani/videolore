@@ -39,7 +39,7 @@ Added in 1.6.0: **videolore player**, a second program with its own build. It pl
 - Embedded subtitles drawn as pictures (for example Blu-ray or DVB subtitles) are not listed; only text subtitle tracks are.
 - Subtitle positions in the player are lost when the player is closed.
 - The player does not open a file from the editor, and the editor does not open a file in the player.
-- Video files are not associated with the player in 1.6.0 (no double-click from the file manager).
+- Video files are not yet associated with the player (no double-click from the file manager).
 - A big video is played through a preview copy that the player makes in the background without a status message (accepted deviation, 1.6.0; the copy is the editor's preview copy rule).
 
 ## Out of scope

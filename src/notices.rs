@@ -162,6 +162,21 @@ mod tests {
 
     // covers: REQ-031
     #[test]
+    fn the_splash_images_are_own_work_licensed_mit() {
+        let at = THIRD_PARTY
+            .find("assets/splash/splash.gif")
+            .expect("splash images listed");
+        let entry = &THIRD_PARTY[at..at + 400.min(THIRD_PARTY.len() - at)];
+        assert!(entry.contains("splash-player.gif"));
+        assert!(entry.contains("Own work of Andrea Lorenzani, licensed MIT."));
+        assert!(!THIRD_PARTY.contains("to be confirmed"));
+        // both programs show these notices
+        assert!(about_text(None).contains("Own work of Andrea Lorenzani"));
+        assert!(about_text_player(None).contains("Own work of Andrea Lorenzani"));
+    }
+
+    // covers: REQ-031
+    #[test]
     fn every_component_has_version_licence_and_source() {
         let info = FfmpegInfo {
             ffmpeg: "ffmpeg".into(),

@@ -31,8 +31,9 @@ Back to the [index](code.md). Requirements REQ-133, REQ-134, REQ-150 (splash), R
   the notice, the full-screen hint and full screen; Space and F11 keep working (it is a window, not a modal).
 - **First-start banner (REQ-045)** is held in `banner_after_splash` while the splash is open and shown by `tick` afterwards.
 - **A file on the command line** shows no splash; a file opened by the system while the splash is open closes it.
-- The images are static today (one frame); the decoder keeps up to 64 frames and the window loops them. The origin and licence
-  of both images are noted in `packaging/notices/third-party.txt` as to be confirmed by the author before the release.
+- The images are static today (one frame); the decoder keeps up to 64 frames and the window loops them. Both images are
+  own work of Andrea Lorenzani, licensed MIT, as stated in `packaging/notices/third-party.txt` (checked by
+  `notices::tests::the_splash_images_are_own_work_licensed_mit`).
 
 ## Icons
 

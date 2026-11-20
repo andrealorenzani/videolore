@@ -130,7 +130,7 @@ ai-docs/                  AI-only notes: index + optional <area>-<topic>.md sub-
 docs/                     human docs (business, architecture, code, changelog, roadmap, workflow) + their <area>-<topic>.md sub-documents
 releases/<version> - <name>/  release snapshots: docs/, sources.zip, RELEASE_NOTES.md (never edited)
 scripts/                  version, coverage, release helpers
-README.md, LICENSE        written by the Documenter
+README.md                written by the Documenter; LICENSE is the unmodified GPL-3.0 text (never edited)
 .github/workflows/        CI: checks + executables; pages.yml publishes github_page/
 github_page/             the project page (one static index.html), published by pages.yml; github_page/after release.md is temporary and git-ignored (written during /release)
 assets/splash/           splash.gif, splash-player.gif, summary.txt, summary-player.txt (fixed names)

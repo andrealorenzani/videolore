@@ -109,7 +109,6 @@ The About screen lists every bundled third-party component with its version, lic
 
 ### Known limitations
 - Installers are not code-signed: each system asks for a one-time confirmation (see Installation).
-- The 0.4.2 release has only the Linux installers on its GitHub release; its macOS and Windows installers are missing there. Version 0.4.3 fixed the macOS and Windows installers.
 - On Windows and Linux, generating subtitles needs a processor with AVX2, FMA and F16C (see System requirements). On older processors it is not available and a message says so; this check was tested with simulated processors, not on old hardware.
 - **Faster export** needs NVIDIA graphics driver 610 or newer; with an older driver the normal method is used, and Settings → Advanced says why.
 - **Faster export on Linux** (Intel and AMD) needs the system's video acceleration library (libva) and the graphics driver. With the bundled ffmpeg it needs libva 2.21 or newer: Ubuntu 24.04 has 2.20, so the hardware is skipped there and the normal method is used. A system ffmpeg chosen in Advanced can still use the hardware.
@@ -126,7 +125,7 @@ The About screen lists every bundled third-party component with its version, lic
 - Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
 - The window size and position are not remembered, and popups keep their place only until videolore is closed.
 - On Windows and Linux, double-clicking a project while videolore is open opens a second window. On macOS the menu bar is inside the window, not at the top of the screen, and the Hide and Minimize menu items are not available.
-- Projects saved by this version cannot be opened by version 1.3.0 or earlier; they are refused with a message and left untouched. Projects from 1.3.0 and earlier open with the same result, except as listed below.
+- Projects saved by version 1.4.0 or later cannot be opened by version 1.3.0 or earlier; they are refused with a message and left untouched. Projects from 1.3.0 and earlier open with the same result, except as listed below.
 - When a video's own subtitles are used, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the accuracy target is not met yet with the Fast model (on the reference clip 82% of the words were matched, with an average start error of 0.48 s).
 - Matching a video's subtitles to the speech works only as well as their text follows what is said; translated or paraphrased subtitles often get evenly spread words.
 - Moved subtitle lines shown at the same time can overlap, and editing a line's text after moving it can push it past the edge of the picture in the export; use Reset position or drag it again.

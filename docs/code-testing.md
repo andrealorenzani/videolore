@@ -99,7 +99,7 @@ glue outside the gated test.
 
 | Job | When | What |
 |---|---|---|
-| `check` | every push / PR, `ubuntu-24.04` | apt `ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng`; the three speech files cached (checked by SHA-256); fmt; clippy with default, no and all features; the tests once, instrumented (`cargo llvm-cov`, line coverage ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check` (vulnerabilities and yanked crates fail; exceptions only in `deny.toml` with a reason); Rust crate notices up to date; version check; feature coverage 100 %; frozen release docs untouched |
+| `check` | every push / PR, `ubuntu-24.04` | apt `ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng`; the three speech files cached (checked by SHA-256); fmt; clippy with default, no and all features; the tests once, instrumented (`cargo llvm-cov`, line coverage ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check` (vulnerabilities and yanked crates fail; exceptions only in `deny.toml` with a reason); Rust crate notices up to date; version check; feature coverage 100 %; frozen release docs untouched; fmt, clippy, tests and coverage run with `--workspace`, and the player's `cargo tree` is searched for network and speech crates |
 | (all jobs) | | `Swatinem/rust-cache` with `prefix-key: v2-rust-ggml-portable`, bumped whenever the whisper.cpp build flags change so no old build is reused |
 | (test steps) | | `cargo test` output is saved; on failure `scripts/test-annotations.sh` turns failing tests (name, file/line, panic message), compiler errors and crashed test binaries into GitHub error annotations, readable without logging in |
 | `msrv` | every push / PR | Build all targets with exactly the `rust-version` of `Cargo.toml` (equal to stable by policy; the tests run in `check`) |
@@ -107,14 +107,23 @@ glue outside the gated test.
 | `build` | after `check` + `msrv` | Bare release executables for Linux x86_64, macOS arm64 and Windows x86_64, uploaded as artifacts |
 | `package` | `v*` tags and manual runs, after `check` + `msrv` | Per OS: fetch the pinned ffmpeg, build, `scripts/package.sh` (with the ffmpeg smoke test; on Linux it also refuses an executable needing glibc newer than 2.39), the third-party source archive on Linux; artifacts; on tags the five release assets are attached to the GitHub release |
 
-### 1.2.0 integration tests (`tests/ffmpeg_integration/v12.rs`)
+## Integration test files
 
-Real ffmpeg: a whole-video fade starts and ends in black (also after cutting the first clip);
-a muted clip is silent and a 50 % clip is a quarter of the level; a positioned subtitle is
-burned in within 2 % of the frame height of its position (measured: 0.5 px off at 320x180) and
-the preview uses the same subtitle document; the exported SRT is read back by ffmpeg; MKV + SRT
-and MP4 + timed text are reported with their language and read, also for a file whose time
-stamps start at 5 s.
+| File | What it runs with the real ffmpeg |
+|---|---|
+| `tests/ffmpeg_integration.rs` | The shared `Env` (fixtures, `job`, `export`, `frame_rgb`) and the basics: stream copy, letterbox, fades, cancel, preview frames, `hvc1`, 200 pieces of one file, music, burn-in, proxies, memory |
+| `ffmpeg_integration/v12.rs` | A whole-video fade starts and ends in black (also after cutting the first clip); a muted clip is silent and a 50 % clip is a quarter of the level; a positioned subtitle is burned in within 2 % of the frame height (measured 0.5 px off at 320x180) and the preview uses the same document; the exported SRT is read back; MKV + SRT and MP4 + timed text tracks with their language, also with time stamps starting at 5 s |
+| `ffmpeg_integration/v126.rs` | 360° video: a generated 2048x1024 sphere with a white meridian and parallel (an 8K file is generated at test time, never committed); camera paths in preview and export (see [code-360.md](code-360.md)) |
+| `ffmpeg_integration/v13.rs` | Texts: black clips with a raised bit rate so the text is not blurred away, a 2048x1024 black sphere, texts and subtitle lines fixed to the sphere (see [code-text.md](code-text.md)) |
+| `ffmpeg_integration/v14.rs` | Export dialog and Clean audio with its own pink-noise and speech-like clips; the Clean audio gate compares the export with and without the effect through the same encoding pass, because a mono source that becomes stereo lowers the measured level by itself (see [code-export.md](code-export.md)) |
+| `ffmpeg_integration/v15.rs` | Change aspect, Scale, Move: flat colour clips so pixels can be sampled with a small tolerance (see [code-frame.md](code-frame.md)) |
+| `ffmpeg_integration/v16.rs` | Apply LUT: flat colour clips and 2x2x2 cubes that move whole colours (channel swaps, inversion) (see [code-lut.md](code-lut.md)) |
+| `ffmpeg_integration/hw.rs` | Hardware export with simulated vendors; the exports of one test that do not depend on each other run on parallel threads (`in_parallel`) (see [code-hardware.md](code-hardware.md)) |
+| `player/tests/ffmpeg.rs` | The player: play, pause, seek, volume, an embedded track, an `.srt`, a 360 drag; the video's folder is compared before and after |
+
+The golden argv files of 1.1.0 and 1.2.5 still pass: a project without the effects added later
+exports as before. The 1.2.5 file `tests/fixtures/export-argv-1.2.5.txt` was written by the
+ignored test `write_golden_1_2_5`, run only with the 1.2.5 code.
 
 The alignment fixture `tests/fixtures/align/` is committed: `speech.mkv` (synthetic speech,
 Opus, with an English SRT track that has one misspelt word), `reference.json` (where each word
@@ -125,51 +134,27 @@ every word timed inside its line, at least half of the words found) and the accu
 `alignment_matches_real_speech`, which is `#[ignore]`d because it is not met yet (see
 [code-effects.md](code-effects.md)).
 
-### 1.2.6 tests
+## Other test notes
 
-See [code-360.md](code-360.md) (section "Tests and fixtures"). Real-ffmpeg tests are in
-`tests/ffmpeg_integration/v126.rs` (generated 2048x1024 sphere with a white meridian and parallel;
-8K file generated at test time, never committed). The 1.2.5 golden argv is
-`tests/fixtures/export-argv-1.2.5.txt` (written by the ignored test `write_golden_1_2_5`, run only
-with the 1.2.5 code). The four responsiveness gates in `src/ui/tests.rs` run one at a time
-(`one_gate_at_a_time`) because each keeps every core busy.
+- The four responsiveness gates in `src/ui/tests.rs` run one at a time (`one_gate_at_a_time`)
+  because each keeps every core busy. Under a heavily loaded machine (or the instrumented
+  coverage run) a frame can pass the 200 ms limit; the gates are not relaxed for it.
+- Timing tests with fake processes use limits long enough for a busy machine (the hardware
+  check repeat test uses 200/400 ms per try).
+- Player: `player/src/tests.rs` uses a scripted `Runner` (ffprobe answers by file name, ffmpeg
+  writes a subtitle track, spawned processes hold their output until killed). The UI test
+  harnesses of both programs read egui's accessibility tree; the editor's strips the leading
+  icon from labels (`Node::label`, with the raw one in `Node::raw`).
+- Splash: `src/splash.rs` tests both programs (`check_program`: size, rectangle inside the
+  picture, one to five summary lines, colour), `fit_summary` and the 64 MiB cap
+  (`decode_capped`); `src/ui/splash_ux_tests.rs` measures that the summary fits its panel
+  (`SplashRects::summary_used` against `summary_room`); the player's start screen tests
+  (REQ-150) are in `player/src/ui_tests.rs` and `player/src/tests.rs` (`real_app`).
 
-### 1.6.0 tests
+## Suite size and time
 
-Apply LUT, the splash and the icons are described in [code-lut.md](code-lut.md) and
-[code-splash-icons.md](code-splash-icons.md) (section "Tests"), the player in [code-player.md](code-player.md).
-`tests/ffmpeg_integration/v16.rs` uses flat colour clips and 2x2x2 cubes that move whole colours (channel swaps, inversion).
-`player/tests/ffmpeg.rs` runs the player with the real ffmpeg (play, pause, seek, volume, an embedded track, an `.srt`, a 360
-drag) and compares the video's folder before and after; `player/src/tests.rs` uses a scripted `Runner` (ffprobe answers by
-file name, ffmpeg writes a subtitle track, spawned processes hold their output until killed). The UI test harnesses of both
-programs read egui's accessibility tree; the editor's strips the leading icon from labels (`Node::label`, with the raw one in
-`Node::raw`). CI runs fmt, clippy, tests and coverage with `--workspace`, and greps the player's `cargo tree` for network and
-speech crates.
-
-### 1.6.2 tests
-
-The splash is shared: `src/splash.rs` tests both programs (`check_program`: size, rectangle inside the picture, one to five
-summary lines, colour), `fit_summary` and the 64 MiB cap (`decode_capped`); `src/ui/splash_ux_tests.rs` measures that the
-summary fits its panel (`SplashRects::summary_used` against `summary_room`); the player's `start_screen` tests (REQ-150) are in
-`player/src/ui_tests.rs` (rectangle, closing, Esc order, Space and F11) and `player/src/tests.rs` (`real_app`). See
-[code-splash-icons.md](code-splash-icons.md).
-
-### 1.5.0 tests
-
-See [code-frame.md](code-frame.md) (section "Tests"). `tests/ffmpeg_integration/v15.rs` uses flat
-colour clips so pixels can be sampled with a small tolerance; the golden argv files of 1.1.0 and
-1.2.5 still pass unchanged: a project without frame effects exports as before.
-
-### 1.4.0 tests
-
-See [code-export.md](code-export.md) (section "Tests"). `tests/ffmpeg_integration/v14.rs` makes its
-own fixtures (a pink-noise and speech-like clip); the Clean audio gate compares the export with
-and without the effect through the same encoding pass, because a mono source that becomes stereo
-lowers the measured level by itself.
-
-### 1.3.0 tests
-
-See [code-text.md](code-text.md) (section "Tests"). Real-ffmpeg tests are in
-`tests/ffmpeg_integration/v13.rs` (black clips with a raised bit rate so the text is not blurred
-away, a 2048x1024 black sphere). Project hostile values are in `project::tests`. The golden argv
-files of 1.1.0 and 1.2.5 still pass unchanged: a project without texts exports as before.
+Measured on the development machine (8 threads, 15 GiB, ffmpeg 6.1.1) for 1.6.3: 563 library
+tests (2 ignored), 62 integration tests (3 ignored), 33 player tests, 3 player integration
+tests; 13-16 s for the library tests, 45-62 s for the integration tests and 72-99 s for the whole `cargo test --workspace` (they use about
+270 s of processor time, so the run is bound by the processor, not by waiting). The slowest
+tests export 1920x1080 views of 360° videos (about 25 s each).

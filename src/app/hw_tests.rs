@@ -438,9 +438,11 @@ fn a_check_without_an_answer_in_time_is_repeated_once() {
                 && h2.fetch_add(1, Ordering::SeqCst) < slow
         });
         let (mut app, f) = app_with(dir.path(), Arc::new(f));
+        // short limits, but long enough that an answering fake is never late on a busy
+        // test machine (30 ms was flaky when the whole suite ran in parallel)
         app.probe_limits = ProbeLimits {
-            per: Duration::from_millis(30),
-            retry: Duration::from_millis(60),
+            per: Duration::from_millis(200),
+            retry: Duration::from_millis(400),
             total: Duration::from_secs(5),
         };
         app.settings.export = ExportChoice::Faster;

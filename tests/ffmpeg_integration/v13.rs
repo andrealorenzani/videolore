@@ -236,8 +236,9 @@ fn a_text_fixed_to_the_sphere_stays_at_its_point_while_the_camera_turns() {
             "at {t} s: yaw {yaw} pitch {pitch}"
         );
     }
-    // the point leaves the view when the camera looks away: no text
-    let mut q = sphere_project(&env, 4);
+    // the point leaves the view when the camera looks away: no text (2 s are enough to
+    // look at the frame at 1 s)
+    let mut q = sphere_project(&env, 2);
     let m = q.media[0].id;
     q.camera.set(m, pov(0.0, -120.0)).unwrap();
     add_text(&mut q, |t| pin(t, 30.0, 5.0));

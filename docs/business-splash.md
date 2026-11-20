@@ -25,7 +25,7 @@ Added in 1.6.0 for the editor, and extended to the video player in 1.6.2 (REQ-15
 ## Known limitations
 - The summary text is written by hand for each release; a release without an updated summary shows the previous one.
 - The build needs `assets/splash/splash.gif` and `assets/splash/splash-player.gif`, and the two summaries `assets/splash/summary.txt` and `assets/splash/summary-player.txt` (each a heading and at most five lines, rewritten for each version); it fails without them.
-- The origin and licence of the splash pictures are not yet confirmed; they must be checked before the release.
+- The splash pictures are the author's own work, licensed MIT; their origin and licence are recorded in the third-party notices (since 1.6.3).
 - (1.6.2) A summary must fit the popup (400 pixels wide, as high as the picture); a longer summary uses a smaller text, it does not scroll (assumption, to be checked on the build).
 
 ## Out of scope

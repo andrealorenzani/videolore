@@ -85,7 +85,7 @@ Things CI cannot check. For each of Windows 11, macOS (Apple Silicon), Ubuntu LT
    a second and "checking ffmpeg…" disappears without an ffmpeg installed on the machine.
 3. Import a video, play it, export it (H.264 and, with an HEVC source, HEVC that plays in
    QuickTime/Photos). With Export = Faster, run the QG-05 checklist of
-   [code-hardware.md](code-hardware.md) on the machines that have the hardware.
+   [code-hardware-qg05.md](code-hardware-qg05.md) on the machines that have the hardware.
 4. Generate subtitles: the consent dialog appears, the download works, subtitles are shown in
    the preview and burned into the export.
 5. Save a project, close and double-click the `.vlproj`: videolore opens it. With videolore

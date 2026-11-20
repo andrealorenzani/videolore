@@ -15,7 +15,7 @@ pub fn families_of(names: impl IntoIterator<Item = String>) -> Vec<String> {
         .into_iter()
         .filter(|n| !n.is_empty() && valid_font(n))
         .collect();
-    v.sort_by_key(|n| n.to_lowercase());
+    v.sort_by_cached_key(|n| n.to_lowercase());
     v.dedup();
     v.retain(|n| n != DEFAULT_FONT);
     v.insert(0, DEFAULT_FONT.to_string());
@@ -26,8 +26,7 @@ pub fn families_of(names: impl IntoIterator<Item = String>) -> Vec<String> {
 pub fn families_in(db: &fontdb::Database) -> Vec<String> {
     families_of(
         db.faces()
-            .flat_map(|f| f.families.iter().map(|(n, _)| n.clone()))
-            .collect::<Vec<_>>(),
+            .flat_map(|f| f.families.iter().map(|(n, _)| n.clone())),
     )
 }
 

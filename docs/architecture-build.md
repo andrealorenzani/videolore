@@ -10,7 +10,7 @@ Part of [Architecture](architecture.md). Since 1.6.0 with the workspace; the res
 - Root package `videolore` (library and editor) and member `player/` (package `videolore-player`). `default-members` is the root, so `cargo build` and `cargo test` keep building the editor; CI uses `--workspace` where both must be built and tested.
 - The player uses the library without the speech feature: its build needs no `cmake` and no libclang.
 - Versions: root and player `Cargo.toml` both carry the version; `scripts/version.sh` writes both, and the `Cargo.lock` entries of both packages, and `check` compares them with the README badge.
-- A later extraction of the engine into its own crate is possible (see the plan's future work).
+- A later extraction of the engine into its own crate is possible (not planned; see the roadmap).
 
 ## CI (changes in 1.6.0)
 - Check job: fmt, clippy (three feature sets) and tests with `--workspace`; coverage over the workspace (both `main.rs` files excluded), 85% minimum, as before.
@@ -31,7 +31,7 @@ Part of [Architecture](architecture.md). Since 1.6.0 with the workspace; the res
 
 ## CI time (1.6.1, QG-06)
 - **Measured** (public GitHub API, job and step times of the runs of 2026-11-14 to 2026-11-19): the push of 1.6.0 (`3b09f97`) took 28 min to its last executable. Its check job took 25.2 min, of which the system-packages step took 20.0 min. In the other recent runs that step took 0.2 to 1.5 min, once 5.4 min. The rest of the check job took about 5.2 min: the three clippy runs 0.3 min, the instrumented tests 2.3 min, the crate notices 1.1 min (`cargo-about` is compiled from source on every run).
-- **Plan:**
+- **Steps:**
   1. Install only the packages the image does not have. The Ubuntu 24.04 runner image lists `cmake` and `pkg-config`, so they are not installed again. `libasound2-dev` (audio, needed for the default build), `libclang-dev` (bindgen for the speech engine), `ffmpeg` (tests) and `espeak-ng` (speech tests) are installed with `--no-install-recommends`, after `apt-get update` with retries and a 30 s HTTP timeout, so a stalled mirror fails fast and is retried. The check job gets a `timeout-minutes` limit.
   2. `cargo-about` 0.9.3 from a prebuilt binary (the already pinned `taiki-e/install-action`), not `cargo install` (about 1 min saved per run).
   3. The speech test may read the committed `tests/fixtures/align/speech.mkv` instead of making speech with `espeak-ng` (the test's assertions stay; one package less). Open to the developer's choice.

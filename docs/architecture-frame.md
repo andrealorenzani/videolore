@@ -1,6 +1,6 @@
 # Architecture: frame (Change aspect, Scale, Move)
 
-Part of [Architecture](architecture.md). Built in 1.5.0 (requirements REQ-124 to REQ-132, see [business: frame](business-frame.md)). The decisions below are the plan as written before the build; the deviations are listed in the [changelog](changelog.md) 1.5.0 and in [code-frame](code-frame.md).
+Part of [Architecture](architecture.md). Built in 1.5.0 (requirements REQ-124 to REQ-132, see [business: frame](business-frame.md)). The decisions below are as built; the deviations from the plan are listed in the [changelog](changelog.md) 1.5.0 entry and in [code-frame](code-frame.md).
 
 ## Overview
 Three picture effects change what the picture looks like:
@@ -88,10 +88,10 @@ No new crate. The `ffmpeg` filters used (`color`, `split`, `scale`, `boxblur`, `
 - Interface: effect rows and menus, drop rules, popup opening, handle priority, one undo per action.
 
 ## Risks
-- `ffmpeg` time-dependent sizes may need the fallback (see above); checked on the bundled build before the code is written.
+- Time-dependent sizes (Scale and Move keyframes) were accepted by `ffmpeg` 6.1.1 in the spike; the bundled 9.x build is not checked yet (on the roadmap).
 - Large frames (4K in a tall shape) make exports slower and may be refused by a hardware encoder; the software redo handles that.
 - Keyframes in a small popup are harder to use; the timeline has a minimum width.
-- Copies of a whole-video Scale or Move are kept through trims and cuts, as the clip's own keys are (source time): a key before a new start is hidden, not lost, and a key after a removed part keeps its source time.
+- The per-clip copies made from a whole-video Scale or Move (1.6.1) are kept through trims and cuts, as the clip's own keys are (source time): a key before a new start is hidden, not lost, and a key after a removed part keeps its source time.
 - Text items keep their place when the picture moves (not keyframed), so a text may end up over the edge of the picture.
 
 ## Decided: size limit of the frame

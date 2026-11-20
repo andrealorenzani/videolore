@@ -88,13 +88,13 @@ There are no secrets, accounts or telemetry.
 ## Changes in 1.6.1
 - The project conversion from format 8 reads untrusted numbers: keyframe counts, times and values are checked and capped (200 per clip) before the copies are made; a damaged file is refused, never a crash. See [project files](architecture-projects.md).
 - CI: `cargo-about` comes as a pinned prebuilt binary from the already pinned install action (no new action, no apt cache action). Apt packages are installed from the runner's default repositories only, with retries and a timeout. See [build](architecture-build.md#ci-time-161-qg-06).
-- The splash files of 1.6.1 are compiled in; the picture is the 1.6.0 one until a new picture with its origin and licence is supplied.
+- The splash files of 1.6.1 are compiled in; the picture is the 1.6.0 one; its origin and licence (own work of the author, MIT) are recorded in the notices since 1.6.3.
 
 ## Splash in both programs (1.6.2)
 - The summary is plain text drawn as labels: no markup, no links, no user input reaches it.
 - The bundled picture is decoded with caps: at most 64 frames, 4096 px on the longer side, and 64 MiB of RGBA per picture. The files are trusted build inputs; the caps guard against a bad replacement.
 - The player's splash adds no code path that reads or writes a file; the player's network rule is unchanged.
-- The origin and licence of `splash.gif` and `splash-player.gif` are still to be recorded before release.
+- Resolved in 1.6.3: the origin and licence of `splash.gif` and `splash-player.gif` are recorded in the notices as the author's own work, licensed MIT.
 
 ## Unsafe code
 Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in two reviewed places: the cancel callback passed to whisper.cpp and the macOS "open document" handler.

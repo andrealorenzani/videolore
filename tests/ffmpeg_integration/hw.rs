@@ -348,6 +348,16 @@ impl Env {
     }
 }
 
+/// Runs `f` on every item, each on its own thread; a panic in one fails the test.
+fn in_parallel<T: Send>(items: impl IntoIterator<Item = T>, f: impl Fn(T) + Sync) {
+    std::thread::scope(|s| {
+        for item in items {
+            let f = &f;
+            s.spawn(move || f(item));
+        }
+    });
+}
+
 /// Only the finished file is left in the export folder.
 fn only_outputs(dir: &Path) {
     for e in std::fs::read_dir(dir).unwrap() {
@@ -389,7 +399,8 @@ fn every_hardware_path_makes_the_same_format_as_best_quality() {
         if codec == Codec::Hevc {
             assert_eq!(want.video("codec_tag_string"), "hvc1");
         }
-        for vendor in Vendor::ALL {
+        // one export per vendor, in parallel (independent files in one folder)
+        in_parallel(Vendor::ALL, |vendor| {
             let sim = SimulatedHw::new(Mode::Ok);
             let name = format!("fast-{}-{}.mp4", codec.name(), vendor.suffix());
             let (file, method, ev) = env.export_with(&p, &name, &sim, Some(offer(codec, vendor)));
@@ -412,7 +423,7 @@ fn every_hardware_path_makes_the_same_format_as_best_quality() {
                 cmd.contains("-g 250") && cmd.contains("-profile:v"),
                 "{cmd}"
             );
-        }
+        });
     }
     only_outputs(env.dir.path());
 }
@@ -462,52 +473,53 @@ fn damaged_hardware_files_are_caught_and_redone() {
         Mode::Garbage,
     ];
     // NVENC: plain graph; VA-API: the graph ends with the upload to the device
-    for vendor in [Vendor::Nvenc, Vendor::Vaapi] {
-        for mode in modes {
-            let sim = SimulatedHw::new(mode);
-            let name = format!("dmg-{}-{mode:?}.mp4", vendor.suffix());
-            let (file, method, ev) =
-                env.export_with(&p, &name, &sim, Some(offer(Codec::H264, vendor)));
-            let failure = match &method {
-                ExportMethod::SoftwareAfterProblem {
-                    codec: Codec::H264,
-                    vendor: v,
-                    problem: Problem::CheckFailed(f),
-                } if *v == vendor => f.clone(),
-                other => panic!("{name}: {other:?}"),
-            };
-            // each damage is caught by the step meant for it
-            let caught = match mode {
-                Mode::Empty | Mode::Truncated => {
-                    matches!(
-                        failure,
-                        CheckFailure::Decode | CheckFailure::FrameCount { .. }
-                    )
-                }
-                Mode::MissingFrames => matches!(failure, CheckFailure::FrameCount { .. }),
-                Mode::WrongSize => failure == CheckFailure::Metadata("size"),
-                Mode::Green | Mode::Garbage => matches!(failure, CheckFailure::Picture { .. }),
-                Mode::Ok => false,
-            };
-            assert!(caught, "{name}: {failure:?}");
-            assert_eq!(env.format_of(&file), want, "{name}");
-            assert!(!ev.iter().any(|e| matches!(e, ExportEvent::Failed(_))));
-            // the progress bar went back once for the redo, and stayed within 0..1
-            let progress: Vec<f32> = ev
-                .iter()
-                .filter_map(|e| match e {
-                    ExportEvent::Progress(f) => Some(*f),
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(
-                progress.windows(2).filter(|w| w[1] < w[0]).count(),
-                1,
-                "{name}"
-            );
-            assert!(progress.iter().all(|f| (0.0..=1.0).contains(f)));
-        }
-    }
+    let cases = [Vendor::Nvenc, Vendor::Vaapi]
+        .into_iter()
+        .flat_map(|vendor| modes.map(|mode| (vendor, mode)));
+    // the twelve exports are independent: run them in parallel
+    in_parallel(cases, |(vendor, mode)| {
+        let sim = SimulatedHw::new(mode);
+        let name = format!("dmg-{}-{mode:?}.mp4", vendor.suffix());
+        let (file, method, ev) = env.export_with(&p, &name, &sim, Some(offer(Codec::H264, vendor)));
+        let failure = match &method {
+            ExportMethod::SoftwareAfterProblem {
+                codec: Codec::H264,
+                vendor: v,
+                problem: Problem::CheckFailed(f),
+            } if *v == vendor => f.clone(),
+            other => panic!("{name}: {other:?}"),
+        };
+        // each damage is caught by the step meant for it
+        let caught = match mode {
+            Mode::Empty | Mode::Truncated => {
+                matches!(
+                    failure,
+                    CheckFailure::Decode | CheckFailure::FrameCount { .. }
+                )
+            }
+            Mode::MissingFrames => matches!(failure, CheckFailure::FrameCount { .. }),
+            Mode::WrongSize => failure == CheckFailure::Metadata("size"),
+            Mode::Green | Mode::Garbage => matches!(failure, CheckFailure::Picture { .. }),
+            Mode::Ok => false,
+        };
+        assert!(caught, "{name}: {failure:?}");
+        assert_eq!(env.format_of(&file), want, "{name}");
+        assert!(!ev.iter().any(|e| matches!(e, ExportEvent::Failed(_))));
+        // the progress bar went back once for the redo, and stayed within 0..1
+        let progress: Vec<f32> = ev
+            .iter()
+            .filter_map(|e| match e {
+                ExportEvent::Progress(f) => Some(*f),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            progress.windows(2).filter(|w| w[1] < w[0]).count(),
+            1,
+            "{name}"
+        );
+        assert!(progress.iter().all(|f| (0.0..=1.0).contains(f)));
+    });
     only_outputs(env.dir.path());
 }
 

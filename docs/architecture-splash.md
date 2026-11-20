@@ -46,7 +46,7 @@ The four rules:
 - State (player, REQ-150): the same rules; a video on the command line opens none; Esc closes the splash before full screen.
 
 ## Risks
-- A stale summary: each release needs its own `.txt` and `-player.txt` before it builds (intended; a process step).
-- The pictures' origin and licence must be recorded in the notices before release (open item).
+- A stale summary: each release rewrites both summaries; the shipped text is tested to fit, and a summary that does not fit fails the test.
+- The pictures' origin and licence are not yet recorded in the notices (open at release 1.6.3; must be added before the release is tagged).
 - The splash is an in-app window, not a separate OS window (multi-window behaviour on Wayland and macOS is not tested).
 - Both pictures are compiled into both programs' library; the binary may grow by up to about 175 KB (an estimate, not yet measured; fallback: move the player picture into the player crate).

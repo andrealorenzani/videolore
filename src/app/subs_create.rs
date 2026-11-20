@@ -160,7 +160,7 @@ impl AppState {
             self.pending_create = None;
             return stop;
         }
-        let info = self.ffmpeg.as_ref().map_err(|e| e.clone())?.clone();
+        let ffmpeg = self.ffmpeg.as_ref().map_err(|e| e.clone())?.ffmpeg.clone();
         let needs_model = jobs.iter().any(|j| !matches!(j.mode, Mode::Spread { .. }));
         let mut model = PathBuf::new();
         let mut model_check = None;
@@ -185,7 +185,7 @@ impl AppState {
         let job = SttJob {
             ranges: jobs,
             language: subs.language.clone().filter(|_| subs.language_overridden),
-            ffmpeg: info.ffmpeg.clone(),
+            ffmpeg,
             model,
             threads: self.budget.stt_threads,
             work_root: self.work_root.clone(),
