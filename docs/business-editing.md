@@ -74,6 +74,7 @@ The window layout (REQ-024), how commands are reached (REQ-025), menus, toolbar,
 - Letterboxing color is black.
 
 ## Known limitations
+- A paused still in the last ~20 ms of a clip shows no picture (for example at 1.98 s of a 2 s clip at 25 fps; 1.92 s works). This is a defect against REQ-144, which requires the picture at the playhead wherever the timeline has picture; the fix is a roadmap item.
 - The proxy cache is never cleaned automatically; use "Clear preview copies" in Settings.
 - Removing a file from the media list also drops the undo history when an undo step refers to it.
 - After the proxies of a project are cleared, they are regenerated only after reopening the project or changing Preview quality (assumption: carried over from the 0.2.x on/off switch).

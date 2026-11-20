@@ -46,7 +46,9 @@ The real-hardware check of this feature is the quality goal QG-05, in [Settings,
 - (0.4.0) **Best quality is the default everywhere; Faster is opt-in.** Upgrades from 0.3.x load as Best quality, so nothing changes until the user chooses Faster.
 - (0.4.0) Every hardware result is checked (full decode, frame count and details, three sample frames compared with a normal render), because some driver faults produce bad video without reporting an error.
 - (0.4.0) Quality target for Faster: at most 3 VMAF points below Best quality, and files at most 1.5 times the Best quality size (checked by hand, QG-05).
-- (0.4.0) Only H.264 and HEVC use hardware: they are the formats with the broadest hardware support.
+- (0.4.0) Only H.264 and HEVC use hardware: they are the formats with the broadest hardware support. (2.0.2, Andrea) AV1 and VP9 encoding are in scope as well, and so is hardware decoding; they are not built yet, and their requirements come with the batch that builds them.
+- (2.0.2, Andrea) The Export dialog keeps its fixed presets and "Same as source": custom resolutions, frame rates, bitrates and encoder options are not planned.
+- (2.0.2, Andrea) Hardware export always goes through ffmpeg (the bundled one, or the one the user chose); no separate vendor pipeline.
 - (0.4.0) The hardware aims at the same average bitrate as the normal method, so file sizes stay close to Best quality. If the source bitrate is unknown, the normal method is used.
 - (0.4.0) Exception, Linux VA-API (Intel and AMD through the system driver): Ubuntu's free Intel driver refuses bitrate control, so VA-API uses a constant-quality mode with size protection: if the hardware file is more than 1.5 times the size expected for Best quality, the export is redone with the normal method. This is not counted as a hardware problem (REQ-064 does not remember it).
 - (0.4.0) The Faster explanation says "often quicker, but not on every computer" instead of "much quicker": on integrated graphics the hardware export plus its output check was measured to be sometimes slower than Best quality (QG-05).
@@ -75,8 +77,7 @@ The real-hardware check of this feature is the quality goal QG-05, in [Settings,
 - (1.4.0) Remembering export choices in the project or in Settings; custom resolutions, frame rates, bitrates, quality values or encoder options.
 - Separate subtitle files (SRT/VTT) or switchable subtitles; subtitles are always burned in.
 - Direct upload to social networks.
-- (0.4.0) Video hardware for preview copies, preview playback, effects, subtitles or decoding; preview copies stay on the normal method.
-- (0.4.0) Hardware AV1 or VP9 encoding (those formats always use the normal method).
+- (0.4.0) Video hardware for preview copies, preview playback, effects or subtitles; preview copies stay on the normal method.
 - (0.4.0) Choosing a specific graphics card or vendor; per-vendor quality sliders; any technical export setting beyond the presets of the Export dialog.
 - (0.4.0) AMD hardware through AMD's own interface on Linux (AMD on Linux goes through VA-API); Intel Macs; ARM Windows and Linux.
 - (0.4.0) Bundling or installing graphics drivers.

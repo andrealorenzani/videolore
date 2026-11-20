@@ -100,9 +100,10 @@ glue outside the gated test.
 
 | Job | When | What |
 |---|---|---|
-| `check` | every push / PR, `ubuntu-24.04` | apt `ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng`; the three speech files cached (checked by SHA-256); fmt; clippy with default, no and all features; the tests once, instrumented (`cargo llvm-cov`, line coverage ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check` (vulnerabilities and yanked crates fail; exceptions only in `deny.toml` with a reason); Rust crate notices up to date; version check; feature coverage 100 %; frozen release docs untouched; fmt, clippy, tests and coverage run with `--workspace`, and the player's `cargo tree` is searched for network and speech crates |
+| `check` | every push / PR, `ubuntu-24.04` | the tests' ffmpeg is the pinned linux-x86_64 build of `packaging/ffmpeg.lock` (`scripts/fetch-ffmpeg.sh`, cached by the hash of the lock; `VIDEOLORE_FFMPEG`/`VIDEOLORE_FFPROBE` and `PATH` point to it; with `VIDEOLORE_REQUIRE_FFMPEG=1` the integration tests fail when its version differs from the lock, QG-07, QG-08); `cargo about --version` must print 0.9.3; apt `libasound2-dev pkg-config cmake libclang-dev espeak-ng`; the three speech files cached (checked by SHA-256); fmt; clippy with default, no and all features; the tests once, instrumented (`cargo llvm-cov`, line coverage ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check` (vulnerabilities and yanked crates fail; exceptions only in `deny.toml` with a reason); Rust crate notices up to date; version check; feature coverage 100 %; frozen release docs untouched; fmt, clippy, tests and coverage run with `--workspace`, and the player's `cargo tree` is searched for network and speech crates |
 | (all jobs) | | `Swatinem/rust-cache` with `prefix-key: v2-rust-ggml-portable`, bumped whenever the whisper.cpp build flags change so no old build is reused |
 | (test steps) | | `cargo test` output is saved; on failure `scripts/test-annotations.sh` turns failing tests (name, file/line, panic message), compiler errors and crashed test binaries into GitHub error annotations, readable without logging in |
+| `package-config` | every push / PR | Installer configuration (QG-10): `package.sh <windows-x86_64\|macos-aarch64> <editor\|player> --config-only` and `package.sh linux-x86_64 <editor\|player> --stub`, with checks of the files made; nothing is uploaded |
 | `msrv` | every push / PR | Build all targets with exactly the `rust-version` of `Cargo.toml` (equal to stable by policy; the tests run in `check`) |
 | (security) | | Read-only token by default (`contents: write` only in `package`); every action pinned to a full commit SHA (tag in a comment, all on Node 24); runners pinned (`ubuntu-24.04`, `macos-15`, `windows-2025`); a unit test checks both |
 | `build` | after `check` + `msrv` | Bare release executables for Linux x86_64, macOS arm64 and Windows x86_64, uploaded as artifacts |
@@ -112,6 +113,7 @@ glue outside the gated test.
 
 | File | What it runs with the real ffmpeg |
 |---|---|
+| `tests/ffmpeg_integration/v20.rs` | 2.0.2: a paused frame inside and near the end of a fade is a picture (REQ-144); a format 8 project with whole-video and clip LUTs is read (REQ-137, no ffmpeg needed); `libmp3lame` and the frame, LUT and 360 filters are present (REQ-121) |
 | `tests/ffmpeg_integration.rs` | The shared `Env` (fixtures, `job`, `export`, `frame_rgb`) and the basics: stream copy, letterbox, fades, cancel, preview frames, `hvc1`, 200 pieces of one file, music, burn-in, proxies, memory |
 | `ffmpeg_integration/v12.rs` | A whole-video fade starts and ends in black (also after cutting the first clip); a muted clip is silent and a 50 % clip is a quarter of the level; a positioned subtitle is burned in within 2 % of the frame height (measured 0.5 px off at 320x180) and the preview uses the same document; the exported SRT is read back; MKV + SRT and MP4 + timed text tracks with their language, also with time stamps starting at 5 s |
 | `ffmpeg_integration/v126.rs` | 360° video: a generated 2048x1024 sphere with a white meridian and parallel (an 8K file is generated at test time, never committed); camera paths in preview and export (see [code-360.md](code-360.md)) |
@@ -141,7 +143,12 @@ every word timed inside its line, at least half of the words found) and the accu
   because each keeps every core busy. Under a heavily loaded machine (or the instrumented
   coverage run) a frame can pass the 200 ms limit; the gates are not relaxed for it.
 - Timing tests with fake processes use limits long enough for a busy machine (the hardware
-  check repeat test uses 200/400 ms per try).
+  check repeat test uses 200/400 ms per try). Wall-clock product gates of the logic tests
+  (`project` fifo load 1 s, `media` stuck probe 5 s, `machine` detection 3 s) pass on the best
+  of up to five samples (`base::testing::best_of`, `#[cfg(test)]`, std only; all samples are
+  printed when every one is over), the limits are unchanged; waits for results (preview
+  frames, hardware checks) are harness timeouts of 120 s. The four UI frame gates are not
+  sampled: each is one scenario of many frames (see the roadmap). Load check of 2.0.2: with 8 busy-loop processes on 8 threads the library tests pass except `stays_responsive_while_exporting_and_transcribing` (a frame over 200 ms), which is the known open item.
 - Player: `player/src/tests.rs` uses a scripted `Runner` (ffprobe answers by file name, ffmpeg
   writes a subtitle track, spawned processes hold their output until killed). The UI test
   harnesses of both programs read egui's accessibility tree; the editor's strips the leading
@@ -149,7 +156,7 @@ every word timed inside its line, at least half of the words found) and the accu
 - Splash: `src/splash.rs` tests both programs (`check_program`: size, rectangle inside the
   picture, one to five summary lines, colour), `fit_summary` and the 64 MiB cap
   (`decode_capped`); `src/ui/splash_ux_tests.rs` measures that the summary fits its panel
-  (`SplashRects::summary_used` against `summary_room`); the player's start screen tests
+  (`SplashRects::summary_used` against `summary_room`; REQ-154: both programs' summaries fit at the 7 px floor, `summary_fits_at_floor`, an over-long summary does not, a long one is fitted between 15 and 7 px; the player's rendered fit is in `player/src/ui_tests.rs`); the player's start screen tests
   (REQ-150) are in `player/src/ui_tests.rs` and `player/src/tests.rs` (`real_app`).
 
 ## Suite size and time

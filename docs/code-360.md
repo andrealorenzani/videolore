@@ -52,6 +52,7 @@ Part of [Code](code.md). Design: [architecture-360.md](architecture-360.md) and
   (`d_fov`, the diagonal view: `v360` derives the horizontal and vertical ones from the output
   aspect; `camera::diagonal_fov_deg` converts, and the result equals `h_fov` to one grey level).
   A path that only turns (yaw) is the cheapest; this is the main known limit (see below).
+- **2.0.2, ffmpeg 9.0.2 (the bundled build, three runs of `big_spheres_get_a_4096_copy_and_camera_stills_are_quick_enough`):** the camera still from the 4096 copy took 108, 111 and 113 ms (median 111 ms) and from the 4K source 49, 49 and 50 ms (median 49 ms), against 155 and 125 ms with 6.1.1; the 400 ms and 700 ms targets are met. The per-command cost of a moving camera export was not measured again.
 - Instance names (`v360@cN`) let several 360 clips in one graph be commanded separately.
 
 ## Settled points

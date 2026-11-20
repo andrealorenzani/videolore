@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-2.0.1-blue)
+![version](https://img.shields.io/badge/version-2.0.2-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-95.6%25-brightgreen)
@@ -166,9 +166,9 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **2.0.2** — The splash summary is shown in the largest text that fits its popup, down to a smaller size for a longer summary; it is never scrolled.
 - **1.6.2** — The video player opens with a start screen like the editor's, with its own picture and the release summary, until a video is opened. The editor's splash shows a longer summary for each release, sized to fit its box.
 - **1.6.1** — A whole-video effect now applies to every clip on the timeline at that moment: the fades go to the first clip's start and the last clip's end, and Scale, Move and Apply LUT give each clip its own copy. Boxes on the picture resize from their visible edges when partly outside the picture. A paused preview no longer stays black. Projects saved by this version need version 1.6.1 or later; projects from 1.6.0 are converted once on open, with one status note.
-- **1.6.0** — A separate video player, `videolore-player`, with its own download, for watching videos with sound, 360 look-around and subtitles. Apply LUT gives a clip or the whole video a colour look from a `.cube` file. A splash screen with the release summary opens at each start of the editor, and buttons, menus and lists show icons. Projects saved by this version need version 1.6.0 or later.
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
 ## License

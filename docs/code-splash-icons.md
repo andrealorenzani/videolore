@@ -1,6 +1,6 @@
 # Code — splash screen and icons (1.6.0, splash shared with the player in 1.6.2)
 
-Back to the [index](code.md). Requirements REQ-133, REQ-134, REQ-150 (splash), REQ-142, REQ-143 (icons).
+Back to the [index](code.md). Requirements REQ-133, REQ-134, REQ-150, REQ-154 (splash), REQ-142, REQ-143 (icons).
 
 ## Splash
 

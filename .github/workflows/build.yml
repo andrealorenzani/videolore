@@ -34,12 +34,12 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy, llvm-tools-preview
-      - name: System packages (ffmpeg for tests, ALSA headers, whisper.cpp build, speech fixture)
+      - name: System packages (ALSA headers, whisper.cpp build, speech fixture)
         # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
         # loudly if that ever changes); the package index is refreshed only when needed.
         run: |
           missing=""
-          for p in ffmpeg libasound2-dev libclang-dev espeak-ng; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          for p in libasound2-dev libclang-dev espeak-ng; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
           if [[ -n "$missing" ]]; then
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
@@ -52,6 +52,23 @@ jobs:
       - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: cargo-llvm-cov,cargo-deny@0.20.2,cargo-about@0.9.3
+      - name: ffmpeg of the tests is the pinned build the installers ship (QG-07, QG-08)
+        id: ffmpeg-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ffmpeg-test
+          key: ffmpeg-test-${{ hashFiles('packaging/ffmpeg.lock', 'scripts/fetch-ffmpeg.sh') }}
+      - name: Download the pinned ffmpeg (SHA-256 checked, smoke tested)
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: scripts/fetch-ffmpeg.sh linux-x86_64 "$RUNNER_TEMP/ffmpeg-test"
+      - name: Tests use the pinned ffmpeg and ffprobe
+        run: |
+          echo "VIDEOLORE_FFMPEG=$RUNNER_TEMP/ffmpeg-test/ffmpeg" >> "$GITHUB_ENV"
+          echo "VIDEOLORE_FFPROBE=$RUNNER_TEMP/ffmpeg-test/ffprobe" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/ffmpeg-test" >> "$GITHUB_PATH"
+      - name: cargo-about is the pinned version
+        run: |
+          cargo about --version | tee /dev/stderr | grep -qx 'cargo-about 0.9.3'
       - name: Speech files for the real transcription tests (cached, checked by SHA-256)
         id: stt-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -108,6 +125,46 @@ jobs:
         run: scripts/feature-coverage.sh
       - name: Released docs are unchanged
         run: scripts/release-guard.sh "${{ github.event.pull_request.base.sha || github.event.before }}"
+
+  package-config:
+    # The installer configuration is checked on every push and pull request, without ffmpeg
+    # and without the real installers (QG-10): the Windows and macOS packager files, and a
+    # Linux AppImage made of stub programs with the pinned appimagetool. Nothing is uploaded.
+    name: installer configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Windows and macOS packager configuration
+        run: |
+          for t in windows-x86_64 macos-aarch64; do
+            for p in editor player; do
+              scripts/package.sh "$t" "$p" --config-only
+            done
+          done
+          for f in dist/stage-windows-x86_64/Packager.toml dist/stage-windows-x86_64-player/Packager.toml \
+                   dist/stage-macos-aarch64/Packager.toml dist/stage-macos-aarch64-player/Packager.toml; do
+            for key in '^name = ' '^identifier = ' '^version = ' '^formats = ' '^binaries = ' '^icons = ' '^resources = '; do
+              grep -q "$key" "$f" || { echo "$f: no line matching $key" >&2; exit 1; }
+            done
+          done
+          grep -q '^formats = \["nsis"\]' dist/stage-windows-x86_64/Packager.toml
+          grep -q '^formats = \["app"\]' dist/stage-macos-aarch64/Packager.toml
+          grep -q '^installMode = "currentUser"' dist/stage-windows-x86_64/Packager.toml
+      - name: Linux AppImage from stub programs (pinned appimagetool, checksum checked)
+        run: |
+          version=$(scripts/version.sh get)
+          for p in editor player; do
+            scripts/package.sh linux-x86_64 "$p" --stub
+          done
+          ls dist/stub/videolore-${version}-linux-x86_64.AppImage dist/stub/videolore-player-${version}-linux-x86_64.AppImage
+          for n in videolore videolore-player; do
+            d=dist/stub/stage-linux-x86_64
+            [[ $n == videolore-player ]] && d=dist/stub/stage-linux-x86_64-player
+            for f in AppRun $n.desktop $n.png usr/bin/$n usr/bin/ffmpeg usr/bin/ffprobe usr/share/$n/notices/third-party.txt; do
+              [[ -e $d/AppDir/$f ]] || { echo "AppDir of $n lacks $f" >&2; exit 1; }
+            done
+          done
 
   msrv:
     # MSRV equals the latest stable Rust by policy: this job only proves it builds with

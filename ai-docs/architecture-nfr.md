@@ -61,6 +61,13 @@ Gates are marked GATE; everything else is an estimate or target. Grouped by area
 ## Page (1.4.1, ADR-092)
 - Static HTML, inline CSS, no JS, no external scripts or fonts; GIF images kept (~341 KB total); images 317–512 px, 46–71 KB each, shown at <= 300 CSS px; deployed by pages.yml. Recommended items (not verified implemented): img width/height; lazy loading below the fold; keyboard-scrollable timeline region; reduced-motion stills; optional SEO tags and CSP.
 
+## Verification (2.0.2 PLAN; QG-07..10, docs/business-performance.md)
+- QG-07 bundled ffmpeg 9.x checks: suite green on the pinned build; CI never skips an ffmpeg test (VIDEOLORE_REQUIRE_FFMPEG=1); 360 camera re-measured on 9.0.2 (median of 3), no gate change; record in docs/architecture-360.md.
+- QG-08 test ffmpeg version = packaging/ffmpeg.lock linux-x86_64 version (test asserts it).
+- QG-09 no product limit changed (REQ-061 1 s/4 s/10 s, REQ-104 200 ms); wall-clock product gates pass on the best of 5 samples; suite passes under a load run (4 busy loops; PE records).
+- QG-10 notices exit 0/1 recorded; cargo-about 0.9.3 asserted; package-config job on every push (Windows and macOS --config-only, Linux --stub AppImage).
+- Cost (estimate; QG-06): pinned ffmpeg archive about 100 MB, cached; package-config 2 to 3 min. Measured in the first CI run.
+
 ## Quality targets 1.6.x
 - 1.6.0: splash decode <= 100 ms (estimate); player has no network code (CI check: player graph has no ureq / whisper-rs).
 - 1.6.2: summary text tested to fit (estimate ~340 of 442 px at 14 px); editor version rectangle 74..408 x 381..465; player 78..386 x 388..462 inside 487x505 (tested).

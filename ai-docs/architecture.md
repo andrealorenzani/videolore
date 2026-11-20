@@ -2,20 +2,21 @@
 
 <!-- AI-only notes. Owner agent edits only. Dense format OK. Read sub-documents by grep, then sed -n 'A,Bp'. -->
 
-target: 2.0.1 PLAN (module cycles, REQ-151..153; plan ai-docs/architecture-plan-2.0.1.md; ADR-136..141; PE step 8 updates docs/code-architecture.md) | 1.6.3 RELEASE (consolidation 2026-11-20; verified against src/ and Cargo.toml; open before release: origin and licence of assets/splash/splash.gif and splash-player.gif, see architecture-risks.md) | built 1.6.2 (shared splash, ADR-128..135) | built 1.6.1 (visible edges, per-clip effects, format 9, CI time) | built 1.6.0 (splash, Apply LUT, workspace with player/, icons; ADR-105..119) | built 1.5.0 (frame: aspect, Scale, Move, keyframes; format 7; ADR-093..104) | 1.4.x (export dialog, clean audio, text width; ADR-080..091) | 1.3.0 (text items, 360 video; ADR-066..079) | 1.4.1 page (ADR-092).
+target: 2.0.2 PLAN (verify the release, REQ-154, QG-07..10; plan ai-docs/architecture-plan-2.0.2.md; ADR-142..151; no open questions; splash pictures are own work (MIT, notices); no .deb) | built 2.0.1 (module cycles, REQ-151..153; ADR-136..141; plan ai-docs/architecture-plan-2.0.1.md, archived at release) | 1.6.3 RELEASE (consolidation 2026-11-20; verified against src/ and Cargo.toml; open before release: origin and licence of assets/splash/splash.gif and splash-player.gif, see architecture-risks.md) | built 1.6.2 (shared splash, ADR-128..135) | built 1.6.1 (visible edges, per-clip effects, format 9, CI time) | built 1.6.0 (splash, Apply LUT, workspace with player/, icons; ADR-105..119) | built 1.5.0 (frame: aspect, Scale, Move, keyframes; format 7; ADR-093..104) | 1.4.x (export dialog, clean audio, text width; ADR-080..091) | 1.3.0 (text items, 360 video; ADR-066..079) | 1.4.1 page (ADR-092).
 product facts: Rust, edition 2024, rust-version 1.100 (MSRV = latest stable by policy, ADR-012), toolchain latest stable, GPL-3.0-only, author Andrea Lorenzani. Versions 2.0.1 in root Cargo.toml and player/Cargo.toml (both literal, ADR-116); 1.6.3 was the last release.
 platforms: Linux x86_64 (Ubuntu 24.04+, Fedora current; AppImage + tar.gz), macOS aarch64 (dmg, ad-hoc sign), Windows x86_64 (NSIS setup). Editor = videolore, player = videolore-player (no speech, no network).
 engine: ffmpeg + ffprobe as separate bundled processes (GPL builds, pinned SHA-256, ADR-002/013); whisper.cpp via whisper-rs (opt stt feature, ADR-021/022); egui/eframe 0.37 GUI (ADR-001); std threads + mpsc, no tokio (ADR-004); process scheduler cap 3..6 (ADR-015/029).
 state: project JSON format 9 (SCHEMA_VERSION 9; loads 1..9; TooNew refused, never written); settings.json version 2 additive fields (ADR-028/040/044); private work folders 0700 with lock + crash cleanup (ADR-033).
-testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs excluded), feature coverage 100% via `// covers: REQ-NNN`; CI jobs check/msrv/build/package (ADR-035/036/117); 2.0.1 adds the module-cycle test (ADR-140).
+testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs excluded), feature coverage 100% via `// covers: REQ-NNN`; CI jobs check/msrv/build/package (ADR-035/036/117); 2.0.1 adds the module-cycle test (ADR-140); 2.0.2 (plan) pins the test ffmpeg to the bundled 9.0.2, samples wall-clock gates (best of 5), adds the package-config job (ADR-142..149).
 
 ## ai sub-documents (read only when a task needs them; all owned by architect)
-- ai-docs/architecture-adr.md § whole file — L1-514 (514 lines): ADRs ADR-001..141 (ids, context, choice, alternatives, reason; status per ADR; superseded ones one line with replacement); area index at its top. Read with grep -n 'ADR-0NN' then sed.
+- ai-docs/architecture-adr.md § whole file — L1-526 (526 lines): ADRs ADR-001..151 (ids, context, choice, alternatives, reason; status per ADR; superseded ones one line with replacement); area index at its top. Read with grep -n 'ADR-0NN' then sed.
 - ai-docs/architecture-components.md § whole file — L1-98 (98 lines): verified module structure vs src (lib.rs modules, app/export/project/render/settings/ui submodules), import cycles (re-checked 2026-11-20), component roles per module and version, module dependency list, ai data flow for every version.
-- ai-docs/architecture-nfr.md § whole file — L1-66 (66 lines): NFR targets by area: processes, UI responsiveness, preview, export and quality (QG-01, QG-05), memory, platforms and portability, page; GATE vs ESTIMATE marked.
+- ai-docs/architecture-nfr.md § whole file — L1-73 (73 lines): NFR targets by area: processes, UI responsiveness, preview, export and quality (QG-01, QG-05), memory, platforms and portability, page; GATE vs ESTIMATE marked.
 - ai-docs/architecture-security.md § whole file — L1-39 (39 lines): threats, core rules (no shell, file: prefix, protocol whitelist, unsafe policy, downloads, supply chain, CI permissions), security by version 0.2.0..1.6.2.
-- ai-docs/architecture-risks.md § whole file — L1-81 (81 lines): open risks by area (release items first), hardware export limits, subtitles, interface, 360, frames/LUT/player/splash, code debt; resolved items removed.
+- ai-docs/architecture-risks.md § whole file — L1-85 (85 lines): open risks by area (release items first), hardware export limits, subtitles, interface, 360, frames/LUT/player/splash, code debt; resolved items removed.
 - ai-docs/architecture-plan-2.0.1.md § whole file — L1-125 (125 lines): plan 2.0.1 (measured cycles, base module layout, move table, cycle breaks, behaviour invariants, cycle check design, ordered PE steps, tests, risks, future work). Archived in the release snapshot after release (drop this line then).
+- ai-docs/architecture-plan-2.0.2.md § whole file — L1-90 (90 lines): plan 2.0.2 (facts found by reading, components, ADR-142..151 summary, QG-07..10, security, ordered PE steps 1-10, tests, risks, questions Q-1 and Q-2, future work). Archived in the release snapshot after release (drop this line then).
 - ai-docs/architecture-doc-index.md § whole file — L1-256 (256 lines): paragraph index of docs/architecture*.md (one line per heading: `- <file> § <heading> — L<start>-<end> (<n> lines)`); moved here from this file to keep it short; regenerate after each change of a managed doc.
 - ai-docs/architecture-plan-1.3.0.md, -1.4.0.md, -1.5.0.md, -1.6.0.md, -1.6.1.md, -1.6.2.md: archived in the latest releases/<version> - <name>/docs/ai-docs/ snapshot (moved there by the command after the snapshot; do not look for them in ai-docs/ after the release). Their full plan text (ADR details, code facts, ordered steps, Future work) is read from the snapshot only when history is needed.
 
@@ -134,7 +135,7 @@ testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs exclu
 - ADR-112 missing LUT file: project opens, LUT inactive, export stops naming the file
 - ADR-113 splash (1.6.0): pure splash.rs + window; include_bytes of assets; skipped with a path argument (superseded by ADR-128..131)
 - ADR-114 icons: vendored Phosphor Regular TTF (MIT) as fallback font; ui/icons.rs constants
-- ADR-115 notices: rust-crates.txt (editor) + rust-crates-player.txt; Phosphor entry; origin of splash image open (Q-E)
+- ADR-115 notices: rust-crates.txt (editor) + rust-crates-player.txt; Phosphor entry; origin of splash image recorded (Q-E closed 2026-11-20)
 - ADR-116 versions: both Cargo.toml literal; version.sh writes and checks both lock entries and the badge
 - ADR-117 gates: --workspace; coverage ignores both main.rs; feature coverage scans player/; player has no ureq/whisper-rs
 - ADR-118 player open rules: argv[1] video, File > Open, drop; .vlproj refused by extension
@@ -149,7 +150,7 @@ testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs exclu
 - ADR-127 splash 1.6.1 picture = copy of 1.6.0 (superseded by ADR-134 names)
 - ADR-128 shared splash: splash::Program EDITOR and PLAYER; ui::splash_window (1.6.2)
 - ADR-129 splash assets compiled in from CARGO_MANIFEST_DIR; no build.rs (1.6.2; 1.6.3 fixed names)
-- ADR-130 summary fit: no scroll, no clip, 14 px down to 10 px floor, 372 px wide (1.6.2)
+- ADR-130 summary fit: no scroll, no clip, 372 px wide (1.6.2; the 14/10 px values superseded by ADR-143)
 - ADR-131 version text fit in each program rectangle; colour from mean brightness (1.6.2)
 - ADR-132 player splash = a splash state in the player, non-blocking, Esc order (1.6.2)
 - ADR-133 decode caps: 64 frames, 4096 px, 64 MiB RGBA per picture (1.6.2)
@@ -160,8 +161,18 @@ testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs exclu
 - ADR-138 (2.0.1 PLAN) AssEvent, font_px, BASE_HEIGHT move to ass.rs, not base
 - ADR-139 (2.0.1 PLAN) align_h, align_v move from ui/boxes.rs to base::pos; app must not use ui
 - ADR-140 (2.0.1 PLAN) cycle check: tests/module_cycles.rs with syn (dev-dependency, in lock), production code, top-level grain
-- ADR-141 (2.0.1 PLAN) no re-exports; callers (player included) take the new paths
-- Q-A/Q-B/Q-C (1.6.0) closed 2026-11-19 (icon artwork shared; splash GIF kept; no splash with a path argument); Q-E open before release (splash origin).
+- ADR-141 (2.0.1) no re-exports; callers (player included) take the new paths
+- ADR-142 (2.0.2 PLAN) test ffmpeg = pinned bundled 9.0.2 (linux-x86_64 lock), fetched and cached in CI; VIDEOLORE_REQUIRE_FFMPEG=1; version asserted
+- ADR-143 (2.0.2 PLAN) summary fit 15 down to 7 px as built (SUMMARY_MAX/FLOOR); EDITOR and PLAYER tests at 7 px; supersedes ADR-130 values
+- ADR-144 (2.0.2 PLAN) load-independent tests: injected limits; wall-clock product gates best of 5 (src/base/testing.rs); harness waits 120 s; constants pinned
+- ADR-145 (2.0.2 PLAN) hardware probe tests: seconds for working fakes; 30 ms only for the one that never answers
+- ADR-146 (2.0.2 PLAN) package-config job on every push: Windows/macOS --config-only, Linux --stub AppImage; no deb (decided 2026-11-20)
+- ADR-147 (2.0.2 PLAN) notices exit codes 0/1 recorded; other failures keep cargo-about's code
+- ADR-148 (2.0.2 PLAN) cargo-about: pinned action + version assertion; fallback cargo install
+- ADR-149 (2.0.2 PLAN) bundled ffmpeg 9.x: existing tests on pinned build; v20.rs (REQ-144 paused fade, format 8 LUT read, encoder/filter presence); 1.5.x refusal manual
+- ADR-150 (2.0.2 PLAN) 360 camera re-measured on 9.0.2 (median of 3); no gate change
+- ADR-151 (2.0.2) inherited decisions: hardware export via ffmpeg; AV1/VP9 in scope; unsigned installers
+- Q-A/Q-B/Q-C (1.6.0) closed 2026-11-19 (icon artwork shared; splash GIF kept; no splash with a path argument); Q-E closed 2026-11-20 (splash pictures are Andrea's own work, MIT; recorded in packaging/notices/third-party.txt).
 
 ## Component map (short; roles and versions in ai-docs/architecture-components.md)
 - Programs: main.rs -> lib.rs (real_app, native_options, prepare_desktop); player/src/main.rs -> player lib.
@@ -186,6 +197,7 @@ testing: cargo test (no doctests), coverage >= 85% line (llvm-cov, main.rs exclu
 - Platforms: Linux x86_64 glibc 2.39 max; STT needs AVX2+FMA+F16C+BMI2 on x86_64.
 - Estimates: installers 70–130 MB; probe ~6.4 s idle, up to 10 s loaded; STT speeds per model.
 - 2.0.1 (REQ-151..153, no behaviour change): test-suite time for the cycle check estimate 1 to 3 s (to measure in CI).
+- 2.0.2 PLAN (QG-07..10; full in ai-docs/architecture-nfr.md): bundled ffmpeg 9.x checks on the pinned build; no product limit changed; wall-clock product gates best of 5; notices exit 0/1; cargo-about 0.9.3 asserted; package-config job; cache of the pinned ffmpeg (about 100 MB, estimate); camera timing re-measured on 9.0.2 (median of 3).
 
 ## Security model (summary; full in ai-docs/architecture-security.md)
 - Threats: malicious media and project/settings JSON, PATH hijack, tampered downloads, ffmpeg/ASS/ffconcat injection, desktop entry injection, hostile drivers (contained).
@@ -201,13 +213,14 @@ runtime optional: cpal 0.18.2 (feature audio, default); whisper-rs 0.16.0 (featu
 macOS only: objc2 0.6.5; objc2-foundation 0.3.2 (minimal features); winit 0.30.13 (default-features off; direct dependency to switch off the default menu, ADR-024; same version as eframe's).
 transitive of note: fontconfig-parser 0.5.8, memmap2 0.9.12, roxmltree 0.20.0 (via fontdb), rustls/ring (ureq).
 dev (2.0.1 PLAN): syn 2 (features full, visit; MIT OR Apache-2.0; already in Cargo.lock as 2.0.119) for tests/module_cycles.rs; no new package.
+2.0.2 PLAN: no new crate; test ffmpeg = bundled 9.0.2 build fetched in CI (not a crate); appimagetool (packaging/tools.lock) also runs in package-config; cargo-about 0.9.3 version asserted.
 not in the tree (planned, dropped): ttf-parser 0.25 dev-dependency of the 1.6.0 shortlist is absent from Cargo.toml and Cargo.lock at 1.6.3 (no test needs it; Future work: decide).
 rejected across versions: egui-phosphor, egui-pop-phosphor, egui_extras, resvg (MPL), Font Awesome (CC BY), font-kit, fontique, muda, egui_dock/egui_tiles, egui_kittest (fallback only), srtparse/subparse/srtlib, strsim, ab_glyph/fontdue, matroska/mp4 demuxers, candle-whisper, vosk, reqwest, native-tls, toml/ron, num_cpus, raw-cpuid, smithay-client-toolkit, cargo-nextest (as runner).
 tools (CI only, not linked): cargo-packager 0.11.8, appimagetool (packaging/tools.lock), cargo-deny 0.20.2, cargo-about 0.9.3 (prebuilt via pinned install action), cargo-llvm-cov, espeak-ng (test fixture), optional qemu-user.
 bundled non-Rust: ffmpeg/ffprobe GPL builds (9.0.2 pinned: BtbN linux64-gpl and win64-gpl-shared, Riedl macOS arm64; lock in packaging/ffmpeg.lock), Noto Sans Bold (OFL-1.1), Phosphor Regular (MIT), splash pictures (origin open). Downloaded after consent: whisper models ggml-tiny-q5_1, ggml-small-q5_1, ggml-large-v3-turbo-q5_0 (MIT).
 
 ## Risks and open items (summary; full in ai-docs/architecture-risks.md)
-- [open, release] origin and licence of the splash pictures (Q-E).
+- [2.0.2 plan] wall-clock test gates on a busy machine (best of 5, ADR-144); pinned test ffmpeg is Linux-only in the suite; format 8 fixture hand-written (risks: ai-docs/architecture-risks.md).
 - [open] QG-05 g failed on Intel iGPU; re-baseline or cheaper check (Future work).
 - [open] CI time after the 1.6.1 change not measured here (estimate only).
 - [2.0.1 plan] module cycles: plan in ai-docs/architecture-plan-2.0.1.md; the cycle check is syntactic (macro-made paths and #[path] not followed; #[path] fails the test); oversized files app.rs (about 3000 lines), render.rs (about 3400 lines) remain debt; docs/code-architecture.md must gain the app<->ui pair and the base layer (PE step 8).

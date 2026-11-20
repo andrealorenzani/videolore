@@ -20,9 +20,21 @@ Sub-document of [business index](business.md). Compacted in 1.6.3 RELEASE (from 
 - D42 (1.6.1) Q1=A: whole-video Scale/Move = each clip gets its own copy of the keyframes in clip time (REQ-148). Q-F (1.6.1 REFINE 2): clip with own Scale/Move + whole video = one combined path (REQ-149 (a)); clip's own LUT wins over whole-video LUT (REQ-149 (b), REQ-135).
 - D43 (1.6.2) player has a start screen like the editor (REQ-150), reversing the 1.6.0 "no splash in player" rule. Each program has its own summary.
 - D44 (1.6.2, names in 1.6.3) pictures have FIXED names (`splash.gif`, `splash-player.gif`); only the summaries (`summary.txt`, `summary-player.txt`) change per release. Build fails without them.
+- D5 confirmed 2.0.2 (Andrea): installers stay unsigned; code signing and notarisation are NOT PLANNED (not merely postponed).
+- D45 (2.0.2, Andrea) Export keeps the fixed presets and "Same as source"; custom resolutions, frame rates, bitrates, encoder options are not planned (roadmap item to Not planned at release).
+- D46 (2.0.2, Andrea) Hardware export always goes through ffmpeg (bundled or user-chosen); no separate vendor pipeline.
+- D47 (2.0.2, Andrea) AV1 and VP9 encoding and hardware decoding are IN SCOPE (replaces the 0.4.0 out-of-scope lines); requirements come with the batch that builds them, not now.
+- D48 (2.0.2, Andrea) The 360 export always prioritises speed (detail open, see MINOR 2.0.2 and Open questions; REQ-103 unchanged until its batch).
+- D49 (2.0.2, Andrea) Whole-video keyframe copies are shown apart (one per clip) in the popup; popup change not built; REQ-148 stands until then.
 - Format: each project format bump refuses older versions; 1.6.1 format converts 1.6.0 whole-video effects once on open (one status note).
 
 ## MINOR defaults still in force (Andrea may overrule)
+- 2.0.2 (implemented, STATUS): REQ-154 splash summary: largest size 15 px down to floor 7 px (code SUMMARY_MAX/SUMMARY_FLOOR), never scrolled; a shipped summary below the floor fails the suite (the code returns the floor and the text may overflow, so the test is the guard). User-visible fallback for a summary that cannot fit even at 7 px is not defined (no shipping of it).
+- 2.0.2: batch 1 items with no user-visible behaviour are QG-07..QG-10 (maintainer goals, no REQ, no covers), not REQs. Items needing a real system are a manual checklist in docs/business-verification.md, not blockers; result recorded at the next release.
+- 2.0.2: the paused frame at a fade gets a test under the existing REQ-144 (no new REQ); the bundled-ffmpeg checks test REQ-103, 114, 121 (no new REQ).
+- 2.0.2 STATUS [MINOR]: paused still in the last ~20 ms of a clip returns no frame (1.98 s of a 2 s 25 fps clip; 1.92 s works). Verdict: implementation defect against REQ-144, not a requirement-wording bug (REQ-144 already says the picture at the playhead wherever the timeline has picture). REQ-144 stays `(implemented)` (its tested cases pass); gap recorded as known limitation in business-editing.md and as Future work (fix item, test at clip end and last frame, under REQ-144, no new REQ). Default if Andrea wants it counted as not delivered: mark REQ-144 `(planned)` until fixed.
+- 2.0.2: 360 export "always prioritises speed" (Andrea) is recorded as decision D48; its meaning (which path, whether REQ-103 gets a speed acceptance) is open until the batch that changes the 360 export is planned. [MINOR] default until then: REQ-103 stands as written.
+- 2.0.2 batch numbering: batch N of roadmap_tasks ships as 2.0.(N+1); the batch "Verify the release" is 2.0.2, so "Readable text" is 2.0.3 and later batches shift by one at the next release (Documenter/PM to renumber roadmap_tasks).
 - 1.6.2: summary per program; player splash rule = editor rule (no splash with a path on the command line; not blocking; on top until closed); rectangle read as x 78-386, y 388-462 top-left origin; "Version X.Y" centred, largest fit; text length kept to five lines; popup text smaller if it does not fit (M6, ASSUMPTION, check at build).
 - 1.6.1: Change aspect stays project-wide (M2, exception to "only one exception" wording); whole fades attach to first/last clip; 1.6.0 projects get the same effect on existing clips at load; no second copy of an effect on a clip; edge drag proportional, 10-400%, one undo; REQ-144 fix only, no preview redesign.
 - 1.6.1 Q1 details: whole-video popup shows first clip's keys; Add key goes into each copy long enough; value change sets key in each copy; Remove removes from each copy (keeps last key); one undo for all copies; copies follow trims like clip keys.
@@ -51,6 +63,8 @@ Sub-document of [business index](business.md). Compacted in 1.6.3 RELEASE (from 
 - Slower speech fallback engine for old processors (dropped 2026-11-14).
 - Merging the Product Manager and Architect notes (ownership rule).
 - Parallel executables job with checks (2026-11-19).
+- Code signing and notarisation (2.0.2, Andrea: not planned; was "postponed").
+- Custom export resolutions, frame rates, bitrates and encoder options (2.0.2, Andrea: presets kept).
 
 ## Product risks (current)
 - Stale splash summary per program (release without update); longer summary may not fit the popup (smaller text, check at build).
@@ -60,11 +74,13 @@ Sub-document of [business index](business.md). Compacted in 1.6.3 RELEASE (from 
 - Player scope creep (playlist, file association expected).
 - Frame effects make export a re-encode (slow on big frames); 360 export ignores them (may confuse).
 - Hardware Faster can be slower on integrated graphics; check cost.
-- Splash picture origin and licence unconfirmed (legal).
+- Unsigned installers stay (decided 2.0.2): first-launch warnings on macOS and Windows remain for every release.
 - Discoverability of Ctrl/Cmd+click and Shift+drag.
+- Paused picture missing in the last ~20 ms of a clip (REQ-144 defect, known limitation until fixed).
 
 ## Open questions (MINOR, not blocking)
 - REQ-134 says "the GIF plays as it is", but the picture is static (one frame) in build. Requirement or picture to change: open (roadmap Priority 12).
-- Splash picture origin and licence (roadmap Priority 1).
 - QG-06 CI time: not reported; wording "planned 1.6.1" left in business-performance (no REQ, no covers).
-- Whole-video copies: show apart or edit all (roadmap 2.0.7, Andrea decides).
+- 360 export "always prioritises speed" (D48): which path and whether REQ-103 gets a speed acceptance; decide in the batch that changes the 360 export (roadmap batch 14, 2.0.15 after shift).
+- Splash picture origin and licence: resolved (own work, MIT, recorded in the notices since 1.6.3); not an open question.
+- Whole-video copies: resolved 2.0.2 (D49, shown apart); the popup change is still to be planned.

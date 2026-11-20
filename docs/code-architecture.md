@@ -17,7 +17,7 @@ in [code-modules.md](code-modules.md).
 | Rendering (pure) | `render` (filter graphs and argv), `format`, `ass`, `camera`, `frame`, `keyframes`, `lut`, `spherical` |
 | Model (pure) | `project` (+ `project::v9`), `timeline`, `music`, `subtitles`, `text`, `selection`, `history`, `media`, `srt`, `align` |
 | Configuration and notices | `settings` (uses `base`, `hwenc`, `machine`), `fonts` (uses `text`), `notices` (uses `ffmpeg`, `packaging`) |
-| Shared helpers: `base` | `base::io` (capped reading, atomic writing), `base::private` (private folders and files, `Work`), `base::pos` (`Pos`, `POS_MAX`, `Anchor360`, `align_h`, `align_v`), `base::names` (cache, partial and speech-model file names), `base::language` (language table). It uses no module of videolore, so it is in no cycle |
+| Shared helpers: `base` | `base::io` (capped reading, atomic writing), `base::private` (private folders and files, `Work`), `base::pos` (`Pos`, `POS_MAX`, `Anchor360`, `align_h`, `align_v`), `base::names` (cache, partial and speech-model file names), `base::language` (language table), `base::testing` (test-only: `best_of`, the best of several timing samples; std only). It uses no module of videolore, so it is in no cycle |
 | Leaves (no dependency on other modules) | `time`, `machine`, `packaging`, `desktop`, `history`, `splash` |
 
 The layers group the modules by role. `base` is the bottom: every module may use it, and it uses none. Since 2.0.1 the modules form no cycle (next section).

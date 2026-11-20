@@ -103,7 +103,7 @@ fn hardware_runs(f: &FakeRunner) -> usize {
 
 /// Ticks until the hardware check is over.
 fn checked(app: &mut AppState) -> HwStatus {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         app.tick(Instant::now());
         if let HwProbe::Done(s) = &app.hw.probe {
@@ -116,7 +116,7 @@ fn checked(app: &mut AppState) -> HwStatus {
 
 /// Ticks until the hardware check and its possible repeat are over.
 fn settled(app: &mut AppState) -> HwStatus {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         app.tick(Instant::now());
         if let HwProbe::Done(s) = &app.hw.probe

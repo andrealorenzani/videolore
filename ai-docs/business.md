@@ -6,11 +6,11 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business.md § title — L1-2 (2 lines)
 - docs/business.md § Purpose — L3-9 (7 lines)
 - docs/business.md § Users — L10-15 (6 lines)
-- docs/business.md § Documents — L16-32 (17 lines; splash 1.6.2/1.6.3 fixed names L27)
-- docs/business.md § Constraints — L33-37 (5 lines)
-- docs/business.md § Key decisions (general) — L38-66 (29 lines; 1.6.2 player splash L62)
-- docs/business.md § Known limitations (1.2.0 … 1.6.0) — L67-95 (29 lines; splash summaries + origin L68)
-- docs/business.md § Out of scope — L96-107 (12 lines)
+- docs/business.md § Documents — L16-33 (18 lines; verification L33)
+- docs/business.md § Constraints — L34-38 (5 lines)
+- docs/business.md § Key decisions (general) — L39-68 (30 lines; 1.6.2 splash L62; 2.0.2 Andrea bullet L65)
+- docs/business.md § Known limitations (1.2.0 … 1.6.0) — L69-97 (29 lines)
+- docs/business.md § Out of scope — L98-109 (12 lines; code signing not planned L105)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
@@ -20,8 +20,8 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-editing.md § Layout and commands — L49-51 (3 lines)
 - docs/business-editing.md § Responsiveness and performance (REQ-032, 033, 038, 039) — L52-57 (6 lines)
 - docs/business-editing.md § Key decisions — L58-75 (18 lines)
-- docs/business-editing.md § Known limitations — L76-83 (8 lines)
-- docs/business-editing.md § Out of scope — L84-87 (4 lines)
+- docs/business-editing.md § Known limitations (REQ-144 defect L77) — L76-84 (9 lines)
+- docs/business-editing.md § Out of scope — L85-88 (4 lines)
 - docs/business-ui.md § intro — L1-6 (6 lines)
 - docs/business-ui.md § Features — L7-23 (17 lines)
 - docs/business-ui.md § Requirements — L24-25 (2 lines)
@@ -59,10 +59,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-picture.md § Requirements — L22-23 (2 lines)
 - docs/business-picture.md § Boxes, size and Context Menu (REQ-096..099, 106, 117, 146) — L24-32 (9 lines)
 - docs/business-picture.md § 360 video (REQ-100..105, 112) — L33-41 (9 lines)
-- docs/business-picture.md § Key decisions — L42-51 (10 lines)
-- docs/business-picture.md § Impact on existing features — L52-65 (14 lines)
-- docs/business-picture.md § Known limitations — L66-80 (15 lines)
-- docs/business-picture.md § Out of scope — L81-85 (5 lines)
+- docs/business-picture.md § Key decisions — L42-52 (11 lines; 2.0.2 speed bullet L51)
+- docs/business-picture.md § Impact on existing features — L53-66 (14 lines)
+- docs/business-picture.md § Known limitations — L67-81 (15 lines)
+- docs/business-picture.md § Out of scope — L82-86 (5 lines)
 - docs/business-frame.md § intro — L1-6 (6 lines)
 - docs/business-frame.md § Features — L7-13 (7 lines)
 - docs/business-frame.md § Requirements (intro line) — L14-15 (2 lines)
@@ -71,10 +71,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-frame.md § Effects list, menus and markers (REQ-130) — L28-30 (3 lines)
 - docs/business-frame.md § Picture rules and export (REQ-131) — L31-33 (3 lines)
 - docs/business-frame.md § Project file (REQ-132) — L34-36 (3 lines)
-- docs/business-frame.md § Key decisions — L37-46 (10 lines)
-- docs/business-frame.md § Impact on existing features — L47-55 (9 lines)
-- docs/business-frame.md § Known limitations — L56-66 (11 lines)
-- docs/business-frame.md § Out of scope — L67-70 (4 lines)
+- docs/business-frame.md § Key decisions — L37-47 (11 lines; 2.0.2 shown-apart bullet L45)
+- docs/business-frame.md § Impact on existing features — L48-56 (9 lines)
+- docs/business-frame.md § Known limitations — L57-67 (11 lines)
+- docs/business-frame.md § Out of scope — L68-71 (4 lines)
 - docs/business-subtitles.md § intro — L1-4 (4 lines)
 - docs/business-subtitles.md § Features — L5-18 (14 lines)
 - docs/business-subtitles.md § Requirements — L19-20 (2 lines)
@@ -90,10 +90,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-export.md § Requirements (REQ-021..023, 036, 037) — L15-21 (7 lines)
 - docs/business-export.md § Export dialog (1.4.0) (REQ-118..122) — L22-28 (7 lines)
 - docs/business-export.md § Faster export (0.4.0) (REQ-055, 060..065) — L29-39 (11 lines)
-- docs/business-export.md § Key decisions — L40-56 (17 lines)
-- docs/business-export.md § Known limitations (0.4.0) — L57-68 (12 lines)
-- docs/business-export.md § Known limitations (1.4.0) — L69-73 (5 lines)
-- docs/business-export.md § Out of scope — L74-85 (12 lines)
+- docs/business-export.md § Key decisions — L40-58 (19 lines; 2.0.2 bullets L49-51)
+- docs/business-export.md § Known limitations (0.4.0) — L59-70 (12 lines)
+- docs/business-export.md § Known limitations (1.4.0) — L71-75 (5 lines)
+- docs/business-export.md § Out of scope — L76-86 (11 lines)
 - docs/business-music.md § intro — L1-4 (4 lines)
 - docs/business-music.md § Features — L5-11 (7 lines)
 - docs/business-music.md § Requirements (REQ-019, 020, 043, 084) — L12-17 (6 lines)
@@ -113,16 +113,16 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-performance.md § Performance (REQ-050..053, 056) — L30-38 (9 lines)
 - docs/business-performance.md § Safety (REQ-057..059) — L39-43 (5 lines)
 - docs/business-performance.md § Code structure (2.0.1) (REQ-151..153, implemented) — L44-48 (5 lines)
-- docs/business-performance.md § Quality goals (QG-01..06, no covers) — L49-76 (28 lines)
-- docs/business-performance.md § Key decisions — L77-91 (15 lines; 2.0.1 bullet L90)
-- docs/business-performance.md § Known limitations — L92-97 (6 lines)
-- docs/business-performance.md § Out of scope — L98-104 (7 lines)
+- docs/business-performance.md § Quality goals (QG-01..10, no covers; QG-07..10 delivered 2.0.2 L78-81, note L52) — L49-82 (34 lines)
+- docs/business-performance.md § Key decisions — L83-97 (15 lines; 2.0.1 bullet L96)
+- docs/business-performance.md § Known limitations — L98-103 (6 lines)
+- docs/business-performance.md § Out of scope — L104-110 (7 lines)
 - docs/business-splash.md § intro — L1-6 (6 lines)
 - docs/business-splash.md § Features — L7-11 (5 lines; fixed picture names + summary per program)
-- docs/business-splash.md § Requirements / Splash screen (REQ-133, 134) — L12-17 (6 lines)
-- docs/business-splash.md § Key decisions — L18-24 (7 lines)
-- docs/business-splash.md § Known limitations — L25-30 (6 lines)
-- docs/business-splash.md § Out of scope — L31-32 (2 lines)
+- docs/business-splash.md § Requirements / Splash screen (REQ-133, 134, 154 implemented) — L12-18 (7 lines; REQ-154 L17)
+- docs/business-splash.md § Key decisions — L19-25 (7 lines)
+- docs/business-splash.md § Known limitations — L26-31 (6 lines)
+- docs/business-splash.md § Out of scope — L32-33 (2 lines)
 - docs/business-lut.md § intro — L1-6 (6 lines)
 - docs/business-lut.md § Features — L7-12 (6 lines)
 - docs/business-lut.md § Requirements / Apply LUT (REQ-135) — L13-17 (5 lines)
@@ -139,38 +139,48 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-player.md § Full screen (REQ-141) — L26-28 (3 lines)
 - docs/business-player.md § Start screen (REQ-150) — L29-31 (3 lines)
 - docs/business-player.md § Key decisions — L32-37 (6 lines)
-- docs/business-player.md § Known limitations — L38-44 (7 lines)
-- docs/business-player.md § Out of scope — L45-47 (3 lines)
+- docs/business-player.md § Known limitations — L38-45 (8 lines; real-system builds L43)
+- docs/business-player.md § Out of scope — L46-48 (3 lines)
 - docs/business-icons.md § intro — L1-6 (6 lines)
 - docs/business-icons.md § Features — L7-13 (7 lines)
 - docs/business-icons.md § Requirements / Icons (REQ-142, 143) — L14-19 (6 lines)
 - docs/business-icons.md § Key decisions — L20-24 (5 lines)
 - docs/business-icons.md § Known limitations — L25-27 (3 lines)
 - docs/business-icons.md § Out of scope — L28-29 (2 lines)
+- docs/business-verification.md § intro — L1-8 (8 lines)
+- docs/business-verification.md § Automated in 2.0.2 — L9-14 (6 lines; REQ-144 defect pointer L11)
+- docs/business-verification.md § Manual checklist (maintainer, by hand) — L15-25 (11 lines; not blocking)
 
-Line ranges checked at the 1.6.3 RELEASE (grep -n '^#' and line counts). Convention: heading to the line before the next heading. Re-check after any edit.
+Line ranges checked at 2.0.2 STATUS (grep -n '^#' and line counts). Convention: heading to the line before the next heading. Re-check after any edit.
 
 ## Sub-documents (owner: product-manager)
 - ai-docs/business-requirements.md — REQ map by document, status, early requirements 001-044 (short).
-  - § Status and map — L5-24 (20 lines)
-  - § Early requirements — L25-45 (21 lines)
+  - § Status and map — L5-26 (22 lines)
+  - § Early requirements — L27-47 (21 lines)
 - ai-docs/business-decisions.md — standing rules C/D, MINOR defaults in force, rejected ideas, current risks, open questions.
-  - § Standing rules (C, D numbers kept) — L5-24 (20 lines)
-  - § MINOR defaults still in force — L25-40 (16 lines; 2.0.1 line L39)
-  - § Rejected or considered — L41-54 (14 lines)
-  - § Product risks (current) — L55-65 (11 lines)
-  - § Open questions — L66-70 (5 lines)
+  - § Standing rules (C, D numbers kept; D45-49 2.0.2 Andrea) — L5-30 (26 lines)
+  - § MINOR defaults still in force (2.0.2 STATUS paused-frame defect L35) — L31-52 (22 lines)
+  - § Rejected or considered — L53-68 (16 lines)
+  - § Product risks (current) — L69-80 (12 lines)
+  - § Open questions — L81-86 (6 lines)
 
-## State (after 1.6.3 RELEASE step 2)
-- Version 2.0.1 implemented (STATUS): module-cycle refactor (shared base module), no behaviour change. Next free REQ: REQ-154. QG next: QG-06 (open). Batch 1 of docs/roadmap_tasks.md (verify the release) is not in 2.0.1 (see Decisions).
-- REQ-001..153 implemented (REQ-151..153 in 2.0.1). Feature coverage target 100%, line coverage target 85%.
-- Decisions 2.0.1 (see ai-docs/business-decisions.md § MINOR defaults, 2.0.1 line): [MINOR] the user named 2.0.1 for the cycle refactor, so batch 1 "verify the release" moves to a later version; its items stay in Future work. [MINOR] REQ-151..153 only (observable: no change, cycle gone, cycle check); no REQ for the helper names or file layout.
+## State (after 2.0.2 STATUS)
+- Version 2.0.2 implemented (roadmap batch 1 "Verify the release", Andrea's naming; later batches shift +1). Its PLAN and STATUS are done; the Principal Engineer's implementation reported REQ-154 only.
+- REQ-001..154 implemented. Next free REQ: REQ-155. QG-07..10 delivered in 2.0.2 (maintainer goals, no covers; CI changes not yet verified on a real runner). QG-06 still open (CI time not reported).
+- Feature coverage target 100%, line coverage target 85%.
+- Batch 1 items: REQ-154 was the only new REQ. Test reliability and bundled-ffmpeg checks are QG-07..10 (no user-visible behaviour). Items needing real systems are the manual checklist in docs/business-verification.md (not blockers): player builds, 1.5.x refusal of format 8, Clean audio and MP3 by ear, 360 marker in a 360 player, splash on both programs, next release flow review.
+- Defect found after 2.0.2 implementation: paused still in the last ~20 ms of a clip shows no frame (REQ-144). Not a requirement-wording bug; implementation gap. Recorded in decisions (MINOR 2.0.2 STATUS), known limitation in docs/business-editing.md, Future work fix item.
+- Dropped from batch 1: splash picture origin and licence (own work, MIT, 1.6.3, recorded in notices).
+- Andrea's decisions taken 2.0.2 (in ai-docs/business-decisions.md D5, D45-D49): installers stay unsigned (not planned); export presets kept; hardware export always via ffmpeg; AV1, VP9 encoding and hardware decoding in scope; 360 export always prioritises speed; whole-video keyframe copies shown apart.
+- [MINOR] 2.0.2 batch numbering: batch N = 2.0.(N+1); roadmap_tasks renumbering is for the Documenter/PM at release.
 - Product in one line: offline desktop editor for short social clips (fast cut and join, fades, music, auto subtitles, quick export, hardware export optional), plus a watch-only player (separate program since 1.6.0). Users: U1 social content creator (non-expert, wants speed and captions); U2 hobbyist editing personal clips. Not pro editors (no multitrack video, no grading beyond LUT files).
-- Splash: picture names fixed (splash.gif, splash-player.gif); summaries per program (summary.txt, summary-player.txt); the build fails without them.
+- Splash: picture names fixed (splash.gif, splash-player.gif); summaries per program (summary.txt, summary-player.txt); the build fails without them. Summary fit rule REQ-154 (implemented 2.0.2; shipped summaries fit at 7 px or more, enforced by the test suite).
 
 ## Open (not SEVERE)
 - REQ-134 "GIF plays as it is" vs static picture (roadmap Priority 12). Open.
-- Splash picture origin and licence (roadmap Priority 1; Andrea confirms).
 - QG-06 CI time not reported by PE.
-- Roadmap decisions for Andrea: see docs/roadmap_tasks.md § Decisions Andrea needs to make.
+- REQ-144 last-20-ms defect: fix is a roadmap item; if Andrea rules that a defect counts as not delivered, mark REQ-144 (planned) until fixed (MINOR default: stays implemented).
+- 360 export "speed first" (D48): meaning and whether REQ-103 gets a speed acceptance; decide in its batch.
+- Roadmap decisions for Andrea: see docs/roadmap_tasks.md § Decisions Andrea needs to make (partly answered 2.0.2: signing, presets, ffmpeg hardware, AV1/VP9, copies, 360 speed).
 - Sub-doc ai-docs/business-decisions.md § Open questions.
+</content>

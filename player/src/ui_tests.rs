@@ -649,6 +649,33 @@ fn the_start_screen_has_its_picture_rectangle_and_summary_and_everything_fits() 
     assert!(lines[0] == "New in this version");
 }
 
+// covers: REQ-154
+#[test]
+fn the_player_summary_fits_its_panel_and_at_the_floor_size() {
+    let d = tempfile::tempdir().unwrap();
+    let h = with_splash(d.path());
+    let r = h.cache.splash_rects.expect("drawn");
+    assert!(
+        r.summary_used.height() <= r.summary_room.height() + 0.5,
+        "{r:?}"
+    );
+    assert!(
+        r.summary_used.width() <= r.summary_room.width() + 0.5,
+        "{r:?}"
+    );
+    let lines = videolore::splash::summary_lines(&videolore::splash::PLAYER);
+    for l in &lines {
+        assert!(h.labels().iter().any(|x| x.contains(&l[..15])), "{l}");
+    }
+    let s = r.image.width() / 487.0;
+    assert!(videolore::ui::splash_window::summary_fits_at_floor(
+        &h.ctx,
+        &lines,
+        r.summary_room,
+        s
+    ));
+}
+
 // covers: REQ-150
 #[test]
 fn each_way_of_closing_the_start_screen_removes_it_and_the_next_start_shows_it_again() {

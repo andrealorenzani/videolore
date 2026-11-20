@@ -42,6 +42,7 @@ Added in 1.5.0: three picture effects. **Change aspect** sets the shape of the w
 - (1.5.0) Positions and sizes are stored relative to the frame, so a change of frame size does not move them.
 - (1.5.0) Rejected: free-typed aspect ratios, rotation, a crop tool, a separate aspect for each clip, a strength setting for the blur.
 - (1.6.1) A whole-video Scale or Move is given to each clip as its own copy of the keyframes, so each clip can be changed alone; a change in the whole-video popup still changes all copies (REQ-148, Andrea's choice 2026-11-19). Change aspect stays project-wide because a video has one frame size (MINOR, Andrea can overrule).
+- (2.0.2, Andrea) In the whole-video popup, the keyframe copies of the clips are shown apart (one per clip), not as one set edited together. The popup change is planned, not built; REQ-148 stands until then.
 - (1.6.1, Q-F, Andrea's choice 2026-11-19) A 1.6.0 clip with its own Scale or Move while the whole video has one is converted to one combined path (REQ-149), so its picture is kept. The alternatives, dropping the whole-video value on that clip or baking the LUT into a second track, were not chosen (the baking one was rejected).
 
 ## Impact on existing features

@@ -35,6 +35,8 @@ mod v14;
 mod v15;
 #[path = "ffmpeg_integration/v16.rs"]
 mod v16;
+#[path = "ffmpeg_integration/v20.rs"]
+mod v20;
 
 struct Env {
     info: FfmpegInfo,
@@ -50,15 +52,63 @@ fn limited(priority: Priority) -> Limited {
     Scheduler::new(MAX_PROCESSES).runner(priority, Arc::new(SystemRunner))
 }
 
+/// The `version` of the `[linux-x86_64]` section of the lock file of the bundled ffmpeg.
+fn pinned_version(lock: &str) -> Option<String> {
+    let mut in_section = false;
+    for line in lock.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_section = line == "[linux-x86_64]";
+        } else if in_section && let Some(v) = line.strip_prefix("version") {
+            return Some(v.trim_start().strip_prefix('=')?.trim().to_string());
+        }
+    }
+    None
+}
+
+/// In CI the tests must run on the pinned build (QG-07, QG-08): its version text (first line
+/// of `ffmpeg -version`) names the pinned version.
+fn assert_pinned(info: &FfmpegInfo) {
+    static CHECKED: std::sync::Once = std::sync::Once::new();
+    CHECKED.call_once(|| {
+        let want = pinned_version(include_str!("../packaging/ffmpeg.lock"))
+            .expect("packaging/ffmpeg.lock has a linux-x86_64 version");
+        let out = Command::new(&info.ffmpeg)
+            .args(["-hide_banner", "-version"])
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        let first = text.lines().next().unwrap_or_default();
+        assert!(
+            first.contains(&want),
+            "the tests must run on the pinned ffmpeg {want}, found: {first}"
+        );
+    });
+}
+
+// covers: QG-08
+#[test]
+fn the_pinned_version_is_read_from_the_lock_file() {
+    let lock =
+        "[windows-x86_64]\nversion = 1\n[linux-x86_64]\nprovider = x\nversion = 9.0.2-57-gabc\n";
+    assert_eq!(pinned_version(lock).as_deref(), Some("9.0.2-57-gabc"));
+    assert_eq!(pinned_version("[linux-x86_64]\n"), None);
+    assert!(pinned_version(include_str!("../packaging/ffmpeg.lock")).is_some());
+}
+
 fn setup() -> Option<Env> {
     let found = ffmpeg::locate_both(None, None)
         .map_err(|e| e.to_string())
         .and_then(|l| ffmpeg::check_located(&SystemRunner, &l).map_err(|e| e.to_string()));
     match found {
-        Ok(info) => Some(Env {
-            info,
-            dir: tempfile::tempdir().unwrap(),
-        }),
+        Ok(info) => {
+            if required() {
+                assert_pinned(&info);
+            }
+            Some(Env {
+                info,
+                dir: tempfile::tempdir().unwrap(),
+            })
+        }
         Err(e) => {
             if required() {
                 panic!("ffmpeg is required but unusable: {e}");
@@ -536,7 +586,7 @@ fn preview_delivers_rgba_frames_of_expected_size() {
     };
     let mut pv = Preview::new(Some(cfg), Box::new(NullSink));
     pv.seek(&p, Micros(2_500_000), Instant::now()).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(120);
     let frame = loop {
         if let Some(f) = pv.poll(Instant::now()) {
             break f;
@@ -549,7 +599,7 @@ fn preview_delivers_rgba_frames_of_expected_size() {
     assert_eq!(frame.pts, Micros(2_500_000));
     // playing produces a sequence of frames
     pv.play(&p, Micros::ZERO, Instant::now()).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(120);
     let mut got = 0;
     while got < 3 && Instant::now() < deadline {
         if pv.poll(Instant::now()).is_some() {

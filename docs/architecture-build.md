@@ -45,6 +45,9 @@ Part of [Architecture](architecture.md). Since 1.6.0 with the workspace; the res
 - Git: the new player picture and the summaries must be committed with the code; the release `sources.zip` takes untracked files that are not ignored, so it is complete either way.
 - 1.6.3: the per-version files (`1.6.0.gif`, `1.6.1.gif`, `<version>.txt`, `<version>-player.txt`) are gone; the pictures and summaries have fixed names.
 
+## CI checks of 2.0.2 (planned)
+The test job uses the pinned bundled ffmpeg (not the runner's), the cargo-about version is checked, and a `package-config` job checks the installer configuration on every push. Details: [verification](architecture-verification.md#automatic-builds-qg-10).
+
 ## Test memory cap (1.6.2, development machine)
 - Every build and test run on the development machine (15 GB RAM) is capped: `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 <command>`, for example `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 cargo test --locked --workspace`. Child processes (rustc, test binaries, ffmpeg) stay in the same scope, so they are capped too. Coverage runs under the same cap.
 - A run killed by the cap is a failed run, reported with the memory cause; the cap is raised only with a written reason.

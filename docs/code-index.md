@@ -14,7 +14,7 @@ functions (`file:symbol`), the tests and the requirements they cover (`REQ-NNN`,
 - Machine — `src/machine.rs:Machine`, `Fingerprint`, `CpuFeatures`, `own_rss` (REQ-045, 054)
 - Finding ffmpeg — `src/ffmpeg.rs:locate_both`, `check`, `FfmpegInfo`, `install_hint` (REQ-030)
 - Desktop integration — `src/desktop.rs:integrate_at_startup`, `project_arg`, `push_open_request` (REQ-041)
-- Splash — `src/splash.rs:Program`, `layout`, `fit_summary`, `decode_capped`; `src/ui/splash_window.rs`, `src/ui/splash_ui.rs`; tests `src/ui/splash_ux_tests.rs` (REQ-133, 134, 150)
+- Splash — `src/splash.rs:Program`, `layout`, `fit_summary`, `decode_capped`; `src/ui/splash_window.rs`, `src/ui/splash_ui.rs`; `splash_window::{SUMMARY_MAX, SUMMARY_FLOOR, summary_height, summary_fits_at_floor}`; tests `src/ui/splash_ux_tests.rs`, `player/src/ui_tests.rs` (REQ-133, 134, 150, 154)
 - Icons — `src/ui/icons.rs` (constants, `ALL`); tests `src/ui/icon_ux_tests.rs` (REQ-142, 143)
 - Notices and About — `src/notices.rs:components`, `about_text`, `about_text_player` (REQ-031, 143)
 
@@ -104,9 +104,10 @@ functions (`file:symbol`), the tests and the requirements they cover (`REQ-NNN`,
 
 - Release assets and pins — `src/packaging.rs:release_assets`, `parse_lock`, `ffmpeg_pin` (REQ-030, 040..042, 138)
 - Scripts — `scripts/package.sh`, `fetch-ffmpeg.sh`, `notices.sh`, `icons.sh`, `version.sh`, `coverage.sh`, `feature-coverage.sh`
-- CI — `.github/workflows/build.yml` (checked by `src/packaging.rs` tests)
+- CI — `.github/workflows/build.yml` (checked by `src/packaging.rs` tests); jobs `check` (pinned test ffmpeg), `package-config` (`package.sh --config-only` / `--stub`, QG-10)
+- Timing helper — `src/base/testing.rs:best_of` (QG-09)
 
 ## Integration tests (real ffmpeg)
 
 - `tests/ffmpeg_integration.rs` — shared `Env`, fixtures, basics (REQ-001, 002, 011..023, 036..039, 043, 052)
-- `tests/ffmpeg_integration/v12.rs` (effects, own subtitles), `v126.rs` (360), `v13.rs` (texts), `v14.rs` (export dialog, Clean audio), `v15.rs` (frame), `v16.rs` (LUT), `hw.rs` (hardware paths)
+- `tests/ffmpeg_integration/v12.rs` (effects, own subtitles), `v126.rs` (360), `v13.rs` (texts), `v14.rs` (export dialog, Clean audio), `v15.rs` (frame), `v16.rs` (LUT), `v20.rs` (2.0.2: paused frame at a fade REQ-144, format 8 project REQ-137, encoders and filters REQ-121), `hw.rs` (hardware paths); `tests/ffmpeg_integration.rs:assert_pinned` (the pinned ffmpeg in CI, QG-08)

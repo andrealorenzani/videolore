@@ -47,7 +47,9 @@ Since 0.3.0.
 - REQ-153 (implemented): For maintainers, the program's modules have no dependency cycle; the shared helpers are used from one common module and do not depend back on the modules that use them. Acceptance: no module cycle remains (see [code architecture](code-architecture.md#cycles)), and an automatic check fails when a new cycle is added.
 
 ## Quality goals
-These are engineering targets (QG-01 to QG-04 since 0.3.0, QG-05 since 0.4.0); they are measured and reported for each development but have no feature tests. The numbers are assumptions that can be adjusted after the first measurements.
+These are engineering targets (QG-01 to QG-04 since 0.3.0, QG-05 since 0.4.0, QG-06 since 1.6.1, QG-07 to QG-10 since 2.0.2); they are measured and reported for each development but have no feature tests. The numbers are assumptions that can be adjusted after the first measurements.
+
+QG-07 to QG-10 were delivered in 2.0.2. The new automatic-build checks (QG-08 to QG-10) are not yet verified on a real GitHub runner; the first run after the change is the check.
 - **QG-01 Performance review**: every choice (number of processes and threads, speech engine and files, each library, preview and export settings) is reviewed and justified. No slowdown: at the recommended settings, export time and Fast subtitle time are at most 5% above 0.2.2 on the same computer, and start-up (without the first-start detection) is at most 0.5 s slower.
 - **QG-02 Security upkeep**: the automatic build fails on any known vulnerability in a dependency, unless it is documented as not affecting videolore; the bundled ffmpeg is updated to the latest release.
 - **QG-03 Faster tests**: the test run is at least 30% faster than in 0.2.2 on the same computer, without removing or weakening any test, keeping line coverage of at least 85% and every implemented requirement tested. **Result in 0.3.0: 25% faster**, short of the 30% target.
@@ -73,6 +75,10 @@ These are engineering targets (QG-01 to QG-04 since 0.3.0, QG-05 since 0.4.0); t
   Other combinations are not yet measured. Goal g is not met on integrated Intel graphics: the hardware export plus the output check is not quicker than the normal method there. Recommendation: re-baseline g after measuring a dedicated graphics card (for example a per-kind-of-graphics target instead of one 40% figure), and consider a cheaper output check later, as long as it still catches the faults listed in REQ-063.
 
 - **QG-06 Shorter automatic builds** (1.6.1): the automatic build and test run on GitHub should finish sooner. Only the system packages the build really needs are installed, and the slow steps are shortened. Target (assumption, measured and reported, not a release gate): the 1.6.1 run takes at least 30% less time than the 1.6.0 run on the same runner. Nothing is removed from the checks: formatting, lints, tests, line coverage of at least 85%, feature coverage of 100%, version and release checks and the executables still run, and the Linux packages still run on current Ubuntu LTS and Fedora (REQ-040).
+- **QG-07 Bundled ffmpeg checks** (2.0.2): the ffmpeg integration tests of 1.6.0, the frame and LUT filters, the 360 marker and the 360 camera, and the Clean audio and MP3 output run on the bundled ffmpeg 9.x build. The numbers measured for the 360 camera are recorded in the developer documentation. Not a release gate beyond the suite passing.
+- **QG-08 Pinned test ffmpeg** (2.0.2): the test job uses the same ffmpeg version as the bundled one, so test results do not change with the runner's packages.
+- **QG-09 Tests independent of machine load** (2.0.2): the preview frame test, the interface timing tests and the hardware probe tests pass on a busy machine without changing the product limits (REQ-061, REQ-104).
+- **QG-10 Checks in automatic builds** (2.0.2): the third-party notices check (`scripts/notices.sh --check`) has its exit code recorded; cargo-about is installed by a verified method; the installer configuration check (`scripts/package.sh <target> --config-only` for the Windows and macOS installers, and the Linux AppImage built from stub binaries) runs on every push; there is no `.deb` package.
 
 ## Key decisions
 - Detection runs inside videolore at first start, on every operating system; installers do no tuning. One way of working everywhere, and it can be tested.

@@ -3,7 +3,7 @@
 Sub-document of [business index](business.md). Requirement texts live in the human docs (`docs/business*.md`); this file is the map and the short meaning of the early requirements.
 
 ## Status and map
-- REQ-001..REQ-153 are `(implemented)` (REQ-151..153 implemented in 2.0.1, code structure, in performance doc). Next free ID: REQ-154. QG-01..QG-05 implemented, QG-06 (CI time) open: not reported by the PE.
+- REQ-001..REQ-154 are `(implemented)` (REQ-154 at 2.0.2 STATUS: splash summary fit, test added). Next free ID: REQ-155. QG-01..QG-05 implemented; QG-06 (CI time) open, not reported by the PE; QG-07..QG-10 (2.0.2, maintainer goals, no covers) delivered in 2.0.2, CI changes not yet verified on a real runner.
 - REQ -> human doc (grep the ID in `docs/business*.md`):
   - editing: 001-004, 005-013, 026-029, 032-035, 038, 039, 083, 094, 105, 113, 123, 144, 149
   - ui: 024, 025, 066-074, 078-081, 093
@@ -16,11 +16,13 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
   - frame: 124-132, 145, 148
   - lut: 135-137
   - player: 138-141, 150
-  - splash: 133, 134
+  - splash: 133, 134, 154
   - icons: 142, 143
   - install: 030, 031, 040-042
-  - performance: 045-054, 056-059, 151-153 (+ QG-01..06 without covers)
+  - performance: 045-054, 056-059, 151-153 (+ QG-01..10 without covers)
+  - verification: no REQ (manual checklist; automated parts point to REQ-029, 114, 121, 103, 133-134, 138-141, 144, 150, 154)
 - Coverage rule: every implemented REQ has a `// covers:` test (PE, feature-coverage 100%).
+- Batch 1 "Verify the release" (version 2.0.2, STATUS done): no new REQ for test reliability or bundled-ffmpeg checks; they test existing REQ-029, 103, 114, 121, 144. Only REQ-154 is new (observable splash behaviour). REQ-144 has a known defect (last ~20 ms of a clip, no paused picture): still `(implemented)`, fix is Future work.
 
 ## Early requirements (short, 0.2.0 wording; current text in the human docs)
 - 001 non-destructive: sources never modified; edits are project data.

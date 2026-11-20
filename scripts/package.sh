@@ -12,6 +12,9 @@
 #   scripts/package.sh sources                  -> videolore-${VERSION}-third-party-source.tar.xz
 #   scripts/package.sh windows-x86_64|macos-aarch64 [player] --config-only
 #                                               -> only dist/stage-*/Packager.toml
+#   scripts/package.sh linux-x86_64 [player] --stub
+#                                               -> an AppImage of stub programs in dist/stub/,
+#                                                  to check the AppDir and appimagetool (CI)
 # <name> is videolore (editor) or videolore-player. Output goes to dist/. Tools:
 # cargo-packager (Windows, macOS; version in packaging/tools.lock), appimagetool + type2
 # runtime (Linux, pinned by SHA-256), curl, git.
@@ -21,15 +24,19 @@ target="${1:?usage: package.sh linux-x86_64|windows-x86_64|macos-aarch64|sources
 shift
 product=editor
 config_only=0
+stub=0
 for a in "$@"; do
     case "$a" in
     editor | player) product="$a" ;;
     --config-only) config_only=1 ;;
+    --stub) stub=1 ;;
     *) echo "unknown argument $a" >&2; exit 2 ;;
     esac
 done
 VERSION=$(scripts/version.sh get)
 dist=dist
+# stub packages are only a check of the packaging: never mixed with real output
+[[ $stub -eq 0 ]] || dist=dist/stub
 # One product, one set of names (the two installers differ only by these).
 if [[ "$product" == player ]]; then
     pname=videolore-player
@@ -184,11 +191,23 @@ if [[ $config_only -eq 1 ]]; then
     esac
 fi
 
-[[ -d "$ffdir" || "$target" == sources ]] || scripts/fetch-ffmpeg.sh "$target" "$ffdir"
+if [[ $stub -eq 1 ]]; then
+    [[ "$target" == linux-x86_64 ]] || { echo "--stub is for linux-x86_64" >&2; exit 2; }
+    # stub programs stand for the executable and the pinned ffmpeg (nothing is downloaded
+    # but appimagetool and its runtime, which are pinned and checked)
+    rm -rf "$ffdir" && mkdir -p "$ffdir" "$dist/stub-bin"
+    for f in "$ffdir/ffmpeg" "$ffdir/ffprobe" "$dist/stub-bin/$pname"; do
+        printf '#!/bin/sh\nexit 0\n' >"$f"
+    done
+elif [[ ! -d "$ffdir" && "$target" != sources ]]; then
+    scripts/fetch-ffmpeg.sh "$target" "$ffdir"
+fi
 
 case "$target" in
 linux-x86_64)
     exe="target/release/$pname"
+    [[ $stub -eq 0 ]] || exe="$dist/stub-bin/$pname"
+    if [[ $stub -eq 0 ]]; then
     smoke_test "$ffdir/ffmpeg"
     # The video hardware libraries (libva, libcuda, libvpl) come from the system at run
     # time: the bundled ffmpeg must be dynamically linked against glibc to load them.
@@ -202,6 +221,7 @@ linux-x86_64)
         echo "$pname needs glibc $need, newer than $max_glibc" >&2; exit 1
     fi
     echo "glibc needed: $need (limit $max_glibc)"
+    fi
     # --- AppImage: hand-built AppDir + appimagetool with the pinned static runtime
     appdir="$stage/AppDir"
     rm -rf "$stage" && mkdir -p "$appdir/usr/bin" "$appdir/usr/share/$pname"
@@ -246,6 +266,7 @@ DESKTOP
     ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$stage/appimagetool" --no-appstream \
         --runtime-file "$stage/runtime" "$appdir" "$dist/${pname}-${VERSION}-linux-x86_64.AppImage"
     chmod 0755 "$dist/${pname}-${VERSION}-linux-x86_64.AppImage"
+    if [[ $stub -eq 1 ]]; then ls -l "$dist"/"$pname"-"${VERSION}"-*; exit 0; fi
     # --- tar.gz: a folder that runs by double-clicking `$pname`
     top="${pname}-${VERSION}-linux-x86_64"
     folder="$stage/$top"

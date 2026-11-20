@@ -48,6 +48,7 @@ Implemented in 1.2.6: everything that can be moved on the preview picture gets a
 - A 360 video is recognised from the file's own information, so a normal 2:1 video is never distorted by mistake; since 1.4.0 there is no per-clip override (REQ-100).
 - The live look-around is not saved; only Set POV changes the project.
 - The project file format changes again (see [Editing](business-editing.md), REQ-113).
+- (2.0.2, Andrea) The 360 export always prioritises speed. How that is reached, and whether REQ-103 gets a speed requirement, is decided when the batch that changes the 360 export is planned; until then REQ-103 stands as written.
 
 ## Impact on existing features
 - REQ-070 (toolbar): the Context Menu group is shown only with a selected subtitle line or text item or the playhead on a 360 clip; at 800 pixels wide everything stays reachable through the "»" menu.

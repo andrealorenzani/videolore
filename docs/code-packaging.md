@@ -33,8 +33,14 @@ unknown keys and wrong enum spellings):
 configuration, with no ffmpeg and no build. A unit test
 (`packager_config_is_valid_for_cargo_packager` in `src/packaging.rs`) generates both and checks keys, enum values and
 paths. To check a configuration with the real tool on Linux, stage stub files in
-`dist/stage-<target>/bin` and `res/` and run `cargo packager --config <file> -f deb` (or
-`-f app`, which also builds on Linux; `-f nsis` needs `makensis`).
+`dist/stage-<target>/bin` and `res/` and run `cargo packager --config <file> -f app`
+(it also builds on Linux; `-f nsis` needs `makensis`). There is no `.deb` package.
+
+`scripts/package.sh linux-x86_64 [player] --stub` (2.0.2, QG-10) builds the AppImage from stub
+programs (empty shell scripts for the executable, `ffmpeg` and `ffprobe`) with the pinned
+appimagetool and its runtime, in `dist/stub/`; it skips the ffmpeg download, the smoke test,
+the glibc check and the tar.gz. The CI job `package-config` runs it, with `--config-only` for
+Windows and macOS, on every push and pull request, and checks the files of the AppDir.
 
 ## Bundled ffmpeg
 

@@ -21,7 +21,7 @@ The four rules:
 
 ## Text rules
 - **Version text.** "Version X.Y" (major and minor number) is written over the program's rectangle, centred, in the largest size that fits inside the rectangle minus a 6 px margin on each side. Editor rectangle: x 74 to 408, y 381 to 465 (334 x 84 px). Player rectangle: x 78 to 386, y 388 to 462 (308 x 74 px). Origin top left. Its colour is dark or light, chosen from the mean brightness of the rectangle. The rectangles are checked to lie inside their pictures by a test.
-- **Summary (no scroll, no silent clip).** The heading and the items are laid out at the panel's inner width (400 px minus 14 px on each side). The body starts at egui's body size (14 px, scaled with the picture) and goes down in steps of 0.5 px, to a floor of 10 px, until the whole summary fits above the Close button. The heading is the body size plus 4 px. A summary that does not fit even at the floor fails a test; it is not clipped in the shipped program. At run time a text that still does not fit is clipped, as before (never the case for the shipped files).
+- **Summary (no scroll, no silent clip).** The heading and the items are laid out at the panel's inner width (400 px minus 14 px on each side). The body starts at 15 px (image pixels, scaled with the picture) and shrinks, by bisection, to a floor of 7 px, until the whole summary fits above the Close button (REQ-154; 2.0.2, replacing the 1.6.2 rule of 14 px down to 10 px). The heading is the body size plus 4 px. A summary that does not fit even at the floor fails a test; it is not clipped in the shipped program. At run time a text that still does not fit is clipped, as before (never the case for the shipped files).
 
 ## Layout
 - Image at its own size, multiplied by one scale factor.
@@ -41,12 +41,12 @@ The four rules:
 ## Tests
 - Assets: each picture decodes at its own size (editor 486 x 506, player 487 x 505); each summary exists and has a heading and 1 to 5 items; each text rectangle lies inside its picture.
 - Layout numbers: panel 400 px (plus or minus 1), panel height equal to the picture height, scaling when the screen is small.
-- Text: "Version 1.6" fits its rectangle for the editor and for the player; the summary of each program fits at a size of at least 10 px, measured with egui's wrapping.
+- Text: "Version 1.6" fits its rectangle for the editor and for the player; the summary of each program fits at a size of at least 10 px, measured with egui's wrapping. 2.0.2 (planned): both summaries fit at 7 px with no scroll; an over-long summary at 7 px fails (see [verification](architecture-verification.md#splash-summaries-req-154)).
 - State (editor, unchanged): open at start, closed by each of the three methods, not shown with a path, the notice waits for the close, opened again at the next start.
 - State (player, REQ-150): the same rules; a video on the command line opens none; Esc closes the splash before full screen.
 
 ## Risks
 - A stale summary: each release rewrites both summaries; the shipped text is tested to fit, and a summary that does not fit fails the test.
-- The pictures' origin and licence are not yet recorded in the notices (open at release 1.6.3; must be added before the release is tagged).
+- The pictures are Andrea's own work, licensed MIT, recorded in packaging/notices/third-party.txt (settled 2026-11-20).
 - The splash is an in-app window, not a separate OS window (multi-window behaviour on Wayland and macOS is not tested).
 - Both pictures are compiled into both programs' library; the binary may grow by up to about 175 KB (an estimate, not yet measured; fallback: move the player picture into the player crate).

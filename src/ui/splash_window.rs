@@ -216,8 +216,8 @@ pub fn fit_version(ctx: &Context, text: &str, s: f32, p: &Program) -> f32 {
 }
 
 /// Text size of the summary items in image pixels at most, and the least.
-const SUMMARY_MAX: f32 = 15.0;
-const SUMMARY_FLOOR: f32 = 7.0;
+pub const SUMMARY_MAX: f32 = 15.0;
+pub const SUMMARY_FLOOR: f32 = 7.0;
 /// Heading size relative to the items; gaps after the heading and after each item (image px).
 const HEADING_RATIO: f32 = 1.35;
 const GAP_HEADING: f32 = 8.0;
@@ -230,7 +230,7 @@ fn item_text(line: &str) -> String {
 
 /// The height of the summary at an item size (screen pixels) in `width`, with the gaps
 /// scaled by `s`.
-fn summary_height(ctx: &Context, lines: &[&str], size: f32, width: f32, s: f32) -> f32 {
+pub fn summary_height(ctx: &Context, lines: &[&str], size: f32, width: f32, s: f32) -> f32 {
     ctx.fonts_mut(|f| {
         let mut h = 0.0;
         for (i, l) in lines.iter().enumerate() {
@@ -247,6 +247,12 @@ fn summary_height(ctx: &Context, lines: &[&str], size: f32, width: f32, s: f32) 
         }
         h
     })
+}
+
+/// Whether the summary lines fit `room` at the floor size (7 image pixels) on a picture
+/// scaled by `s`: the rule that a shipped summary must keep (REQ-154).
+pub fn summary_fits_at_floor(ctx: &Context, lines: &[&str], room: Rect, s: f32) -> bool {
+    summary_height(ctx, lines, SUMMARY_FLOOR * s, room.width(), s) <= room.height() + 0.5
 }
 
 /// The summary (in the top of `inner`, sized to fit it: no scroll, nothing clipped) and the

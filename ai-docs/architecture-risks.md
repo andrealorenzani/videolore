@@ -3,7 +3,11 @@
 Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 time-dependent command spike). Items with [open] need a decision or measurement.
 
 ## Release and manual checks
-- [open, release] Origin and licence of the splash pictures `assets/splash/splash.gif` and `assets/splash/splash-player.gif` must be recorded in the notices before release (Q-E; architecture-splash.md "open item"). Not answered at release 1.6.3 (2026-11-20).
+- [2.0.2 decided 2026-11-20] no `.deb` package (AppImage and tar.gz only); QG-10 wording corrected by the Product Manager. Splash pictures: Andrea's own work, MIT, in packaging/notices/third-party.txt (Q-E closed).
+- [2.0.2 plan] wall-clock gates in tests can fail on a busy machine; best-of-5 sampling (ADR-144) keeps the product limits; check by a load run (plan step 9).
+- [2.0.2 plan] pinned test ffmpeg adds a network download and cache to the check job (QG-06 time).
+- [2.0.2 plan] the suite tests the pinned build on Linux only; Windows and macOS builds of 9.0.2 are untested by the suite (Future work).
+- [2.0.2 plan] format 8 fixture is hand-written (no 1.6.0 writer in the tree); the real 1.6.0 file is checked by hand (checklist 2).
 - Manual-only checks: macOS launch-time odoc timing, Gatekeeper on nested ffmpeg (fallback `xattr -dr com.apple.quarantine /Applications/videolore.app`), SmartScreen on unsigned installers, Linux file managers (tar.gz ELF double-click; README fallback). odoc failure -> in-app Open still works. Checklist in docs/code.md (PE).
 - GPL corresponding-source adequacy not lawyer-reviewed (ASSUMPTION).
 - H.264/HEVC patent licensing varies by country -> note in notices.

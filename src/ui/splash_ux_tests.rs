@@ -167,6 +167,69 @@ fn the_summary_fits_its_panel_without_clipping_or_scrolling() {
     }
 }
 
+// covers: REQ-154
+#[test]
+fn both_shipped_summaries_fit_at_the_floor_size_and_the_chosen_size_is_in_range() {
+    use crate::ui::splash_window::{SUMMARY_FLOOR, SUMMARY_MAX, summary_fits_at_floor};
+    assert_eq!((SUMMARY_MAX, SUMMARY_FLOOR), (15.0, 7.0));
+    let h = with_splash();
+    let r = h.cache.splash_rects.unwrap();
+    let s = r.image.width() / 486.0;
+    for p in [&crate::splash::EDITOR, &crate::splash::PLAYER] {
+        let lines = crate::splash::summary_lines(p);
+        assert!(
+            summary_fits_at_floor(&h.ctx, &lines, r.summary_room, s),
+            "{}: {lines:?}",
+            p.name
+        );
+    }
+}
+
+// covers: REQ-154
+#[test]
+fn a_summary_that_cannot_fit_even_at_the_floor_size_is_detected() {
+    use crate::ui::splash_window::summary_fits_at_floor;
+    let h = with_splash();
+    let r = h.cache.splash_rects.unwrap();
+    let s = r.image.width() / 486.0;
+    let long: Vec<&str> = std::iter::once("Heading")
+        .chain(std::iter::repeat_n(
+            "A line that is long enough to wrap over more than one row of the popup text",
+            40,
+        ))
+        .collect();
+    assert!(!summary_fits_at_floor(&h.ctx, &long, r.summary_room, s));
+}
+
+// covers: REQ-154
+#[test]
+fn a_summary_with_more_lines_than_fit_at_15_is_shown_smaller_with_every_line_inside() {
+    use crate::ui::splash_window::{SUMMARY_FLOOR, summary_height};
+    let h = with_splash();
+    let r = h.cache.splash_rects.unwrap();
+    let s = r.image.width() / 486.0;
+    let room = r.summary_room;
+    let height = |lines: &[&str], size: f32| summary_height(&h.ctx, lines, size, room.width(), s);
+    // the shortest summary that is too high at 15 px
+    let mut lines = vec!["Heading"];
+    while height(&lines, 15.0 * s) <= room.height() {
+        lines.push("An item of the summary of some length");
+        assert!(lines.len() < 200);
+    }
+    assert!(
+        height(&lines, SUMMARY_FLOOR * s) <= room.height(),
+        "fits at 7 px"
+    );
+    let size = crate::splash::fit_summary(
+        |sz| height(&lines, sz),
+        room.height(),
+        15.0 * s,
+        SUMMARY_FLOOR * s,
+    );
+    assert!(size < 15.0 * s && size >= SUMMARY_FLOOR * s, "{size}");
+    assert!(height(&lines, size) <= room.height());
+}
+
 fn fit_version_for_test(ctx: &eframe::egui::Context, s: f32) -> f32 {
     crate::ui::splash_window::fit_version(
         ctx,

@@ -20,7 +20,7 @@ Back to the [index](business.md).
 
 ## Key decisions
 - ffmpeg is bundled (this reverses the 0.1.x rule that users had to install it), because the product must be easy to install for non-experts. The bundled build includes H.264 and HEVC encoders, which are GPL-licensed; their exact source code is published with every release, together with a written offer.
-- Installers are unsigned in 0.2.0; signing is postponed, not rejected.
+- Installers are unsigned. Andrea decided in 2.0.2 that they stay unsigned; code signing and notarisation are not planned.
 - Linux gets both an AppImage and a `.tar.gz`, because some systems handle one better than the other.
 - On Windows, installation is per-user, so no administrator rights are needed.
 - On Windows and Linux, a project opened by double-click while videolore is running gets its own window, so nothing in the open window is ever lost.
@@ -35,7 +35,7 @@ Back to the [index](business.md).
 - Assumption: the way source code is offered for bundled components has not been reviewed by a lawyer.
 
 ## Out of scope
-- Code signing and notarisation (postponed).
+- Code signing and notarisation (not planned, decided 2.0.2).
 - Intel Macs, ARM Windows and ARM Linux.
 - App stores, Linux distribution packages other than the AppImage and `.tar.gz`.
 - Automatic updates.

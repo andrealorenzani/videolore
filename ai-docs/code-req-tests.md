@@ -5,7 +5,7 @@
 - player/src/fullscreen.rs: 141
 - player/src/subs.rs: 140
 - player/src/tests.rs: 138,139,140,141,150
-- player/src/ui_tests.rs: 138,139,140,141,142,150
+- player/src/ui_tests.rs: 138,139,140,141,142,150,154
 - player/tests/ffmpeg.rs: 138,139,140
 - src/align.rs: 095
 - src/app/effects_tests.rs: 008,011,014,015,016,020,044,052,054,078,082,083,084,085,086,087,088,089,090,091,092,095,114,147,148
@@ -67,7 +67,7 @@
 - src/ui/placement.rs: 089,117
 - src/ui/ruler.rs: 093
 - src/ui/sphere_ux_tests.rs: 069,070,072,089,092,096,097,098,099,100,101,102,112
-- src/ui/splash_ux_tests.rs: 133,134
+- src/ui/splash_ux_tests.rs: 133,134,154
 - src/ui/tests.rs: 012,016,017,019,020,021,024,025,026,028,032,038,045,046,048,052,056,060,064,066,073,076,082,089,095,097,101,104
 - src/ui/text_ux_tests.rs: 075,090,092,096,103,106,107,108,110,111,118,122
 - src/ui/toolbar.rs: 070,106
@@ -81,4 +81,5 @@
 - tests/ffmpeg_integration/v14.rs: 114,119,120,121
 - tests/ffmpeg_integration/v15.rs: 125,126,127,128,129,131
 - tests/ffmpeg_integration/v16.rs: 135,136,147
+- tests/ffmpeg_integration/v20.rs: 121,137,144
 - tests/module_cycles.rs: 153

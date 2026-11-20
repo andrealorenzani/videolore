@@ -29,6 +29,7 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [Icons](business-icons.md) — added in 1.6.0: meaningful icons from a free, GPL-compatible set across the editor and the player.
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, third-party notices, first-launch steps.
 - [Settings, performance and safety](business-performance.md) — automatic setup at first start, the Settings window (preview quality, subtitle quality, how hard videolore works, export speed), more accurate speech models, older processors, responsiveness, safe handling of files and downloads, private temporary files, quality goals (including the real-hardware check of faster export).
+- [Release verification](business-verification.md) — added in 2.0.2: the checks of a release on real systems (player builds, older editor refusing newer projects, sound and 360 export by hand); a manual checklist, not a blocker.
 
 ## Constraints
 - **ffmpeg is bundled** in every installer (since 0.2.0; before, it had to be installed by the user). A user-chosen ffmpeg can still be configured instead.
@@ -41,7 +42,7 @@ Professional editors needing multitrack video, color grading or advanced effects
 - Fade length is fixed (not user-tunable) to keep the editor simple.
 - (1.1.0) Window sections can be resized by dragging their borders, and the sizes are remembered; sections still cannot be moved, docked or hidden. (Until 1.0 the layout was fixed.)
 - (1.1.0) Every command is in the menus; effects are configured in popups that do not block editing, opened from the Effects section or from markers on the timeline.
-- Installers are not code-signed in 0.2.0; signing is postponed, not rejected. The README explains the one-time first-launch steps.
+- Installers are not code-signed. Andrea decided in 2.0.2 that they stay unsigned: code signing and notarisation are not planned. The README explains the one-time first-launch steps.
 - (0.3.0) videolore detects the computer at its first start and picks recommended settings; installers do no tuning. Everything can be changed in Settings, and "Use recommended settings" restores the recommendation.
 - (0.3.0) Older processors get a clear message instead of a fallback speech engine; in 0.4.0 the fallback engine was dropped (not planned).
 - (1.2.0) Every effect can be applied to one video clip (drag and drop or right-click) or to the whole video (double-click in the Effects list).
@@ -61,11 +62,12 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (1.6.1) An effect applied to the whole video is applied to every clip on the timeline at that moment and stays with those clips; clips added later do not get it. Whole-video Fade IN/OUT is a fade in at the first clip and a fade out at the last clip, so the start and end fades now belong to clips, not to the video edges (this reverses the 1.2.0 rule). Change aspect stays one setting of the whole video. A whole-video Scale or Move gives each clip its own copy of the keyframes (REQ-148). See [Effects](business-effects.md), [Frame](business-frame.md) and [Editing](business-editing.md).
 - (1.6.2) The video player has a start screen like the editor's (REQ-150), reversing the 1.6.0 rule that the player has none. The splash pictures keep fixed names (`splash.gif` for the editor, `splash-player.gif` for the player); only the summary texts change per version, and each program has its own summary.
 - (0.4.0) Export can use the computer's video hardware (NVIDIA, Intel, AMD, Apple) when the user chooses "Export: Faster" in Settings. Best quality stays the default. Every hardware result is checked, and on any problem the export is silently redone with the normal method, so the user always gets a correct file.
+- (2.0.2, Andrea's decisions, planned unless stated) The Export dialog keeps its fixed presets; hardware export always goes through ffmpeg; AV1, VP9 encoding and hardware decoding are in scope (not yet built); the 360 export always prioritises speed; whole-video keyframe copies are shown apart in the popup (not yet built). Details in [Export](business-export.md), [Boxes on the picture and 360 video](business-picture.md) and [Frame](business-frame.md).
 
 Topic-specific decisions are in each document.
 
 ## Known limitations (1.2.0, 1.3.0, 1.4.0, 1.5.0, 1.6.0)
-- (1.6.0) The video player keeps subtitle positions only while it is open, lists only text subtitle tracks, and opens video files only (see [Video player](business-player.md)). Apply LUT reads `.cube` files only, has no colour management, and stops an export while a LUT file is missing (see [Apply LUT](business-lut.md)). The splash summaries (one per program) are written by hand for each release; the origin and licence of the two splash pictures are not yet confirmed (see [Splash screen](business-splash.md)).
+- (1.6.0) The video player keeps subtitle positions only while it is open, lists only text subtitle tracks, and opens video files only (see [Video player](business-player.md)). Apply LUT reads `.cube` files only, has no colour management, and stops an export while a LUT file is missing (see [Apply LUT](business-lut.md)). The splash summaries (one per program) are written by hand for each release (see [Splash screen](business-splash.md)).
 - (1.5.0) A 360 video export ignores Change aspect, Scale and Move; the longer side of an output frame is capped at 4096 px (assumption); keyframes are straight lines only; subtitle lines and text items do not follow Scale or Move (see [Frame](business-frame.md)).
 - (1.4.0) Clean audio reduces background noise but does not remove it completely (about 9 dB less noise on the reference clip; quiet speech can lose up to about 2.5 dB; its cost on weak computers is not measured); it works on the video's sound, not on the music track.
 - (1.4.0) Text and subtitle lines dragged past an edge of the picture are cut in the preview and in the export.
@@ -101,7 +103,7 @@ Topic-specific decisions are in each document.
 - Mobile versions.
 - Technical export settings beyond the fixed presets of the Export dialog (1.4.0).
 - Autosave, crash recovery, automatic updates.
-- Code signing and notarisation (postponed).
+- Code signing and notarisation (not planned, decided 2.0.2).
 - Telemetry, online services for detecting the computer, performance settings per project.
 
 Out-of-scope items specific to a topic are listed in its document.
