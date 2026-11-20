@@ -100,7 +100,7 @@ glue outside the gated test.
 | Job | When | What |
 |---|---|---|
 | `check` | every push / PR, `ubuntu-24.04` | apt `ffmpeg libasound2-dev pkg-config cmake libclang-dev espeak-ng`; the three speech files cached (checked by SHA-256); fmt; clippy with default, no and all features; the tests once, instrumented (`cargo llvm-cov`, line coverage ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check` (vulnerabilities and yanked crates fail; exceptions only in `deny.toml` with a reason); Rust crate notices up to date; version check; feature coverage 100 %; frozen release docs untouched |
-| (all jobs) | | `Swatinem/rust-cache` with `prefix-key: v1-rust-ggml-portable`, bumped whenever the whisper.cpp build flags change so no old build is reused |
+| (all jobs) | | `Swatinem/rust-cache` with `prefix-key: v2-rust-ggml-portable`, bumped whenever the whisper.cpp build flags change so no old build is reused |
 | (test steps) | | `cargo test` output is saved; on failure `scripts/test-annotations.sh` turns failing tests (name, file/line, panic message), compiler errors and crashed test binaries into GitHub error annotations, readable without logging in |
 | `msrv` | every push / PR | Build all targets with exactly the `rust-version` of `Cargo.toml` (equal to stable by policy; the tests run in `check`) |
 | (security) | | Read-only token by default (`contents: write` only in `package`); every action pinned to a full commit SHA (tag in a comment, all on Node 24); runners pinned (`ubuntu-24.04`, `macos-15`, `windows-2025`); a unit test checks both |

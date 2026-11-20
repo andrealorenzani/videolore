@@ -224,7 +224,7 @@ mod tests {
         let caches = ci.matches("Swatinem/rust-cache@").count();
         assert!(caches > 0);
         assert_eq!(
-            ci.matches("prefix-key: v1-rust-ggml-portable").count(),
+            ci.matches("prefix-key: v2-rust-ggml-portable").count(),
             caches
         );
     }
