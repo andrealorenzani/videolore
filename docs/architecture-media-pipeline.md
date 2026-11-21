@@ -30,7 +30,7 @@ At the limit of 3, export + playback use all slots; everything else waits.
 - **Proxies** are used when ready; until then, the original.
 - **Paused picture (1.6.1, REQ-144):** the preview shows the picture at the playhead after a pause, a seek or an edit, never a stale or black frame where the timeline has picture. The likely cause (code reading; the test that confirms it is the first step of the 1.6.1 work) is the REQ-034 skip rule: a still frame that was requested but then superseded or dropped (a seek during the 80 ms quiet period, or a render that finished during playback) can leave its key marked as "shown or requested", so the same picture is not rendered again and the last frame on screen stays (possibly black, from a fade). The fix keeps REQ-034 (no render when the picture is unchanged, one render per burst of edits) and makes the marks follow the newest request only; play, pause and seek always start from a clean state. Alternative rejected: render on every pause (correct, but a render for each pause and seek to the same picture; kept as the fallback if the fix is not enough).
 
-## Paused picture at a clip's end (2.0.3, planned)
+## Paused picture at a clip's end (2.0.3)
 - Known defect: when playback is paused or a seek lands in the last frame of a clip (for example 1.98 s of a 2 s clip at 25 frames per second), the preview showed no picture. The picture is the frame that holds the playhead; the preview graph will start from that frame when the start is inside a clip. Export is unchanged.
 - Test: pictures at 1.98 s and 1.995 s of such a clip, reached by seek and by an edit, with and without effects; a fade through black stays black at its own time.
 
@@ -44,6 +44,19 @@ At the limit of 3, export + playback use all slots; everything else waits.
 - **Originals only:** export never uses proxies; the export plan is identical whatever the Preview quality.
 - Cancel and failures still leave no partial file.
 - **Video hardware (0.4.0):** with Export "Faster", an H.264/HEVC re-encode may run on the video hardware first, followed by an output check and, on any problem, a redo with the normal method. These processes run one after another in the export slot. See [hardware export](architecture-hardware-export.md).
+
+## Spatial sound pre-pass (2.0.4)
+- A 360 clip with a 360 picture and four audio channels has its sound turned by the camera (first-order ambisonics in the order W, Y, Z, X, assumed; the stereo pair is a fixed cardioid pair; roll is not applied). The work is done by a **pre-pass** (`spatial::prepare`): one ffmpeg process, through the job queue like every process, decodes the clip's four channels at 48 kHz as raw float on a pipe; blocks of 480 samples (10 ms) are rotated by the camera path (the camera is read in source time and interpolated inside a block, so a move makes no click).
+- **Export:** `export::prepare_spatial` runs after the work folder is made (also for Only audio). The result is a 32-bit float stereo WAV `spatial-<hash>.wav` in the private work folder, written as `.part` and renamed; the name hashes the file, range and camera path, so a file found there is the right one. The graph reads it in place of the clip's own sound (`Segment.spatial`, `Graph.spatial`); the picture still comes from the clip. The 360 video export clears it: its sound stays as recorded. Cancel and failure leave no file.
+- **Preview:** `Preview::prepare_spatial` runs before the audio process starts; the wall clock of that run starts after the pre-pass (`Preview.prepass`), so the picture does not wait. A clip longer than 10 minutes keeps its recorded sound in the preview.
+- **Measured** (debug test profile): 120 s of four-channel sound in 1.7 s (69 times real time). A one-minute clip waits about 1 s before the first sound in the preview. The CPU share on a weak computer is not measured; the cut-back (roadmap) applies if real time fails.
+
+## Preview and export additions (2.0.4)
+- **Clip speed (REQ-281):** a clip with a speed is re-encoded and never stream copied; picture time is changed by `setpts`, sound by one `atempo` (range 0.5 to 2.0); subtitles and text events are mapped to the timeline. Two clips with different speeds do not merge. See [effects](architecture-effects.md#effects-added-in-204).
+- **Picture items (REQ-287):** each picture is one looped still input and one `overlay` with `enable='between(t,…)'`, placed before the subtitles; a picture file that is gone stops an export and is skipped in a preview. See [text](architecture-text.md#picture-items-204).
+- **Hardware decoding in the preview (stage 5):** with Export "Faster" the preview playback may decode on the video hardware; a failure in the middle of playback restarts at the playhead with the software decoder (`hwdec.rs`).
+- **Background of a blurred still (REQ-223, ADR-180):** the blurred background is kept as one raw RGBA file (`bg-<hash>.rgba`) in the private still folder, one at a time, for stills only; ffmpeg reads files, so memory is not used for it. Playback still blurs each frame. Background work (imports, preview copies, subtitle preparation) runs at Background priority.
+- **Preview copy cache (REQ-297, ADR-198):** clearing re-queues the copies that are needed; the limit removes the oldest copies by modification time, never the copies of the open project; the cache limit runs on the UI thread (estimate: under 100 ms for 1000 copies).
 
 ## Music mix
 - One music track below the video track; music clips never overlap and do not move when video is edited (REQ-019, REQ-043).

@@ -28,6 +28,9 @@ pub struct Graph {
     /// Files the graph reads from the working folder: `(name, content)`, the camera
     /// commands of the 360 clips (written by [`write_command_files`]).
     pub command_files: Vec<(String, String)>,
+    /// The ambisonic sound turned by the camera that the graph reads as inputs (REQ-273): run
+    /// [`crate::spatial::prepare`] for each into the working folder before ffmpeg starts.
+    pub spatial: Vec<crate::spatial::SpatialJob>,
 }
 
 /// Writes the command files of a graph into the working folder `dir`.
@@ -53,7 +56,7 @@ pub(super) fn fan_out(
         return vec![stream];
     }
     let labels: Vec<String> = (0..users).map(|j| format!("[{kind}{input}s{j}]")).collect();
-    let filter = if kind == 'v' { "split" } else { "asplit" };
+    let filter = if kind == 'a' { "asplit" } else { "split" };
     parts.push(format!("{stream}{filter}={users}{}", labels.concat()));
     labels
 }
@@ -208,9 +211,51 @@ pub(super) fn compose_frame(
     )
 }
 
+/// The `setpts` expression that restarts a clip's time and, with a speed, scales it (REQ-281).
+fn rate_pts(s: &Segment) -> String {
+    if s.speed == crate::timeline::NORMAL_SPEED {
+        "PTS-STARTPTS".into()
+    } else {
+        format!("(PTS-STARTPTS)*1000/{}", s.speed)
+    }
+}
+
+/// The `atempo` filter of a clip with a speed (one filter covers 0.5 to 2.0): the pitch is
+/// kept (REQ-281).
+fn tempo_filter(s: &Segment) -> String {
+    if s.speed == crate::timeline::NORMAL_SPEED {
+        String::new()
+    } else {
+        format!(",atempo={:.6}", f64::from(s.speed) / 1000.0)
+    }
+}
+
+/// A picture item drawn over the video (REQ-287): the PNG file, its place and size in the
+/// pixels of the picture, and when it shows, counted from the start of this render.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PicOverlay {
+    pub path: PathBuf,
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+    pub start: Micros,
+    pub end: Micros,
+}
+
 /// The single filter graph for `segs` (and the music `bed`).
 pub fn build_graph(segs: &[Segment], bed: Option<&MusicBed>, spec: &GraphSpec) -> Graph {
     build_graph_bg(segs, bed, spec, Background::Normal)
+}
+
+/// [`build_graph`] with picture items over the video (REQ-287).
+pub fn build_graph_with(
+    segs: &[Segment],
+    bed: Option<&MusicBed>,
+    spec: &GraphSpec,
+    pics: &[PicOverlay],
+) -> Graph {
+    build_graph_pics(segs, bed, spec, Background::Normal, pics)
 }
 
 /// [`build_graph`] with the way the blurred background is made (REQ-223).
@@ -220,15 +265,21 @@ pub fn build_graph_bg(
     spec: &GraphSpec,
     bg: Background,
 ) -> Graph {
+    build_graph_pics(segs, bed, spec, bg, &[])
+}
+
+/// [`build_graph_bg`] with picture items over the video (REQ-287).
+pub fn build_graph_pics(
+    segs: &[Segment],
+    bed: Option<&MusicBed>,
+    spec: &GraphSpec,
+    bg: Background,
+    pics: &[PicOverlay],
+) -> Graph {
+    let pics = if spec.video { pics } else { &[] };
     let spans: Vec<(PathBuf, Micros, Micros)> = segs
         .iter()
-        .map(|s| {
-            (
-                s.path.clone(),
-                s.src_in + s.skip - s.read_back(),
-                s.src_in + s.len,
-            )
-        })
+        .map(|s| (s.path.clone(), s.src_from() - s.read_back(), s.src_to()))
         .collect();
     let (mut inputs, idx) = group_inputs(&spans);
     let bed = bed.filter(|_| spec.audio);
@@ -246,6 +297,32 @@ pub fn build_graph_bg(
     let (music_inputs, music_idx) = group_inputs(&music);
     let offset = inputs.len();
     inputs.extend(music_inputs);
+    // the pictures follow the music; the raw background is after them all
+    let pic_base = inputs.len();
+    let video_end = segs.iter().fold(Micros::ZERO, |a, s| a + s.rendered());
+    inputs.extend(pics.iter().map(|p| Input {
+        path: p.path.clone(),
+        start: Micros::ZERO,
+        len: video_end,
+        still: true,
+    }));
+    // the ambisonic sound turned by the camera (REQ-273): one input per clip, after the
+    // pictures; the clip's own sound is not read
+    let spatial_on = |s: &Segment| spec.audio && s.has_audio && s.spatial.is_some();
+    let mut spatial_jobs = Vec::new();
+    let mut spatial_input: Vec<Option<usize>> = vec![None; segs.len()];
+    for (i, s) in segs.iter().enumerate() {
+        if let (true, Some(job)) = (spatial_on(s), &s.spatial) {
+            spatial_input[i] = Some(inputs.len());
+            inputs.push(Input {
+                path: PathBuf::from(job.wav_name()),
+                start: Micros::ZERO,
+                len: job.len,
+                still: false,
+            });
+            spatial_jobs.push(job.clone());
+        }
+    }
     // the raw background is the input after all the files
     let bg = match bg {
         Background::Cached(_) => Background::Cached(inputs.len()),
@@ -268,35 +345,101 @@ pub fn build_graph_bg(
             Vec::new()
         });
         alabels.push(if spec.audio {
-            fan_out(&mut parts, k, 'a', count(k, &|s| s.has_audio))
+            fan_out(
+                &mut parts,
+                k,
+                'a',
+                count(k, &|s| s.has_audio && !spatial_on(s)),
+            )
         } else {
             Vec::new()
         });
     }
-    let (mut vused, mut aused) = (vec![0usize; offset], vec![0usize; offset]);
+    // the picture-based subtitle stream of an input, one label for each clip that draws it
+    // (REQ-253); the stream is the one the clips choose (they share the project's choice)
+    let picture_on = |s: &Segment| spec.video && s.picture_sub.is_some();
+    let slabels: Vec<Vec<String>> = (0..offset)
+        .map(|k| {
+            let users: Vec<&Segment> = idx
+                .iter()
+                .zip(segs)
+                .filter(|(i, s)| **i == k && picture_on(s))
+                .map(|(_, s)| s)
+                .collect();
+            match users.first().and_then(|s| s.picture_sub) {
+                Some(n) if users.len() == 1 => vec![format!("[{k}:s:{n}]")],
+                Some(n) => {
+                    let labels: Vec<String> =
+                        (0..users.len()).map(|j| format!("[s{k}s{j}]")).collect();
+                    parts.push(format!(
+                        "[{k}:s:{n}]split={}{}",
+                        users.len(),
+                        labels.concat()
+                    ));
+                    labels
+                }
+                None => Vec::new(),
+            }
+        })
+        .collect();
+    let (mut vused, mut aused, mut sused) = (
+        vec![0usize; offset],
+        vec![0usize; offset],
+        vec![0usize; offset],
+    );
     let g = &spec.geometry;
     let mut command_files: Vec<(String, String)> = Vec::new();
     let mut concat_in = String::new();
     for (i, s) in segs.iter().enumerate() {
         let k = idx[i];
-        let off = (s.src_in + s.skip - inputs[k].start).ff();
+        let off = (s.src_from() - inputs[k].start).ff();
         let d = s.rendered().ff();
+        // the source time the clip's part spans (equal to `d` at normal speed)
+        let ds = s.rendered_src().ff();
+        let rate = rate_pts(s);
         // the picture starts at the source frame that holds the first instant (REQ-155)
         let back = s.read_back();
         let (voff, vd) = (
-            (s.src_in + s.skip - back - inputs[k].start).ff(),
-            (s.rendered() + back).ff(),
+            (s.src_from() - back - inputs[k].start).ff(),
+            (s.rendered_src() + back).ff(),
         );
         // that frame keeps its own time, as late as the first instant at the earliest
-        let shift = format!(
-            "PTS-STARTPTS+{}/TB",
-            (s.skip - s.lead()).max(Micros::ZERO).ff()
-        );
+        let shift = format!("{rate}+{}/TB", (s.skip - s.lead()).max(Micros::ZERO).ff());
         if spec.video {
-            let src = &vlabels[k][vused[k]];
+            let mut src = vlabels[k][vused[k]].clone();
             vused[k] += 1;
-            let (w, h) = (g.width, g.height);
+            if picture_on(s) {
+                // the file's own picture subtitles drawn on the picture, in the pixels of the
+                // video: the picture and its subtitles are then fitted together (REQ-253)
+                let sub = &slabels[k][sused[k]];
+                sused[k] += 1;
+                parts.push(format!(
+                    "{src}{sub}overlay=eof_action=pass:format=auto[ps{i}]"
+                ));
+                src = format!("[ps{i}]");
+            }
+            let src = &src;
             let fr = s.frame.as_ref();
+            // a clip with its own Change aspect is made in its own frame (a size of the
+            // project's, with the clip's shape), then placed in the project's frame (REQ-286)
+            let outer = (g.width, g.height);
+            let own_spec;
+            let (spec, g) = match fr.filter(|f| f.own).and_then(|f| f.aspect) {
+                Some(a) => {
+                    let (fw, fh) = frame::frame_size(outer, Some(&a));
+                    own_spec = GraphSpec {
+                        geometry: Geometry {
+                            width: fw,
+                            height: fh,
+                            ..*g
+                        },
+                        ..*spec
+                    };
+                    (&own_spec, &own_spec.geometry)
+                }
+                None => (spec, g),
+            };
+            let (w, h) = (g.width, g.height);
             // the camera view fills the output picture, or the kept side of a Change aspect
             let (cw, ch) = match fr {
                 Some(f) => frame::camera_size((w, h), f.aspect.as_ref()),
@@ -305,17 +448,18 @@ pub fn build_graph_bg(
             let lut = lut_chain(s, i, spec.pix_fmt, &mut command_files);
             let mut c = if let Some(path) = &s.sphere {
                 // the camera view fills the output picture: no scale, no bars
-                let from = s.src_in + s.skip;
+                let from = s.src_from();
                 let cam = camera::at(path, from).unwrap_or(Camera::FRONT);
                 let id = format!("c{i}");
-                let cmds = camera::command_lines_capped(
+                let cmds = camera::command_lines_speed(
                     &format!("v360@{id}"),
                     path,
                     from,
-                    s.src_in + s.len,
+                    s.src_to(),
                     g.fps,
                     (cw, ch),
                     spec.camera_updates,
+                    s.speed,
                 );
                 let send = if cmds.is_empty() {
                     String::new()
@@ -346,7 +490,7 @@ pub fn build_graph_bg(
                     ("", lut.as_str())
                 };
                 format!(
-                    "{src}trim=start={off}:duration={d},setpts=PTS-STARTPTS,fps={f}{lut_before},{anchored}{send}{v360},\
+                    "{src}trim=start={off}:duration={ds},setpts={rate},fps={f}{lut_before},{anchored}{send}{v360},\
                      setsar=1{lut_after},setpts=PTS+{o}/TB{tail}",
                     v360 = camera::filter(&id, cam, cw, ch),
                     o = s.skip.ff(),
@@ -385,6 +529,15 @@ pub fn build_graph_bg(
             };
             if let Some(f) = fr {
                 c = compose_frame(&mut parts, i, s, f, spec, c, bg);
+                if f.own && (outer.0, outer.1) != (w, h) {
+                    c.push_str(&format!(
+                        ",scale={ow}:{oh}:force_original_aspect_ratio=decrease,\
+                         pad={ow}:{oh}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format={pf}",
+                        ow = outer.0,
+                        oh = outer.1,
+                        pf = spec.pix_fmt
+                    ));
+                }
             }
             // two frames: sources often start a few milliseconds late, which costs one
             let early = if s.to_black {
@@ -405,13 +558,21 @@ pub fn build_graph_bg(
         }
         if spec.audio {
             let mut c = if s.has_audio {
-                let src = &alabels[k][aused[k]];
-                aused[k] += 1;
+                // the turned sound is a file of the clip's own part: it starts at the clip's
+                // first instant
+                let (src, off) = match spatial_input[i] {
+                    Some(n) => (format!("[{n}:a:0]"), s.to_src(s.skip).ff()),
+                    None => {
+                        aused[k] += 1;
+                        (alabels[k][aused[k] - 1].clone(), off.clone())
+                    }
+                };
                 format!(
-                    "{src}atrim=start={off}:duration={d},asetpts=PTS-STARTPTS,\
-                     aresample={SAMPLE_RATE},{AFORMAT},apad=whole_dur={d},atrim=duration={d},\
+                    "{src}atrim=start={off}:duration={ds},asetpts=PTS-STARTPTS,\
+                     aresample={SAMPLE_RATE},{AFORMAT}{tempo},apad=whole_dur={d},atrim=duration={d},\
                      asetpts=PTS-STARTPTS+{o}/TB",
-                    o = s.skip.ff()
+                    o = s.skip.ff(),
+                    tempo = tempo_filter(s)
                 )
             } else {
                 format!(
@@ -454,7 +615,8 @@ pub fn build_graph_bg(
     let needs_mix = spec.audio && (bed.is_some() || !spec.mix.video_neutral());
     let mut outs = String::new();
     if spec.video {
-        outs.push_str(if spec.subtitles { "[cv]" } else { "[outv]" });
+        let last = if spec.subtitles { "[cv]" } else { "[outv]" };
+        outs.push_str(if pics.is_empty() { last } else { "[pv0]" });
     }
     if spec.audio {
         outs.push_str(if needs_mix { "[ca]" } else { "[outa]" });
@@ -465,6 +627,29 @@ pub fn build_graph_bg(
         u8::from(spec.video),
         u8::from(spec.audio)
     ));
+    for (j, p) in pics.iter().enumerate() {
+        // the picture at its size, over the video while it shows
+        let last = j + 1 == pics.len();
+        let next = if !last {
+            format!("[pv{}]", j + 1)
+        } else if spec.subtitles {
+            "[cv]".to_string()
+        } else {
+            "[outv]".to_string()
+        };
+        parts.push(format!(
+            "[{n}:v:0]format=rgba,scale={w}:{h}[pi{j}];\
+             [pv{j}][pi{j}]overlay=x={x}:y={y}:enable='between(t,{a},{b})':shortest=1,format={pf}{next}",
+            n = pic_base + j,
+            w = p.w,
+            h = p.h,
+            x = p.x,
+            y = p.y,
+            a = p.start.ff(),
+            b = p.end.ff(),
+            pf = spec.pix_fmt,
+        ));
+    }
     if spec.video && spec.subtitles {
         parts.push(format!(
             "[cv]subtitles=f={}:fontsdir={}[outv]",
@@ -560,6 +745,7 @@ pub fn build_graph_bg(
         inputs,
         graph: parts.join(";"),
         command_files,
+        spatial: spatial_jobs,
     }
 }
 

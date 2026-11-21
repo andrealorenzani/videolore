@@ -110,6 +110,24 @@ pub struct Clip {
     /// A fade out to black at this clip's end, used when the clip is the last one.
     #[serde(default, skip_serializing_if = "is_false")]
     pub fade_out: bool,
+    /// Playing speed in thousandths: 1000 = normal, 500..2000 (REQ-281; absent = 1000).
+    #[serde(default = "normal_speed", skip_serializing_if = "is_normal_speed")]
+    pub speed: u16,
+}
+
+/// Normal playing speed, in thousandths.
+pub const NORMAL_SPEED: u16 = 1000;
+/// Slowest speed of a clip (50 %).
+pub const MIN_SPEED: u16 = 500;
+/// Fastest speed of a clip (200 %).
+pub const MAX_SPEED: u16 = 2000;
+
+fn normal_speed() -> u16 {
+    NORMAL_SPEED
+}
+
+fn is_normal_speed(v: &u16) -> bool {
+    *v == NORMAL_SPEED
 }
 
 fn is_false(b: &bool) -> bool {
@@ -136,6 +154,7 @@ impl Clip {
             speech_enhance: false,
             fade_in: false,
             fade_out: false,
+            speed: NORMAL_SPEED,
         }
     }
 
@@ -144,8 +163,50 @@ impl Clip {
         self.volume != FULL_VOLUME || self.muted
     }
 
+    /// Length on the timeline: the source length divided by the speed (REQ-281).
     pub fn len(&self) -> Micros {
+        self.to_timeline(self.src_len())
+    }
+
+    /// Length of the source part the clip plays.
+    pub fn src_len(&self) -> Micros {
         self.src_out - self.src_in
+    }
+
+    fn speed_or_normal(&self) -> i128 {
+        i128::from(self.speed.clamp(MIN_SPEED, MAX_SPEED))
+    }
+
+    /// A length of source time as time on the timeline.
+    pub fn to_timeline(&self, src: Micros) -> Micros {
+        if self.speed == NORMAL_SPEED {
+            return src;
+        }
+        Micros((i128::from(src.0) * 1000 / self.speed_or_normal()) as i64)
+    }
+
+    /// A length of timeline time as source time.
+    pub fn to_src(&self, tl: Micros) -> Micros {
+        if self.speed == NORMAL_SPEED {
+            return tl;
+        }
+        Micros((i128::from(tl.0) * self.speed_or_normal() / 1000) as i64)
+    }
+
+    /// Keys (in source time) moved in time so that their distance from the clip's start is
+    /// timeline time: the picture effects follow the speed (REQ-281).
+    pub fn keys_to_timeline<T: Copy>(&self, keys: &[Key<T>]) -> Vec<Key<T>> {
+        keys.iter()
+            .map(|k| Key {
+                t: self.src_in + self.to_timeline(k.t - self.src_in),
+                ..*k
+            })
+            .collect()
+    }
+
+    /// The source instant played `offset` after the clip's start on the timeline.
+    pub fn src_at(&self, offset: Micros) -> Micros {
+        self.src_in + self.to_src(offset)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -191,6 +252,8 @@ pub enum EditError {
     VolumeKey,
     #[error("a crop is from 0 to 45 % of a side")]
     CropRange,
+    #[error("a speed is from 50 % to 200 %")]
+    SpeedRange,
     #[error("a fade lasts from 0.1 s to 10 s")]
     FadeLength,
     #[error("that boundary already has a fade")]
@@ -221,6 +284,7 @@ pub const DIFFERENT_CLEAN_AUDIO: &str = "The clips have different clean audio se
 pub const DIFFERENT_FRAMES: &str = "The clips have different frame settings";
 
 /// Why two clips cannot be merged: their Apply LUT files differ (1.6.0).
+pub const DIFFERENT_SPEEDS: &str = "The clips have different speeds";
 pub const DIFFERENT_LUTS: &str = "The clips have different colour effects";
 
 /// What a Scale, Move or Apply LUT is applied to (REQ-130). Since 1.6.1 `Whole` is not a
@@ -261,6 +325,14 @@ pub struct ClipLut {
     pub strength: u8,
 }
 
+/// The Change aspect of one clip (REQ-286): the clip is made in its own frame, which is then
+/// placed in the project's frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipAspect {
+    pub clip: ClipId,
+    pub aspect: FrameAspect,
+}
+
 /// The volume keyframes of one clip, in percent, in the clip's own time (REQ-280).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipVolume {
@@ -271,6 +343,9 @@ pub struct ClipVolume {
 /// The video track.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Timeline {
+    /// Change aspect of single clips (REQ-286), sorted by clip id.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clip_aspects: Vec<ClipAspect>,
     /// Volume keyframes of the clips that have them (REQ-280).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clip_volume: Vec<ClipVolume>,
@@ -468,7 +543,7 @@ impl Timeline {
             return Err(EditError::NotInsideClip);
         }
         let id = self.new_id();
-        let cut = c.src_in + offset;
+        let cut = c.src_at(offset);
         self.clips[i].src_out = cut;
         // the right half keeps the clip's sound settings
         self.clips.insert(
@@ -569,7 +644,9 @@ impl Timeline {
         }
         let i = self.index_of(id)?;
         let (a, b) = (&self.clips[i], &self.clips[i + 1]);
-        if (a.volume, a.muted) != (b.volume, b.muted) {
+        if a.speed != b.speed {
+            Some(DIFFERENT_SPEEDS)
+        } else if (a.volume, a.muted) != (b.volume, b.muted) {
             Some(DIFFERENT_VOLUMES)
         } else if a.clean_audio != b.clean_audio
             || a.clean_strength != b.clean_strength
@@ -615,7 +692,7 @@ impl Timeline {
         let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
         let new_in = src_in.clamp(Micros::ZERO, media_duration);
         let new_out = src_out.clamp(Micros::ZERO, media_duration);
-        if new_out - new_in < min_len.max(Micros(1)) {
+        if self.clips[i].to_timeline(new_out - new_in) < min_len.max(Micros(1)) {
             return Err(EditError::InvalidRange);
         }
         self.clips[i].src_in = new_in;
@@ -638,7 +715,7 @@ impl Timeline {
         let frame = frame.max(Micros(1));
         // whole frames, to the nearest one
         let steps = (delta.0 as f64 / frame.0 as f64).round() as i64;
-        let moved = Micros(steps.saturating_mul(frame.0));
+        let moved = c.to_src(Micros(steps.saturating_mul(frame.0)));
         Some(match edge {
             ClipEdge::Start => {
                 let hi = (c.src_out - frame).max(Micros::ZERO);
@@ -969,7 +1046,7 @@ impl Timeline {
             let Some(mut e) = self.frames_of(c.id).cloned() else {
                 continue;
             };
-            let at_i = c.src_in + ct;
+            let at_i = c.src_at(ct);
             if pick(&mut e).is_empty() || at_i > c.src_out {
                 continue;
             }
@@ -1042,12 +1119,12 @@ impl Timeline {
                 })?;
                 let c = &self.clips[i];
                 let local = (at - start).clamp(Micros::ZERO, c.len());
-                Some(self.frame_start(FrameTarget::Whole) + local)
+                Some(self.whole_ref().map_or(local, |r| r.src_at(local)))
             }
             FrameTarget::Clip(id) => {
                 let i = self.index_of(id)?;
                 let c = &self.clips[i];
-                Some(c.src_in + (at - self.start_of(i)).clamp(Micros::ZERO, c.len()))
+                Some(c.src_at((at - self.start_of(i)).clamp(Micros::ZERO, c.len())))
             }
         }
     }
@@ -1310,8 +1387,8 @@ impl Timeline {
             moved: vec![],
         });
         match keys {
-            KeysClip::Scale(k) => e.scale = keyframes::place(k, c.src_in, c.len()),
-            KeysClip::Move(k) => e.moved = keyframes::place(k, c.src_in, c.len()),
+            KeysClip::Scale(k) => e.scale = keyframes::place(k, c.src_in, c.src_len()),
+            KeysClip::Move(k) => e.moved = keyframes::place(k, c.src_in, c.src_len()),
         }
         self.put_frames(e);
         Ok(())
@@ -1358,10 +1435,34 @@ impl Timeline {
     /// is always re-encoded).
     pub fn has_frame_effect(&self) -> bool {
         self.frame_aspect.is_some()
+            || !self.clip_aspects.is_empty()
             || self.clips.iter().any(|c| {
                 let (s, m) = self.keys_of(c.id);
                 !s.is_empty() || !m.is_empty()
             })
+    }
+
+    /// The clip's own Change aspect (REQ-286), if it has one.
+    pub fn own_aspect(&self, id: ClipId) -> Option<FrameAspect> {
+        self.clip_aspects
+            .iter()
+            .find(|a| a.clip == id)
+            .map(|a| a.aspect)
+    }
+
+    /// Gives a clip its own Change aspect, or takes it away (`None`).
+    pub fn set_clip_aspect(
+        &mut self,
+        id: ClipId,
+        aspect: Option<FrameAspect>,
+    ) -> Result<(), EditError> {
+        self.get(id).ok_or(EditError::NoSuchClip)?;
+        self.clip_aspects.retain(|a| a.clip != id);
+        if let Some(aspect) = aspect {
+            self.clip_aspects.push(ClipAspect { clip: id, aspect });
+            self.clip_aspects.sort_by_key(|a| a.clip);
+        }
+        Ok(())
     }
 
     /// The Scale and Move keys that act on the clip at `index`: its own copy only, since a
@@ -1374,13 +1475,13 @@ impl Timeline {
         let (s, m) = self.keys_of(c.id);
         if !s.is_empty() {
             st.scale.push(Track {
-                keys: s.to_vec(),
+                keys: c.keys_to_timeline(s),
                 offset: c.src_in,
             });
         }
         if !m.is_empty() {
             st.moved.push(Track {
-                keys: m.to_vec(),
+                keys: c.keys_to_timeline(m),
                 offset: c.src_in,
             });
         }
@@ -1505,6 +1606,26 @@ impl Timeline {
             .ok_or(EditError::NoSuchClip)?;
         c.crop = crop;
         Ok(())
+    }
+
+    /// Sets the speed of a clip, in thousandths from 500 to 2000 (REQ-281); the clip's length
+    /// on the timeline changes and what follows ripples.
+    pub fn set_speed(&mut self, id: ClipId, speed: u16) -> Result<(), EditError> {
+        if !(MIN_SPEED..=MAX_SPEED).contains(&speed) {
+            return Err(EditError::SpeedRange);
+        }
+        let c = self
+            .clips
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or(EditError::NoSuchClip)?;
+        c.speed = speed;
+        Ok(())
+    }
+
+    /// True when any clip plays at another speed than normal.
+    pub fn any_speed(&self) -> bool {
+        self.clips.iter().any(|c| c.speed != NORMAL_SPEED)
     }
 
     /// True when any clip has a crop.
@@ -2317,5 +2438,71 @@ pub(crate) mod tests {
             FadeSide::Both,
             "a new fade starts with both"
         );
+    }
+
+    // covers: REQ-281
+    #[test]
+    fn a_clip_at_200_percent_lasts_half_and_the_timeline_ripples() {
+        let mut t = track();
+        let (a, b) = (t.clips[0].id, t.clips[1].id);
+        assert_eq!(t.set_speed(a, 100), Err(EditError::SpeedRange));
+        assert_eq!(t.set_speed(a, 2001), Err(EditError::SpeedRange));
+        assert_eq!(t.set_speed(ClipId(99), 1000), Err(EditError::NoSuchClip));
+        assert!(!t.any_speed());
+        t.set_speed(a, 2000).unwrap();
+        assert!(t.any_speed());
+        assert_eq!(t.clips[0].len(), s(2), "4 s at 200 % occupy 2 s");
+        assert_eq!(t.clips[0].src_len(), s(4));
+        assert_eq!(t.start_of(1), s(2), "the next clip ripples");
+        assert_eq!(t.duration(), s(8));
+        t.set_speed(a, 500).unwrap();
+        assert_eq!(t.clips[0].len(), s(8), "50 % doubles the length");
+        assert_eq!(t.clips[0].src_at(s(2)), s(1));
+        assert_eq!(t.clips[0].to_src(s(2)), s(1));
+        // a split cuts the source where the timeline position is
+        t.set_speed(a, 2000).unwrap();
+        let right = t.split(s(1), Micros(100_000)).unwrap();
+        assert_eq!(t.clips[0].src_out, s(2));
+        assert_eq!(t.get(right).unwrap().src_in, s(2));
+        assert_eq!(
+            t.get(right).unwrap().speed,
+            2000,
+            "the halves keep the speed"
+        );
+        // merge needs the same speed
+        assert_eq!(t.merge_block_reason(a), None);
+        assert!(t.can_merge(a));
+        t.set_speed(right, 1000).unwrap();
+        assert_eq!(t.merge_block_reason(a), Some(DIFFERENT_SPEEDS));
+        assert!(!t.can_merge(a));
+        let _ = b;
+    }
+
+    // covers: REQ-281
+    #[test]
+    fn the_speed_is_saved_only_when_it_is_not_normal_and_keys_follow_it() {
+        let mut t = track();
+        let a = t.clips[0].id;
+        let normal = serde_json::to_string(&t.clips[0]).unwrap();
+        assert!(!normal.contains("speed"));
+        t.set_speed(a, 1500).unwrap();
+        let json = serde_json::to_string(&t.clips[0]).unwrap();
+        assert!(json.contains("\"speed\":1500"));
+        let back: Clip = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.speed, 1500);
+        // keys stay in source time; the picture effects see them on the timeline's clock
+        t.add_scale(FrameTarget::Clip(a)).unwrap();
+        t.add_scale_key(FrameTarget::Clip(a), s(3), Scale::NORMAL)
+            .unwrap();
+        let st = t.frame_stack(0);
+        let last = st.scale[0].keys.last().unwrap().t;
+        let first = st.scale[0].keys.first().unwrap().t;
+        assert_eq!(first, Micros::ZERO);
+        assert_eq!(last, s(2), "3 s of source at 150 % is 2 s of timeline");
+        // trimming by an edge drag moves the source by the timeline distance times the speed
+        let (i, _) = t
+            .trimmed_by_edge(a, ClipEdge::Start, s(1), s(4), Micros(100_000))
+            .unwrap();
+        assert_eq!(i, Micros(1_500_000));
     }
 }

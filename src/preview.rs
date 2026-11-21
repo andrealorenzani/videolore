@@ -736,6 +736,9 @@ pub struct Preview {
     /// Timeline position where the current run started (or the paused position).
     start: Micros,
     wall_origin: Instant,
+    /// How long the last launch waited for the ambisonic pre-pass (REQ-273): the wall clock
+    /// of the run starts after it.
+    prepass: Duration,
     end: Micros,
     playback: Option<(Worker, Receiver<Frame>)>,
     audio: Option<Arc<AudioBuffer>>,
@@ -814,6 +817,7 @@ impl Preview {
             state: PlayState::Paused,
             start: Micros::ZERO,
             wall_origin: Instant::now(),
+            prepass: Duration::ZERO,
             end: Micros::ZERO,
             playback: None,
             audio: None,
@@ -912,9 +916,43 @@ impl Preview {
         self.pending = None;
     }
 
+    /// Turns the ambisonic sound of the clips from `from` on by their cameras into the play
+    /// folder, where the audio graph reads it (REQ-273). The files of earlier camera paths
+    /// are removed. The preview waits for it; [`Self::prepass`] says how long.
+    fn prepare_spatial(
+        &mut self,
+        cfg: &PreviewConfig,
+        cwd: &std::path::Path,
+        project: &Project,
+        from: Micros,
+        src: Source,
+    ) -> Result<(), String> {
+        let jobs = render::preview_spatial(project, from, src)?;
+        let keep: Vec<String> = jobs.iter().map(|j| j.wav_name()).collect();
+        if let Ok(rd) = std::fs::read_dir(cwd) {
+            for e in rd.filter_map(Result::ok) {
+                let name = e.file_name().to_string_lossy().into_owned();
+                if name.starts_with("spatial-") && !keep.contains(&name) {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+        let started = Instant::now();
+        let never = AtomicBool::new(false);
+        for j in &jobs {
+            crate::spatial::prepare(&cfg.runner, &cfg.ffmpeg, cwd, j, &never)
+                .map_err(|e| format!("The sound could not be turned with the camera: {e}"))?;
+        }
+        if !jobs.is_empty() {
+            self.prepass = started.elapsed();
+        }
+        Ok(())
+    }
+
     fn launch(&mut self, project: &Project, from: Micros) -> Result<(), String> {
         self.stop_workers();
         self.error = None;
+        self.prepass = Duration::ZERO;
         let cfg = self.config.clone().ok_or("ffmpeg is not available")?;
         let eg = render::output_geometry(project, &cfg.encoders).map_err(|e| e.to_string())?;
         let cwd = self.dir("play");
@@ -925,6 +963,7 @@ impl Preview {
             write_subtitles(&cwd, doc).map_err(|e| e.to_string())?;
         }
         render::write_command_files(&cwd, &v.command_files).map_err(|e| e.to_string())?;
+        self.prepare_spatial(&cfg, &cwd, project, from, src)?;
         let (rate, ch) = self.sink.format();
         let aargs = render::preview_audio_args(
             project,
@@ -973,6 +1012,8 @@ impl Preview {
         self.state = PlayState::Playing;
         self.supersede();
         let r = self.launch(project, from);
+        // the wait for the turned sound is not part of the playing time
+        self.wall_origin = now + self.prepass;
         if let Err(e) = &r {
             self.state = PlayState::Paused;
             self.error = Some(e.clone());

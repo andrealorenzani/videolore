@@ -34,7 +34,7 @@
 - docs/code-2.0.4-batches-5-7.md § Stage 2 — editing gestures, autosave and safety (REQ-189 to 199) — L19-26 (8 lines)
 - docs/code-2.0.4-batches-5-7.md § Stage 3 — whole-video and keyframe clarity (REQ-200 to 205) — L27-34 (8 lines)
 - docs/code-2.0.4-batches-5-7.md § Tests — L35-37 (3 lines)
-- docs/code-2.0.4-batches-12-15.md § Code — 2.0.4, batches 12 to 15 — L1-51 (51 lines; headings: Stage 8, 9, 10, 11, 12, Tests)
+- docs/code-2.0.4-batches-12-15.md § Code — 2.0.4, batches 12 to 15 — L1-64 (64 lines; headings: Stage 8, Stage 9, Stage 10, Stage 11, Stage 12, Stage 13, Stage 14, Tests)
 - docs/code-2.0.4-batches-8-11.md § Code — 2.0.4, batches 8 to 11 (faster hardware export, hardware reach, speed, platforms) — L1-4 (4 lines)
 - docs/code-2.0.4-batches-8-11.md § Stage 4 — faster hardware export (REQ-206 to 211) — L5-12 (8 lines)
 - docs/code-2.0.4-batches-8-11.md § Stage 5 — hardware reach (REQ-212 to 219) — L13-21 (9 lines)
@@ -51,12 +51,13 @@
 - docs/code-360.md § Known limits — L101-107 (7 lines)
 - docs/code-architecture.md § Code — module architecture — L1-8 (8 lines)
 - docs/code-architecture.md § Layers — L9-25 (17 lines)
-- docs/code-architecture.md § Module dependency graph — L26-80 (55 lines)
-- docs/code-architecture.md § Cycles — L81-107 (27 lines)
-- docs/code-architecture.md § Import → timeline → preview → export — L108-142 (35 lines)
-- docs/code-architecture.md § Threads and channels — L143-172 (30 lines)
-- docs/code-architecture.md § videolore player — L173-191 (19 lines)
-- docs/code-architecture.md § Dependencies of each module — L192-236 (45 lines)
+- docs/code-architecture.md § Module dependency graph — L26-84 (59 lines)
+- docs/code-architecture.md § Cycles — L85-111 (27 lines)
+- docs/code-architecture.md § Import → timeline → preview → export — L112-146 (35 lines)
+- docs/code-architecture.md § Threads and channels — L147-176 (30 lines)
+- docs/code-architecture.md § videolore player — L177-195 (19 lines)
+- docs/code-architecture.md § Dependencies of each module — L196-242 (47 lines)
+- docs/code-architecture.md § 2.0.4 additions (batches 12 to 15) — L243-260 (18 lines)
 - docs/code-effects.md § Code — effects on clips, the video's own subtitles, positions, SRT (1.2.0) — L1-4 (4 lines)
 - docs/code-effects.md § Applying an effect — L5-27 (23 lines)
 - docs/code-effects.md § Fades at the video's edges — L28-41 (14 lines)
@@ -64,12 +65,12 @@
 - docs/code-effects.md § Clip volume — L56-65 (10 lines)
 - docs/code-effects.md § Subtitles for a clip or the whole video — L66-87 (22 lines)
 - docs/code-effects.md § Reading a track — L88-95 (8 lines)
-- docs/code-effects.md § Matching words (`align`) — L96-114 (19 lines)
-- docs/code-effects.md § Subtitle positions — L115-136 (22 lines)
-- docs/code-effects.md § SRT export — L137-143 (7 lines)
-- docs/code-effects.md § Timeline ruler — L144-150 (7 lines)
-- docs/code-effects.md § Project format 3 — L151-160 (10 lines)
-- docs/code-effects.md § Project format 9 (1.6.1, REQ-149) — L161-174 (14 lines)
+- docs/code-effects.md § Matching words (`align`) — L96-116 (21 lines)
+- docs/code-effects.md § Subtitle positions — L117-138 (22 lines)
+- docs/code-effects.md § SRT export — L139-145 (7 lines)
+- docs/code-effects.md § Timeline ruler — L146-152 (7 lines)
+- docs/code-effects.md § Project format 3 — L153-162 (10 lines)
+- docs/code-effects.md § Project format 9 (1.6.1, REQ-149) — L163-176 (14 lines)
 - docs/code-export.md § Code — Export dialog, Clean audio and text boxes (1.4.0) — L1-6 (6 lines)
 - docs/code-export.md § Where things are — L7-17 (11 lines)
 - docs/code-export.md § Export dialog — L18-35 (18 lines)
@@ -120,7 +121,8 @@
 - docs/code-index.md § Faster hardware export (2.0.4, batch 8) — L162-171 (10 lines)
 - docs/code-index.md § Hardware reach (2.0.4, batch 9) — L172-180 (9 lines)
 - docs/code-index.md § Export and preview speed (2.0.4, batch 10) — L181-188 (8 lines)
-- docs/code-index.md § Platforms and installers (2.0.4, batch 11) — L189-196 (8 lines)
+- docs/code-index.md § Platforms and installers (2.0.4, batch 11) — L189-197 (9 lines)
+- docs/code-index.md § Interface, player, 360 video, effects, quality (2.0.4, batches 12 to 15) — L198-212 (15 lines)
 - docs/code-lut.md § Code — Apply LUT (1.6.0) — L1-4 (4 lines)
 - docs/code-lut.md § Where things are — L5-18 (14 lines)
 - docs/code-lut.md § The LUT file — L19-29 (11 lines)
@@ -168,11 +170,12 @@
 - docs/code-testing.md § Coverage — L91-98 (8 lines)
 - docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L99-111 (13 lines)
 - docs/code-testing.md § Integration test files — L112-139 (28 lines)
-- docs/code-testing.md § Other test notes — L140-161 (22 lines)
-- docs/code-testing.md § Suite size and time — L162-169 (8 lines)
-- docs/code-testing.md § 2.0.3 additions — L170-177 (8 lines)
-- docs/code-testing.md § 2.0.4 additions (stages 0 to 3) — L178-186 (9 lines)
-- docs/code-testing.md § 2.0.4 additions (stages 4 to 7) — L187-192 (6 lines)
+- docs/code-testing.md § Other test notes — L140-163 (24 lines)
+- docs/code-testing.md § Suite size and time — L164-171 (8 lines)
+- docs/code-testing.md § 2.0.3 additions — L172-179 (8 lines)
+- docs/code-testing.md § 2.0.4 additions (stages 0 to 3) — L180-188 (9 lines)
+- docs/code-testing.md § 2.0.4 additions (stages 4 to 7) — L189-195 (7 lines)
+- docs/code-testing.md § 2.0.4 additions (stages 8 to 14) — L196-201 (6 lines)
 - docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-12 (12 lines)
 - docs/code-text.md § Where things are — L13-25 (13 lines)
 - docs/code-text.md § Model and file — L26-40 (15 lines)
@@ -191,14 +194,14 @@
 - docs/code-ui.md § Settings file — L108-114 (7 lines)
 - docs/code-ui.md § Since 1.2.0 — L115-125 (11 lines)
 - docs/code-ui.md § Preview picture (1.2.6) — L126-134 (9 lines)
-- docs/code.md § Code — L1-33 (33 lines)
-- docs/code.md § Build, test, run — L34-49 (16 lines)
-- docs/code.md § System requirements for building — L50-59 (10 lines)
-- docs/code.md § Settings and machine detection — L60-70 (11 lines)
-- docs/code.md § CPU baseline for speech recognition — L71-80 (10 lines)
-- docs/code.md § Cargo features — L81-91 (11 lines)
-- docs/code.md § Finding ffmpeg — L92-99 (8 lines)
-- docs/code.md § Dependencies — L100-125 (26 lines)
+- docs/code.md § Code — L1-34 (34 lines)
+- docs/code.md § Build, test, run — L35-50 (16 lines)
+- docs/code.md § System requirements for building — L51-60 (10 lines)
+- docs/code.md § Settings and machine detection — L61-71 (11 lines)
+- docs/code.md § CPU baseline for speech recognition — L72-81 (10 lines)
+- docs/code.md § Cargo features — L82-92 (11 lines)
+- docs/code.md § Finding ffmpeg — L93-100 (8 lines)
+- docs/code.md § Dependencies — L101-126 (26 lines)
 
 ## State (2.0.4 group 3b, second call: the cut-back REQs; doc docs/code-2.0.4-batches-12-15.md)
 - Built in the second call (all with `// covers:`): REQ-261 (in-house EBML writer, in place, uses ffmpeg's Void padding), 262, 263, 264, 265, 267, 269, 272, 274, 275, 276, 277, 278, 279 (speechnorm branch), 282 export + UI, 283, 289 (blend table), 292, 293, 248 Windows template (`packaging/windows-player.nsi`, not run on Windows).
@@ -309,3 +312,16 @@ deny.toml allow-list includes Ubuntu-font-1.0 (epaint_default_fonts) + OFL-1.1, 
 
 ## Requirement -> test map
 - ai-docs/code-req-tests.md (file -> REQ numbers). Human view per area: docs/code-index.md.
+
+## State (2.0.4 third call: REQ-281, 287, 257-260, 268 built; doc docs/code-2.0.4-batches-12-15.md Stage 13)
+- Test map: 281 `timeline.rs` (2), `render/tests.rs` (2), `app/frame_tests.rs`, `tests/ffmpeg_integration/v204b.rs`; 287 `picture.rs` (2), `app/text_tests.rs` (2), `render/tests.rs`, `v204b.rs`; 257 `render/tests.rs`; 258/259 `app/text_tests.rs`; 260 `ui/placement.rs`; 268 `app/sphere_tests.rs:a_copied_clip_has_its_own_camera_path...`.
+- `Clip::len()` is timeline length now; use `src_len()` for source. Per-clip camera: `project.camera.path_of(Some(clip.id.0), media)`, never `path(media)` for a clip. Old sphere tests were changed to `path_of` (they asserted the per-source path).
+- Replaced test: the Context Menu group test now expects Re-anchor before Set POV when a line is selected on a 360 clip.
+- Debt: picture items: no effects, not in the 360 video export.
+
+## State (2.0.4 fourth call: REQ-273, 253, QG-14..18 built; doc docs/code-2.0.4-batches-12-15.md Stage 14)
+- Test map: 273 `spatial.rs` (tests), `render/tests.rs` (3), `export.rs` (1), `tests/ffmpeg_integration/v204b.rs` (export, preview, 360 video export, pre-pass speed); 253 `media.rs`, `render/tests.rs` (2), `player/src/tests.rs`, `player/src/ui_tests.rs`, `player/tests/ffmpeg.rs` (hand-written PGS); QG-15 tests have `// covers:` of the REQs they touch (108, 103, 203, 105, 123, 039).
+- Spatial: WAV `spatial-<hash>.wav` in the work folder (export) or the preview's `play` folder; graph input after the pictures; relative name, cwd = that folder. `Plan::spatial()`, `Graph.spatial`. Preview pre-pass is synchronous in `launch` (UI thread) and shifts `wall_origin` by `prepass`; clips over 10 min are left as recorded in the preview. Roll not applied. Detection = 360 + 4 channels (assumption). Measured 69x real time in debug.
+- Picture subtitles: `Project.picture_sub` is runtime only (not in `ProjectFile`); `MediaFormat.picture_tracks` is saved (sanitised on load). Overlay `[k:v:0][k:s:N]overlay` before the trim; seeks inside a display set lose it (ffmpeg does not replay); not on 360 clips; paused stills in a display set show none.
+- QG-16: `text.rs` keeps types and `Texts`; `text/{timing,layout,events}.rs` re-exported (`pub use`); `envelope` and `shaped_for` are `pub(super)`. One box rule: `placement::padded_line_rect`.
+- Debt: pre-pass blocks the UI thread of the preview for long ambisonic clips (async start would fix it); `version.sh set` only reminds about notices; icon splash GIFs both embedded in the library (assumed dropped by the linker); golden argv for formats 4 and 5 recorded at 2.0.4, not by the old versions; the interface harness (egui_kittest) was not adopted (the helper did not grow).

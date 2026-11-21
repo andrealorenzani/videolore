@@ -482,6 +482,10 @@ pub trait Dialogs {
     fn pick_subtitles_open(&mut self) -> Option<PathBuf> {
         None
     }
+    /// A PNG image to add as a picture item (REQ-287).
+    fn pick_picture(&mut self) -> Option<PathBuf> {
+        None
+    }
 }
 
 /// State of a running or finished export, for the UI.
@@ -573,6 +577,8 @@ pub struct AppState {
     pub clipboard_frames: Option<crate::timeline::ClipFrames>,
     /// The LUT of the copied clip (1.6.0).
     pub clipboard_lut: Option<String>,
+    /// The own camera path of the copied clip (REQ-268: a paste gets a copy of it).
+    pub clipboard_camera: Option<(MediaId, Vec<crate::camera::Pov>)>,
     /// Lines whose corner is being dragged in the preview and their new size.
     pub resize_drag: Option<ResizeDrag>,
     /// The camera of each 360 source you looked through (window state: not saved, not
@@ -854,6 +860,7 @@ impl AppState {
             frame_drag: None,
             clipboard_frames: None,
             clipboard_lut: None,
+            clipboard_camera: None,
             resize_drag: None,
             live: HashMap::new(),
             camera_restart: None,
@@ -1412,6 +1419,7 @@ impl AppState {
             Command::SetEdgeFade { edge, on } => self.set_edge_fade(edge, on, now),
             Command::ToggleLine(id) => self.toggle_line(id),
             Command::AddText(draft) => self.add_text(draft, now),
+            Command::AddPicture(path) => self.add_picture(path, now),
             Command::EditText(item) => self.edit_text(item, now),
             Command::MoveText { id, start, ttl } => self.move_text(id, start, ttl, now),
             Command::DeleteTexts(ids) => self.delete_texts(ids, now),
@@ -1469,6 +1477,7 @@ impl AppState {
                 place,
             } => self.move_selection(lines, texts, place, now),
             Command::MoveInside => self.move_inside(now),
+            Command::ReAnchor => self.re_anchor(now),
             Command::AlignSelected(axis) => self.align_selected(axis, now),
             Command::ResizeLines {
                 ids,

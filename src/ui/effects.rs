@@ -57,7 +57,7 @@ pub fn volume_text(m: &Mix) -> String {
 }
 
 /// Tooltip of the Change aspect row: it applies to the whole video only.
-pub const ASPECT_TOOLTIP: &str = "Sets the frame of the whole video";
+pub const ASPECT_TOOLTIP: &str = "Drag onto a clip to give that clip its own aspect; double-click to set the frame of the whole video";
 
 /// Tooltip of every other row of the Effects section.
 pub const EFFECT_TOOLTIP: &str =
@@ -85,6 +85,9 @@ pub fn effect_icon(effect: EffectKind) -> &'static str {
 
 /// The row below the effects that opens the popup of a new text (REQ-075, REQ-108).
 pub const ADD_TEXT_ROW: &str = "Add Text";
+/// The row that adds a PNG picture (REQ-287).
+pub const ADD_PICTURE_ROW: &str = "Add Picture";
+pub const ADD_PICTURE_TOOLTIP: &str = "Adds a PNG picture at the playhead";
 /// Tooltip of [`ADD_TEXT_ROW`].
 pub const ADD_TEXT_TOOLTIP: &str = "Opens a popup to add a text at the playhead";
 
@@ -132,10 +135,8 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             } else {
                 EFFECT_TOOLTIP
             });
-        // Change aspect cannot be dropped on a clip (REQ-075, REQ-130)
-        if effect != EffectKind::ChangeAspect {
-            r.dnd_set_drag_payload(effect);
-        }
+        // every row can be dropped on a clip; Change aspect gives that clip its own aspect
+        r.dnd_set_drag_payload(effect);
         if r.dragged() && egui::DragAndDrop::has_payload_of_type::<EffectKind>(ui.ctx()) {
             // what is being dragged follows the pointer
             if let Some(p) = ui.ctx().pointer_interact_pos() {
@@ -174,6 +175,15 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         .on_hover_text(ADD_TEXT_TOOLTIP);
     if r.clicked() {
         cmds.push(Command::OpenNewText);
+    }
+    let r = ui
+        .add(
+            Button::new(super::icons::label(super::icons::IMAGE, ADD_PICTURE_ROW))
+                .min_size(egui::vec2(w, 0.0)),
+        )
+        .on_hover_text(ADD_PICTURE_TOOLTIP);
+    if r.clicked() {
+        cmds.push(Command::AddPicture(None));
     }
 }
 

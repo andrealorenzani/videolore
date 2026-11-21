@@ -39,6 +39,8 @@ mod v16;
 mod v20;
 #[path = "ffmpeg_integration/v204.rs"]
 mod v204;
+#[path = "ffmpeg_integration/v204b.rs"]
+mod v204b;
 
 struct Env {
     info: FfmpegInfo,
@@ -876,6 +878,25 @@ fn memory_does_not_grow_with_source_length() {
     );
 }
 
+/// The preview of a large picture (Full HD, 10 s) stays within a fixed memory budget of this
+/// process: it holds the small preview frame, not the source picture (QG-15).
+// covers: REQ-039
+#[test]
+fn memory_stays_small_with_a_large_picture() {
+    let Some(env) = setup() else { return };
+    let small = env.clip("short.mp4", 160, 90, 25, 2, true);
+    let large = env.clip("large.mp4", 1920, 1080, 25, 10, true);
+    let (a, b) = std::thread::scope(|s| {
+        let a = s.spawn(|| peak_in_own_process(&small));
+        let b = s.spawn(|| peak_in_own_process(&large));
+        (a.join().unwrap(), b.join().unwrap())
+    });
+    assert!(
+        b <= a + 300 * 1024 * 1024,
+        "peak memory {b} with the large picture vs {a}"
+    );
+}
+
 /// Runs `memory_peak_of_one_preview` on `file` in a fresh process and returns its peak.
 fn peak_in_own_process(file: &Path) -> u64 {
     let out = Command::new(std::env::current_exe().unwrap())
@@ -946,8 +967,18 @@ fn dirty_heap() {
     }
 }
 
-/// Real speech recognition with the pinned model (CI provides it with
-/// VIDEOLORE_STT_MODEL; espeak-ng makes the speech).
+/// The committed speech clip (`tests/fixtures/align/speech.mkv`, synthetic speech made once
+/// with `make.sh`): no speech synthesiser is needed when the tests run (QG-14).
+#[cfg(feature = "stt")]
+fn speech_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/align/speech.mkv")
+}
+
+/// What the committed speech clip says (the phrases of `make.sh`).
+#[cfg(feature = "stt")]
+const SPEECH_FIXTURE_TEXT: &str = "hello world this is a test the quick brown fox jumps over the lazy dog subtitles follow the speech word by word thank you for watching this video";
+
+/// Real speech recognition with the pinned model (CI provides it with VIDEOLORE_STT_MODEL).
 // covers: REQ-014, REQ-015
 #[cfg(feature = "stt")]
 #[test]
@@ -957,16 +988,7 @@ fn real_speech_is_transcribed() {
         eprintln!("skipping: VIDEOLORE_STT_MODEL not set");
         return;
     };
-    let wav = env.dir.path().join("speech.wav");
-    let spoke = Command::new("espeak-ng")
-        .args(["-s", "140", "-w"])
-        .arg(&wav)
-        .arg("hello world, this is videolore")
-        .status();
-    if !spoke.is_ok_and(|s| s.success()) {
-        assert!(!required(), "espeak-ng is needed for the speech test");
-        return;
-    }
+    let wav = speech_fixture();
     let job = videolore::stt::SttJob {
         ranges: vec![videolore::stt::RangeJob {
             media: videolore::media::MediaId(1),
@@ -1073,8 +1095,7 @@ fn wer(reference: &[String], heard: &[String]) -> f64 {
 }
 
 /// Higher Subtitle quality levels are at least as accurate as Fast on a reference clip.
-/// Needs the three speech files in `VIDEOLORE_STT_MODELS_DIR` (CI caches them) and
-/// espeak-ng.
+/// Needs the three speech files in `VIDEOLORE_STT_MODELS_DIR` (CI caches them).
 // covers: REQ-052
 #[cfg(feature = "stt")]
 #[test]
@@ -1084,18 +1105,8 @@ fn higher_levels_are_at_least_as_accurate() {
         eprintln!("skipping: VIDEOLORE_STT_MODELS_DIR not set");
         return;
     };
-    let sentence = "the quick brown fox jumps over the lazy dog near the river bank";
-    let wav = env.dir.path().join("reference.wav");
-    let spoke = Command::new("espeak-ng")
-        .args(["-s", "140", "-w"])
-        .arg(&wav)
-        .arg(sentence)
-        .status();
-    if !spoke.is_ok_and(|s| s.success()) {
-        assert!(!required(), "espeak-ng is needed for the accuracy test");
-        return;
-    }
-    let reference = words(sentence);
+    let wav = speech_fixture();
+    let reference = words(SPEECH_FIXTURE_TEXT);
     let threads = std::thread::available_parallelism().map_or(2, |n| n.get().min(8));
     let mut rates = Vec::new();
     for spec in videolore::stt::builtin_models() {

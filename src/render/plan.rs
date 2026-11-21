@@ -101,6 +101,14 @@ impl Plan {
             Plan::StreamCopy { .. } => &[],
         }
     }
+
+    /// The ambisonic sound the export turns by the camera first (REQ-273).
+    pub fn spatial(&self) -> &[crate::spatial::SpatialJob] {
+        match self {
+            Plan::Reencode { graph, .. } => &graph.spatial,
+            Plan::StreamCopy { .. } => &[],
+        }
+    }
 }
 
 /// True when the path contains a control character (line breaks, tabs, …).
@@ -122,7 +130,7 @@ pub fn concat_list(segs: &[Segment]) -> String {
             "file {}\ninpoint {}\noutpoint {}\n",
             concat_quote(&seg.path),
             seg.src_in.ff(),
-            (seg.src_in + seg.len).ff()
+            seg.src_to().ff()
         ));
     }
     s
@@ -180,6 +188,44 @@ pub fn subtitles_doc_with(
     ))
 }
 
+/// The picture items (REQ-287) shown from the timeline position `from` on, placed on a
+/// picture of `g`, with their times counted from `from`. A file that is gone stops an export
+/// and is left out of a preview.
+pub fn picture_overlays(
+    project: &Project,
+    g: &Geometry,
+    from: Micros,
+    src: Source,
+) -> Result<Vec<PicOverlay>, RenderError> {
+    let video_end = project.timeline.duration();
+    let mut out = Vec::new();
+    for t in &project.texts.items {
+        let Some(pic) = &t.picture else { continue };
+        let end = t.end().min(video_end);
+        if end <= from.max(t.start) {
+            continue;
+        }
+        let path = PathBuf::from(&pic.path);
+        if !path.is_file() {
+            if matches!(src, Source::Preview { .. }) {
+                continue;
+            }
+            return Err(RenderError::Picture(pic.name()));
+        }
+        let (x, y, w, h) = pic.rect(t.place, t.width, t.height, (g.width, g.height));
+        out.push(PicOverlay {
+            path,
+            x,
+            y,
+            w,
+            h,
+            start: (t.start - from).max(Micros::ZERO),
+            end: end - from,
+        });
+    }
+    Ok(out)
+}
+
 /// Decides between stream copy and re-encode. `is_keyframe(media, t)` is only consulted
 /// when the formats are identical and there are no effects (fades, music, subtitles,
 /// video volume change). Always reads the original files (never proxies).
@@ -229,6 +275,8 @@ pub fn plan_export_choice(
         // no camera: the picture stays equirectangular; no frame effects (REQ-131)
         for s in &mut segs {
             s.sphere = None;
+            // a 360 video keeps its sound as recorded: the viewer's player turns it (REQ-273)
+            s.spatial = None;
             s.frame = None;
             s.crop = Default::default();
         }
@@ -282,6 +330,12 @@ pub fn plan_export_choice(
         .map(Box::new);
     let subtitles = subtitles_doc_with(project, &geometry, Micros::ZERO, track.is_none());
     let bed = music_bed(project, Micros::ZERO)?;
+    // a 360 video keeps the whole sphere: a flat picture does not belong on it
+    let pics = if sphere {
+        Vec::new()
+    } else {
+        picture_overlays(project, &geometry, Micros::ZERO, Source::Export)?
+    };
     let no_effects = !project.timeline.has_any_fade()
         && (sphere || !project.timeline.has_frame_effect())
         && preset.is_none()
@@ -291,6 +345,8 @@ pub fn plan_export_choice(
         && !project.timeline.any_lut()
         && project.timeline.clips.iter().all(|c| !c.has_volume())
         && !project.timeline.any_volume_keys()
+        && !project.timeline.any_speed()
+        && pics.is_empty()
         && bed.is_none()
         && subtitles.is_none()
         && track.is_none()
@@ -322,7 +378,7 @@ pub fn plan_export_choice(
             });
         }
     }
-    let graph = build_graph(
+    let graph = build_graph_with(
         &segs,
         bed.as_ref(),
         &GraphSpec {
@@ -334,6 +390,7 @@ pub fn plan_export_choice(
             mix: project.mix,
             camera_updates: crate::camera::EXPORT_UPDATES_PER_SECOND,
         },
+        &pics,
     );
     Ok(Plan::Reencode {
         graph: Box::new(graph),

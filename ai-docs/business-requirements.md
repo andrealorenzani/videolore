@@ -3,11 +3,11 @@
 Sub-document of [business index](business.md). Requirement texts live in the human docs (`docs/business*.md`); this file is the map and the short meaning of the early requirements.
 
 ## Status and map
-- REQ-001..REQ-176 and REQ-178..179 are `(implemented)` (2.0.3). REQ-177 stays `(planned)` (accuracy target not met; open decision for Andrea). 2.0.4 STATUS: REQ-180..299 except 253, 257-260, 268, 273, 281, 286-288 are `(implemented)` (109 requirements); those 11 stay `(planned)` (roadmap, 2.0.5 batch). Next free ID: REQ-300. QG-01..QG-05 implemented; QG-06 (CI time) open; QG-07..QG-10 delivered 2.0.2; QG-11..QG-13 measured in 2.0.4 (no covers); QG-14..QG-18 planned for 2.0.5 (no covers).
+- REQ-001..REQ-176 and REQ-178..179 are `(implemented)` (2.0.3). REQ-177 stays `(planned)` (accuracy target not met; open decision for Andrea). 2.0.4 STATUS done: all REQ-180..299 are `(implemented)` (120 requirements; each has a `// covers:` test, grep-checked); REQ-177 is the only 2.0.4 item left planned. Next free ID: REQ-300. QG-01..QG-05 implemented; QG-06 (CI time) open, to read from the first CI run; QG-07..QG-10 delivered 2.0.2; QG-11..QG-13 measured in 2.0.4 (no covers); QG-14..QG-18 built in 2.0.4 (no covers; egui_kittest not adopted).
 - REQ -> human doc (grep the ID in `docs/business*.md`):
   - editing: 001-004, 005-013, 026-029, 032-035, 038, 039, 083, 094, 105, 113, 123, 144, 149, 155; 2.0.4 gestures and autosave 189-199 (editing-gestures)
   - ui: 024, 025, 066-074, 078-081, 093; 2.0.4 interface 234-247 (interface)
-  - effects: 075, 076, 077, 082, 107, 147; 2.0.4 effects and frame 274-280, 282-285, 289-294 implemented, 281, 286-288 planned (effects-frame)
+  - effects: 075, 076, 077, 082, 107, 147; 2.0.4 effects and frame 274-294 implemented (effects-frame)
   - subtitles: 014-018, 044, 085-092, 095; placement 168-176; 2.0.4 subtitle files 180-188 (subtitle-files)
   - subtitle-accuracy: 177 (planned), 178-179
   - music: 019, 020, 043, 084, 114
@@ -16,10 +16,10 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
   - keyframes (2.0.4): 200-205 (keyframes)
   - text: 108-111, 115, 116; readable text 156-167
   - picture: 096-099, 100-106, 112, 117, 146
-  - 360 (2.0.4): 261-272 implemented, 257-260, 268, 273 planned (360-video)
+  - 360 (2.0.4): 257-273 implemented (360-video)
   - frame: 124-132, 145, 148
   - lut: 135-137
-  - player: 138-141, 150; 2.0.4 opening, prefs, playlist 248-252, 254-256 implemented, 253 planned (player)
+  - player: 138-141, 150; 2.0.4 opening, prefs, playlist 248-256 implemented (player)
   - splash: 133, 134, 154; 2.0.4 show option 295 (splash)
   - icons: 142, 143
   - install: 030, 031, 040-042
@@ -27,7 +27,7 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
   - performance: 045-054, 056-059, 151-153 (+ QG-01..10 without covers)
   - quality (2.0.4): 296-299 (quality; QG-11..18 without covers)
   - verification: no REQ (manual checklist; 2.0.4 items 9-28 for the manual parts of the new REQs)
-- Amendments still pending (old text stays until built): 011, 020, 033, 038, 041, 061, 069, 071, 075, 082, 083, 084, 096, 100, 101, 102, 103, 104, 112, 114, 120, 124, 126, 127, 128, 129, 130, 131, 133, 135, 136, 140, 147, 148 (only where the built REQ text is not yet written into the human doc; STATUS 2.0.4 did not apply them, see the checkpoint). Amendments written into built 2.0.4 lines at STATUS: 183 (import replaces range), 195 (clipboard marker), 202 (dashed-handle reading), 206 (no change, spec confirmed), 222 (eighth), 244 (collapsed header), 248 (Windows template), 279 (speechnorm), 293 (LUT limits 20/64 MB, 96 MiB read cap). 182 gained the built default flag.
+- Amendments still pending (old text stays until built): 011, 020, 033, 038, 041, 061, 069, 071, 075, 082, 083, 084, 096, 100, 101, 102, 103, 104, 112, 114, 120, 124, 126, 127, 128, 129, 130, 131, 133, 135, 136, 140, 147, 148 (only where the built REQ text is not yet written into the human doc; STATUS 2.0.4 did not apply them, see the checkpoint). Amendments written into built 2.0.4 lines at STATUS: 183 (import replaces range), 195 (clipboard marker), 202 (dashed-handle reading), 206 (no change, spec confirmed), 222 (eighth), 244 (collapsed header), 248 (Windows template), 279 (speechnorm), 293 (LUT limits 20/64 MB, 96 MiB read cap). 182 gained the built default flag. Second STATUS (2.0.4, same day): 253 (picture limits, PGS fixture), 257-260 and 268 (built form), 273 (detection, no roll, pre-pass), 281 (timeline length, no stream copy, merge), 287 (text item with a picture, 360 skip, missing file stops export), 177 (speech fixture wording, still planned).
 - Coverage rule: every implemented REQ has a `// covers:` test (PE, feature-coverage 100%).
 - 2.0.4 batches: 5 subtitle files 180-188; 6 gestures 189-199; 7 keyframes 200-205; 8 hardware check 206-211; 9 hardware reach 212-219; 10 export speed 220-224; 11 platforms 225-233; 12 interface 234-247; 13 player 248-256; 14 360 257-273; 15 effects 274-294; continuous 295-299.
 

@@ -96,9 +96,13 @@ Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 ti
 - The 1.1.0 risk "app.rs grows" superseded by the 1.2.0 submodule split (see above).
 - Documentation mismatch: docs/business-export.md REQ-061 still states "at most 1 second each, at most 3 seconds in total" (superseded by ADR-038 deviation 0.4.2); PM to reword.
 
-## 2.0.4 (checkpoint 2026-11-21; plan ai-docs/architecture-plan-2.0.4.md § 7; stage numbers in brackets)
+## 2.0.4 (built 2026-11-21; plan ai-docs/architecture-plan-2.0.4.md § 7; stage numbers in brackets)
+- [OPEN, decide] picture items (REQ-287, ADR-192): no count (20), file size (8 MiB) or pixel limit in the code; the picture is kept by path, not embedded. Either add the limits in `picture.rs`/`text` (PE, small) or record the decision that the header read is enough (Andrea).
+- [OPEN] speed-first 360 preset (Q-5): the rule is built, the preset name is not in the notes (PE to record in `docs/code-*`). muda spike result (ADR-183) and AccessKit size (ADR-197, Q-4) not recorded.
+- [TECHNICAL, assumption] spatial sound: four channels read as W, Y, Z, X with SN3D taken as given; a file with another layout is turned wrongly; roll is not applied (the pair does not change with pitch); the preview waits for the pre-pass (clips over 10 min keep recorded sound).
+- [TECHNICAL] picture subtitles: none on 360 clips; a subtitle on screen at a run start appears at its next change; no drag.
 - [closed D61, Q-1] player under "Open with" only; the default is the user's choice. Manual check per OS (stage 9, item 22).
-- [closed D61, Q-2; REQ-273 NOT BUILT] spatial sound: fixed cardioid pair to stereo; real-time CPU unmeasured; it stays a roadmap item (cut-back 1) until built.
+- [closed D61, Q-2; REQ-273 BUILT] spatial sound: fixed cardioid pair to stereo; real-time CPU on weak hardware unmeasured (pre-pass 69x real time in debug); cut-back 1 not used.
 - [closed D61, Q-3] no bundled CJK font: Chinese, Japanese and Korean depend on installed system fonts; a Linux system without them gets the note, not a silent box. Risk: rare CJK users see the note (stage 1, manual item 9).
 - [closed D61, Q-4] AccessKit on all three systems; Linux AT-SPI adds crates and binary size, measured in stage 8 and recorded.
 - [closed D61, Q-5] 360 export preset: the fastest preset within 1.5 times the Best-quality size, measured in stage 10.
@@ -107,7 +111,7 @@ Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 ti
 - Hardware AV1 and VP9 on real systems: encoders rare, decoders unverified; the output check protects files, not speed (stages 5, manual 15).
 - Busy-or-hanging classification under load: false "hanging" would skip a working candidate; tested with fakes only (stage 4).
 - Preview hardware decode failure mid-playback: the restart must keep the last frame (stage 5).
-- Export graph regressions (crop, fades, Clean audio strength, LUT strength; speed, per-clip frame and picture overlays are not built): golden argv gate for projects without the features; the new paths are new tests (stages 6, 11).
+- Export graph regressions (speed, per-clip frame, picture overlays and picture subtitles are built since stage 13/14): golden argv gate for projects without the features; the new paths have their own tests.
 - REQ-222 says a quarter-size blur; built an eighth (BLUR_DIVISOR 8, measured, ADR-180 update); the requirement wording is the product manager's decision (checkpoint).
 - Project size: LUT copies up to 20 MB and 64 MiB per project; read cap 96 MiB (stage 11, ADR-191).
 - macOS menu bar: built as an allow-listed objc2 call (ADR-183, ADR-034 amended), checked for aarch64-apple-darwin only, not run; Wayland drop unverified on a real session (manual 17).

@@ -264,9 +264,9 @@ pub fn layout(project: &Project, z: f32, x0: f32, visible: (f32, f32)) -> Vec<Ma
     for c in &tl.clips {
         let sphere = project.media(c.media).is_some_and(|m| m.format.is_360());
         if sphere {
-            for p in project.camera.path(c.media) {
+            for p in project.camera.path_of(Some(c.id.0), c.media) {
                 if p.t >= c.src_in && p.t < c.src_out {
-                    let at = start + (p.t - c.src_in);
+                    let at = start + c.to_timeline(p.t - c.src_in);
                     out.push(Marker {
                         kind: MarkerKind::Pov,
                         instance: Instance::Pov(c.media, p.t),

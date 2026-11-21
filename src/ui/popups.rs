@@ -331,14 +331,7 @@ fn pov_instance(
     t: Micros,
     cmds: &mut Vec<Command>,
 ) {
-    let Some(p) = app
-        .project
-        .camera
-        .path(media)
-        .iter()
-        .find(|p| p.t == t)
-        .copied()
-    else {
+    let Some(p) = app.path_at(media, t).iter().find(|p| p.t == t).copied() else {
         ui.label(tr!(ThisPointOfViewNo));
         return;
     };
@@ -677,6 +670,31 @@ fn clip_settings(
             }
         }
     });
+    // the clip's own Change aspect (REQ-286)
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr!(ClipAspect));
+        let own = tl.own_aspect(c.id);
+        if ui.selectable_label(own.is_none(), tr!(AspectOff)).clicked() && own.is_some() {
+            cmds.push(Command::SetClipAspect {
+                clip: c.id,
+                aspect: None,
+            });
+        }
+        for shape in crate::frame::Shape::ALL {
+            let on = own.is_some_and(|a| a.shape == shape);
+            if ui.selectable_label(on, shape.name()).clicked() && !on {
+                let aspect = crate::frame::FrameAspect {
+                    shape,
+                    fit: crate::frame::Fit::Height,
+                    ..own.unwrap_or_default()
+                };
+                cmds.push(Command::SetClipAspect {
+                    clip: c.id,
+                    aspect: Some(aspect),
+                });
+            }
+        }
+    });
     // part of the picture cut away (REQ-283)
     ui.horizontal_wrapped(|ui| {
         ui.label(tr!(CropPercent));
@@ -697,6 +715,18 @@ fn clip_settings(
         }
         if changed && crop != c.crop {
             cmds.push(Command::SetCrop { clip: c.id, crop });
+        }
+    });
+    // playing speed (REQ-281)
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr!(SpeedPercent));
+        let mut pct = u32::from(c.speed) / 10;
+        let r = ui.add(egui::DragValue::new(&mut pct).range(50..=200));
+        if (r.drag_stopped() || (r.changed() && !r.dragged())) && pct * 10 != u32::from(c.speed) {
+            cmds.push(Command::SetSpeed {
+                clip: c.id,
+                speed: (pct * 10) as u16,
+            });
         }
     });
     ui.label(format!(
@@ -734,7 +764,7 @@ fn clip_settings(
             .on_disabled_hover_text(at_playhead)
             .clicked()
         {
-            cmds.push(trim(c.src_in + offset, c.src_out));
+            cmds.push(trim(c.src_at(offset), c.src_out));
         }
     });
     ui.horizontal_wrapped(|ui| {
@@ -746,7 +776,7 @@ fn clip_settings(
             .on_disabled_hover_text(at_playhead)
             .clicked()
         {
-            cmds.push(trim(c.src_in, c.src_in + offset));
+            cmds.push(trim(c.src_in, c.src_at(offset)));
         }
     });
     ui.horizontal_wrapped(|ui| {

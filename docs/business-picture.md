@@ -71,10 +71,10 @@ Implemented in 1.2.6: everything that can be moved on the preview picture gets a
 - A project that mixes 360 and flat clips can only be exported as a flat camera view, not as a 360 video.
 - Text items and subtitle lines placed on a 360 clip are not shown while their point is outside the view; there is no indicator that shows where they are.
 - Subtitle lines generated automatically on a 360 clip keep the view-fixed place and move with the camera (assumption, 1.3.0).
-- Exporting a 360 video is slow; no speed is promised (REQ-103).
+- Exporting a 360 video is slow; no speed is promised (REQ-103). (2.0.4: the export is speed-first, REQ-266.)
 - Reset on a subtitle line also clears its size, not only its position.
 - Subtitle lines and text items overlapping in time can overlap on screen after moving or enlarging; text edited after enlarging can push the box past the edge in the export (as in REQ-089).
-- (1.3.0) A subtitle line placed on a 360 clip is drawn as plain white text: it has no preset box and no word-by-word highlight, in the preview and in the export.
+- (1.3.0) A subtitle line placed on a 360 clip is drawn as plain white text: it has no preset box and no word-by-word highlight, in the preview and in the export. (Fixed in 2.0.4: REQ-257.)
 - (1.4.0) A video without spherical information is always flat: a plain 2:1 picture can no longer be looked around in, because the "360°" switch is removed.
 - (1.3.0) The 360 marker of a 360 video export is written only for MP4 and MOV files; a 360 video in another container (for example Matroska or WebM) carries no 360 marker, so 360 players may show it flat.
 - (1.5.0) A 360 video export ignores Change aspect, Scale and Move.
@@ -82,4 +82,4 @@ Implemented in 1.2.6: everything that can be moved on the preview picture gets a
 ## Out of scope
 - Stereo 3D, cube maps, 180° VR video, headsets and motion sensors.
 - Animating the zoom separately from the POVs; boxes for rotating objects; free-aspect resizing of boxes.
-- Planned for 2.0.4 (see [360 video](business-360-video.md)): easing and camera roll between POVs, keyboard control, the sphere's subtitles and arrows, spatial sound. Shapes and images on the picture: PNG images are planned (see [New effects](business-effects-frame.md)); shapes stay out of scope.
+- Built in 2.0.4 (see [360 video](business-360-video.md)): easing and camera roll between POVs, keyboard control, the sphere's subtitles and arrows, spatial sound. PNG picture items are built too (see [New effects](business-effects-frame.md)); shapes stay out of scope.

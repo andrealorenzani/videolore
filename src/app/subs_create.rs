@@ -447,6 +447,29 @@ impl AppState {
         self.refresh_dirty();
     }
 
+    /// The anchor of each line about to be generated on a 360 source: the centre of the view
+    /// at the line's start (REQ-258), by source and start time.
+    fn generation_anchors(
+        &self,
+        all: &[crate::subtitles::NewLine],
+    ) -> std::collections::HashMap<(MediaId, i64), crate::base::pos::Anchor360> {
+        let mut out = std::collections::HashMap::new();
+        let Some((w, h)) = self.output_size() else {
+            return out;
+        };
+        for n in all {
+            let sphere = self
+                .project
+                .media(n.media)
+                .is_some_and(|m| m.format.is_360());
+            if sphere {
+                let cam = self.effective_camera(n.media, n.start);
+                out.insert((n.media, n.start.0), crate::camera::anchor_at(cam, w, h));
+            }
+        }
+        out
+    }
+
     /// The end of a creation: one undo step with every new line.
     pub(super) fn finish_create(&mut self, r: stt::SttResult, now: Instant) {
         let clip = self.creating_for.take().flatten();
@@ -465,6 +488,12 @@ impl AppState {
             .filter(|l| crate::media::valid_language(l));
         let all = r.lines();
         let parts = r.ranges.clone();
+        // a generated line on a 360 clip is fixed to the centre of the view (REQ-258)
+        let anchors = if import {
+            Default::default()
+        } else {
+            self.generation_anchors(&all)
+        };
         let _ = self.edit(now, label, |e| {
             if clip.is_none() && !import {
                 e.subtitles.replace_all(all, language);
@@ -474,6 +503,11 @@ impl AppState {
                         e.subtitles
                             .replace_range(part.media, a, b, part.lines, language.clone());
                     }
+                }
+            }
+            for l in e.subtitles.lines.iter_mut().filter(|l| !l.edited) {
+                if l.anchor.is_none() {
+                    l.anchor = anchors.get(&(l.media, l.start.0)).copied();
                 }
             }
             Ok(())

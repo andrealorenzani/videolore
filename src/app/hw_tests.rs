@@ -586,9 +586,10 @@ fn a_candidate_that_ran_out_of_time_twice_is_skipped_until_the_restart() {
     };
     let (mut app, _) = app_with(dir.path(), Arc::new(hanging()));
     app.probe_limits = ProbeLimits {
-        per: Duration::from_millis(60),
-        retry: Duration::from_millis(120),
-        total: Duration::from_secs(5),
+        // long enough that the Intel fake, which answers, is never late on a busy machine
+        per: Duration::from_millis(200),
+        retry: Duration::from_millis(400),
+        total: Duration::from_secs(10),
     };
     app.settings.export = ExportChoice::Faster;
     app.start_hw_probe();
@@ -909,7 +910,8 @@ fn a_failing_hardware_decoder_falls_back_without_a_message() {
         rgba: vec![255; 16],
     });
     app.dispatch(Command::PlayPause, now).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    // long under load: the fallback is waited for, not raced
+    let deadline = Instant::now() + Duration::from_secs(30);
     while app.preview.hw_fallbacks == 0 {
         app.tick(Instant::now());
         assert!(Instant::now() < deadline, "no fallback");

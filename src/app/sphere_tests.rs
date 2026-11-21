@@ -120,7 +120,10 @@ fn set_pov_stores_the_shown_view_and_is_one_undo_step() {
     app.seek(s(1), now);
     assert!(app.is_enabled(&Command::SetPov));
     app.dispatch(Command::SetPov, now).unwrap();
-    let p = app.project.camera.path(m);
+    let p = app
+        .project
+        .camera
+        .path_of(Some(app.project.timeline.clips[0].id.0), m);
     assert_eq!(p.len(), 1);
     assert_eq!((p[0].t, p[0].cam.yaw_cd), (s(1), 4500));
     assert_eq!(app.undo_text(), "Undo Set POV");
@@ -141,18 +144,36 @@ fn set_pov_stores_the_shown_view_and_is_one_undo_step() {
     )
     .unwrap();
     app.dispatch(Command::SetPov, now).unwrap();
-    assert_eq!(app.project.camera.path(m).len(), 2);
+    assert_eq!(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m)
+            .len(),
+        2
+    );
     // at 2 s the path is half way (from the first view to the second)
     app.seek(s(2), now);
     let c = app.camera_at_playhead().unwrap();
     assert_eq!((c.yaw_cd, c.pitch_cd), (4500, 2250));
     // undo removes the last POV
     app.dispatch(Command::Undo, now).unwrap();
-    assert_eq!(app.project.camera.path(m).len(), 1);
+    assert_eq!(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m)
+            .len(),
+        1
+    );
     app.dispatch(Command::Undo, now).unwrap();
     assert!(app.project.camera.is_empty());
     app.dispatch(Command::Redo, now).unwrap();
-    assert_eq!(app.project.camera.path(m).len(), 1);
+    assert_eq!(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m)
+            .len(),
+        1
+    );
     // Set POV on a normal clip: greyed with the reason
     app.seek(s(7), now);
     assert!(!app.is_enabled(&Command::SetPov));
@@ -209,7 +230,13 @@ fn a_drag_overrides_the_path_until_seek_play_or_reset() {
     assert!(app.is_enabled(&Command::ResetObjects));
     app.dispatch(Command::ResetObjects, now).unwrap();
     assert_eq!(app.camera_at_playhead().unwrap().yaw_cd, 4000);
-    assert_eq!(app.project.camera.path(m).len(), 2);
+    assert_eq!(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m)
+            .len(),
+        2
+    );
     assert!(!app.camera_is_moved() || app.live[&m].cam != Camera::FRONT);
 }
 
@@ -274,7 +301,12 @@ fn povs_can_be_edited_removed_and_are_limited() {
         now,
     )
     .unwrap();
-    assert_eq!(app.project.camera.path(m), [edit]);
+    assert_eq!(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m),
+        [edit]
+    );
     assert_eq!(app.undo_text(), "Undo Edit POV");
     // no change: no undo step
     let n = app.history.undo_len();
@@ -308,7 +340,13 @@ fn povs_can_be_edited_removed_and_are_limited() {
         now,
     )
     .unwrap();
-    assert!(app.project.camera.path(m)[0].cam.is_in_range());
+    assert!(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m)[0]
+            .cam
+            .is_in_range()
+    );
     for t in [-1, 6_000_000] {
         let bad = Pov {
             t: Micros(t),
@@ -884,7 +922,13 @@ fn roll_and_ease_of_a_point_of_view_reach_the_picture_and_the_export() {
     app.project.camera.set(m, first).unwrap();
     app.project.camera.set(m, second).unwrap();
     // at the middle of the eased move the camera is half way, in yaw and in roll
-    let mid = crate::camera::at(app.project.camera.path(m), s(2)).unwrap();
+    let mid = crate::camera::at(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m),
+        s(2),
+    )
+    .unwrap();
     assert_eq!((mid.yaw_cd, mid.roll_cd), (4500, 1500));
     // the export graph carries the roll in its commands
     let plan = render::plan_export(&app.project, &app.encoders(), |_, _| true).unwrap();
@@ -907,7 +951,12 @@ fn roll_and_ease_of_a_point_of_view_reach_the_picture_and_the_export() {
         now,
     )
     .unwrap();
-    assert_eq!(app.project.camera.path(m)[1], edit);
+    assert_eq!(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m)[1],
+        edit
+    );
 }
 
 // covers: REQ-263
@@ -980,4 +1029,77 @@ fn the_picture_is_half_size_while_the_view_is_dragged_and_full_size_right_after(
     assert!(app.preview.is_draft());
     app.tick(now + std::time::Duration::from_millis(200));
     assert!(!app.preview.is_draft(), "full size after the drag");
+}
+
+// covers: REQ-268
+#[test]
+fn a_copied_clip_has_its_own_camera_path_that_changes_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = sphere_app(dir.path());
+    let now = Instant::now();
+    let m = a(&app);
+    let turn = |app: &mut AppState, yaw| {
+        app.dispatch(
+            Command::TurnCamera {
+                yaw_cd: yaw,
+                pitch_cd: 0,
+            },
+            now,
+        )
+        .unwrap();
+    };
+    // two POVs on the first clip
+    app.seek(s(1), now);
+    turn(&mut app, 1000);
+    app.dispatch(Command::SetPov, now).unwrap();
+    app.seek(s(3), now);
+    turn(&mut app, 1000);
+    app.dispatch(Command::SetPov, now).unwrap();
+    let first = app.project.timeline.clips[0].id;
+    let path = |app: &AppState, id: crate::timeline::ClipId| {
+        app.project.camera.path_of(Some(id.0), m).to_vec()
+    };
+    assert_eq!(path(&app, first).len(), 2);
+    // copy the clip and paste it at the end
+    app.dispatch(Command::SelectClip(Some(first)), now).unwrap();
+    app.dispatch(Command::Copy, now).unwrap();
+    app.seek(app.project.timeline.duration(), now);
+    app.dispatch(Command::Paste, now).unwrap();
+    let copy = app.selected_clip.unwrap();
+    assert_eq!(path(&app, copy), path(&app, first), "a copy of the path");
+    // a POV on the copy leaves the original alone
+    let at = app
+        .project
+        .timeline
+        .start_of(app.project.timeline.index_of(copy).unwrap());
+    app.seek(at + s(2), now);
+    turn(&mut app, 2000);
+    app.dispatch(Command::SetPov, now).unwrap();
+    assert_eq!(path(&app, copy).len(), 3);
+    assert_eq!(
+        path(&app, first).len(),
+        2,
+        "the original's path is unchanged"
+    );
+    // the render of each clip uses its own path
+    let segs =
+        crate::render::segments(&app.project, Micros::ZERO, crate::render::Source::Export).unwrap();
+    assert_eq!(segs[0].sphere.as_ref().unwrap().len(), 2);
+    let own = segs
+        .iter()
+        .filter_map(|s| s.sphere.as_ref())
+        .map(Vec::len)
+        .max();
+    assert_eq!(own, Some(3));
+    // saved and opened again: the paths are as they were; one undo takes the POV away
+    let json = serde_json::to_string(&app.project.camera).unwrap();
+    let back: crate::camera::CameraPaths = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, app.project.camera);
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(path(&app, copy).len(), 2);
+    // a split keeps the whole path on both halves
+    app.seek(s(2), now);
+    app.dispatch(Command::Split, now).unwrap();
+    let right = app.project.timeline.clips[1].id;
+    assert_eq!(path(&app, right).len(), 2);
 }

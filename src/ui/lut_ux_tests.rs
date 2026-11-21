@@ -190,25 +190,35 @@ fn the_effects_menu_and_the_clip_menu_offer_apply_lut() {
     assert!(empty.disabled_reason(&cmd).is_some());
 }
 
-// covers: REQ-075
+// covers: REQ-075, REQ-288
 #[test]
-fn change_aspect_cannot_be_dropped_on_a_clip_and_has_its_own_tooltip() {
+fn change_aspect_dropped_on_a_clip_gives_it_its_own_aspect_and_has_its_own_tooltip() {
     let (_d, app, _) = setup();
     let mut h = Harness::new(app, 1280.0, 800.0);
     let clips = clip_nodes(&h);
-    let before = h.app.project.edit();
+    let second = h.app.project.timeline.clips[1].id;
     let row = h.find("Change aspect").unwrap();
     h.drag(row.rect.center(), clips[1].rect.center());
-    assert_eq!(h.app.project.edit(), before);
-    assert!(!h.app.popups.is_open(Popup::Instance));
-    assert_eq!(
-        crate::ui::effects::ASPECT_TOOLTIP,
-        "Sets the frame of the whole video"
+    assert!(
+        h.app.project.timeline.own_aspect(second).is_some(),
+        "drag onto clip 2"
     );
+    assert!(
+        h.app
+            .project
+            .timeline
+            .own_aspect(h.app.project.timeline.clips[0].id)
+            .is_none()
+    );
+    assert!(h.app.project.timeline.frame_aspect.is_none());
+    assert!(crate::ui::effects::ASPECT_TOOLTIP.contains("Drag onto a clip"));
     assert_ne!(
         crate::ui::effects::ASPECT_TOOLTIP,
         crate::ui::effects::EFFECT_TOOLTIP
     );
+    // a double-click still sets the whole video
+    h.double_click(row.rect.center());
+    assert!(h.app.project.timeline.frame_aspect.is_some());
 }
 
 // covers: REQ-294

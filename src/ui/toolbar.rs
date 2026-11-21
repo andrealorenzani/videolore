@@ -59,6 +59,9 @@ pub fn context_group_of(line_selected: bool, on_360: bool) -> Vec<ActionId> {
             ActionId::MoveInside,
         ]);
     }
+    if line_selected && on_360 {
+        v.push(ActionId::ReAnchor);
+    }
     if on_360 {
         v.push(ActionId::SetPov);
     }
@@ -232,6 +235,7 @@ mod tests {
                 AlignHorizontal,
                 AlignVertical,
                 MoveInside,
+                ReAnchor,
                 SetPov,
                 ResetObjects
             ]

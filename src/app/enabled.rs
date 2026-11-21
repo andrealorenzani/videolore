@@ -23,8 +23,7 @@ impl AppState {
                     Target::Clip(c) => tl.get(*c).is_some(),
                     Target::WholeVideo => !tl.clips.is_empty(),
                 };
-                let aspect_ok =
-                    *effect != EffectKind::ChangeAspect || *target == Target::WholeVideo;
+                let aspect_ok = true;
                 clip_ok
                     && aspect_ok
                     && (*effect != EffectKind::Subtitles || (has_ff && !self.is_generating()))
@@ -50,6 +49,7 @@ impl AppState {
             Command::SetClipVolume { clip, .. }
             | Command::SetVolumeKey { clip, .. }
             | Command::RemoveVolumeKey { clip, .. }
+            | Command::SetSpeed { clip, .. }
             | Command::SetCrop { clip, .. } => tl.get(*clip).is_some(),
             Command::SetCleanAudio { target, .. } | Command::SetCleanStrength { target, .. } => {
                 match target {
@@ -65,6 +65,7 @@ impl AppState {
                 let (lines, texts) = self.inside_plan();
                 !lines.is_empty() || !texts.is_empty()
             }
+            Command::ReAnchor => self.re_anchor_plan().is_some(),
             Command::MoveSelection { .. } => true,
             Command::AlignSelected(axis) => {
                 let (lines, texts) = self.align_plan(*axis);
@@ -122,7 +123,7 @@ impl AppState {
                 !tl.clips.is_empty() && !self.is_generating()
             }
             Command::AddSubtitle => tl.locate(self.playhead).is_some(),
-            Command::AddText(_) | Command::OpenNewText => {
+            Command::AddText(_) | Command::AddPicture(_) | Command::OpenNewText => {
                 !tl.clips.is_empty() && self.playhead < tl.duration()
             }
             Command::DeleteTexts(ids) => {
@@ -165,7 +166,9 @@ impl AppState {
             Command::Redo => "Nothing to redo",
             Command::OpenInPlayer => "Select a video in Media or a clip first",
             Command::Split | Command::AddSubtitle => "Move the playhead over a clip first",
-            Command::AddText(_) | Command::OpenNewText => texts::PLAYHEAD_IN_VIDEO,
+            Command::AddText(_) | Command::AddPicture(_) | Command::OpenNewText => {
+                texts::PLAYHEAD_IN_VIDEO
+            }
             Command::DeleteTexts(_) => texts::SELECT_A_TEXT,
             Command::Cut | Command::Copy | Command::Delete => "Select a clip first",
             Command::Merge if self.target_clip().is_none() => "Select a clip first",
@@ -220,6 +223,8 @@ impl AppState {
                 sphere::SELECT_ON_PICTURE
             }
             Command::MoveInside => placing::ALL_INSIDE,
+            Command::ReAnchor if self.sphere_at_playhead().is_none() => sphere::NOT_A_360,
+            Command::ReAnchor => texts::SELECT_ANCHORED,
             Command::SetPov
             | Command::DragCamera { .. }
             | Command::RollCamera { .. }
@@ -228,10 +233,6 @@ impl AppState {
             Command::RemoveKey { .. } | Command::SetKeyEase { .. } => frame::SELECT_A_KEY,
             Command::RemoveLut(_) => "There is no LUT to remove",
             Command::PickLut(_) | Command::SetLut { .. } => "Add a clip to the timeline first",
-            Command::ApplyEffect {
-                effect: EffectKind::ChangeAspect,
-                ..
-            } => frame::ASPECT_WHOLE_ONLY,
             Command::ApplyEffect {
                 target: Target::Selected,
                 ..

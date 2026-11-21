@@ -14,8 +14,8 @@ in [code-modules.md](code-modules.md).
 | Interface | `ui` (and its sub-modules, among them `scripts`: the interface fonts of the subtitle scripts), `dialogs`, `splash`; the player's `ui`, `fullscreen` |
 | Application | `app` (`AppState`, `Command`, `dispatch`; sub-modules `command`, `dispatch_project`, `dispatch_subtitles`, `dispatch_settings`, `dispatch_playback`, `dispatch_view` (one area of the dispatcher each), `enabled` (which commands can run), `tick` (once per frame), `effects`, `export_flow`, `frame`, `lut`, `offer` (new clip), `placing`, `recovery` (autosave in the app), `sphere`, `stops` (the keys [ and ]), `subs_create`, `subs_import`, `texts`); the player's `app`, `subs` |
 | Engine (threads, processes) | `export` (+ `export::choice`), `outcheck`, `hwenc`, `hwdec` (hardware decoders of the preview), `preview`, `proxy`, `stt`, `jobs`, `ffmpeg`, `scratch` (work-folder root and start-up cleanup), `autosave` (copies of the open project in the cache, written on a worker) |
-| Rendering (pure) | `render` (filter graphs and argv; sub-modules `segments`, `inputs`, `graph`, `plan`, `args`), `format`, `ass`, `camera`, `frame`, `keyframes`, `lut`, `spherical`, `mp4tracks` (switches a subtitle track of an MP4 off by default) |
-| Model (pure) | `project` (+ `project::v9`), `timeline`, `music`, `subtitles`, `text`, `selection`, `history`, `media`, `srt` (SRT and WebVTT), `align`, `measure` (text measured with the font's tables), `placement` (boxes of lines and texts, least move, overlaps) |
+| Rendering (pure) | `render` (filter graphs and argv; sub-modules `segments`, `inputs`, `graph`, `plan`, `args`), `spatial` (ambisonic sound turned by the camera: rotation, the pre-pass and its WAV file; uses `ffmpeg` only to run the decoder), `format`, `ass`, `camera`, `frame`, `keyframes`, `lut`, `spherical`, `mp4tracks` (switches a subtitle track of an MP4 off by default) |
+| Model (pure) | `project` (+ `project::v9`), `timeline`, `music`, `subtitles`, `text` (+ `text::timing`, `text::layout`, `text::events`), `selection`, `history`, `media`, `srt` (SRT and WebVTT), `align`, `measure` (text measured with the font's tables), `placement` (boxes of lines and texts, least move, overlaps) |
 | Configuration and notices | `settings` (uses `base`, `hwenc`, `machine`), `fonts` (uses `ass`, `base`; keeps where the installed font files are and reads a face when a text uses it), `notices` (uses `ffmpeg`, `packaging`) |
 | Shared helpers: `base` | `base::io` (capped reading, atomic writing), `base::private` (private folders and files, `Work`), `base::pos` (`Pos`, `POS_MAX`, `Anchor360`, `align_h`, `align_v`), `base::names` (cache, partial and speech-model file names), `base::language` (language table), `base::testing` (test-only: `best_of`, the best of several timing samples; std only). It uses no module of videolore, so it is in no cycle |
 | Leaves (no dependency on other modules) | `time`, `machine`, `packaging`, `history`, `splash` |
@@ -76,6 +76,10 @@ flowchart TD
   render --> srt
   render --> fonts
   export --> fonts
+  render --> spatial
+  export --> spatial
+  preview --> spatial
+  spatial --> camera & ffmpeg & media & base
 ```
 
 ### Cycles
@@ -201,7 +205,7 @@ engine; it is compiled without the `stt` feature, so it has no speech engine and
 | `autosave` | base, project |
 | `camera` | base, media, time |
 | `dialogs` | app, project |
-| `export` | ass, base, ffmpeg, fonts, format, hwenc, media, mp4tracks, outcheck, project, render, spherical, time |
+| `export` | ass, base, ffmpeg, fonts, format, hwenc, media, mp4tracks, outcheck, project, render, spatial, spherical, time |
 | `ffmpeg` | machine, time |
 | `fonts` | ass, base |
 | `format` | hwenc, media, time |
@@ -220,13 +224,14 @@ engine; it is compiled without the `stt` feature, so it has no speech engine and
 | `desktop` | instance |
 | `outcheck` | ffmpeg, hwenc, render, time |
 | `placement` | ass, base, measure, project, selection, subtitles, text, time |
-| `preview` | base, export, ffmpeg, hwdec, hwenc, jobs, project, render, time |
+| `preview` | base, export, ffmpeg, hwdec, hwenc, jobs, project, render, spatial, time |
 | `project` | base, camera, frame, keyframes, lut, media, music, subtitles, text, time, timeline |
 | `proxy` | base, ffmpeg, jobs, machine, media, settings, time |
-| `render` | ass, base, camera, ffmpeg, fonts, format, frame, hwenc, lut, media, music, project, proxy, srt, subtitles, text, time, timeline |
+| `render` | ass, base, camera, ffmpeg, fonts, format, frame, hwenc, lut, media, music, project, proxy, spatial, srt, subtitles, text, time, timeline |
 | `scratch` | base |
 | `selection` | subtitles, text |
 | `settings` | base, hwenc, machine |
+| `spatial` | base, camera, ffmpeg, media, time |
 | `spherical` | base |
 | `srt` | base, media, subtitles, time |
 | `stt` | align, base, ffmpeg, jobs, media, settings, srt, subtitles, time |

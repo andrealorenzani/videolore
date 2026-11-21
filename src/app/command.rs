@@ -184,6 +184,16 @@ pub enum Command {
         clip: ClipId,
         at: Micros,
     },
+    /// Gives a clip its own Change aspect, or takes it away (REQ-286).
+    SetClipAspect {
+        clip: ClipId,
+        aspect: Option<crate::frame::FrameAspect>,
+    },
+    /// Speed of a clip in thousandths, 500 to 2000 (REQ-281).
+    SetSpeed {
+        clip: ClipId,
+        speed: u16,
+    },
     /// Crop of a clip (REQ-283).
     SetCrop {
         clip: ClipId,
@@ -312,6 +322,8 @@ pub enum Command {
     ToggleLine(LineId),
     /// Adds a text item at the playhead from the fields of a draft (REQ-108).
     AddText(crate::text::TextItem),
+    /// Adds a PNG picture at the playhead (REQ-287); `None` asks for the file.
+    AddPicture(Option<std::path::PathBuf>),
     /// Replaces a text item with the edited one (REQ-108, REQ-110).
     EditText(crate::text::TextItem),
     /// Moves a text item in time and sets its time to live (REQ-110).
@@ -440,6 +452,9 @@ pub enum Command {
     /// Moves the selected items by the least move that puts each wholly inside the picture
     /// (REQ-175).
     MoveInside,
+    /// Moves the anchor of the selected subtitle lines and text items fixed to the sphere to
+    /// the centre of the current view (REQ-259).
+    ReAnchor,
     /// View > Show boxes on the picture.
     ToggleBoxes,
     /// View > Snap to guides (REQ-198).
@@ -542,6 +557,8 @@ impl Command {
             Command::RemoveAllFades => "Remove all fades",
             Command::SetFadeLength(_) => "Fade length",
             Command::SetCrop { .. } => "Crop",
+            Command::SetSpeed { .. } => "Speed",
+            Command::SetClipAspect { .. } => "Clip aspect",
             Command::SetVolumeKey { .. } => "Volume keyframe",
             Command::RemoveVolumeKey { .. } => "Remove volume keyframe",
             Command::SetLutStrength { .. } => "LUT strength",
@@ -564,6 +581,7 @@ impl Command {
             Command::DeleteSubtitles(_) => "Delete subtitle lines",
             Command::ShiftLines { .. } => "Shift subtitle lines",
             Command::AddText(_) => "Add text",
+            Command::AddPicture(_) => "Add picture",
             Command::EditText(_) => "Edit text",
             Command::MoveText { .. }
             | Command::SetTextBoxes { .. }
@@ -634,6 +652,7 @@ impl Command {
             Command::ResizeLines { .. } => "Resize subtitle",
             Command::MoveSelection { .. } => "Move",
             Command::MoveInside => "Move inside the picture",
+            Command::ReAnchor => "Re-anchor",
             Command::AlignSelected(Axis::Horizontal) => "Align horizontally",
             Command::AlignSelected(Axis::Vertical) => "Align vertically",
             _ => "Edit",

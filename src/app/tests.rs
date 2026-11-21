@@ -21,6 +21,8 @@ pub struct FakeDialogs {
     pub ffmpeg: Option<PathBuf>,
     pub model: Option<PathBuf>,
     pub lut: Option<PathBuf>,
+    /// The PNG "Add picture" chooses.
+    pub picture: Option<PathBuf>,
     /// The folder "..." in the Export dialog chooses.
     pub folder: Option<PathBuf>,
     /// Where "Export subtitles" saves, and the name it proposed.
@@ -31,6 +33,9 @@ pub struct FakeDialogs {
 }
 
 impl Dialogs for FakeDialogs {
+    fn pick_picture(&mut self) -> Option<PathBuf> {
+        self.picture.clone()
+    }
     fn pick_media(&mut self) -> Vec<PathBuf> {
         self.media.clone()
     }

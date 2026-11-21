@@ -122,6 +122,12 @@ Hardware can report success while writing damaged frames, so every hardware resu
 - The hardware output is treated as untrusted media and decoded only by the software decoder, like an imported file.
 - No new crates and no network access. A driver crash or hang stays inside the `ffmpeg` process, which is stopped and left behind; a hang of the whole system inside a driver cannot be prevented.
 
+## 2.0.4 additions (stages 4, 5 and 6)
+- **Check (REQ-206 to REQ-211, ADR-177):** the reference render covers at most three one-second ranges; busy and hanging are told apart by the sample times; the check is paused while other jobs run; a candidate skipped in a session is remembered for that session only.
+- **Codecs (REQ-212 to REQ-219, ADR-178, ADR-179):** AV1 and VP9 have presets and encoders; the preview may decode on the video hardware (`hwdec.rs`), and a failure during playback restarts at the playhead with software. The graphics card is Automatic or a device name checked against the enumerated list; a raw argument is never used.
+- **Names (REQ-220 to REQ-224, ADR-180):** codec names are plain in the dialog, with the encoder in the tooltip. The speed-first 360 rule is in [360 video](architecture-360.md#camera-stage-10).
+- **Limits:** the measured result of the Intel graphics class of 0.4.0 (QG-05 g not met) still stands; the AV1 and VP9 hardware paths are checked by the output check, not by measured speed on each system (manual item 15).
+
 ## Known limitations
 - **NVIDIA needs graphics driver 610 or newer** (the bundled build uses Video Codec SDK 13.1). With an older driver the check fails quickly, the normal method is used, and Advanced explains why. This may be common on long-term-support Linux systems.
 - **Linux:** VA-API and Quick Sync need the system's libva and the vendor driver (Intel media driver, or Mesa for AMD). **Fedora's default Mesa cannot encode H.264/HEVC**; AMD users there need RPM Fusion's `mesa-va-drivers-freeworld`. Quick Sync uses the default graphics device only; an Intel GPU on another device is reached through VA-API.

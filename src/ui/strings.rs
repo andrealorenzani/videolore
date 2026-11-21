@@ -163,6 +163,10 @@ pub enum Key {
     NormaliseSpeechTip,
     VolumeKeys,
     RemoveThisKeyframe,
+    ClipAspect,
+    AspectOff,
+    SpeedPercent,
+    ClickToTurnTheView,
 }
 
 /// The English table, in the order of [`Key`].
@@ -386,6 +390,13 @@ pub const ENGLISH: &[(Key, &str)] = &[
     ),
     (Key::VolumeKeys, "Volume keyframes"),
     (Key::RemoveThisKeyframe, "Remove this keyframe"),
+    (Key::ClipAspect, "Aspect of this clip"),
+    (Key::AspectOff, "Off"),
+    (Key::SpeedPercent, "Speed (%)"),
+    (
+        Key::ClickToTurnTheView,
+        "Click to turn the view to this item",
+    ),
 ];
 
 /// The text of `key`.

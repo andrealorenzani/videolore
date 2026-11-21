@@ -6,12 +6,15 @@
 
 use super::*;
 use crate::base::pos::POS_MAX;
+use crate::camera::Camera;
 use crate::text::{self, TextId, TextItem};
 
 /// Disabled reason of adding a text outside the video.
 pub const PLAYHEAD_IN_VIDEO: &str = "Move the playhead inside the video first";
 /// Message of a text without any characters.
 pub const TYPE_SOME_TEXT: &str = "Type some text first";
+/// Disabled reason of Re-anchor without a selection fixed to the sphere (REQ-259).
+pub const SELECT_ANCHORED: &str = "Select a subtitle line or text fixed to the 360 picture first";
 /// Disabled reason of deleting a text.
 pub const SELECT_A_TEXT: &str = "Select a text first";
 
@@ -49,6 +52,37 @@ impl AppState {
             item.font = draft.font;
             item.readability = draft.readability;
             item.anchor = anchor;
+            added = Some(e.texts.add(item).map_err(terr)?);
+            Ok(())
+        })?;
+        if let Some(id) = added {
+            self.selection.select_only(ObjRef::Text(id));
+        }
+        Ok(())
+    }
+
+    /// Adds a PNG picture at the playhead for 3 s, with the box of its proportions in the
+    /// middle of the picture (REQ-287).
+    pub(super) fn add_picture(
+        &mut self,
+        path: Option<std::path::PathBuf>,
+        now: Instant,
+    ) -> Result<(), String> {
+        let len = self.video_len();
+        if self.project.timeline.clips.is_empty() || self.playhead >= len {
+            return Err(PLAYHEAD_IN_VIDEO.into());
+        }
+        let Some(path) = path.or_else(|| self.dialogs.pick_picture()) else {
+            return Ok(());
+        };
+        let picture = crate::picture::read(&path).map_err(|e| e.to_string())?;
+        let frame = self.output_size().unwrap_or((1920, 1080));
+        let (start, ttl) = (self.playhead, self.clamp_ttl(text::DEFAULT_TTL));
+        let mut added = None;
+        self.edit(now, "Add picture", |e| {
+            let id = e.texts.new_id();
+            let mut item = TextItem::new_picture(id, picture, start, frame);
+            item.ttl = ttl;
             added = Some(e.texts.add(item).map_err(terr)?);
             Ok(())
         })?;
@@ -294,6 +328,66 @@ impl AppState {
                 if let Some(a) = l.anchor.as_mut() {
                     a.yaw_cd = yaw_cd;
                     a.pitch_cd = pitch_cd;
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// What Re-anchor moves: the camera at the playhead, the selected lines and texts that
+    /// are fixed to the sphere. `None` when the playhead is not on a 360 clip or nothing
+    /// selected is fixed to it.
+    pub(super) fn re_anchor_plan(
+        &self,
+    ) -> Option<(Camera, Vec<crate::subtitles::LineId>, Vec<TextId>)> {
+        let cam = self.camera_at_playhead()?;
+        let lines: Vec<_> = self
+            .selection
+            .lines()
+            .into_iter()
+            .filter(|i| {
+                self.project
+                    .subtitles
+                    .get(*i)
+                    .is_some_and(|l| l.anchor.is_some())
+            })
+            .collect();
+        let texts: Vec<_> = self
+            .selection
+            .texts()
+            .into_iter()
+            .filter(|i| {
+                self.project
+                    .texts
+                    .get(*i)
+                    .is_some_and(|t| t.anchor.is_some())
+            })
+            .collect();
+        (!lines.is_empty() || !texts.is_empty()).then_some((cam, lines, texts))
+    }
+
+    /// Re-anchor (REQ-259): the selected items fixed to the sphere move to the centre of the
+    /// current view, keeping their size; one undo step.
+    pub(super) fn re_anchor(&mut self, now: Instant) -> Result<(), String> {
+        let (cam, lines, texts) = self.re_anchor_plan().ok_or_else(|| {
+            self.disabled_reason(&Command::ReAnchor)
+                .unwrap_or("")
+                .to_string()
+        })?;
+        self.edit(now, "Re-anchor", |e| {
+            for l in e
+                .subtitles
+                .lines
+                .iter_mut()
+                .filter(|l| lines.contains(&l.id))
+            {
+                if let Some(a) = l.anchor.as_mut() {
+                    (a.yaw_cd, a.pitch_cd) = (cam.yaw_cd, cam.pitch_cd);
+                }
+            }
+            for t in e.texts.items.iter_mut().filter(|t| texts.contains(&t.id)) {
+                if let Some(a) = t.anchor.as_mut() {
+                    (a.yaw_cd, a.pitch_cd) = (cam.yaw_cd, cam.pitch_cd);
                 }
             }
             Ok(())

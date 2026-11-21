@@ -8,6 +8,7 @@
 
 use super::boxes::{self, BoxItem, Corner, HANDLE_TOLERANCE, Hit, ObjectId};
 use super::frame_handles::{self, Grab};
+use super::strings::tr;
 use super::{UiCache, actions::ActionId, menu, placement, subtitle_font};
 use crate::app::{AppState, Command, FrameDrag, FrameFx, FrameValue, ResizeDrag, TextEdge};
 use crate::selection::ObjRef;
@@ -57,7 +58,9 @@ pub fn text_flags(
     frame: (u32, u32),
 ) -> (bool, bool) {
     (
-        item.anchor.is_none() && !crate::text::layout(item, frame.0, frame.1).fits,
+        item.anchor.is_none()
+            && item.picture.is_none()
+            && !crate::text::layout(item, frame.0, frame.1).fits,
         crate::text::alpha_at(item, playhead - item.start) == 0.0,
     )
 }
@@ -203,7 +206,9 @@ pub fn items(app: &AppState, ui: &Ui, frame: (u32, u32)) -> Vec<BoxItem> {
                 width_only: true,
                 // a text that runs past its box (REQ-159); a blink that hides it (REQ-162)
                 warn: item.is_some_and(|t| {
-                    t.anchor.is_none() && !crate::text::layout(t, frame.0, frame.1).fits
+                    t.anchor.is_none()
+                        && t.picture.is_none()
+                        && !crate::text::layout(t, frame.0, frame.1).fits
                 }),
                 hidden: item
                     .is_some_and(|t| crate::text::alpha_at(t, app.playhead - t.start) == 0.0),
@@ -554,12 +559,14 @@ pub fn interact(
     text_box_drag(ui, app, cache, cmds, &resp, picture);
     resize_drag(ui, app, cache, cmds, &resp, picture, frame);
     move_drag(ui, app, cache, cmds, &resp, picture, frame);
+    off_view_arrows(ui, app, cmds, picture, frame);
 
     resp.context_menu(|ui| {
         for id in [
             ActionId::AlignHorizontal,
             ActionId::AlignVertical,
             ActionId::MoveInside,
+            ActionId::ReAnchor,
             ActionId::ResetObjects,
             ActionId::SetPov,
         ] {
@@ -1094,4 +1101,53 @@ fn frame_drag(
 /// focus, so the arrow keys are the camera's and not the playhead's.
 pub fn keyboard_camera_id() -> Id {
     Id::unique("videolore-keyboard-camera")
+}
+
+/// Arrows at the edge of the picture that point to the texts and lines fixed to the sphere
+/// outside the view; a click turns the view to the item (REQ-260).
+fn off_view_arrows(
+    ui: &mut Ui,
+    app: &AppState,
+    cmds: &mut Vec<Command>,
+    picture: Rect,
+    frame: (u32, u32),
+) {
+    let Some(cam) = app.camera_at_playhead() else {
+        return;
+    };
+    let shown = app.shown_project();
+    for (i, a) in placement::off_view_arrows(&shown, app.playhead, frame, cam)
+        .into_iter()
+        .enumerate()
+    {
+        let c = placement::to_screen(
+            Rect::from_center_size(a.at, egui::Vec2::ZERO),
+            picture,
+            frame,
+        )
+        .center();
+        let hit = Rect::from_center_size(c, egui::Vec2::splat(26.0));
+        let r = ui
+            .interact(hit, Id::unique(("videolore-off-view", i)), Sense::click())
+            .on_hover_text(tr!(ClickToTurnTheView));
+        let colour = if r.hovered() {
+            Color32::WHITE
+        } else {
+            Color32::from_rgb(255, 200, 60)
+        };
+        let n = vec2(-a.dir.y, a.dir.x);
+        let tip = c + a.dir * 11.0;
+        let pts = vec![tip, c - a.dir * 8.0 + n * 8.0, c - a.dir * 8.0 - n * 8.0];
+        ui.painter().add(egui::Shape::convex_polygon(
+            pts,
+            colour,
+            Stroke::new(1.5, Color32::BLACK),
+        ));
+        if r.clicked() {
+            cmds.push(Command::TurnCamera {
+                yaw_cd: a.turn.0,
+                pitch_cd: a.turn.1,
+            });
+        }
+    }
 }

@@ -35,6 +35,9 @@ Part of [Architecture](architecture.md). Built in 1.2.6 (REQ-096..099). The 360 
 - The visible edge of a box is a resize handle. A subtitle line's edge is proportional like its corners (25% to 400%, the opposite edge fixed). A text item keeps only its width handle, on the visible part of its right edge; it gets no left handle.
 - The Scale box of a picture uses the same rule (see [frame](architecture-frame.md#visible-edges-161)). One drag is one undo step.
 
+## One box rule (2.0.4, QG-16)
+- Every box of a text or subtitle line is computed by `placement::padded_line_rect`: the measured box and the preview's hit boxes (`ui/placement.rs` `line_box`) use the same rule and the same font and wrap helpers, so the box that is dragged and the box that is exported are one rule. Picture items use their text item's box (see [text](architecture-text.md#picture-items-204)).
+
 ## Tests
 - Pure: handle hit-testing, resize with the opposite corner fixed, limits (25%, 400%, picture edge), align, reset, group size.
 - Pure (1.3.0): the Context Menu rule table (nothing, line, 360 playhead, text only, both).

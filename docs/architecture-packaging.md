@@ -102,6 +102,14 @@ Since 0.3.0, to remove GitHub's deprecation warnings and make builds reproducibl
 - The third-party notices (`packaging/notices/third-party.txt`, shared by both products) name the two pictures: `assets/splash/splash.gif` (editor) and `assets/splash/splash-player.gif` (player); both are the author's own work, licensed MIT (recorded since 1.6.3).
 - The source archive of each release includes the four files, committed with the code.
 
+## 2.0.4 additions (stage 7 and stage 9)
+- The installer configuration check is the reusable workflow `.github/workflows/installer-config.yml`, called by the build and run alone on pull requests that touch packaging (ADR-181); a weekly advisory check (`advisories.yml`) runs with read-only permissions.
+- The Windows player installer uses the NSIS template `packaging/windows-player.nsi` ("Open with" entries only); it has not been run on Windows.
+- The Windows installer tools are pinned by version and SHA-256 (ADR-181); the licence file carries a byte-order mark for the Windows licence page.
+- The Linux archive has a desktop entry, a launcher script and the executables (REQ-233).
+- Installers grow by the Arabic and Devanagari font faces only (ADR-172; a few MB); CJK is not bundled.
+- The 2.0.4 packaging decisions and the checks of the installer configuration are in the [2.0.4 overview](architecture-2.0.4-overview.md#packaging-and-ci).
+
 ## Risks
 - First launch of unsigned packages, the macOS launch-time "open document" event and Linux file-manager behaviour can only be checked by hand; a manual checklist is kept in [code packaging](code-packaging.md). If the macOS event fails, opening the project from inside the app still works.
 - cargo-packager has had no release for about a year; the fallback is a hand-written NSIS script and `hdiutil`.

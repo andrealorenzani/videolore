@@ -110,10 +110,16 @@ An automated test runs an export and subtitle generation together, with speech r
 ## Hardware video encoding (since 0.4.0)
 Faster export with the computer's video hardware, the "Export: Faster / Best quality" choice, the background hardware check, the output check and the automatic software redo are described in [hardware export](architecture-hardware-export.md). "Best quality" is the recommendation on every computer, so "Use recommended settings" now resets four choices (Export back to "Best quality") and also reruns the hardware check and clears remembered hardware failures.
 
-## 2.0.3 targets (planned)
+## 2.0.3 targets
 - Text sizes are measured once per text, font and box, and kept until one of them changes: no measuring per picture. Fonts are read when a text uses them, not at start-up; the window does not wait for the font list.
 - The two-second margins of the recognition pieces add about 3% of the work at the Fast level (the subtitle speed target allows 5%).
 - The speech engine's word timing setting may use more memory; the measured value is recorded in the risks.
+
+## 2.0.4 measurements (stage 6, stage 14)
+- Blurred fill at an eighth of each side (ADR-180): 4K blur 2.9 to 3.1 s, against 3.3 to 3.7 s for a quarter; 1080p 1.4 s against 1.5 to 1.6 s (bundled ffmpeg 9.0.2, three runs).
+- Spatial sound pre-pass: 120 s of four-channel sound in 1.7 s in the debug test profile (69 times real time); a one-minute clip waits about 1 s before the first preview sound. See [media pipeline](architecture-media-pipeline.md#spatial-sound-pre-pass-204).
+- Hardware check: the reference render covers at most three one-second ranges (gate); the time limits are those set in 0.4.2 (1 s and 4 s per candidate, 10 s in total, one repeat), unchanged.
+- Preview copy cache: enforcement is estimated under 100 ms for 1000 copies (measured once).
 
 ## Risks
 - Speeds and memory of the larger speech models are estimates; thresholds may change after measurement.

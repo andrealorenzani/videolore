@@ -45,6 +45,19 @@ Part of [Architecture](architecture.md). Since 1.2.0 (requirements REQ-082..084,
 - **Conversion of format 8** is described in [project files](architecture-projects.md#loading-and-validation).
 - **Tests:** fades on clips 1 to 3 (start of clip 1, end of clip 3 only); deleting clip 2 removes only its effects; a clip appended later has none; Volume 50% sets three clips and one undo restores them; the conversion of a 1.6.0 example keeps each clip's sound and picture.
 
+## Effects added in 2.0.4
+Built in stages 11 and 13 (REQ-274 to REQ-294 and REQ-281, REQ-286 to REQ-288; see the [2.0.4 overview](architecture-2.0.4-overview.md)). Each value is a clip setting, not an effect row.
+- **Fades (REQ-274, REQ-275, ADR-190):** the length of each fade is chosen from 0.1 s up to half of the shorter clip (0 means the default 0.5 s); a boundary can have a fade in, out, both, or none. A 1.5 s fade lasts 1.5 s within one frame (gate).
+- **Music clips (REQ-276, REQ-277):** each music clip has its own volume and mute, and Clean audio.
+- **Clean audio strength (REQ-278):** a dry and wet mix from 0 % to 100 % (0 bypasses the filter). **Enhance speech (REQ-279):** ffmpeg `speechnorm` named "Normalise speech" (`NORMALISE_SPEECH`); no model file.
+- **Volume keyframes (REQ-280, REQ-282):** a clip's volume can have keyframes on the Scale and Move timeline (`Clip.volume_keys`, `Key<u8>`, percent, at most 200), each segment Straight or Ease; the gain is (percent / 100)², through the expression generator. 0 % at 0 s, 100 % at 4 s and 50 % at 2 s gives gain 0.25 (gate). Preview and export agree.
+- **Speed (REQ-281):** a clip's speed is 50 % to 200 % (`Clip.speed` in thousandths, 1000 = normal). The clip's timeline length is its source length divided by the speed (`Clip::len`; `src_len` is the source part); keys and subtitle times stay in source time and are mapped. The picture uses `setpts`, the sound one `atempo`. A clip with a speed is never stream copied, and clips of different speeds do not merge (`DIFFERENT_SPEEDS`). Set in Clip details (`Command::SetSpeed`).
+- **Crop (REQ-283):** a video clip's crop is applied in even pixels before the fit to the frame.
+- **Blur levels and custom ratios (REQ-284, REQ-285):** Change aspect has Low, Medium (default) and High blur, and a custom aspect from 1:4 to 4:1 (ADR-193).
+- **Change aspect of one clip (REQ-286):** a clip's own aspect (`timeline::clip_aspects`, by clip id) is composed in its own frame and then padded into the project frame; that clip is re-encoded.
+- **Drop on a clip (REQ-288):** the Change aspect row can be dragged onto a video clip and then applies to that clip (the drop handling is in `ui/timeline.rs`).
+- The picture overlays of text items and the 360 camera are described in [text](architecture-text.md#picture-items-204) and [360 video](architecture-360.md#anchored-lines-and-camera-paths-204).
+
 ## When the export must re-encode
 In addition to the earlier rules (see [media pipeline](architecture-media-pipeline.md#export)), a start or end fade, any clip whose level is not 100% or which is muted, and (since 1.4.0) any clip with Clean audio, rules out stream copy. The Export dialog's explicit formats (see [export dialog](architecture-export-dialog.md)) also force a re-encode.
 

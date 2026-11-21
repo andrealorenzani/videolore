@@ -245,25 +245,39 @@ pub fn at(path: &[Pov], t: Micros) -> Option<Camera> {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CameraPaths {
     map: BTreeMap<MediaId, Vec<Pov>>,
+    /// The own path of a clip (REQ-268), by clip id and with the source it plays: a clip
+    /// without an entry here follows the path of its source until its path is first
+    /// changed; then it has its own, which changes alone.
+    clips: BTreeMap<u64, (MediaId, Vec<Pov>)>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct PathEntry {
     media: MediaId,
+    /// The clip this path belongs to; absent for the path of a source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    clip: Option<u64>,
     povs: Vec<Pov>,
 }
 
 impl Serialize for CameraPaths {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let v: Vec<PathEntry> = self
+        let mut v: Vec<PathEntry> = self
             .map
             .iter()
             .filter(|(_, p)| !p.is_empty())
             .map(|(m, p)| PathEntry {
                 media: *m,
+                clip: None,
                 povs: p.clone(),
             })
             .collect();
+        // an own path is kept even when empty: it says "no point of view" for that clip
+        v.extend(self.clips.iter().map(|(c, (m, p))| PathEntry {
+            media: *m,
+            clip: Some(*c),
+            povs: p.clone(),
+        }));
         v.serialize(s)
     }
 }
@@ -272,12 +286,17 @@ impl<'de> Deserialize<'de> for CameraPaths {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<CameraPaths, D::Error> {
         let v = Vec::<PathEntry>::deserialize(d)?;
         let mut map = BTreeMap::new();
+        let mut clips = BTreeMap::new();
         for e in v {
-            if map.insert(e.media, e.povs).is_some() {
+            let dup = match e.clip {
+                None => map.insert(e.media, e.povs).is_some(),
+                Some(c) => clips.insert(c, (e.media, e.povs)).is_some(),
+            };
+            if dup {
                 return Err(serde::de::Error::custom("duplicate camera path"));
             }
         }
-        Ok(CameraPaths { map })
+        Ok(CameraPaths { map, clips })
     }
 }
 
@@ -290,7 +309,7 @@ pub enum PovError {
 
 impl CameraPaths {
     pub fn is_empty(&self) -> bool {
-        self.map.values().all(Vec::is_empty)
+        self.map.values().all(Vec::is_empty) && self.clips.is_empty()
     }
 
     /// The POVs of a source (sorted).
@@ -304,20 +323,7 @@ impl CameraPaths {
 
     /// Stores a POV; one at the same time is replaced.
     pub fn set(&mut self, media: MediaId, pov: Pov) -> Result<(), PovError> {
-        if pov.t < Micros::ZERO {
-            return Err(PovError::BadTime);
-        }
-        let v = self.map.entry(media).or_default();
-        match v.binary_search_by_key(&pov.t, |p| p.t) {
-            Ok(i) => v[i] = pov,
-            Err(i) => {
-                if v.len() >= MAX_POVS {
-                    return Err(PovError::TooMany);
-                }
-                v.insert(i, pov);
-            }
-        }
-        Ok(())
+        set_in(self.map.entry(media).or_default(), pov)
     }
 
     /// Removes the POV at exactly `t`.
@@ -325,14 +331,11 @@ impl CameraPaths {
         let Some(v) = self.map.get_mut(&media) else {
             return false;
         };
-        let Ok(i) = v.binary_search_by_key(&t, |p| p.t) else {
-            return false;
-        };
-        v.remove(i);
+        let done = remove_in(v, t);
         if v.is_empty() {
             self.map.remove(&media);
         }
-        true
+        done
     }
 
     /// Replaces the POV at `old_t` by `pov` (which may have another time).
@@ -343,9 +346,106 @@ impl CameraPaths {
         self.set(media, pov)
     }
 
+    /// The POVs that apply to `clip` (its own path, else its source's) (REQ-268).
+    pub fn path_of(&self, clip: Option<u64>, media: MediaId) -> &[Pov] {
+        match clip.and_then(|c| self.clips.get(&c)) {
+            Some((_, v)) => v,
+            None => self.path(media),
+        }
+    }
+
+    /// The own path of `clip`, made from the source's when it has none yet.
+    fn own(&mut self, clip: u64, media: MediaId) -> &mut Vec<Pov> {
+        let from = self.map.get(&media).cloned().unwrap_or_default();
+        &mut self.clips.entry(clip).or_insert((media, from)).1
+    }
+
+    /// Drops an own path that is empty when its source has no points of view either (it
+    /// then says nothing).
+    fn tidy_own(&mut self, clip: u64) {
+        let empty = self
+            .clips
+            .get(&clip)
+            .is_some_and(|(m, v)| v.is_empty() && self.map.get(m).is_none_or(Vec::is_empty));
+        if empty {
+            self.clips.remove(&clip);
+        }
+    }
+
+    /// [`Self::set`] for a clip: its own path changes, no other clip's (REQ-268). Without a
+    /// clip the source's path changes.
+    pub fn set_in_clip(
+        &mut self,
+        clip: Option<u64>,
+        media: MediaId,
+        pov: Pov,
+    ) -> Result<(), PovError> {
+        match clip {
+            Some(c) => set_in(self.own(c, media), pov),
+            None => self.set(media, pov),
+        }
+    }
+
+    /// [`Self::remove`] for a clip.
+    pub fn remove_in_clip(&mut self, clip: Option<u64>, media: MediaId, t: Micros) -> bool {
+        match clip {
+            Some(c) => {
+                let done = remove_in(self.own(c, media), t);
+                self.tidy_own(c);
+                done
+            }
+            None => self.remove(media, t),
+        }
+    }
+
+    /// [`Self::edit`] for a clip.
+    pub fn edit_in_clip(
+        &mut self,
+        clip: Option<u64>,
+        media: MediaId,
+        old_t: Micros,
+        pov: Pov,
+    ) -> Result<(), PovError> {
+        match clip {
+            Some(c) => {
+                let v = self.own(c, media);
+                if !remove_in(v, old_t) {
+                    return Err(PovError::BadTime);
+                }
+                let r = set_in(v, pov);
+                self.tidy_own(c);
+                r
+            }
+            None => self.edit(media, old_t, pov),
+        }
+    }
+
+    /// Gives `to` a copy of the path of `from` (a copied, pasted or split clip, REQ-268).
+    pub fn copy_clip(&mut self, from: u64, to: u64) {
+        if let Some(own) = self.clips.get(&from).cloned() {
+            self.clips.insert(to, own);
+        }
+    }
+
+    /// The own path of a clip, for a clipboard.
+    pub fn own_path(&self, clip: u64) -> Option<&(MediaId, Vec<Pov>)> {
+        self.clips.get(&clip)
+    }
+
+    /// Puts an own path on a clip (a pasted clip).
+    pub fn put_own(&mut self, clip: u64, own: (MediaId, Vec<Pov>)) {
+        self.clips.insert(clip, own);
+    }
+
+    /// Forgets the own paths of clips that are not in `keep` (a project just opened).
+    pub fn retain_clips(&mut self, keep: impl Fn(u64) -> bool) {
+        self.clips.retain(|c, _| keep(*c));
+    }
+
     /// Forgets the path of a source.
     pub fn drop_media(&mut self, media: MediaId) {
         self.map.remove(&media);
+        self.clips.retain(|_, (m, _)| *m != media);
     }
 
     /// Checks a loaded value: structure errors are returned, views are brought into
@@ -354,8 +454,13 @@ impl CameraPaths {
         &mut self,
         duration: impl Fn(MediaId) -> Option<Micros>,
     ) -> Result<(), &'static str> {
-        for (m, v) in &mut self.map {
-            let d = duration(*m).ok_or("camera path of an unknown media")?;
+        let all = self
+            .map
+            .iter_mut()
+            .map(|(m, v)| (*m, v))
+            .chain(self.clips.values_mut().map(|(m, v)| (*m, v)));
+        for (m, v) in all {
+            let d = duration(m).ok_or("camera path of an unknown media")?;
             if v.len() > MAX_POVS {
                 return Err("too many points of view");
             }
@@ -371,6 +476,32 @@ impl CameraPaths {
             }
         }
         Ok(())
+    }
+}
+
+fn set_in(v: &mut Vec<Pov>, pov: Pov) -> Result<(), PovError> {
+    if pov.t < Micros::ZERO {
+        return Err(PovError::BadTime);
+    }
+    match v.binary_search_by_key(&pov.t, |p| p.t) {
+        Ok(i) => v[i] = pov,
+        Err(i) => {
+            if v.len() >= MAX_POVS {
+                return Err(PovError::TooMany);
+            }
+            v.insert(i, pov);
+        }
+    }
+    Ok(())
+}
+
+fn remove_in(v: &mut Vec<Pov>, t: Micros) -> bool {
+    match v.binary_search_by_key(&t, |p| p.t) {
+        Ok(i) => {
+            v.remove(i);
+            true
+        }
+        Err(_) => false,
     }
 }
 
@@ -503,14 +634,41 @@ pub fn command_lines_capped(
     src_in: Micros,
     src_out: Micros,
     fps: Fps,
+    size: (u32, u32),
+    max_per_second: u32,
+) -> String {
+    command_lines_speed(
+        target,
+        path,
+        src_in,
+        src_out,
+        fps,
+        size,
+        max_per_second,
+        1000,
+    )
+}
+
+/// [`command_lines_capped`] for a clip played at `speed` thousandths (REQ-281): the
+/// commands are timed on the output (sped up) clock and read the path at source time.
+#[allow(clippy::too_many_arguments)]
+pub fn command_lines_speed(
+    target: &str,
+    path: &[Pov],
+    src_in: Micros,
+    src_out: Micros,
+    fps: Fps,
     (w, h): (u32, u32),
     max_per_second: u32,
+    speed: u16,
 ) -> String {
     let mut out = String::new();
     if path.len() < 2 || src_out <= src_in {
         return out;
     }
-    let frames = fps.frame_index(src_out - src_in).max(1);
+    let speed = i128::from(speed.max(1));
+    let out_len = Micros((i128::from((src_out - src_in).0) * 1000 / speed) as i64);
+    let frames = fps.frame_index(out_len).max(1);
     let mut step = ((frames + MAX_COMMAND_LINES - 1) / MAX_COMMAND_LINES).max(1);
     if max_per_second > 0 {
         step = step.max((fps.as_f64() / f64::from(max_per_second)).ceil() as i64);
@@ -519,7 +677,8 @@ pub fn command_lines_capped(
     let mut prev = at(path, src_in).unwrap_or_default();
     let mut k = step;
     while k < frames {
-        let cam = at(path, src_in + fps.frame_time(k)).unwrap_or_default();
+        let src_t = Micros((i128::from(fps.frame_time(k).0) * speed / 1000) as i64);
+        let cam = at(path, src_in + src_t).unwrap_or_default();
         if cam != prev {
             let t = fps.frame_time(k).0;
             let _ = write!(

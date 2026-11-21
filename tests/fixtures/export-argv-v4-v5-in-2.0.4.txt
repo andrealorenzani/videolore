@@ -1,0 +1,181 @@
+## project-v4-1.2.6
+-hide_banner
+-nostdin
+-loglevel
+error
+-y
+-protocol_whitelist
+file,pipe
+-ss
+0.000000
+-t
+3.000000
+-i
+file:<dir>/a.mp4
+-protocol_whitelist
+file,pipe
+-ss
+0.500000
+-t
+3.500000
+-i
+file:<dir>/b.mp4
+-protocol_whitelist
+file,pipe
+-ss
+2.000000
+-t
+4.000000
+-i
+file:<dir>/a.mp4
+-protocol_whitelist
+file,pipe
+-ss
+1.000000
+-t
+7.000000
+-i
+file:<dir>/song.mp3
+-filter_complex
+[0:v:0]trim=start=0.000000:duration=2.000000,setpts=PTS-STARTPTS,fps=25/1,sendcmd=f=cam0.txt,v360@c0=input=e:output=flat:reset_rot=1:w=640:h=360:d_fov=77.5555:yaw=90.00:pitch=5.00:interp=linear,setsar=1,setpts=PTS+0.000000/TB,format=yuv420p,fade=t=in:st=0:d=0.500000,fade=t=out:st=1.500000:d=0.500000,setpts=PTS-STARTPTS[v0];[0:a:0]atrim=start=0.000000:duration=2.000000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=2.000000,atrim=duration=2.000000,asetpts=PTS-STARTPTS+0.000000/TB,volume=0.160000,afade=t=in:st=0:d=0.500000,afade=t=out:st=1.500000:d=0.500000,asetpts=PTS-STARTPTS[a0];[1:v:0]trim=start=0.000000:duration=2.500000,setpts=PTS-STARTPTS+0.000000/TB,scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=25/1,format=yuv420p,fade=t=in:st=0:d=0.500000,fade=t=out:st=2.000000:d=0.500000,setpts=PTS-STARTPTS[v1];[1:a:0]atrim=start=0.000000:duration=2.500000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=2.500000,atrim=duration=2.500000,asetpts=PTS-STARTPTS+0.000000/TB,volume=0.640000,afade=t=in:st=0:d=0.500000,afade=t=out:st=2.000000:d=0.500000,asetpts=PTS-STARTPTS[a1];[2:v:0]trim=start=0.000000:duration=3.000000,setpts=PTS-STARTPTS,fps=25/1,sendcmd=f=cam2.txt,v360@c2=input=e:output=flat:reset_rot=1:w=640:h=360:d_fov=87.8248:yaw=22.50:pitch=2.50:interp=linear,setsar=1,setpts=PTS+0.000000/TB,format=yuv420p,fade=t=in:st=0:d=0.500000,fade=t=out:st=2.420000:d=0.500000,setpts=PTS-STARTPTS[v2];[2:a:0]atrim=start=0.000000:duration=3.000000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=3.000000,atrim=duration=3.000000,asetpts=PTS-STARTPTS+0.000000/TB,volume=0.000000,afade=t=in:st=0:d=0.500000,afade=t=out:st=2.500000:d=0.500000,asetpts=PTS-STARTPTS[a2];[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[cv][ca];[cv]subtitles=f=subs.ass:fontsdir=fonts[outv];anullsrc=r=48000:cl=stereo,atrim=duration=1.500000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS[m0];[3:a:0]atrim=start=0.000000:duration=6.000000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=6.000000,atrim=duration=6.000000,asetpts=PTS-STARTPTS[m1];[m0][m1]concat=n=2:v=0:a=1,afade=t=out:st=7.000000:d=0.500000[mb];[ca]volume=1.000000[va];[mb]volume=0.360000[vm];[va][vm]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.97:level=0[outa]
+-map
+[outv]
+-map
+[outa]
+-c:v
+libx264
+-preset
+veryfast
+-b:v
+800000
+-maxrate
+800000
+-bufsize
+1600000
+-pix_fmt
+yuv420p
+-c:a
+aac
+-b:a
+96000
+-ar
+48000
+-movflags
++faststart
+-f
+mp4
+-progress
+pipe:1
+-nostats
+file:<dir>/o.mp4
+## project-v4-1.2.6.ass
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 640
+PlayResY: 360
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Noto Sans,20,&H0000FFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,38,38,65,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.50,0:00:01.80,Default,,0,0,0,,{\an5\pos(160,288)\fs30\bord2}{\k40}hello {\k40}there {\k50}world
+Dialogue: 0,0:00:02.50,0:00:04.00,Default,,0,0,0,,{\k37}a {\k37}line {\k37}(with) {\k37}braces
+Dialogue: 0,0:00:05.50,0:00:07.00,Default,,0,0,0,,{\k70}the {\k80}end
+
+## project-v5-1.3.0
+-hide_banner
+-nostdin
+-loglevel
+error
+-y
+-protocol_whitelist
+file,pipe
+-ss
+0.000000
+-t
+3.000000
+-i
+file:<dir>/a.mp4
+-protocol_whitelist
+file,pipe
+-ss
+0.500000
+-t
+3.500000
+-i
+file:<dir>/b.mp4
+-protocol_whitelist
+file,pipe
+-ss
+2.000000
+-t
+4.000000
+-i
+file:<dir>/a.mp4
+-protocol_whitelist
+file,pipe
+-ss
+1.000000
+-t
+7.000000
+-i
+file:<dir>/song.mp3
+-filter_complex
+[0:v:0]trim=start=0.000000:duration=2.000000,setpts=PTS-STARTPTS,fps=25/1,sendcmd=f=cam0.txt,v360@c0=input=e:output=flat:reset_rot=1:w=640:h=360:d_fov=77.5555:yaw=90.00:pitch=5.00:interp=linear,setsar=1,setpts=PTS+0.000000/TB,format=yuv420p,fade=t=in:st=0:d=0.500000,fade=t=out:st=1.500000:d=0.500000,setpts=PTS-STARTPTS[v0];[0:a:0]atrim=start=0.000000:duration=2.000000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=2.000000,atrim=duration=2.000000,asetpts=PTS-STARTPTS+0.000000/TB,volume=0.160000,afade=t=in:st=0:d=0.500000,afade=t=out:st=1.500000:d=0.500000,asetpts=PTS-STARTPTS[a0];[1:v:0]trim=start=0.000000:duration=2.500000,setpts=PTS-STARTPTS+0.000000/TB,scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=25/1,format=yuv420p,fade=t=in:st=0:d=0.500000,fade=t=out:st=2.000000:d=0.500000,setpts=PTS-STARTPTS[v1];[1:a:0]atrim=start=0.000000:duration=2.500000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=2.500000,atrim=duration=2.500000,asetpts=PTS-STARTPTS+0.000000/TB,volume=0.640000,afade=t=in:st=0:d=0.500000,afade=t=out:st=2.000000:d=0.500000,asetpts=PTS-STARTPTS[a1];[2:v:0]trim=start=0.000000:duration=3.000000,setpts=PTS-STARTPTS,fps=25/1,sendcmd=f=cam2.txt,v360@c2=input=e:output=flat:reset_rot=1:w=640:h=360:d_fov=87.8248:yaw=22.50:pitch=2.50:interp=linear,setsar=1,setpts=PTS+0.000000/TB,format=yuv420p,fade=t=in:st=0:d=0.500000,fade=t=out:st=2.420000:d=0.500000,setpts=PTS-STARTPTS[v2];[2:a:0]atrim=start=0.000000:duration=3.000000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=3.000000,atrim=duration=3.000000,asetpts=PTS-STARTPTS+0.000000/TB,volume=0.000000,afade=t=in:st=0:d=0.500000,afade=t=out:st=2.500000:d=0.500000,asetpts=PTS-STARTPTS[a2];[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[cv][ca];[cv]subtitles=f=subs.ass:fontsdir=fonts[outv];anullsrc=r=48000:cl=stereo,atrim=duration=1.500000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS[m0];[3:a:0]atrim=start=0.000000:duration=6.000000,asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=6.000000,atrim=duration=6.000000,asetpts=PTS-STARTPTS[m1];[m0][m1]concat=n=2:v=0:a=1,afade=t=out:st=7.000000:d=0.500000[mb];[ca]volume=1.000000[va];[mb]volume=0.360000[vm];[va][vm]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.97:level=0[outa]
+-map
+[outv]
+-map
+[outa]
+-c:v
+libx264
+-preset
+veryfast
+-b:v
+800000
+-maxrate
+800000
+-bufsize
+1600000
+-pix_fmt
+yuv420p
+-c:a
+aac
+-b:a
+96000
+-ar
+48000
+-movflags
++faststart
+-f
+mp4
+-progress
+pipe:1
+-nostats
+file:<dir>/o.mp4
+## project-v5-1.3.0.ass
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 640
+PlayResY: 360
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Noto Sans,20,&H0000FFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,38,38,65,1
+Style: Text,Noto Sans,18,&H00FFFFFF,&H00FFFFFF,&H00000000,&HFF000000,0,0,0,0,100,100,0,0,1,1,0,5,38,38,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.50,0:00:01.80,Default,,0,0,0,,{\an5\pos(160,288)\fs30\bord2}{\k40}hello {\k40}there {\k50}world
+Dialogue: 0,0:00:02.50,0:00:04.00,Default,,0,0,0,,{\k37}a {\k37}line {\k37}(with) {\k37}braces
+Dialogue: 0,0:00:05.50,0:00:07.00,Default,,0,0,0,,{\k70}the {\k80}end
+Dialogue: 1,0:00:01.00,0:00:04.00,Text,,288,288,0,,{\an5\q2\fnNoto Sans\b1\fs36.0\bord0\1c&HFFFFFF&\pos(320,299)\fad(500,0)}Hello
+Dialogue: 1,0:00:02.00,0:00:02.40,Text,,255,255,0,,{\an5\q2\fnNoto Sans\b1\fs36.0\bord0\1c&H00C8FF&\pos(320,108)}Pinned on\Nthe sphere
+Dialogue: 1,0:00:02.80,0:00:03.20,Text,,255,255,0,,{\an5\q2\fnNoto Sans\b1\fs36.0\bord0\1c&H00C8FF&\pos(320,108)}Pinned on\Nthe sphere
+Dialogue: 1,0:00:03.60,0:00:04.00,Text,,255,255,0,,{\an5\q2\fnNoto Sans\b1\fs36.0\bord0\1c&H00C8FF&\pos(320,108)}Pinned on\Nthe sphere
+

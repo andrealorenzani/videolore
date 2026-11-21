@@ -110,7 +110,9 @@ is told.
 times are coarse. On the committed fixture (`tests/fixtures/align/`) 23 of 28 words were found
 and their starts were 0.48 s off on average (1.10 s at worst); the target of the requirement
 (90 % found, each within 0.3 s) is not reached. The test that checks that target
-(`alignment_matches_real_speech`) is therefore marked `#[ignore]`.
+(`alignment_matches_real_speech`) is therefore marked `#[ignore]`. The numbers of the later work on this (2.0.3: DTW token times, the onset snap, the offline placing test) are kept in
+[code-readable-text.md](code-readable-text.md) under REQ-177, next to the requirement text in
+[business-subtitle-accuracy.md](business-subtitle-accuracy.md).
 
 ## Subtitle positions
 

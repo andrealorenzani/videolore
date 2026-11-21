@@ -85,6 +85,12 @@ The interface is tested headless (no window): egui's accessibility tree, which l
 - The Effects list's "Add Text" row (and Effects > Add text at playhead) opens a non-modal popup with the multiline text, the effects, time to live, colour and font (see [text items](architecture-text.md)). "Add" is one command and one undo step; Esc or Close creates nothing. The popup's list of installed fonts is filled by the background scan; while it runs the picker shows "Loading fonts…".
 - Fade through black is labelled "Fade IN/OUT" everywhere in the interface (label change only, one label table; the internal name and the project format are unchanged).
 
+## 2.0.4 additions (stages 2, 3, 7 and 8)
+- **Interface (REQ-234 to REQ-247):** remembered window and popup places with an off-screen rule (`ui/place.rs`, `ui/view_menu.rs`); sections that hide, collapse and dock; workspaces; the toolbar and shortcut editors (`ui/keymap.rs`); a theme (Light, Dark or System, `ui/theme.rs`); text size through the egui text styles; all visible words in one English table (`ui/strings.rs`, a test rejects literal labels in `ui/*.rs`); accessibility names through eframe's AccessKit feature.
+- **Gestures (REQ-189 to REQ-199):** a drag (trim, markers, text handles) is live while held and one command on release (`ui/gesture_ux_tests.rs`); the `[` and `]` keys are bound as listed in the shortcut table; guides and safe areas are part of the preview's view.
+- **Whole video and keyframes (REQ-200 to REQ-205):** one row per clip in the whole-video popup; an offer for new clips is a status item with a button; keyframes can be copied and pasted; there is one keyframe widget for Scale and Move and no separate file for it.
+- **One window (REQ-225 to REQ-233):** a second start writes a file to the inbox of the running window (`src/instance.rs`) and exits; the running window opens it through the usual open path.
+
 ## Risks
 - egui changes its menu, popup and panel API between releases; the logic lives in small pure modules (layout, actions, markers, background jobs) so the drawing code stays thin.
 - Global keys such as Delete, Backspace and the arrows must not fire while typing; this is checked by tests for each key.

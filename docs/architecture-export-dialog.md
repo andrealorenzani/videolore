@@ -60,6 +60,11 @@ Part of [Architecture](architecture.md). Requirements REQ-118 to REQ-122 (see [e
 - Only audio: a 10 s timeline with music gives a 10 s audio file with the music at its volume; the mp3 option is offered only when the encoder is listed.
 - Interface (headless): Ctrl/Cmd+E and File > Export open the dialog; "..." changes the folder; a missing folder disables Export with its reason; an existing file asks first; Cancel writes nothing; a second opening shows the last choices; the dialog fits 800x500 with every control reachable.
 
+## 2.0.4 additions (stages 5 and 6)
+- The video format table has AV1 and VP9 presets (REQ-212, REQ-213), with the encoders the bundled build lists; the codec names are plain and the encoder is in the tooltip (REQ-220).
+- The 360 video export uses the speed-first preset (Q-5, decided by Andrea): the fastest encoder preset whose file stays within 1.5 times the Best-quality size (Q-5). See [360 video](architecture-360.md#camera-stage-10).
+- The hardware and codec rules are in [hardware export](architecture-hardware-export.md#204-additions-stages-4-5-and-6).
+
 ## Risks
 - Codec names in the main dialog may confuse people who do not know them (product risk accepted by Andrea; wording can change).
 - Export choices are lost when the program restarts (by design).

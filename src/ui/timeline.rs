@@ -369,10 +369,7 @@ fn tracks(
             .on_hover_text(format!(
                 "{name}\nDouble-click for details, right-click for more"
             ));
-        if resp
-            .dnd_hover_payload::<EffectKind>()
-            .is_some_and(|e| *e != EffectKind::ChangeAspect)
-        {
+        if resp.dnd_hover_payload::<EffectKind>().is_some() {
             over_clip = true;
             ui.ctx().set_cursor_icon(egui::CursorIcon::Copy);
             painter.rect_stroke(
@@ -382,10 +379,8 @@ fn tracks(
                 StrokeKind::Inside,
             );
         }
-        // Change aspect is for the whole video: dropped on a clip it does nothing (REQ-130)
-        if let Some(effect) = resp.dnd_release_payload::<EffectKind>()
-            && *effect != EffectKind::ChangeAspect
-        {
+        // every effect can be dropped on a clip; Change aspect gives it its own aspect (REQ-288)
+        if let Some(effect) = resp.dnd_release_payload::<EffectKind>() {
             cmds.push(Command::SelectClip(Some(c.id)));
             cmds.push(Command::ApplyEffect {
                 effect: *effect,
@@ -621,10 +616,7 @@ fn clip_menu(ui: &mut Ui, app: &AppState, i: usize, at: Micros, cmds: &mut Vec<C
         entry(ui, true, label, cmds, vec![cmd]);
     }
     ui.menu_button(tr!(Effects), |ui| {
-        for effect in EffectKind::ALL
-            .into_iter()
-            .filter(|e| *e != EffectKind::ChangeAspect)
-        {
+        for effect in EffectKind::ALL {
             entry(
                 ui,
                 true,

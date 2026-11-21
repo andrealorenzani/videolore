@@ -1,6 +1,6 @@
 # Architecture: videolore player
 
-Part of [Architecture](architecture.md). Requirements REQ-138 to REQ-141 and REQ-150 ([business](business-player.md)). Since 1.6.0; the start screen (REQ-150) since 1.6.2.
+Part of [Architecture](architecture.md). Requirements REQ-138 to REQ-141 and REQ-150 ([business](business-player.md)). Since 1.6.0; the start screen (REQ-150) since 1.6.2; the settings file, playlist, "Open with" and picture subtitles of 2.0.4 are in the last section.
 
 ## Overview
 The player is a second program, `videolore-player`, with its own executable and its own installers for Windows, macOS and Linux. It plays one video file with the 360 view, subtitles and full screen. It never edits, saves or exports. It reuses the editor's playback engine, so a video looks the same in both programs.
@@ -27,10 +27,10 @@ The player is a second program, `videolore-player`, with its own executable and 
 ## Opening files
 - One video at a time: a path on the command line, File > Open, or a dropped file where drag and drop works.
 - A `.vlproj` is refused by its extension, with a message; the file is not read.
-- The player does not register file types (no double-click from the file manager in 1.6.0).
+- The player does not register file types in 1.6.0 (since 2.0.4: "Open with" only, below).
 
 ## Settings, files and privacy
-- No settings file in 1.6.0. Start-up uses the detected computer and the recommended levels (Balanced, preview Automatic).
+- No settings file in 1.6.0. Start-up uses the detected computer and the recommended levels (Balanced, preview Automatic). Since 2.0.4 the player has a settings file of its own (below).
 - The player writes only to the application cache (preview copies) and to its private work folders. It never writes next to the video.
 - No network access; the player works offline.
 
@@ -51,4 +51,13 @@ The player is a second program, `videolore-player`, with its own executable and 
 - Scope creep: users may expect a playlist or file association (both out of scope for 1.6.0).
 - A second copy of `ffmpeg` in the player installer adds download size (not measured).
 - The player and the editor share the preview engine: a change to the engine is tested in both.
-- Bitmap subtitles (Blu-ray, DVB) are not listed.
+- Bitmap subtitles (PGS, DVD, DVB) are listed since 2.0.4 as "(picture)"; the picture subtitle is not draggable and is not shown on a 360 video.
+
+## 2.0.4 additions (stages 9 and 14)
+- **Settings file (REQ-248, ADR-184):** the player keeps its program settings in its own file in the user's configuration folder (`player/src/settings.rs`), never next to the video. It is read with the editor's rules (regular file, size cap, defaults on damage). Sibling programs are found by fixed name next to the player's own executable (`src/siblings.rs`), with an absolute path, argument lists and no shell.
+- **Playlist (REQ-249 to REQ-252):** the videos played in the session form a playlist (`player/src/playlist.rs`).
+- **Open with (REQ-254 to REQ-256):** the player is offered under "Open with" for MP4, MOV, MKV, WebM, M4V and AVI. Windows uses its own NSIS template, `packaging/windows-player.nsi`, with "Open with" entries only (`OpenWithProgids`); the default program stays the user's choice (decided by Andrea). The template is not run on Windows yet (manual item 22). Sibling programs are started by fixed name (ADR-184).
+- **Picture subtitles (REQ-253, ADR-185):** `MediaFormat.picture_tracks` lists the bitmap subtitle streams of a file (ordinal among all subtitle streams, kind `pgs`, `dvd` or `dvb`, language, title; sanitised on load). The player's menu lists them after the text tracks, marked "(picture)" (`Source::Picture`). Choosing one sets the overlay; any other choice clears it. The overlay is part of the shared render graph, before the trim: `[k:v:0][k:s:N]overlay=eof_action=pass:format=auto`, so the subtitle is scaled and fitted with the picture. Other projects get the same graph as before (golden argv unchanged).
+- **Limits:** a picture subtitle already on screen when a run starts inside it (or when a paused picture starts inside it) appears at its next change, because ffmpeg does not replay display sets after a seek; no picture subtitle on a 360 clip; nothing to drag.
+- **Test:** the picture subtitle fixture is a PGS stream written by hand in `player/tests/ffmpeg.rs` (`pgs`, own work), muxed and checked at the pixels of the box before, inside and after its time.
+- **Splash option (REQ-295, ADR-199):** the player uses the same rule as the editor (`should_show`: the option, the last shown version and a path argument).

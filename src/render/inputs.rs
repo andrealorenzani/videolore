@@ -42,6 +42,8 @@ pub struct Input {
     pub path: PathBuf,
     pub start: Micros,
     pub len: Micros,
+    /// A still picture that is shown for `len` (REQ-287): read as a loop.
+    pub still: bool,
 }
 
 /// Groups source spans `(path, start, end)` into inputs. Returns the inputs and, for each
@@ -63,6 +65,7 @@ pub fn group_inputs(spans: &[(PathBuf, Micros, Micros)]) -> (Vec<Input>, Vec<usi
                 path: path.clone(),
                 start: *start,
                 len: *end - *start,
+                still: false,
             });
         }
         index.push(inputs.len() - 1);
@@ -75,6 +78,19 @@ pub fn group_inputs(spans: &[(PathBuf, Micros, Micros)]) -> (Vec<Input>, Vec<usi
 pub fn input_args(inputs: &[Input]) -> Vec<OsString> {
     let mut a = Vec::new();
     for i in inputs {
+        if i.still {
+            a.extend(argv([
+                "-protocol_whitelist".to_string(),
+                "file,pipe".to_string(),
+                "-loop".to_string(),
+                "1".to_string(),
+                "-t".to_string(),
+                (i.len + Micros::SECOND).ff(),
+                "-i".to_string(),
+            ]));
+            a.push(file_arg(&i.path));
+            continue;
+        }
         a.extend(argv([
             "-protocol_whitelist".to_string(),
             "file,pipe".to_string(),

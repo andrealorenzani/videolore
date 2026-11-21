@@ -23,7 +23,7 @@ Part of [Architecture](architecture.md). Since 1.6.0 with the workspace; the res
 
 ## CI (as built)
 - CI runs on fixed runner versions (Ubuntu 24.04, macOS 15, Windows Server 2025) instead of "latest", and every third-party CI action is pinned to an exact commit of a release that runs on Node.js 24. See [packaging](architecture-packaging.md#ci-runners-and-actions).
-- CI installs `ffmpeg`, `libasound2-dev`, `cmake`, `libclang-dev` and `espeak-ng` on Linux. The check job sets `VIDEOLORE_REQUIRE_FFMPEG=1`, so tests that need `ffmpeg` fail instead of being skipped.
+- CI installs `libasound2-dev` and `libclang-dev` on Linux when the image lacks them (`cmake` is on the image); the tests use the pinned ffmpeg (see [verification](architecture-verification.md#test-ffmpeg-qg-07-qg-08)). The check job sets `VIDEOLORE_REQUIRE_FFMPEG=1`, so tests that need `ffmpeg` fail instead of being skipped. espeak-ng is not installed (2.0.4).
 - The tests run once in CI, with coverage measurement (since 0.3.0); the minimum-Rust job only builds. Test media are generated once and reused, and are as small as each test allows.
 - Building from source needs `libasound2-dev` on Linux (audio) and, for the default speech-to-text feature, `cmake`, a C++ compiler and libclang. `--no-default-features` builds without both.
 - CI also checks licences, security advisories and withdrawn ("yanked") versions of all crates (`cargo-deny`) and that the generated crate notices are up to date.
@@ -32,20 +32,26 @@ Part of [Architecture](architecture.md). Since 1.6.0 with the workspace; the res
 ## CI time (1.6.1, QG-06)
 - **Measured** (public GitHub API, job and step times of the runs of 2026-11-14 to 2026-11-19): the push of 1.6.0 (`3b09f97`) took 28 min to its last executable. Its check job took 25.2 min, of which the system-packages step took 20.0 min. In the other recent runs that step took 0.2 to 1.5 min, once 5.4 min. The rest of the check job took about 5.2 min: the three clippy runs 0.3 min, the instrumented tests 2.3 min, the crate notices 1.1 min (`cargo-about` is compiled from source on every run).
 - **Steps:**
-  1. Install only the packages the image does not have. The Ubuntu 24.04 runner image lists `cmake` and `pkg-config`, so they are not installed again. `libasound2-dev` (audio, needed for the default build), `libclang-dev` (bindgen for the speech engine), `ffmpeg` (tests) and `espeak-ng` (speech tests) are installed with `--no-install-recommends`, after `apt-get update` with retries and a 30 s HTTP timeout, so a stalled mirror fails fast and is retried. The check job gets a `timeout-minutes` limit.
+  1. Install only the packages the image does not have. The Ubuntu 24.04 runner image lists `cmake` and `pkg-config`, so they are not installed again. `libasound2-dev` (audio, needed for the default build) and `libclang-dev` (bindgen for the speech engine) are installed with `--no-install-recommends`, after `apt-get update` with retries and a 30 s HTTP timeout, so a stalled mirror fails fast and is retried. The check job gets a `timeout-minutes` limit.
   2. `cargo-about` 0.9.3 from a prebuilt binary (the already pinned `taiki-e/install-action`), not `cargo install` (about 1 min saved per run).
-  3. The speech test may read the committed `tests/fixtures/align/speech.mkv` instead of making speech with `espeak-ng` (the test's assertions stay; one package less). Open to the developer's choice.
+  3. The speech test reads the committed `tests/fixtures/align/speech.mkv` (the test's assertions stay; one package less; decided in 2.0.4, QG-14).
   4. Not changed: every check, the tests and coverage thresholds, the executables and the MSRV build. The executables still start after the check job, so no untested binary is built on a push. No third-party apt cache action is added (supply chain).
 - **Estimate** (not yet measured on the new workflow): check job about 4.4 to 4.7 min, i.e. about 80% shorter than the 25.2 min of the 1.6.0 run and about 20 to 25% shorter than a typical run of the same steps (about 5.9 min). Push to last executable: about 7 min instead of 28. The 30% target of QG-06 is an assumption: the measured time of the first run after the change is reported against both baselines.
 
 ## Assets and CI effects (1.6.2)
-- Four splash files are compiled in, by `include_bytes!` and `include_str!` in the library (`src/splash.rs`), with paths from `CARGO_MANIFEST_DIR`: `assets/splash/splash.gif`, `assets/splash/splash-player.gif`, `assets/splash/summary.txt`, `assets/splash/summary-player.txt`. There is no `build.rs`: a missing file is the compiler's error, naming the file.
+- Four splash files are compiled in, by `include_bytes!` and `include_str!` in the library (`src/splash.rs`), with paths from `CARGO_MANIFEST_DIR`: `assets/splash/splash.gif`, `assets/splash/splash-player.gif`, `assets/splash/summary.txt`, `assets/splash/summary-player.txt`. A missing picture is the compiler's error, naming the file. Since 2.0.4 a `build.rs` checks the two summaries (below).
 - Every build needs the two summaries, the editor's and the player's (both are in the library). Their names are fixed (`summary.txt`, `summary-player.txt`), so a version bump needs no new file; the summaries are rewritten for each version.
 - CI adds no step. Fmt, clippy, tests, the MSRV build and the executables all compile the library, so a missing asset fails them at once.
 - Git: the new player picture and the summaries must be committed with the code; the release `sources.zip` takes untracked files that are not ignored, so it is complete either way.
 - 1.6.3: the per-version files (`1.6.0.gif`, `1.6.1.gif`, `<version>.txt`, `<version>-player.txt`) are gone; the pictures and summaries have fixed names.
 
-## CI checks of 2.0.2 (planned)
+## Build script and CI checks of 2.0.4 (QG-14 to QG-18)
+- `build.rs` (package root) reads `assets/splash/summary.txt` and `summary-player.txt` at build time. A missing or empty summary stops the build with a message that names the program and the file and says to write a heading and at most five lines. It re-runs when a summary changes (`cargo:rerun-if-changed`).
+- `scripts/version.sh set` runs the notices check (`scripts/notices.sh --check`) afterwards as a reminder; the player's notice file names no version of its own.
+- The speech fixture is committed (`tests/fixtures/align/speech.mkv`, checked by SHA-256), so the CI packages list has no speech synthesiser.
+- The test-suite memory cap rule of 1.6.2 applies unchanged.
+
+## CI checks of 2.0.2
 The test job uses the pinned bundled ffmpeg (not the runner's), the cargo-about version is checked, and a `package-config` job checks the installer configuration on every push. Details: [verification](architecture-verification.md#automatic-builds-qg-10).
 
 ## Test memory cap (1.6.2, development machine)

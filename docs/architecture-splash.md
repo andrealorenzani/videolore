@@ -38,10 +38,14 @@ The four rules:
 - Decoding: once per program on first display, with the `image` crate's GIF decoder (about 100 ms budget). Every frame (up to 64) is kept as a texture and loops; repaint is requested only while the splash is open. Caps: side 4096 px, and a total of 64 MiB of RGBA per picture (1.6.2).
 - The summary's fitted size is computed once when the splash opens and again when the scale changes, then cached.
 
+## 2.0.4 additions (stage 12, QG-17)
+- **Show the start screen (REQ-295, ADR-199):** Settings has "Show the start screen" with "At every start" (the default) and the other choice of REQ-295; the rule is the pure `should_show(option, last shown version, path argument)` in `splash.rs`, used by both programs. The last shown version is kept in the program settings.
+- **Summary check:** `build.rs` stops the build with a message when `assets/splash/summary.txt` or `summary-player.txt` is missing or empty (the message says to write a heading and at most five lines). The pictures keep their fixed names; each is 88 KB and stays in the shared library.
+
 ## Tests
 - Assets: each picture decodes at its own size (editor 486 x 506, player 487 x 505); each summary exists and has a heading and 1 to 5 items; each text rectangle lies inside its picture.
 - Layout numbers: panel 400 px (plus or minus 1), panel height equal to the picture height, scaling when the screen is small.
-- Text: "Version 1.6" fits its rectangle for the editor and for the player; the summary of each program fits at a size of at least 10 px, measured with egui's wrapping. 2.0.2 (planned): both summaries fit at 7 px with no scroll; an over-long summary at 7 px fails (see [verification](architecture-verification.md#splash-summaries-req-154)).
+- Text: "Version 1.6" fits its rectangle for the editor and for the player; the summary of each program fits at a size of at least 10 px, measured with egui's wrapping. 2.0.2: both summaries fit at 7 px with no scroll; an over-long summary at 7 px fails (see [verification](architecture-verification.md#splash-summaries-req-154)).
 - State (editor, unchanged): open at start, closed by each of the three methods, not shown with a path, the notice waits for the close, opened again at the next start.
 - State (player, REQ-150): the same rules; a video on the command line opens none; Esc closes the splash before full screen.
 

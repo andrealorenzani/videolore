@@ -52,6 +52,11 @@ Noto Sans Devanagari Bold (subtitle font for Hindi)
 
   Chinese, Japanese, Korean and other scripts use the fonts installed on the computer.
 
+Font of the tests (not shipped)
+  The tests install a copy of Noto Sans Bold under another name and another
+  ascent value (tests/support/patched_font.rs). It is under the same licence
+  (SIL Open Font License 1.1) and is made at test time, never distributed.
+
 Phosphor Icons (the icons of the interface, bundled as a font)
   Version:  2.1.2 (Regular weight)
   Licence:  MIT

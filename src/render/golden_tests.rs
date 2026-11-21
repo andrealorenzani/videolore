@@ -353,3 +353,43 @@ fn projects_of_1_2_5_export_as_in_1_2_5() {
         assert_eq!(now.lines().count(), GOLDEN_1_2_5.lines().count());
     }
 }
+
+/// Committed projects of formats 4 (1.2.6: 360 camera path, line sizes) and 5 (1.3.0: text
+/// items with a `size`), made by hand from the format 3 fixture.
+const V4_FIXTURE: &str = include_str!("../../tests/fixtures/project-v4-1.2.6.vlproj");
+const V5_FIXTURE: &str = include_str!("../../tests/fixtures/project-v5-1.3.0.vlproj");
+
+/// What 2.0.4 exports for [`V4_FIXTURE`] and [`V5_FIXTURE`]: recorded when the tests were
+/// added (QG-15), not by the old versions, so it guards the exports from now on.
+const GOLDEN_V4_V5: &str = include_str!("../../tests/fixtures/export-argv-v4-v5-in-2.0.4.txt");
+
+fn render_v4_v5() -> String {
+    render_files(&[
+        ("project-v4-1.2.6", V4_FIXTURE),
+        ("project-v5-1.3.0", V5_FIXTURE),
+    ])
+}
+
+/// Writes the format 4 and 5 golden file. Run on purpose only.
+#[test]
+#[ignore]
+fn write_golden_v4_v5() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/export-argv-v4-v5-in-2.0.4.txt"
+    );
+    std::fs::write(path, render_v4_v5()).unwrap();
+}
+
+/// Projects of formats 4 and 5 export with the same arguments as when they were recorded.
+// covers: REQ-105, REQ-123
+#[test]
+fn projects_of_formats_4_and_5_export_with_the_recorded_arguments() {
+    let now = render_v4_v5();
+    if now != GOLDEN_V4_V5 {
+        for (a, b) in now.lines().zip(GOLDEN_V4_V5.lines()) {
+            assert_eq!(a, b);
+        }
+        assert_eq!(now.lines().count(), GOLDEN_V4_V5.lines().count());
+    }
+}

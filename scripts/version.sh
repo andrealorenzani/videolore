@@ -42,7 +42,11 @@ case "${1:-}" in
     cargo update --workspace --offline -q 2>/dev/null || cargo update --workspace -q
     check
     trap - ERR
-    rm -rf "$backup" ;;
+    rm -rf "$backup"
+    # after each bump the third-party notices are checked (QG-17); only a reminder here
+    if command -v cargo-about >/dev/null 2>&1 && [[ -x scripts/notices.sh ]]; then
+      scripts/notices.sh --check >/dev/null 2>&1 || echo "version.sh: the notices are out of date: run scripts/notices.sh" >&2
+    fi ;;
   check) check ;;
   *) sed -n '2,8p' "$0"; exit 1 ;;
 esac

@@ -7,7 +7,6 @@
 
 use crate::app::{Command, PlayerState, SKIP};
 use crate::fullscreen::HINT_TEXT;
-use crate::subs::Source;
 use eframe::egui::{
     self, Align2, Button, Color32, ColorImage, Context, CursorIcon, Event, Id, Key, Modifiers,
     Order, Rect, Sense, TextureHandle, TextureOptions, Ui, pos2, vec2,
@@ -274,11 +273,10 @@ fn subtitles_menu(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
         ui.close();
     }
     for (i, s) in app.subs.sources.iter().enumerate() {
-        let name = match s {
-            Source::Embedded(_) => s.name(),
-            Source::File(p) => format!("{} (file)", videolore::media::display_name(p)),
-        };
-        let b = Button::selectable(app.subs.selected == Some(i), label(icon::SUBTITLES, &name));
+        let b = Button::selectable(
+            app.subs.selected == Some(i),
+            label(icon::SUBTITLES, &s.menu_name()),
+        );
         if ui.add(b).clicked() {
             cmds.push(Command::ChooseSubtitles(Some(i)));
             ui.close();

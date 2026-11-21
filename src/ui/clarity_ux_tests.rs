@@ -313,3 +313,42 @@ fn copy_keyframes_and_paste_keyframes_to_are_in_the_popup() {
     );
     assert_eq!(h.app.history.undo_label(), Some("Paste keyframes"));
 }
+
+// covers: REQ-203
+#[test]
+fn a_click_on_an_empty_place_of_the_keyframe_bar_moves_the_playhead_and_deselects() {
+    let (_d, mut app) = loaded();
+    let c1 = app.project.timeline.clips[0].id;
+    let now = Instant::now();
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::Scale,
+            target: Target::Clip(c1),
+        },
+        now,
+    )
+    .unwrap();
+    app.dispatch(
+        Command::AddKey {
+            target: FrameTarget::Clip(c1),
+            effect: FrameFx::Scale,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.popups.key, Some(s(1)));
+    let mut h = Harness::new(app, 1280.0, 900.0);
+    h.idle(3);
+    let r = h
+        .nodes
+        .iter()
+        .filter(|n| n.interactive && n.rect.height() < 40.0 && n.rect.width() > 200.0)
+        .filter(|n| n.rect.height() > 20.0)
+        .map(|n| n.rect)
+        .next()
+        .expect("the keyframe bar");
+    // the clip is 5 s long: a click four fifths across is 4 s of the clip, far from the key
+    h.click(pos2(r.left() + r.width() * 0.8, r.center().y));
+    assert_eq!(h.app.popups.key, None, "the key is not selected any more");
+    assert_eq!(h.app.playhead, s(4));
+}

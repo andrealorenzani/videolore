@@ -41,6 +41,13 @@ The cube is written by the program into the private work folder with a fixed nam
 - Any LUT makes the export a re-encode, even at default settings.
 - Hardware export uses the same picture graph as the other picture effects; its output check compares with the reference render of the same plan.
 
+## Strength, other formats and copies (2.0.4)
+- **Strength (REQ-289, ADR-191):** the Apply LUT popup has a strength from 0 % to 100 % (default 100 %). The table is blended with the identity by the chosen percent (`lut.rs` `with_strength`: every entry mixed with the identity; 0 = no change, 100 = the table), so one table serves every strength and no second filter runs.
+- **Formats (REQ-290, REQ-291):** `.3dl` and `.csp` files are read as well as `.cube`, with the same refusal rules and the same caps and clamping. A `.cube` input range (DOMAIN_MIN, DOMAIN_MAX) that is not 0 to 1 is applied when it is read. Fixtures check the results within two colour levels of their references (gate).
+- **Missing file at export (REQ-292):** a three-button modal replaces the refusal of 1.6.0: cancel, or export without the LUT for that export only. The project keeps the LUT.
+- **Copies in the project (REQ-293, ADR-191):** the project stores a copy of each LUT file it uses, as the normalised cube text (a JSON string in `lut_copies`, keyed by SHA-256). A copy is at most 20 MB, and at most 64 MiB per project; a copy over the limit keeps only the path. The project read cap is 96 MiB (see [projects](architecture-projects.md#format-11-204)).
+- **Favourites (REQ-294):** up to 20 LUT files in the popup, kept in the program settings (never in a project).
+
 ## Non-functional targets (1.6.0)
 - A 1080p preview with a 33-point LUT keeps the playback rate of the same clip without a LUT within 20% (assumption, measured by hand).
 - Export with a LUT at most 1.5 times the time of the same re-encode without one (assumption, to measure).

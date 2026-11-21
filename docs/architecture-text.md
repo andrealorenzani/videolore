@@ -49,14 +49,24 @@ Part of [Architecture](architecture.md). Built in 1.3.0 (requirements REQ-108..1
 - Blink with a short interval produces many events: capped as above.
 - Fonts parsed by the system's font code (libass, FreeType in `ffmpeg`) are trusted system files; a broken system font is an operating-system issue, recorded here.
 
-## 2.0.3 (planned): readable text
+## 2.0.3: readable text
 - **Readability:** each text item has a choice: None (no outline, no box), Outline (a black outline, 6% of the text size) or Background box (a black box behind the lines, 60% opaque, padded by 10% of the text size). New texts start with Outline. Texts saved before 2.0.3 open as None: they lose the black outline of 8% that they had in 2.0.2. The choice is drawn the same in preview and export; a blinking text hides its box too.
 - **Best fit from the font:** the size is measured with the widths of the font's glyphs (kerning included), not estimated per character. The text fills 90% to 100% of the box height, unless the size reaches its limits: at most 10% of the picture height (a short text in a big box stays at that size) or at least 2% (then the text runs past the box and the box shows a warning).
 - **Box height:** a handle on the bottom edge changes the height between 5% and 100% of the picture height (the top edge stays). The right and the left edge handles change the width only (10% to 100%). While a handle is dragged, the box is drawn live with a readout of the width and the size in % of the picture height; one drag is one undo step.
 - **Fonts:** an installed font is drawn as chosen; a font that is not installed is drawn in the bundled subtitle font and the popup says so. The project keeps the font name. Installed fonts are read when a text uses them, never at start-up.
 - **Texts saved before 2.0.3:** their size changes when opened, because the size now follows the measured font and the 10% limit. The status bar shows once how many texts changed size, and that the black outline of the old texts was removed (readability None). The message appears only for a project with at least one text item, and never again once the project is saved in format 10. There is no command to restore the old size or the outline; widening the box makes the text larger again.
-- **Project format 10:** texts store their readability and box height (see [projects](architecture-projects.md#format-10-planned-203)).
-- **Tests (planned):** measured fit on ten texts (short, wide, narrow, one to four lines) fills 90% to 100%; preview and export sizes agree within 2% of the picture height; pixel tests for the outline and the box; height and width handles with their limits and one undo step; blink hides the box in the export; installed and missing fonts.
+- **Project format 10:** texts store their readability and box height (see [projects](architecture-projects.md#format-10-203)).
+- **Tests:** measured fit on ten texts (short, wide, narrow, one to four lines) fills 90% to 100%; preview and export sizes agree within 2% of the picture height; pixel tests for the outline and the box; height and width handles with their limits and one undo step; blink hides the box in the export; installed and missing fonts.
+
+## Picture items (2.0.4)
+- A picture item is a text item with a picture (`TextItem.picture`, a `Picture` in `src/picture.rs`: the file path and its size in pixels, read from the 24-byte PNG header; videolore does not decode the image, ffmpeg does). The item keeps every rule of a text item: its lane, box, move, resize, align, undo and time to live (default 3 s). Its text is the file name.
+- The picture is fitted in the box and centred on the item's place (`Picture::rect`). It makes no ASS events: `render::picture_overlays` gives one overlay per item, `build_graph_pics` adds a looped still input (`-loop 1`) and an `overlay` with `enable='between(t,…)'` before the subtitles. A missing file stops an export (`RenderError::Picture`) and is skipped in a preview. Text effects do not apply to pictures; the 360 video export has no pictures.
+- Commands: `Command::AddPicture(Option<PathBuf>)` (the file is chosen with `Dialogs::pick_picture` when none is given), the Add Picture row of the Effects list and `Action::AddPicture`, a picture popup with the time and Delete.
+- Limits as built: PNG only; each side at most 16384 px; the path at most 4096 bytes. The picture is kept by path, not embedded in the project. The plan's embedded copy and its limits (20 items, 8 MiB per file, 16 megapixels) are not in the code (open, see the [2.0.4 quality risks](architecture-2.0.4-quality.md#risks-and-cut-backs)).
+
+## Text split and one box rule (2.0.4, QG-16)
+- `text.rs` keeps the text item types and `Texts`; the code moved to `text/timing.rs` (times and time to live), `text/layout.rs` (the measured layout and fit) and `text/events.rs` (the ASS events, cut per segment). No behaviour change.
+- **One box rule:** `placement::padded_line_rect` gives the box of a line with its padding. The measured box (`placement::line_rect`) and the preview's hit boxes (`ui/placement.rs` `line_box`) both use it, with the same `line_font` and `line_wrap`, so the box you drag is the box that is exported.
 
 ## Deviations (1.3.0)
 - **Time to live:** the plan refused a time to live longer than the video on load. As built, on load a text item is refused as damaged only outside 0.1 s to 24 hours. A longer-than-video value is accepted and the text is cut at the end of the video; when the item is added, edited or moved, its time to live is clamped to the video length.

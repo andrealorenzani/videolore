@@ -59,7 +59,14 @@ Since 1.2.0 Subtitles is applied like the other effects (see [effects](architect
 - **1.3.0:** the selection is one thing for the timeline and the preview: Ctrl/Shift+click on a box adds to it without moving it, and a Shift+drag selection survives so the selected boxes can be moved together (see [user interface](architecture-ui.md#selection-130)). A subtitle line added at the playhead on a 360 clip is anchored to the sphere; drawn there, it is plain white text without its preset style (see [360 video](architecture-360.md#anchored-text-and-subtitles-130)).
 - **Known limits:** egui and the burn-in library may measure text a few pixels differently near the edges (the burned result is what counts); a line made longer after being placed near an edge may then cross it; positioned lines shown at the same time can overlap.
 
-## 2.0.3 (planned): placement and warnings
+## Subtitle files and the separate track (2.0.4, stage 1)
+- **Import:** SRT and WebVTT files are read as regular files of at most 16 MiB, UTF-8 (a byte-order mark is accepted; other encodings are refused), at most 100,000 cues, every time finite; control and bidi characters are removed. The lines then go through the same creation rules as the other lines (one undo step).
+- **Export:** the same lines are written as SRT, WebVTT or ASS (`ass` module), through a temporary file and a rename.
+- **Separate subtitle track (REQ-182, ADR-171):** an SRT track is added as one more input and written as `mov_text` (MP4 and MOV) or `srt` (MKV). It is never the default track. The "not default" flag is set in the MP4 track header by clearing the enabled bit (ffmpeg always enables the first track of a kind); MKV uses the disposition.
+- **Fonts for more scripts (ADR-172):** Arabic and Devanagari faces are committed (SIL OFL); Chinese, Japanese and Korean use the system's fonts, and the subtitle list says so when none is installed. The font list is read on the first open of the subtitle list.
+- Burned-in subtitles keep their 1.2.0 to 2.0.3 rules; the separate track is for players that show tracks.
+
+## 2.0.3: placement and warnings
 - **Warnings, not moves:** two subtitle lines or text items shown at the same time whose boxes overlap are both marked in the Subtitles list and on the timeline; a line or text partly outside the picture shows a dashed outline and the status bar counts them at the playhead. Nothing moves by itself, except the move back inside after a text edit that makes its box larger.
 - **Move inside the picture:** a command (Context Menu and Edit menu) moves the selected items by the least move that puts their whole box inside; greyed out when none is partly outside. One undo step.
 - **Group move:** a selection of lines and text items moves together when one selected box is dragged; one undo step.
@@ -67,7 +74,7 @@ Since 1.2.0 Subtitles is applied like the other effects (see [effects](architect
 - **Align and size:** Align on a line still at its style's place stores its place first; the command is greyed out with "already centred" when nothing would move. When a line grows or wraps onto more lines, its centre stays where it was.
 - **Hint:** while a line or text is selected, the status bar names the selection gestures.
 - **Scale, Move and Change aspect** never move items (they keep their place in the frame); they are warned about as above.
-- **Tests (planned):** pure rules (boxes, least move, centre, overlaps) and the commands, with one undo step each; the pixel check of the centre of a grown line (within 0.5% of the picture height) in preview and export.
+- **Tests:** pure rules (boxes, least move, centre, overlaps) and the commands, with one undo step each; the pixel check of the centre of a grown line (within 0.5% of the picture height) in preview and export.
 
 ## CPU requirements (since 0.2.1)
 - whisper.cpp is compiled for a **fixed instruction-set baseline**, not for the machine that builds it. This is set once in `.cargo/config.toml` (`GGML_NATIVE=OFF`), which the `whisper-rs` build passes on to whisper.cpp's build.
@@ -109,7 +116,7 @@ Since 1.2.0 Subtitles is applied like the other effects (see [effects](architect
 
 ## Tests
 - Transcription and download are behind small interfaces with test doubles, so the whole flow (chunking, language, progress, cancel, consent per level, "Use Fast instead", checksum mismatch, interrupted download, non-HTTPS refusal, storage and removal, old-processor message, regenerate confirmation) is tested without the real models. Since 1.2.0 also: only the clip's part reaches `ffmpeg` and the recogniser, lines of other clips are unchanged, positions in the ASS file, selection and group moves.
-- One integration test runs the real model on a short synthetic voice clip (made with `espeak-ng`) and checks that "hello" is recognised with increasing word times. It runs in CI with the model cached.
+- One integration test runs the real model on a short synthetic voice clip (committed as a fixture; the generator is not needed to run it) and checks that "hello" is recognised with increasing word times. It runs in CI with the model cached.
 
 ## Risks
 - The C++ build of whisper.cpp on three platforms slows CI and can break on toolchain changes.

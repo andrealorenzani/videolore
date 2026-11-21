@@ -305,6 +305,7 @@ pub fn run(
         std::fs::write(work.path().join(t.file), &t.content).map_err(io)?;
     }
     render::write_command_files(work.path(), plan.command_files()).map_err(io)?;
+    prepare_spatial(job, runner, plan.spatial(), work.path(), cancel)?;
     let mut after = None;
     if let Some((cand, codec, bps)) = hw_choice(job, &plan) {
         let attempt = Attempt {
@@ -369,6 +370,27 @@ pub fn run(
     }
 }
 
+/// Turns the ambisonic sound of the 360 clips by their cameras into the work folder, where the
+/// filter graph reads it (REQ-273).
+fn prepare_spatial(
+    job: &ExportJob,
+    runner: &dyn Runner,
+    jobs: &[crate::spatial::SpatialJob],
+    dir: &Path,
+    cancel: &AtomicBool,
+) -> Result<(), ExportError> {
+    for sj in jobs {
+        crate::spatial::prepare(runner, &job.ffmpeg, dir, sj, cancel).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::Interrupted {
+                ExportError::Cancelled
+            } else {
+                ExportError::Io(format!("spatial sound: {e}"))
+            }
+        })?;
+    }
+    Ok(())
+}
+
 /// "Only audio" (REQ-119): the sound of the whole timeline written to the output through
 /// the same partial-file rule as a video.
 fn run_audio(
@@ -383,6 +405,7 @@ fn run_audio(
     let _ = tx.send(ExportEvent::Started { stream_copy: false });
     let io = |e: std::io::Error| ExportError::Io(e.to_string());
     let work = crate::base::private::Work::new(&job.work_root).map_err(io)?;
+    prepare_spatial(job, runner, &plan.graph.spatial, work.path(), cancel)?;
     let list = work.path().join("list.ffconcat");
     let script = work.path().join("graph.txt");
     let paths = ExportPaths {
@@ -1081,6 +1104,58 @@ pub(crate) mod tests {
             std::fs::write(out, b"video").ok()?;
             ok("out_time_us=1000000\nprogress=continue\nout_time_us=2000000\nprogress=end\n")
         })
+    }
+
+    // covers: REQ-273
+    #[test]
+    fn a_360_clip_with_ambisonic_sound_is_turned_first_and_a_failure_or_cancel_stops_the_export() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut j = job(dir.path());
+        j.project.media[0].format.spherical = Some(true);
+        j.project.media[0].format.channels = Some(4);
+        let fake = |ok_pcm: bool| {
+            FakeRunner::default().on(move |_, a| {
+                if a.iter().any(|x| x == "f32le") {
+                    // the pre-pass: four channels of raw samples on stdout
+                    return Some(crate::ffmpeg::CmdOutput {
+                        success: ok_pcm,
+                        stdout: vec![0; 4 * 4 * 480],
+                        stderr: "no sound".into(),
+                    });
+                }
+                let out = a.last()?.strip_prefix("file:")?.to_string();
+                std::fs::write(out, b"video").ok()?;
+                ok("out_time_us=2000000\nprogress=end\n")
+            })
+        };
+        // it works: the pre-pass ran once before the export and its file is read by the graph
+        let runner = Arc::new(fake(true));
+        let ev = start(j.clone(), runner.clone()).join();
+        assert!(
+            matches!(ev.last(), Some(ExportEvent::Done { .. })),
+            "{ev:?}"
+        );
+        let calls = runner.calls.lock().unwrap().clone();
+        assert!(calls[0].iter().any(|x| x == "f32le"), "{calls:?}");
+        assert!(
+            calls[1]
+                .iter()
+                .any(|x| x.contains("spatial-") && x.ends_with(".wav")),
+            "{calls:?}"
+        );
+        // it fails: the export fails with the reason and writes nothing
+        std::fs::remove_file(dir.path().join("out.mp4")).unwrap();
+        let ev = start(j.clone(), Arc::new(fake(false))).join();
+        let Some(ExportEvent::Failed(m)) = ev.last() else {
+            panic!("{ev:?}");
+        };
+        assert!(m.contains("spatial sound") && m.contains("no sound"), "{m}");
+        assert!(!dir.path().join("out.mp4").exists());
+        // cancelled during the pre-pass
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let cancel = AtomicBool::new(true);
+        let e = run(&j, &fake(true), &cancel, &tx).unwrap_err();
+        assert_eq!(e, ExportError::Cancelled);
     }
 
     // covers: REQ-021

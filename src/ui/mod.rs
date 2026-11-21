@@ -164,7 +164,7 @@ impl UiCache {
                 .hash(&mut h);
         }
         for c in &app.project.timeline.clips {
-            (c.media, c.src_in, c.src_out).hash(&mut h);
+            (c.media, c.src_in, c.src_out, c.speed).hash(&mut h);
         }
         app.output_size().hash(&mut h);
         let key = h.finish();

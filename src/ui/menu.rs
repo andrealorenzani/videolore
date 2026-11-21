@@ -79,6 +79,7 @@ pub const SUBTITLES: &[ActionId] = &[
     ActionId::AlignHorizontal,
     ActionId::AlignVertical,
     ActionId::MoveInside,
+    ActionId::ReAnchor,
     ActionId::ResetObjects,
 ];
 
@@ -145,6 +146,7 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(Move),
                 A(ApplyLut),
                 A(AddText),
+                A(AddPicture),
                 S,
                 Submenu("Apply to selected clip", APPLY_TO_CLIP),
                 Submenu("Apply to whole video", APPLY_TO_VIDEO),
@@ -294,6 +296,7 @@ mod tests {
             Move,
             ApplyLut,
             AddText,
+            AddPicture,
         ] {
             assert!(effects.contains(&Item::Action(id)), "{id:?}");
         }

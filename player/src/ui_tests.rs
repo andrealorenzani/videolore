@@ -323,7 +323,7 @@ fn file_open_menu_item_and_a_dropped_file_open_a_video_and_a_project_is_refused(
     assert!(h.app.notice.is_none());
 }
 
-// covers: REQ-140
+// covers: REQ-140, REQ-253
 #[test]
 fn the_subtitles_menu_lists_none_the_tracks_and_the_opened_files() {
     let d = tempfile::tempdir().unwrap();
@@ -338,6 +338,7 @@ fn the_subtitles_menu_lists_none_the_tracks_and_the_opened_files() {
         "None",
         "English — Main",
         "Italian",
+        "French (picture)",
         "film.srt (file)",
         "Open .srt…",
     ] {
@@ -349,7 +350,17 @@ fn the_subtitles_menu_lists_none_the_tracks_and_the_opened_files() {
     assert_eq!(h.app.subs.selected, None);
     h.click_label("Subtitles");
     h.click_label("film.srt (file)");
+    assert_eq!(h.app.subs.selected, Some(3));
+    assert_eq!(h.app.project.subtitles.lines.len(), 2);
+    // the picture track is drawn by the graph from the file: it has no lines and takes the
+    // lines of the file away; the next choice takes the picture track away (REQ-253)
+    h.click_label("Subtitles");
+    h.click_label("French (picture)");
     assert_eq!(h.app.subs.selected, Some(2));
+    assert!(h.app.project.picture_sub.is_some() && h.app.project.subtitles.lines.is_empty());
+    h.click_label("Subtitles");
+    h.click_label("film.srt (file)");
+    assert!(h.app.project.picture_sub.is_none());
     assert_eq!(h.app.project.subtitles.lines.len(), 2);
 }
 

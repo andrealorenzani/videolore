@@ -53,21 +53,15 @@ pub fn line_box(
     frame: (u32, u32),
     text_size: Vec2,
 ) -> Rect {
-    let (w, h) = frame;
-    let font = match size {
-        Some(s) => ass::sized_font(w, h, s),
-        None => ass::font_size(w, h),
-    };
-    let pad = ass::box_padding(preset, font) as f32;
-    let size = text_size + vec2(2.0 * pad, 2.0 * pad);
-    let (cx, cy) = match pos {
-        Some(p) => {
-            let (fx, fy) = p.fraction();
-            (fx * f64::from(w), fy * f64::from(h))
-        }
-        None => ass::default_centre(preset, w, h, f64::from(size.y)),
-    };
-    Rect::from_center_size(pos2(cx as f32, cy as f32), size)
+    let text = (f64::from(text_size.x), f64::from(text_size.y));
+    to_egui(crate::placement::padded_line_rect(
+        preset, pos, size, frame, text,
+    ))
+}
+
+/// A box of the pure placement rule as an egui rectangle (frame pixels).
+fn to_egui(r: crate::placement::Rect) -> Rect {
+    Rect::from_center_size(pos2(r.cx as f32, r.cy as f32), vec2(r.w as f32, r.h as f32))
 }
 
 /// The boxes of the lines on screen at `at`, in drawing order (the last one is on top).
@@ -79,7 +73,7 @@ pub fn boxes(
     measure: &mut dyn FnMut(&str, f32, f32) -> Vec2,
 ) -> Vec<(LineId, Rect)> {
     let preset = project.subtitles.preset;
-    let wrap = (frame.0 as f32 - 2.0 * ass::margin_lr(frame.0) as f32).max(1.0);
+    let wrap = crate::placement::line_wrap(frame) as f32;
     project
         .subtitles
         .shown_at(&project.timeline, at)
@@ -87,10 +81,7 @@ pub fn boxes(
         .filter(|l| !l.text.trim().is_empty())
         .map(|l| {
             let text = visible_text(&l, preset, at);
-            let font = match l.size {
-                Some(s) => ass::sized_font(frame.0, frame.1, s),
-                None => ass::font_size(frame.0, frame.1),
-            };
+            let font = crate::placement::line_font(l.size, frame);
             let t = measure(&text, font as f32, wrap);
             (l.line, line_box(preset, l.position, l.size, frame, t))
         })
@@ -101,15 +92,7 @@ pub fn boxes(
 /// (REQ-116), centred on its place. It is the box the export lays the text out in, so what
 /// is grabbed is what is exported.
 pub fn text_box(item: &crate::text::TextItem, frame: (u32, u32)) -> Rect {
-    let (bw, bh) = crate::text::box_px(item, frame.0, frame.1);
-    let (fx, fy) = item.place.fraction();
-    Rect::from_center_size(
-        pos2(
-            (fx * f64::from(frame.0)) as f32,
-            (fy * f64::from(frame.1)) as f32,
-        ),
-        vec2(bw as f32, bh as f32),
-    )
+    to_egui(crate::placement::text_rect(item, frame))
 }
 
 /// The box of a text or subtitle line fixed to the sphere, seen by the camera `cam` on a
@@ -198,6 +181,80 @@ pub fn anchored_line_boxes(
             let size = l.size.unwrap_or(crate::subtitles::SIZE_NORMAL);
             (l.line, anchored_box(&t, Some(size), cam, frame, measure))
         })
+        .collect()
+}
+
+/// An arrow at the edge of the picture that points to an item fixed to the sphere which is
+/// outside the view (REQ-260).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OffViewArrow {
+    /// Where the arrow is, in frame pixels.
+    pub at: Pos2,
+    /// The direction it points to (unit vector, screen axes).
+    pub dir: Vec2,
+    /// The turn (yaw, pitch in hundredths of a degree) that centres the item.
+    pub turn: (i32, i32),
+}
+
+/// Distance from the picture's edge to the arrow (frame pixels).
+pub const ARROW_INSET: f32 = 18.0;
+
+/// The arrow for the anchor `a` seen by `cam` on a `frame` picture; `None` when the point
+/// is inside the view.
+pub fn off_view_arrow(
+    cam: crate::camera::Camera,
+    frame: (u32, u32),
+    a: &crate::base::pos::Anchor360,
+) -> Option<OffViewArrow> {
+    let (w, h) = (frame.0 as f64, frame.1 as f64);
+    let (yaw, pitch) = (f64::from(a.yaw_cd) / 100.0, f64::from(a.pitch_cd) / 100.0);
+    let wrap = |d: f64| {
+        let d = (d + 180.0).rem_euclid(360.0) - 180.0;
+        if d <= -180.0 { 180.0 } else { d }
+    };
+    let dyaw = wrap(yaw - cam.yaw_deg());
+    let dpitch = pitch - cam.pitch_deg();
+    let (dx, dy) = match crate::camera::project(cam, frame.0, frame.1, yaw, pitch) {
+        Some((x, y)) if (0.0..=w).contains(&x) && (0.0..=h).contains(&y) => return None,
+        Some((x, y)) => (x - w / 2.0, y - h / 2.0),
+        // behind the camera: towards the side the shortest turn takes
+        None => (dyaw.signum() * w / 2.0, -dpitch / 90.0 * h / 2.0),
+    };
+    let len = dx.hypot(dy).max(1e-9);
+    let (ux, uy) = (dx / len, dy / len);
+    let m = f64::from(ARROW_INSET);
+    let t = ((w / 2.0 - m) / ux.abs().max(1e-9)).min((h / 2.0 - m) / uy.abs().max(1e-9));
+    Some(OffViewArrow {
+        at: pos2((w / 2.0 + ux * t) as f32, (h / 2.0 + uy * t) as f32),
+        dir: vec2(ux as f32, uy as f32),
+        turn: (
+            (dyaw * 100.0).round() as i32,
+            (dpitch * 100.0).round() as i32,
+        ),
+    })
+}
+
+/// The arrows of the lines and texts fixed to the sphere that are shown at `at` and out of
+/// the view of `cam` (REQ-260).
+pub fn off_view_arrows(
+    project: &Project,
+    at: Micros,
+    frame: (u32, u32),
+    cam: crate::camera::Camera,
+) -> Vec<OffViewArrow> {
+    let lines = project
+        .subtitles
+        .shown_at(&project.timeline, at)
+        .into_iter()
+        .filter_map(|l| l.anchor);
+    let texts = project
+        .texts
+        .shown_at(at)
+        .into_iter()
+        .filter_map(|t| t.anchor);
+    lines
+        .chain(texts)
+        .filter_map(|a| off_view_arrow(cam, frame, &a))
         .collect()
 }
 
@@ -460,5 +517,40 @@ mod tests {
             to_frame(pos2(1.0, 1.0), Rect::NOTHING, (0, 0)),
             pos2(0.0, 0.0)
         );
+    }
+
+    // covers: REQ-260
+    #[test]
+    fn an_item_out_of_view_has_an_arrow_at_the_nearest_edge_that_turns_to_it() {
+        use crate::base::pos::Anchor360;
+        use crate::camera::Camera;
+        let cam = Camera::new(0, 0, 9000);
+        let frame = (1600, 900);
+        let at = |yaw_cd, pitch_cd| Anchor360 {
+            yaw_cd,
+            pitch_cd,
+            height_cd: 500,
+            width_cd: 5000,
+        };
+        // in view: no arrow
+        assert!(off_view_arrow(cam, frame, &at(0, 0)).is_none());
+        assert!(off_view_arrow(cam, frame, &at(1000, 500)).is_none());
+        // yaw 90 while the view looks at 0: right edge, pointing right, turn of 90 degrees
+        let a = off_view_arrow(cam, frame, &at(9000, 0)).unwrap();
+        assert!(
+            a.at.x > 1600.0 - 40.0 && (a.at.y - 450.0).abs() < 1.0,
+            "{a:?}"
+        );
+        assert!(a.dir.x > 0.9);
+        assert_eq!(a.turn, (9000, 0));
+        // to the left, behind, above
+        assert!(off_view_arrow(cam, frame, &at(-9000, 0)).unwrap().at.x < 40.0);
+        let b = off_view_arrow(cam, frame, &at(18_000, 0)).unwrap();
+        assert_eq!(b.turn.0.abs(), 18_000);
+        let up = off_view_arrow(cam, frame, &at(0, 8000)).unwrap();
+        assert!(up.at.y < 40.0 && up.turn == (0, 8000), "{up:?}");
+        // turning by the arrow's turn centres the item
+        let turned = cam.turned(a.turn.0, a.turn.1);
+        assert!(off_view_arrow(turned, frame, &at(9000, 0)).is_none());
     }
 }

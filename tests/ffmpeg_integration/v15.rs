@@ -284,3 +284,38 @@ fn the_picture_is_composed_under_the_fades_and_a_360_export_ignores_it() {
     assert!(is(px(&f, 160, 80, 60), BLACK) && is(px(&f, 160, 5, 5), BLACK));
     assert!(is(px(&env.frame_rgb(&out, 2.0), 160, 80, 60), RED));
 }
+
+// covers: REQ-286
+#[test]
+fn one_clip_with_its_own_aspect_is_centred_with_black_sides_and_the_output_size_stays() {
+    let Some(env) = setup() else { return };
+    let file = flat(&env, "red");
+    let mut p = project_of(&env, &file);
+    let m = p.media[0].clone();
+    p.timeline.append(&m).unwrap();
+    let second = p.timeline.clips[1].id;
+    p.timeline
+        .set_clip_aspect(
+            second,
+            Some(aspect(Shape::Tall9x16, Fit::Height, Fill::Blur)),
+        )
+        .unwrap();
+    let out = export(&env, &p, "own-aspect.mp4");
+    let (w, h) = size(&env, &out);
+    assert_eq!((w, h), (160, 120), "the output size is unchanged");
+    // the first clip fills the frame, the second one is a narrow red strip in the middle
+    let first = env.frame_rgb(&out, 1.0);
+    assert!(is(px(&first, w, 4, 60), RED) && is(px(&first, w, 155, 60), RED));
+    let later = env.frame_rgb(&out, 5.0);
+    assert!(
+        is(px(&later, w, 80, 60), RED),
+        "{:?}",
+        px(&later, w, 80, 60)
+    );
+    assert!(
+        is(px(&later, w, 4, 60), BLACK),
+        "{:?}",
+        px(&later, w, 4, 60)
+    );
+    assert!(is(px(&later, w, 155, 60), BLACK));
+}

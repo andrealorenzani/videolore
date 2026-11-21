@@ -151,31 +151,41 @@ pub fn visible_text(l: &ShownLine, preset: Preset, at: Micros) -> String {
         .unwrap_or_default()
 }
 
+/// The font size of a subtitle line (its own size, or the preset's) on the picture.
+pub fn line_font(size: Option<u16>, frame: (u32, u32)) -> u32 {
+    match size {
+        Some(s) => ass::sized_font(frame.0, frame.1, s),
+        None => ass::font_size(frame.0, frame.1),
+    }
+}
+
+/// The width a subtitle line wraps at: the picture inside its margins.
+pub fn line_wrap(frame: (u32, u32)) -> f64 {
+    (f64::from(frame.0) - 2.0 * f64::from(ass::margin_lr(frame.0))).max(1.0)
+}
+
 /// The size of a subtitle line's box: its text wrapped like the renderer does (inside the
 /// margins), at the line's font size, plus the padding. The font is the bundled subtitle
 /// font.
 pub fn line_size(preset: Preset, text: &str, size: Option<u16>, frame: (u32, u32)) -> (f64, f64) {
-    let (w, h) = frame;
-    let font = match size {
-        Some(s) => ass::sized_font(w, h, s),
-        None => ass::font_size(w, h),
-    };
-    let wrap = (f64::from(w) - 2.0 * f64::from(ass::margin_lr(w))).max(1.0);
-    let l = text::layout_at(text, "", f64::from(font), wrap);
+    let font = line_font(size, frame);
+    let l = text::layout_at(text, "", f64::from(font), line_wrap(frame));
     let pad = ass::box_padding(preset, font);
     (l.width + 2.0 * pad, l.height() + 2.0 * pad)
 }
 
-/// The box of a line of text `text` on the picture: centred on its own place, or at the
-/// style's place (bottom-anchored, so it grows upwards).
-pub fn line_rect(
+/// The one rule of a line's box, shared by the measured box and the preview's hit boxes: the
+/// laid-out `text` size plus the padding of the line's font, centred on its own place, or at
+/// the style's place (bottom-anchored, so it grows upwards).
+pub fn padded_line_rect(
     preset: Preset,
-    text: &str,
     position: Option<Pos>,
     size: Option<u16>,
     frame: (u32, u32),
+    text: (f64, f64),
 ) -> Rect {
-    let (bw, bh) = line_size(preset, text, size, frame);
+    let pad = ass::box_padding(preset, line_font(size, frame));
+    let (bw, bh) = (text.0 + 2.0 * pad, text.1 + 2.0 * pad);
     let (cx, cy) = match position {
         Some(p) => {
             let (fx, fy) = p.fraction();
@@ -189,6 +199,20 @@ pub fn line_rect(
         w: bw,
         h: bh,
     }
+}
+
+/// The box of a line of text `text` on the picture: centred on its own place, or at the
+/// style's place (bottom-anchored, so it grows upwards).
+pub fn line_rect(
+    preset: Preset,
+    text: &str,
+    position: Option<Pos>,
+    size: Option<u16>,
+    frame: (u32, u32),
+) -> Rect {
+    let font = line_font(size, frame);
+    let l = text::layout_at(text, "", f64::from(font), line_wrap(frame));
+    padded_line_rect(preset, position, size, frame, (l.width, l.height()))
 }
 
 /// The box a text item is laid out in: its width and height at its place (REQ-116).

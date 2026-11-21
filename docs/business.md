@@ -39,9 +39,10 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [Faster hardware export and hardware reach](business-hardware-export.md) — a cheaper and clearer hardware check, AV1 and VP9 presets with hardware, hardware decoding for the preview, the graphics card choice.
 - [Platforms and installers](business-platforms.md) — CI checks, installer and toolchain pins, one window for double-clicked projects, the macOS menu bar, Linux archive launcher.
 - [Interface](business-interface.md) — remembered window and popups, hidden or docked sections, workspaces, customisable toolbar, rebindable shortcuts, themes, text size, accessibility.
-- [360 video](business-360-video.md) — 360 marker in MKV and WebM, camera roll, easing and keyboard control, speed-first 360 export. Not yet: subtitles anchored to the sphere, off-view arrows, per-clip camera paths, spatial sound.
-- [New effects, frame and LUT options](business-effects-frame.md) — fade length and one-sided fades, music effects, Clean audio strength and Normalise speech, keyframe easing and volume over time, crop, blur strength, custom aspect, LUT strength, `.3dl`/`.csp` LUTs, favourite LUTs. Not yet: speed, per-clip aspect, picture items.
+- [360 video](business-360-video.md) — 360 marker in MKV and WebM, camera roll, easing and keyboard control, speed-first 360 export, subtitles and texts anchored to the sphere with re-anchor and off-view arrows, per-clip camera paths, spatial sound.
+- [New effects, frame and LUT options](business-effects-frame.md) — fade length and one-sided fades, music effects, Clean audio strength and Normalise speech, keyframe easing and volume over time, crop, blur strength, custom aspect, LUT strength, `.3dl`/`.csp` LUTs, favourite LUTs, clip speed, per-clip aspect, PNG picture items, aspect drop onto a clip.
 - [Continuous quality, cache and project page](business-quality.md) — preview cache limit, page image and policy, and the engineering quality goals.
+- Not built in 2.0.4: REQ-177, the subtitle accuracy target (open decision for Andrea, see [Subtitle accuracy](business-subtitle-accuracy.md)). The items left after 2.0.4 are in the [roadmap tasks](roadmap_tasks.md), 2.0.5.
 
 ## Constraints
 - **ffmpeg is bundled** in every installer (since 0.2.0; before, it had to be installed by the user). A user-chosen ffmpeg can still be configured instead.
@@ -90,8 +91,8 @@ Topic-specific decisions are in each document.
 - (1.4.0) A video without spherical information is always flat, since the "360°" switch is removed; a 360 switch set in a 1.3.0 project is dropped when the project is opened.
 - (1.3.0) Text uses the fonts installed on the computer, so the same text can look different on each computer. A project that mixes 360 and flat clips can only be exported as the flat camera view.
 - (1.3.0) Video edits do not move text items.
-- (1.3.0) The 360 export is slow (no speed is promised); subtitle lines generated automatically on a 360 clip follow the camera instead of a point of the sphere.
-- (1.3.0) A subtitle line placed on a 360 clip is drawn as plain white text (no preset box, no word highlight).
+- (1.3.0) The 360 export is slow (no speed is promised); subtitle lines generated automatically on a 360 clip follow the camera instead of a point of the sphere. (Fixed in 2.0.4: REQ-266, REQ-258.)
+- (1.3.0) A subtitle line placed on a 360 clip is drawn as plain white text (no preset box, no word highlight). (Fixed in 2.0.4: REQ-257.)
 - (1.3.0) A 360 video export carries its 360 marker only in MP4 and MOV files.
 - (1.3.0) A project file with a text whose time to live is above 24 hours is refused as damaged when opened; while editing, a text's time to live is limited to the video's length.
 - Dropping files onto the window does not work in Linux Wayland sessions; File > Import media… and File > Open… work there (see [Window, menus and effects](business-ui.md)).

@@ -128,6 +128,27 @@ impl AppState {
                 Command::RemoveVolumeKey { clip, at } => self.edit(now, label, |e| {
                     e.timeline.remove_volume_key(clip, at).map_err(err)
                 }),
+                Command::SetClipAspect { clip, aspect } => {
+                    if self.project.timeline.own_aspect(clip) == aspect {
+                        return Ok(());
+                    }
+                    self.edit(now, label, |e| {
+                        e.timeline.set_clip_aspect(clip, aspect).map_err(err)
+                    })
+                }
+                Command::SetSpeed { clip, speed } => {
+                    if self
+                        .project
+                        .timeline
+                        .get(clip)
+                        .is_some_and(|c| c.speed == speed)
+                    {
+                        return Ok(());
+                    }
+                    self.edit(now, label, |e| {
+                        e.timeline.set_speed(clip, speed).map_err(err)
+                    })
+                }
                 Command::SetCrop { clip, crop } => {
                     if self
                         .project

@@ -36,12 +36,12 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy, llvm-tools-preview
-      - name: System packages (ALSA headers, whisper.cpp build, speech fixture)
+      - name: System packages (ALSA headers, whisper.cpp build)
         # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
         # loudly if that ever changes); the package index is refreshed only when needed.
         run: |
           missing=""
-          for p in libasound2-dev libclang-dev espeak-ng; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          for p in libasound2-dev libclang-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
           if [[ -n "$missing" ]]; then
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing

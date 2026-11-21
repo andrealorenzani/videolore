@@ -40,35 +40,14 @@ Shared checkpoint file. Each agent adds its own `## <agent>` section and edits o
 
 ## Product Manager
 
-Checkpoint of 2.0.4 (asked by the user). Tree: nothing committed, version 2.0.4, no REQ marked `(implemented)` yet (all REQ-180..299 are `(planned)` in `docs/`). "Built" below = the Principal Engineer's checkpoint (`ai-docs/code-checkpoint-2.0.4.md`) plus a `// covers:` test for the REQ in `ai-docs/code-req-tests.md`. The product manager did not run tests.
+STATUS done, all 2.0.4 REQs implemented except REQ-177 (2026-11-21, version 2.0.4). Second STATUS call: REQ-253, 257-260, 268, 273, 281, 286-288 marked `(implemented)`, each with a `// covers:` test (grep-checked). No test was run by the product manager.
 
-### State of REQ-180..299 (120 REQs)
-- Built with `// covers:` tests, to be marked implemented at STATUS (108):
-  - 180-233 (batches 5 to 11, stages 1 to 7; notes in `docs/code-2.0.4-batches-5-7.md` and `-8-11.md`): all 54 built. REQ-233 is "no code" (the X11 drop path, File menu kept; test `src/ui/ux_tests.rs`).
-  - 234-247 interface (stage 8): all 14 built.
-  - 248-252 and 254-256 player (stage 9): 8 built (248 with the Windows deviation below).
-  - 261-267 and 269-272 360 (stage 10): 11 built.
-  - 274-279, 282-285, 289-294 effects and LUT (stages 11): 16 built.
-  - 295-299 continuous (stage 12): 5 built.
-- Not built (12), stay `(planned)`: 253, 257, 258, 259, 260, 268, 273, 280, 281, 286, 287, 288. None has a `covers:` test.
-  - Conflict to settle: `docs/code-2.0.4-batches-12-15.md` line 42 describes volume keys (REQ-280) as built, but there is no REQ-280 test and the PE checkpoint says not built. Treated as not built; the PE corrects the batch note.
-- Amended planned lines whose old text stays until built (map in `ai-docs/business-requirements.md`): REQ-011, 020, 033, 038, 041, 061, 069, 071, 075, 082, 083, 084, 096, 100, 101, 102, 103, 104, 112, 114, 120, 124, 126, 127, 128, 129, 130, 131, 133, 135, 136, 140, 147, 148.
-
-### REQs still to do, in order (suggestion; Andrea may reorder)
-1. REQ-280 volume keys in percent (small; needs its test and the batch note fixed).
-2. REQ-281 speed 50-200 %.
-3. REQ-286 per-clip Change aspect (reverses the 1.6.1 project-wide rule; project frame keeps one size).
-4. REQ-287 PNG picture items (3 s default).
-5. REQ-288 drag Change aspect onto a clip (needs 286 first).
-6. REQ-258 automatic subtitle lines anchored at the view centre.
-7. REQ-257 preset box and highlight on anchored lines (amends the 1.3.0 plain-text limitation).
-8. REQ-259 Re-anchor (needs 258; one undo restores the old anchor).
-9. REQ-260 off-view arrows (needs anchors).
-10. REQ-268 per-clip camera paths (largest change: the camera model is keyed by source in many places; regression risk in the export graph).
-11. REQ-273 spatial sound (first-order ambisonic rotated in Rust, fixed stereo pair; cut back to the roadmap if the real-time check fails, ADR-189).
-12. REQ-253 picture subtitles in the player (needs a real DVB or PGS sample, because the pinned ffmpeg cannot make one from text; the overlay changes the shared render graph; cut-back candidate to the roadmap).
-Then, without REQ: QG-14..18 (speech fixture for CI, pointer tests, splash size per program, test-memory rule in the developer docs, UI frame gates as preview tests, text.rs split QG-16); human checks in `docs/business-verification.md` items 26, 29, 30 (screen readers, Windows Open with, window places).
-Order logic: small effects first (quick user value, low risk); dependencies first (286 before 288; 258 before 259 and 260); the riskiest items last, so a cut-back costs least.
+### State after STATUS (second call)
+- All REQ-180..299 (120) are `(implemented)`. REQ-177 is outside that range and stays `(planned)`. Each implemented REQ has a `// covers:` test (grep-checked for the 11 of the second call).
+- Amended in the REQ texts to the built behaviour (second call): 253, 257, 258, 259, 260, 268, 273, 281, 287. Deviations taken from the PE section; REQ-273 pitch is applied (the code), the PE line "pitch not applied" is not used. REQ-286 and 288 unchanged.
+- REQ-177 wording: the acceptance no longer names espeak; it names the pinned ffmpeg and the committed speech fixture (`tests/fixtures/align/speech.mkv`). Status still planned (open decision).
+- Future work (from the PE list, in the 2.0.5 batch of `docs/roadmap_tasks.md`): async spatial pre-pass; earlier display of picture subtitles; picture subtitles on 360 clips and paused stills; roll in the ambisonic rotation; CI time measurement (QG-06); REQ-177 decision; REQ-206 skeleton render; blurred fill in playback; macOS Quit item. Manual checks: verification items 26, 29, 30, 31-35.
+- The 2.0.5 batch keeps only these items. Flag for Andrea: the QG-16/17 items that the PE did not report (one keyframe module for the 360 camera and the picture; smaller project page images; player package list) are kept there as "not built, no batch yet".
 
 ### User decisions in force for 2.0.4
 - D57: one development, version 2.0.4, builds all remaining batches (5 to 15) and the continuous items.
@@ -100,10 +79,10 @@ Order logic: small effects first (quick user value, low risk); dependencies firs
 Options (`ai-docs/business-decisions.md` § Open questions): (a) timing method with a different speech model (consent, size, checksum); (b) restate the target; (c) keep planned with a known limitation (default if no answer).
 
 ### STATUS done (2026-11-21)
-- Marked `(implemented)`: 109 REQs (180..252, 254..256, 261..267, 269..272, 274..280, 282..285, 289..299). Each has a `// covers:` line by grep. Still `(planned)`: 253, 257-260, 268, 273, 281, 286-288, and 177.
+- First call: 109 REQs marked `(implemented)`. Second call: the 11 above. Now all REQ-180..299 are implemented; REQ-177 stays `(planned)`.
 - Deviations accepted as built (user had not answered), amended in the REQ text: 202, 195, 222, 244, 248, 279, 293; 183 and 182 amended with the built behaviour; 206 spec confirmed by the batch note (one-second ranges), no change. Open for Andrea: see ai-docs/business.md § Checkpoint 2.0.4 and business-decisions.md § Open questions.
 - REQ-280 was listed as not built in the checkpoint, but `covers: REQ-280` tests exist (render/tests.rs, tests/ffmpeg_integration/v204.rs); marked implemented per the user's list.
-- Future work: 11 not built (reasons in the "REQs still to do" list above); verification items 26, 29, 30; REQ-177; QG-14..18 in the 2.0.5 batch of roadmap_tasks.
+- Future work: the list in "State after STATUS" above; REQ-177 (decision).
 
 ### Revert check (owned docs)
 - Checked `docs/business*.md`: the 2.0.4 texts are requirements (`(planned)`) and decisions, which stay. Nothing describes unbuilt work speculatively, so nothing is reverted there.
@@ -132,9 +111,27 @@ Final safety state (stop point): the tree compiles; nothing half-built. Quick ch
 Deviations to keep in mind: REQ-182 (MP4 separate subtitle track: the disabled flag is written by clearing the tkhd enabled bit in `mp4tracks`, because ffmpeg always enables the first track of a kind; MKV uses -disposition); REQ-183 (whole-video scope = every range of the file's source on the timeline); REQ-292 (a missing LUT at export now opens a three-button modal instead of refusing; "Export without the LUT" is for that export only); REQ-293 (the copy is the normalised cube, project limit 96 MiB, copies 20 MB each and 64 MB in all; a copy over the limit keeps only the path).
 
 
+
+Update (resume call): REQ-286 and 288 built (`src/timeline.rs:clip_aspects`, `src/render/graph.rs` own frame + pad, `src/render/segments.rs:SegFrame.own`, drop handling in `src/ui/timeline.rs`; tests in `src/render/tests.rs`, `tests/ffmpeg_integration/v15.rs`). The old REQ-075/130 "cannot be dropped on a clip" tests were replaced by REQ-286/288 ones. Left, in order: 281, 287, 257..260, 268, 273, QG-14..18, 253.
+
+Suite after REQ-286/288 (resume call end): fmt ok; clippy clean (default and no-default-features); 805 lib (2 ignored), 89 integration (3 ignored), 7 module_cycles, 2 page, 44 + 3 player; line coverage 95.0 %; feature coverage 287/287; notices and docs-check ok. REQ-281 (speed) was judged too large to do safely: every source to timeline mapping (`Clip::len`, locate, split, trim, subtitle times, keys, camera) assumes the two lengths are equal. QG-17 memory rule is already in `docs/code-testing.md`.
+
+Context-limit stop (this call): nothing new was built; the tree is unchanged from the previous update and green (805 lib, 89 integration, coverage 95.0 %, feature 287/287). Plan for REQ-281 so the next pass starts at once: (1) store `speed_permille` (500..2000, default 1000, skip when 1000) in a `Timeline` map like `clip_aspects` (Clip is Copy); (2) split `Clip::len()` in two: `src_len()` = `src_out - src_in` and `len()` = timeline length = `src_len * 1000 / speed`: this needs the speed on `Clip`, so either give `Clip` a `u16` field (Copy) or pass the speed; a `u16` field `speed_permille` on Clip is the simplest and keeps Copy; (3) audit the 87 sites that use `c.len()`, `src_out - src_in` or `src_in + offset` (grep `-E '\b(c|clip|left|right)\.len\(\)|src_in \+ '` outside tests): timeline positions use `len()`, source reads use `src_len()` and `offset * speed / 1000`; key places: `Timeline::duration/start_of/locate/split/trim`, `render/segments.rs` (`s.src_in + s.skip` becomes source time = `skip * speed`; segment `len` is timeline length), `subtitles::project`, texts, camera `at(src_in + offset)`, `keyframes` clip-time keys, preview position mapping; (4) graph: video `setpts=(PTS-STARTPTS)*1000/speed` after trim, audio `atempo` (one filter covers 0.5 to 2.0) and `atrim` on source time; fades use timeline length; (5) tests: 4 s at 200 % lasts 2 s, pitch within 1 %, subtitle within 0.1 s of its word, stream copy refused. Then continue: 287, 257..260, 268, 273, QG-14..18, 253 as listed above.
+
+
+Update (third call): REQ-281 built: `Clip.speed` (permille 500..2000, `Clip::len()` is now TIMELINE length, `src_len()`, `to_timeline/to_src/src_at`), keys stay in source time and `Clip::keys_to_timeline` maps them in `frame_stack`; `Segment.speed` with `src_from/src_to/rendered_src/lead_src`; graph `rate_pts` + `atempo`; `camera::command_lines_speed`; `Command::SetSpeed`, Clip details Speed field, `DIFFERENT_SPEEDS` merge block, stream copy refused (`any_speed`). Volume keys stay in timeline clip time. Tests: `timeline.rs` (2), `render/tests.rs` (2), `app/frame_tests.rs`, `tests/ffmpeg_integration/v204b.rs` (pitch by zero crossings). REQ-287 built as a TextItem with `picture: Option<Picture>` (`src/picture.rs`: PNG header size, `rect` fit in box; text = file name; no ASS events): `render::picture_overlays` + `PicOverlay` + `build_graph_pics/with` (looped `-loop 1` Input with `still`, overlay with `enable=between(t,..)` before subtitles), `Command::AddPicture(Option<PathBuf>)`, `Dialogs::pick_picture`, Effects row and `Action::AddPicture`, picture popup (time + Delete). Not on a 360 export (sphere mode skips pictures); no text effects on pictures. Tests: `picture.rs`, `app/text_tests.rs` (2), `render/tests.rs`, `v204b.rs`. Left: 257..260, 268, 273, QG-14..18, 253.
+
+Update (third call, later): REQ-257 (`TextItem.karaoke` non-saved cs list, `ass::highlight_chunks`, `segments::anchored_line_items` uses preset readability and chunks), REQ-258 (`AppState::generation_anchors` in `app/subs_create.rs`, applied in `finish_create`), REQ-259 (`Command::ReAnchor`, `texts.rs:re_anchor_plan/re_anchor`, Action `ReAnchor` in Edit > Subtitles, picture right-click and Context Menu group when a line is selected and the playhead is on a 360 clip; the old group test now expects ReAnchor before SetPov), REQ-260 (`ui/placement.rs:off_view_arrow(s)`, `ui/picture.rs:off_view_arrows`, click sends `TurnCamera` with the delta) built and tested (`app/text_tests.rs`, `render/tests.rs`, `ui/placement.rs`). Left: 268, 273, QG-14..18, 253, full suite, docs.
+
+Update (third call, end): REQ-268 built (COW per-clip paths, see docs Stage 13). Full suite green at this point: fmt, clippy workspace, 820 lib, 91 integration, 7 cycles, 2 page, 44+3 player; notices note for the test font added to both notice files; coverage run started (see report). NOT built: REQ-273, REQ-253, QG-14..17 (QG-18 test font only). Reasons: 273 needs a per-segment audio input and a pre-pass runner in export and preview; 253 needs the player crate work and a bitmap-subtitle fixture.
+
+Update (fourth call): built QG-14 (speech tests use the committed `tests/fixtures/align/speech.mkv`, espeak-ng removed from CI packages, sphere fixture 1024x512 in v126; measured: cycle check 1.7 s, pinned ffmpeg 173 MB unpacked), QG-15 (colour picker and Export dropdown pointer tests in `ui/text_ux_tests.rs`, keyframe bar empty click in `ui/clarity_ux_tests.rs`, golden argv for formats 4 and 5 `tests/fixtures/export-argv-v4-v5-in-2.0.4.txt` with `project-v4/v5` fixtures, large picture memory test), QG-16 (`text.rs` split into `text/{timing,layout,events}.rs`; one box rule `placement::padded_line_rect` shared with `ui/placement.rs`), QG-17 (`build.rs` summary check, `version.sh set` runs the notices check as a reminder; player notice has no version line; splash GIFs 88 KB each left in the library), QG-18 (sampled frame gates in `ui/tests.rs`, longer limits in `app/hw_tests.rs`, test-font notice test). REQ-273: `src/spatial.rs` (rotate, cardioid pair, WAV writer, `prepare` pre-pass through the Runner), `Segment.spatial`, `Graph.spatial`, `Plan::spatial()`, `export::prepare_spatial`, `Preview::prepare_spatial` (synchronous, wall clock shifted by `prepass`; preview skips clips over 10 min); measured in the debug test profile: 120 s of 4-channel sound prepared in 1.7 s (69x real time). Roll and the pitch of the camera do not change the stereo pair (documented). REQ-253: `MediaFormat.picture_tracks`, `Project.picture_sub` (runtime), `Segment.picture_sub`, overlay `[k:v:0][k:s:N]overlay` before the trim in `render/graph.rs`, player `Source::Picture`; fixture is a hand-written PGS stream built in `player/tests/ffmpeg.rs:pgs`. Limits: a picture subtitle already on screen when a run starts inside it appears at its next change (also for paused stills); not on 360 clips. Final suite of this call (pinned ffmpeg 9.0.2, VIDEOLORE_REQUIRE_FFMPEG=1): fmt, clippy workspace all targets and no-default-features, 841 lib (3 ignored), 96 integration (3 ignored), 7 cycles, 2 page, 44 + 4 player, line coverage 94.9 %, feature 287/287, notices and docs-check ok. Manual-check items 31 to 35 added to docs/business-verification.md. Nothing of the 2.0.4 plan is left to build; REQs are still `(planned)` for the PM/documenter to mark.
+
 ## Architect
 
-Checkpoint of 2026-11-21 (asked by the user). Sources: `ai-docs/architecture-plan-2.0.4.md` (main), `-stages-1.md` (stages 0-5), `-stages-2.md` (stages 6-12), `ai-docs/architecture-adr.md` § 2.0.4 PLAN, `ai-docs/code-checkpoint-2.0.4.md`, `ai-docs/code.md`, and the tree (`Cargo.toml`, `src/`, `packaging/`, `.github/workflows/`). Nothing was run; nothing committed.
+Final state of 2026-11-21 (2.0.4 built; supersedes the first checkpoint of the same day). Sources: `ai-docs/architecture-plan-2.0.4.md` (main), `-stages-1.md` (stages 0-5), `-stages-2.md` (stages 6-12), `ai-docs/architecture-adr.md` § 2.0.4, `docs/code-2.0.4-batches-12-15.md` (PE stages 8 to 14), and the tree. Nothing was run by the architect; nothing committed.
+
+Done by the architect for 2.0.4: ADR statuses (below), the owned human docs in `docs/architecture*.md` describe the built state (overview, quality, 360, text, projects, effects, LUT, player, subtitles, media pipeline, build, verification, security, dependencies, components, structure, splash, performance, frame, boxes, UI, packaging, hardware export, export dialog, decisions), the owned AI notes are updated (index, ADR block, components, NFR, security, risks). `ai-docs/architecture-doc-index.md` regenerated at the end of this pass.
 
 ### Plan files (ai-docs, owner architect; archived in the release snapshot after release)
 - `architecture-plan-2.0.4.md`: scope, facts found by reading, approach, components by stage, format 11 by stage (ADR-169), stage order and dependencies, cut-back list (items 1-9), Q-1..Q-7 closed by Andrea (D61), risks, future work.
@@ -154,13 +151,15 @@ Checkpoint of 2026-11-21 (asked by the user). Sources: `ai-docs/architecture-pla
 | 7 platforms, installers | nothing earlier; Windows and Linux file locks; macOS menu spike | built (REQ-225..233; installer-config.yml, advisories.yml, instance.rs, macOS menu) |
 | 8 interface | stage 3 popups; stage 7 single window and settings | built (REQ-234..247; accesskit feature on) |
 | 9 player | stage 7 installers and sibling names; stage 1 preview cache rules | built except REQ-253 (248, 249..252, 254..256; siblings.rs, player/src/settings.rs, playlist.rs) |
-| 10 360 video | stages 0, 1 (format 11), 3 (keyframe widget) | partly: 261..267, 269..272 built; 257..260, 268, 273 not built |
-| 11 effects and frame | stage 6 (blur cache keys), stage 10 (camera and keyframe model), stage 0 | partly: 274..279, 282..285, 289..294 built; 280, 281, 286, 287, 288 not built |
-| 12 continuous quality | stage 11 (settings complete), stage 2 (cache names), stage 1 (font notices) | built (REQ-295..299); QG-14..18 not built |
+| 10 360 video | stages 0, 1 (format 11), 3 (keyframe widget) | built (REQ-261..267, 269..272); 257..260 and 268 in stage 13; 273 in stage 14 |
+| 11 effects and frame | stage 6 (blur cache keys), stage 10 (camera and keyframe model), stage 0 | built (REQ-274..285, 289..294); 280 volume keyframes built here; 286 and 288 in stage 13 |
+| 12 continuous quality | stage 11 (settings complete), stage 2 (cache names), stage 1 (font notices) | built (REQ-295..299) |
+| 13 speed, pictures, 360 text and paths | stages 10, 11 | built: REQ-281, 287, 257..260, 268 (see the stage list in `docs/code-2.0.4-batches-12-15.md`) |
+| 14 spatial sound, picture subtitles, quality items | stages 10, 13 | built: REQ-273, REQ-253, QG-14..18 |
 
 ### ADR status and updates recorded on 2026-11-21
-- ADR-168..201 are built as planned, except the ones in the next lists. The status line of the 2.0.4 block in `ai-docs/architecture-adr.md` says so.
-- Updates recorded now (ai-docs/architecture-adr.md § 2.0.4 PLAN, and docs/architecture-decisions.md):
+- ADR-168..201: all built. Final statuses (ai-docs/architecture-adr.md § 2.0.4, final status line): ADR-185 (REQ-253) BUILT, overlay in the shared graph, golden argv kept; ADR-188 (REQ-257..260) BUILT, anchored lines as text items with preset box and karaoke highlight (amends 1.3.0 plain white); ADR-189 (REQ-273) BUILT, pre-pass in export and synchronous in preview; ADR-192 (REQ-287) BUILT as a text item with a picture, header read only, the plan's count and size limits NOT in the code (open); ADR-186 BUILT (per-clip paths copy on write, REQ-268); ADR-190 BUILT (speed, volume keyframes REQ-280, clip frame REQ-286); ADR-201 BUILT (QG-14..18).
+- Updates recorded (ai-docs/architecture-adr.md § 2.0.4, and docs/architecture-decisions.md):
   - ADR-034 amended: one more allow-listed unsafe call, `initWithTitle:action:keyEquivalent:` on objc2-app-kit `NSMenuItem`, in the macOS part of `src/desktop.rs` (menu of ADR-183). Unsafe sites are now stt.rs (whisper abort callback) and desktop.rs (macOS odoc handler and menu).
   - ADR-180: blur divisor 8 (an eighth of each side; REQ-222 text says a quarter). Measured with ffmpeg 9.0.2: 4K source (2160x3840 blur), 8 s, 3 runs: divisor 8 = 2.9-3.1 s, divisor 4 = 3.3-3.7 s; 1080p (1080x1920): 1.4 s vs 1.5-1.6 s. Background cache = raw RGBA file `bg-<hash>.rgba` in the private still folder, one at a time, stills only (ffmpeg needs a file input); not an in-memory image as planned.
   - ADR-181: installer job is the reusable workflow `.github/workflows/installer-config.yml`, called by build.yml (`needs`) and run alone on pull requests with the path filter; advisories.yml built; named test `cpu_message`.
@@ -169,43 +168,31 @@ Checkpoint of 2026-11-21 (asked by the user). Sources: `ai-docs/architecture-pla
   - ADR-187: MKV and WebM 360 marker written in place (`src/spherical.rs`): the Void element ffmpeg leaves as padding between SeekHead and Info is shrunk by the bytes that the Tracks element grows; nothing after Tracks moves. Matroska pose IDs 0x7673..0x7675 (0x7672 is ProjectionPrivate). No Q-7 cut.
   - ADR-191: LUT strength is a blended table (`lut.rs` `with_strength(percent)`: every entry mixed with the identity by the percent; 0 = no change, 100 = the table). Project read cap 96 MiB (`MAX_PROJECT_BYTES` 16 MiB to 96 MiB, `project.rs`). LUT copies raw, 20 MB each, 64 MiB per project.
   - ADR-194: Enhance speech built as `speechnorm` named "Normalise speech" (`render.rs` `NORMALISE_SPEECH` = `speechnorm=e=6.25:r=0.0001:l=1`); no model file, no arnndn; the arnndn licence check is not needed unless a model is added later.
-  - ADR-186: built except per-clip camera paths (REQ-268). The preset chosen by the speed-first rule is not in the PE notes (open).
-  - ADR-190: built: fade length and sides, crop, Clean audio strength mix. Not built: speed (REQ-281), volume keys (REQ-280), per-clip frame (REQ-286).
-  - ADR-176: the keyframe widget has no file `ui/keyframe_timeline.rs`; the PE notes do not name the file. Architect checks the location at release.
+  - ADR-186: built, per-clip paths included. The speed-first preset chosen by the rule is not recorded by name (open, PE).
+  - ADR-190: built in full: fade length and sides, crop, Clean audio strength mix, speed, volume keyframes, clip frame.
+  - ADR-176: no file `ui/keyframe_timeline.rs` exists (checked by the architect); the keyframe widget is in the existing UI modules.
   - ADR-197: eframe feature `accesskit` on; accesskit_winit 0.34.2 in Cargo.lock. The size measurement asked by Q-4 is not in the notes (open).
-  - ADR-185, 188, 189, 192: not built (see the next list).
-  - ADR-201: QG-14..18 not built (see the next list).
-- Human docs: docs/architecture-2.0.4-overview.md and -quality.md rewritten to the built state; unbuilt designs removed from them (kept in this section); docs/architecture-projects.md format 11 section and docs/architecture-decisions.md updated. docs/architecture-2.0.4-quality.md network line: the only network use stays the consented speech model download (whisper); Enhance speech adds none (answers the Documenter's note).
+  - ADR-185 (picture subtitles), 188 (anchored lines), 189 (spatial sound), 192 (picture items), 201 (QG-14..18): built, see the list below.
+- Human docs: docs/architecture-2.0.4-overview.md and -quality.md describe the built state. docs/architecture-2.0.4-quality.md network line: the only network use stays the consented speech model download (whisper); Enhance speech adds none.
 
-### Not built: designs kept here, removed from the docs
-- REQ-253 (ADR-185), player picture subtitles: the bitmap stream overlaid in the same playback process; no extra process; not draggable; listed as "picture". Blocker: the pinned ffmpeg cannot make a DVB or PGS fixture from text; the overlay changes the shared render graph (golden argv guard). Cut-back item 4.
-- REQ-257 (ADR-188), 360 subtitles keep the preset box and word highlight in the sphere-frame ASS events (the ADR-069/071 path); amends REQ-112.
-- REQ-258, automatic lines anchored at the view centre when generated (test: yaw 30; after a turn to 0 they sit 30 degrees aside; export keeps yaw within 1 degree).
-- REQ-259, Re-anchor for selected lines and texts; one undo.
-- REQ-260, off-view arrows at the nearest picture edge (pure `arrow_for(item, camera) -> edge, direction`); a click turns the view.
-- REQ-268 (part of ADR-186), per-clip camera paths: `Clip.camera`; load migration copies each media-keyed path into the clips that use the media; copies diverge. Blocker: `CameraPaths` is keyed by source in many places (PE). Largest change; regression risk in the export graph.
-- REQ-273 (ADR-189, Q-2), spatial sound: first-order ACN/SN3D; yaw and pitch rotation of decoded PCM in Rust; fixed cardioid pair to stereo; preview on the audio thread; export pre-pass to a 32-bit float WAV with a fixed name in the work folder, then mix; no time-varying ffmpeg pan. Estimates: at most 10 % of one core; pre-pass at most the clip duration; cut-back item 1 if real time fails. Test: fixture sound left, camera 90 degrees left: front within 3 dB.
-- REQ-280 volume keys in percent: `Clip.volume_keys` (Vec of Key<u8>), gain (p/100)^2 (D12), through the expression generator (ADR-099). Gate: 0 % at 0 s, 100 % at 4 s, 50 % at 2 s = gain 0.25; preview and export agree. PM conflict: `docs/code-2.0.4-batches-12-15.md` describes REQ-280 as built; treated as not built (no `covers:` test; see the PM section).
-- REQ-281 speed 50-200 %: `Clip.speed_permille` 500..=2000 (default 1000); setpts and an atempo chain; subtitle and text event times mapped (REQ-018). Gate: 4 s at 200 % lasts 2 s; pitch within 1 %; subtitle within 0.1 s of its word.
-- REQ-286 per-clip Change aspect (`Clip.frame`): composed in its own frame, then padded into the project frame; no stream copy for that clip; cut-back if the graph regresses (largest graph change). REQ-288 (drag onto a clip) needs it.
-- REQ-287 (ADR-192), PNG picture items: new `pictures.rs` (id, name, PNG embedded, path for display, start, ttl 3 s default, place, width); at most 20 items, 8 MiB each, 16 megapixels decoded (ImageReader limits before pixels); `image` crate `png` feature (today only `gif`, cargo-deny check); overlay per item with `enable`. Cut-back item 3 if the 200 ms frame gate breaks.
-- QG-14: speech fixture for CI in place of espeak-ng where equivalent; measure the pinned ffmpeg download and the cycle check cost (QG-06).
-- QG-15: pointer tests (colour picker, keyframe timeline), Export dialog dropdown clicks, golden argv for formats 4 and 5, large-file memory test, interface harness when it grows.
-- QG-16 remainder: split text.rs by area; one hit-box rule shared by preview and the measured box (ui/boxes.rs, placement.rs); cycle check re-run; docs/code-architecture.md update.
-- QG-17: splash picture size per program; clearer message for a missing splash summary; notices run after each version bump; player notice version line; test-memory cap as a developer-docs rule.
-- QG-18: UI frame gates sampled as preview tests (best of up to five, limits unchanged); hardware probe success fakes with long limits under load; font licence test in the notices; measured accuracy numbers kept with the subtitle accuracy document.
-- QG-11..13 are measured, not gated (recorded in the developer docs at release).
-- Gates and estimates for these items are removed from `docs/architecture-2.0.4-quality.md` and `ai-docs/architecture-nfr.md` until built.
+### Built designs: where they are recorded (replaces the former "not built" list)
+- REQ-253 picture subtitles: `docs/architecture-player.md` § 2.0.4 additions; the decision in `docs/architecture-decisions.md`. Limits: none on 360 clips; a subtitle on screen at a run start appears at its next change.
+- REQ-257..260 anchored 360 lines, automatic anchors, re-anchor, off-view arrows: `docs/architecture-360.md` § Anchored lines and camera paths (2.0.4); text drawing in `docs/architecture-text.md`.
+- REQ-268 per-clip camera paths (copy on write, no copy at load): `docs/architecture-360.md` § Per-clip camera paths (2.0.4); `docs/architecture-projects.md` format 11, stage 10 and 13.
+- REQ-273 spatial sound: `docs/architecture-media-pipeline.md` § Spatial sound pre-pass (2.0.4); the assumptions in the risks above.
+- REQ-280 volume keyframes, REQ-281 speed, REQ-286 clip Change aspect, REQ-288 drop on a clip: `docs/architecture-effects.md` § Effects added in 2.0.4; time mapping in `docs/architecture-media-pipeline.md` § Preview and export additions (2.0.4).
+- REQ-287 picture items: `docs/architecture-text.md` § Picture items (2.0.4); the limits decision is open (see the list below).
+- QG-14..18: `docs/architecture-verification.md` § 2.0.4; gates in `docs/architecture-2.0.4-quality.md`.
+- QG-11..13 measured, not gated (recorded in the developer docs at release).
 
-### Open items for other agents (not decided by the architect)
-- PE: muda spike result (ADR-183); speed-first preset chosen (ADR-186); AccessKit size measured (ADR-197, Q-4); keyframe widget file (ADR-176).
-- PM: REQ-222 wording (quarter vs eighth; PM options already in the PM section above; the architect records the built value and the measurement); REQ-279 wording to "Normalise speech" (plan Q-6 fallback).
-- Andrea: nothing architectural is waiting for a decision beyond the PM items.
+### Open items for other agents and Andrea
+- PE: speed-first preset name (ADR-186); muda spike result (ADR-183); AccessKit size (ADR-197, Q-4); the Arabic and Devanagari OFL notices to confirm; picture item limits (ADR-192): either add the plan's caps (20 items, 8 MiB, 16 Mpx) or record that the header read is enough (Andrea decides).
+- PM: REQ-222 wording (quarter vs eighth; the architect records the built value and the measurement); REQ-279 wording "Normalise speech"; REQ-287 wording if the limits change; mark REQ-180..299 `(implemented)` as built.
+- Andrea: the picture item limits decision above.
 
-### Architect: what remains
-1. When a not-built item is built or cut: set the status of ADR-185, 188, 189, 192 and of the parts of ADR-186, 190, 201; move its design back into the docs; update the components map, NFR gates, security list and crate shortlist.
-2. Architecture docs for what is built later: at 2.0.4 release, the per-area sub-documents get the 2.0.4 facts (frame: blur divisor; projects: format 11; subtitles: VTT, ASS, separate track; player; hardware export: AV1, VP9, decode, check; packaging: installer workflow and NSIS template; performance: measured blur, check timings; security: unsafe sites). Also remove "planned" wording of 2.0.2 and 2.0.3 items.
-3. Cycle check: re-run `tests/module_cycles.rs` (7 tests green per the PE) after QG-16 (text split) and after any new module (`pictures`, `text/events`, `ui/keyframe_timeline` if created); update the cycle list in `ai-docs/architecture-components.md`. Known: media -> camera is avoided by `camera::start_camera` (in camera.rs; the media.rs test calls it, test code only).
-4. Verify at release (step 2.4 of /release) against `docs/code-architecture.md`: new modules autosave, instance, hwdec, siblings, measure, placement; macOS code inline in `desktop.rs` (no `desktop/macos.rs` file); no `ui/keyframe_timeline.rs`; render/ and app/ split; unsafe sites vs the ADR-034 amendment.
-5. Crate shortlist at release: objc2-app-kit 0.3.2 (macOS only, new direct dependency, minimal features); accesskit feature of eframe (accesskit_winit 0.34.2); image stays `gif` only unless REQ-287 is built; no muda; `std::fs::File::try_lock` (no crate).
-6. At release: archive the three plan files (the command moves them), drop their index lines, regenerate `ai-docs/architecture-doc-index.md`.
+### Architect: what remains for the release
+1. Verify at release (step 2.4 of /release) against `docs/code-architecture.md`: new modules autosave, instance, hwdec, siblings, measure, placement, spatial, picture, `text/`; macOS code inline in `desktop.rs` (no `desktop/macos.rs`); no `ui/keyframe_timeline.rs`; render/ and app/ split; unsafe sites (stt.rs, desktop.rs) vs the ADR-034 amendment; `build.rs`.
+2. Cycle check: `tests/module_cycles.rs` (7 tests, green per the PE) after the text split; the PE re-runs it at release; update the cycle list in `ai-docs/architecture-components.md` if it changed.
+3. Crate shortlist at release: objc2-app-kit 0.3.2 (macOS only, new direct dependency, minimal features); accesskit feature of eframe (accesskit_winit 0.34.2); image stays `gif` only (picture items read the PNG header; no `png` feature); no muda; `std::fs::File::try_lock` (no crate).
+4. At release: archive the three plan files (the command moves them), drop their index lines in `ai-docs/architecture.md`, regenerate `ai-docs/architecture-doc-index.md`; the shared checkpoint file is deleted with the release.
+5. Documents still to clean at release (compaction, planned wording of 2.0.2 and 2.0.3 items that now read as built, the long 2.0.4 overview tables).

@@ -1132,3 +1132,176 @@ fn opening_a_project_from_before_2_0_3_says_once_what_changed_in_its_texts() {
     fourth.open_now(plain, now).unwrap();
     assert_eq!(fourth.status, "Project opened");
 }
+
+// covers: REQ-287
+#[test]
+fn add_picture_puts_a_png_item_at_the_playhead_for_3_s_and_moves_like_a_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = dir.path().join("logo.png");
+    std::fs::write(&png, crate::picture::tests::header(200, 100)).unwrap();
+    let mut app = app_with_clips(dir.path());
+    let now = Instant::now();
+    app.dispatch(Command::Seek(s(2)), now).unwrap();
+    let undo = app.history.undo_len();
+    app.dispatch(Command::AddPicture(Some(png.clone())), now)
+        .unwrap();
+    assert_eq!(app.history.undo_len(), undo + 1, "one undo step");
+    let id = app.selection.primary_text().unwrap();
+    let item = app.project.texts.get(id).unwrap().clone();
+    assert_eq!((item.start, item.ttl), (s(2), s(3)));
+    assert_eq!(item.text, "logo.png");
+    let pic = item.picture.clone().unwrap();
+    assert_eq!((pic.width, pic.height), (200, 100));
+    assert_eq!(item.place, Pos { x: 5000, y: 5000 }, "in the middle");
+    // it moves with the box drag and aligns like a text
+    app.dispatch(
+        Command::SetTextBoxes {
+            ids: vec![id],
+            place: Pos { x: 2000, y: 3000 },
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(
+        app.project.texts.get(id).unwrap().place,
+        Pos { x: 2000, y: 3000 }
+    );
+    // a picture is not a text: its popup shows no text and it makes no ASS events
+    assert!(crate::text::project_events(&app.project.texts, 640, 360, s(10), None).is_empty());
+    // saved and opened again
+    let json = serde_json::to_string(&item).unwrap();
+    assert!(json.contains("\"picture\""));
+    let back: TextItem = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, item);
+    back.validate().unwrap();
+    // the playhead must be in the video; a file that is not a PNG is refused
+    app.dispatch(Command::Seek(s(10)), now).unwrap();
+    assert!(
+        app.dispatch(Command::AddPicture(Some(png.clone())), now)
+            .is_err()
+    );
+    app.dispatch(Command::Seek(s(1)), now).unwrap();
+    let txt = dir.path().join("a.txt");
+    std::fs::write(&txt, "hello hello hello hello hello").unwrap();
+    assert!(app.dispatch(Command::AddPicture(Some(txt)), now).is_err());
+    assert_eq!(app.project.texts.items.len(), 1);
+}
+
+// covers: REQ-287
+#[test]
+fn add_picture_asks_for_the_file_and_does_nothing_when_none_is_chosen() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = dir.path().join("p.png");
+    std::fs::write(&png, crate::picture::tests::header(64, 64)).unwrap();
+    let mut app = state(FakeDialogs {
+        picture: Some(png),
+        ..Default::default()
+    });
+    import(&mut app, files(dir.path()));
+    let now = Instant::now();
+    let m = app.project.media[0].id;
+    app.dispatch(Command::Append(Some(m)), now).unwrap();
+    app.dispatch(Command::AddPicture(None), now).unwrap();
+    assert_eq!(app.project.texts.items.len(), 1);
+    let mut none = state(FakeDialogs::default());
+    import(&mut none, files(dir.path()));
+    let m = none.project.media[0].id;
+    none.dispatch(Command::Append(Some(m)), now).unwrap();
+    none.dispatch(Command::AddPicture(None), now).unwrap();
+    assert!(none.project.texts.items.is_empty());
+}
+
+// covers: REQ-258
+#[test]
+fn generated_lines_on_a_360_clip_are_fixed_to_the_centre_of_the_view() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app_with_clips(dir.path());
+    let now = Instant::now();
+    app.project.media[0].format.spherical = Some(true);
+    app.dispatch(Command::Seek(s(1)), now).unwrap();
+    app.dispatch(
+        Command::TurnCamera {
+            yaw_cd: 3000,
+            pitch_cd: 0,
+        },
+        now,
+    )
+    .unwrap();
+    let (m0, m1) = (app.project.media[0].id, app.project.media[1].id);
+    let line = |m, a, b| crate::subtitles::NewLine {
+        media: m,
+        start: s(a),
+        end: s(b),
+        text: "hello there".into(),
+        words: vec![],
+    };
+    let r = crate::stt::SttResult {
+        ranges: vec![crate::stt::RangeResult {
+            media: m0,
+            range: None,
+            lines: vec![line(m0, 1, 2), line(m1, 1, 2)],
+        }],
+        ..Default::default()
+    };
+    app.finish_create(r, now);
+    let lines = &app.project.subtitles.lines;
+    let on360 = lines.iter().find(|l| l.media == m0).unwrap();
+    assert_eq!(on360.anchor.unwrap().yaw_cd, 3000, "the view's centre");
+    assert!(
+        lines
+            .iter()
+            .find(|l| l.media == m1)
+            .unwrap()
+            .anchor
+            .is_none()
+    );
+}
+
+// covers: REQ-259
+#[test]
+fn re_anchor_moves_selected_items_to_the_view_centre_in_one_undo_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app_with_clips(dir.path());
+    let now = Instant::now();
+    app.project.media[0].format.spherical = Some(true);
+    app.dispatch(Command::Seek(s(1)), now).unwrap();
+    let id = add(&mut app, "Pinned");
+    app.dispatch(Command::AddSubtitle, now).unwrap();
+    let line = app.selection.primary_line().unwrap();
+    app.selection
+        .pick(&[ObjRef::Text(id), ObjRef::Line(line)], false);
+    app.dispatch(
+        Command::TurnCamera {
+            yaw_cd: 9000,
+            pitch_cd: 0,
+        },
+        now,
+    )
+    .unwrap();
+    assert!(app.disabled_reason(&Command::ReAnchor).is_none());
+    let undo = app.history.undo_len();
+    app.dispatch(Command::ReAnchor, now).unwrap();
+    assert_eq!(app.history.undo_len(), undo + 1);
+    assert_eq!(
+        app.project.texts.get(id).unwrap().anchor.unwrap().yaw_cd,
+        9000
+    );
+    assert_eq!(
+        app.project
+            .subtitles
+            .get(line)
+            .unwrap()
+            .anchor
+            .unwrap()
+            .yaw_cd,
+        9000
+    );
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(app.project.texts.get(id).unwrap().anchor.unwrap().yaw_cd, 0);
+    // nothing selected, or a flat clip: refused with a reason
+    app.selection.clear();
+    assert!(app.dispatch(Command::ReAnchor, now).is_err());
+    assert!(app.disabled_reason(&Command::ReAnchor).is_some());
+    app.dispatch(Command::Seek(s(7)), now).unwrap();
+    assert!(app.disabled_reason(&Command::ReAnchor).is_some());
+}

@@ -35,6 +35,10 @@ pub struct MediaFormat {
     /// imported before 1.2.0); `Some(empty)`: checked, there are none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle_tracks: Option<Vec<SubtitleTrack>>,
+    /// Picture-based subtitle tracks (DVB, DVD, Blu-ray PGS) of the file (2.0.4, REQ-253):
+    /// the player draws them; the editor does not use them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub picture_tracks: Vec<PictureTrack>,
     /// The file carries equirectangular spherical-video information, one picture, not
     /// stereo (1.2.6). `None`: not checked yet (media imported before 1.2.6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -151,6 +155,106 @@ pub struct SubtitleTrack {
     /// Title from the file, sanitised for display.
     #[serde(default)]
     pub title: Option<String>,
+}
+
+/// A picture-based subtitle track inside a video file (REQ-253): its lines are bitmaps.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PictureTrack {
+    /// Position among the file's subtitle streams (`[0:s:<ordinal>]`).
+    pub ordinal: u8,
+    /// `pgs` (Blu-ray), `dvd` or `dvb`.
+    pub kind: String,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+impl PictureTrack {
+    /// The kind of an ffprobe codec name of a picture-based subtitle (DVD VobSub, Blu-ray PGS,
+    /// DVB); `None` for every other codec.
+    pub fn kind_of(codec: &str) -> Option<&'static str> {
+        Some(match codec {
+            "hdmv_pgs_subtitle" => "pgs",
+            "dvd_subtitle" => "dvd",
+            "dvb_subtitle" => "dvb",
+            _ => return None,
+        })
+    }
+
+    /// Makes a stored track safe (a project file is untrusted input): the kind must be a
+    /// known one, the language and title are checked like a text track's.
+    pub fn sanitised(self) -> Option<PictureTrack> {
+        if !matches!(self.kind.as_str(), "pgs" | "dvd" | "dvb") {
+            return None;
+        }
+        let t = SubtitleTrack {
+            ordinal: self.ordinal,
+            codec: TextCodec::Text,
+            language: self.language,
+            title: self.title,
+        }
+        .sanitised();
+        Some(PictureTrack {
+            ordinal: self.ordinal,
+            kind: self.kind,
+            language: t.language,
+            title: t.title,
+        })
+    }
+
+    /// How the track is named to the user (the same rule as a text track).
+    pub fn label(&self) -> String {
+        SubtitleTrack {
+            ordinal: self.ordinal,
+            codec: TextCodec::Text,
+            language: self.language.clone(),
+            title: self.title.clone(),
+        }
+        .label()
+    }
+}
+
+/// Reads the picture-based subtitle tracks of an ffprobe `streams` list, with the same caps as
+/// [`subtitle_tracks`]. The ordinal counts every subtitle stream.
+pub fn picture_tracks(streams: &[Value]) -> Vec<PictureTrack> {
+    let mut out = Vec::new();
+    let subs = streams
+        .iter()
+        .filter(|s| s.get("codec_type").and_then(Value::as_str) == Some("subtitle"));
+    for (ordinal, s) in subs.enumerate() {
+        if out.len() >= MAX_SUBTITLE_TRACKS || ordinal > usize::from(u8::MAX) {
+            break;
+        }
+        let Some(kind) = s
+            .get("codec_name")
+            .and_then(Value::as_str)
+            .and_then(PictureTrack::kind_of)
+        else {
+            continue;
+        };
+        let tag = |k: &str| {
+            s.get("tags")
+                .and_then(|t| t.get(k))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        };
+        // the same checks as a text track's
+        let t = SubtitleTrack {
+            ordinal: 0,
+            codec: TextCodec::Text,
+            language: tag("language"),
+            title: tag("title"),
+        }
+        .sanitised();
+        out.push(PictureTrack {
+            ordinal: ordinal as u8,
+            kind: kind.into(),
+            language: t.language,
+            title: t.title,
+        });
+    }
+    out
 }
 
 /// A language code as stored in files: 1–16 letters, digits or `-`.
@@ -482,6 +586,7 @@ pub fn parse_ffprobe(json: &str, path: &Path) -> Result<(Micros, MediaFormat), M
     let tracks = subtitle_tracks(&streams);
     let mut f = MediaFormat {
         subtitle_tracks: Some(tracks),
+        picture_tracks: picture_tracks(&streams),
         container: normalize_container(
             format
                 .get("format_name")
@@ -804,6 +909,75 @@ pub(crate) mod tests {
         assert_eq!(a.name, "clip.mov");
         assert!(a.path.is_absolute());
         assert_eq!(a.kind(), MediaKind::Audio);
+    }
+
+    // covers: REQ-253
+    #[test]
+    fn picture_subtitle_tracks_are_recorded_with_their_stream_number_and_kind() {
+        let json = r#"{
+          "streams": [
+            {"codec_type": "video", "codec_name": "h264", "width": 640, "height": 360},
+            {"codec_type": "subtitle", "codec_name": "subrip"},
+            {"codec_type": "subtitle", "codec_name": "hdmv_pgs_subtitle",
+             "tags": {"language": "eng", "title": "Full\u202e"}},
+            {"codec_type": "subtitle", "codec_name": "dvd_subtitle", "tags": {"language": "bad code!"}},
+            {"codec_type": "subtitle", "codec_name": "dvb_subtitle"},
+            {"codec_type": "subtitle", "codec_name": "mov_text"}
+          ],
+          "format": {"format_name": "matroska,webm", "duration": "5.0"}
+        }"#;
+        let (_, f) = parse_ffprobe(json, Path::new("/a/film.mkv")).unwrap();
+        let kinds: Vec<(u8, &str)> = f
+            .picture_tracks
+            .iter()
+            .map(|t| (t.ordinal, t.kind.as_str()))
+            .collect();
+        // the ordinal counts every subtitle stream, the text ones too
+        assert_eq!(kinds, [(1, "pgs"), (2, "dvd"), (3, "dvb")]);
+        assert_eq!(f.picture_tracks[0].label(), "English — Full\u{FFFD}");
+        assert_eq!(f.picture_tracks[1].language, None);
+        assert_eq!(f.picture_tracks[1].label(), "Track 3");
+        // the text tracks are as before
+        assert_eq!(f.subtitle_tracks.as_ref().unwrap().len(), 2);
+        // a file without them writes nothing new into a project
+        let (_, g) = parse_ffprobe(
+            r#"{"streams":[{"codec_type":"video","codec_name":"h264","width":8,"height":8}],"format":{"duration":"1"}}"#,
+            Path::new("/a/b.mkv"),
+        )
+        .unwrap();
+        assert!(g.picture_tracks.is_empty());
+        assert!(
+            !serde_json::to_string(&g)
+                .unwrap()
+                .contains("picture_tracks")
+        );
+        // hostile: more tracks than the cap
+        let mut streams = Vec::new();
+        for _ in 0..1_000 {
+            streams.push(
+                serde_json::json!({"codec_type": "subtitle", "codec_name": "hdmv_pgs_subtitle"}),
+            );
+        }
+        assert_eq!(picture_tracks(&streams).len(), MAX_SUBTITLE_TRACKS);
+        // a stored track with an unknown kind or a hostile title is dropped or made safe
+        let bad = PictureTrack {
+            ordinal: 0,
+            kind: "x".into(),
+            language: None,
+            title: None,
+        };
+        assert!(bad.clone().sanitised().is_none());
+        let ok = PictureTrack {
+            kind: "pgs".into(),
+            title: Some("a\u{7}b".into()),
+            language: Some("bad code!".into()),
+            ..bad
+        };
+        let ok = ok.sanitised().unwrap();
+        assert_eq!(
+            (ok.language, ok.title.as_deref()),
+            (None, Some("a\u{FFFD}b"))
+        );
     }
 
     // covers: REQ-086, REQ-057

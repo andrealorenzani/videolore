@@ -67,3 +67,10 @@ No change to the rules. Capped reads, regular-file checks and atomic writes now 
 - The check is syntactic: a cycle created through a macro is not seen. Known gap, accepted for 2.0.1.
 - The large files `app.rs` and `render.rs` remain large (debt, not split in 2.0.1).
 - Batch 1 of the roadmap ("verify the release") moves to a later version.
+
+## 2.0.4 changes to the structure (stage 0, QG-16)
+- `render.rs` became `render/` (submodules `args`, `graph`, `inputs`, `plan`, `segments`, and the golden argv tests) and `app.rs` took its dispatch arms into `app/` submodules by area, before any feature was added (ADR-168). No behaviour change; the golden argv tests guard it.
+- `text.rs` became `text/` (`timing`, `layout`, `events`); the types and `Texts` stay in `text.rs` (QG-16).
+- New modules: `spatial`, `picture`, `autosave`, `instance`, `hwdec`, `siblings`, `ui/strings`, `ui/theme`, and the player's `settings` and `playlist`. The root `build.rs` checks the splash summaries. The list is in [components](architecture-components.md).
+- The cycle check (`tests/module_cycles.rs`, seven tests) passes after each stage; `base` still imports no module of videolore. The large files of 2.0.1 were reduced: `render.rs` keeps 92 lines with its submodules, and `app.rs` keeps the state and the core of the dispatch (about 2,100 lines) with its arms in `app/`.
+- No module `ui/keyframe_timeline.rs` exists: the keyframe widget is in the existing UI modules (ADR-176).

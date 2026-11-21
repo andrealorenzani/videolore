@@ -7,11 +7,11 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business.md § Purpose — L3-9 (7 lines)
 - docs/business.md § Users — L10-15 (6 lines)
 - docs/business.md § Documents — L16-34 (19 lines; verification L33)
-- docs/business.md § 2.0.4 — L35-45 (11 lines; links to all 2.0.4 sub-docs)
-- docs/business.md § Constraints — L46-50 (5 lines)
-- docs/business.md § Key decisions (general) — L51-82 (32 lines; 2.0.4 bullet near L80)
-- docs/business.md § Known limitations (1.2.0 to 1.6.0) — L83-111 (29 lines)
-- docs/business.md § Out of scope — L112-123 (12 lines; automatic updates only)
+- docs/business.md § 2.0.4 — L35-46 (12 lines; links to all 2.0.4 sub-docs; REQ-177 not built note)
+- docs/business.md § Constraints — L47-51 (5 lines)
+- docs/business.md § Key decisions (general) — L52-83 (32 lines; 2.0.4 bullet near L80)
+- docs/business.md § Known limitations (1.2.0 to 1.6.0) — L84-112 (29 lines; 1.3.0 360 items marked fixed in 2.0.4)
+- docs/business.md § Out of scope — L113-124 (12 lines; automatic updates only)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
@@ -151,10 +151,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-player.md § Subtitles (REQ-140) — L23-25 (3 lines)
 - docs/business-player.md § Full screen (REQ-141) — L26-28 (3 lines)
 - docs/business-player.md § Start screen (REQ-150) — L29-31 (3 lines)
-- docs/business-player.md § Opening, preferences and playlist (2.0.4; REQ-248..252, 254..256; 253 planned) — L32-43 (12 lines)
+- docs/business-player.md § Opening, preferences and playlist (2.0.4; REQ-248..256 implemented) — L32-43 (12 lines)
 - docs/business-player.md § Key decisions — L44-49 (6 lines)
-- docs/business-player.md § Known limitations — L50-57 (8 lines; real-system builds in verification)
-- docs/business-player.md § Out of scope — L58-62 (5 lines)
+- docs/business-player.md § Known limitations — L50-56 (7 lines; real-system builds in verification; REQ-253 limits)
+- docs/business-player.md § Out of scope — L57-61 (5 lines)
 - docs/business-icons.md § intro — L1-6 (6 lines)
 - docs/business-icons.md § Features — L7-13 (7 lines)
 - docs/business-icons.md § Requirements / Icons (REQ-142, 143) — L14-19 (6 lines)
@@ -215,7 +215,7 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-quality.md § intro — L1-4 (4 lines)
 - docs/business-quality.md § Preview copies and cache (REQ-296, 297) — L5-8 (4 lines)
 - docs/business-quality.md § Project page (REQ-298, 299) — L9-12 (4 lines)
-- docs/business-quality.md § Quality goals and engineering items (QG-11..13 measured 2.0.4; QG-14..18 planned 2.0.5; no covers) — L13-22 (10 lines)
+- docs/business-quality.md § Quality goals and engineering items (QG-11..13 measured 2.0.4; QG-14..18 built 2.0.4; no covers) — L13-22 (10 lines)
 - docs/business-quality.md § Key decisions (2.0.4) — L23-26 (4 lines)
 - docs/business-quality.md § Out of scope (2.0.4) — L27-28 (2 lines)
 
@@ -228,14 +228,14 @@ Line range convention: heading to the line before the next heading. Re-check aft
 - ai-docs/business-decisions.md — standing rules, 2.0.2/2.0.3 notes, MINOR defaults in force (2.0.4 list), rejected or reversed ideas, risks, open questions.
   - § Standing rules (C, D numbers kept; D57-61 2.0.4) — L5-25 (21 lines)
   - § 2.0.2 and 2.0.3 notes (kept) — L26-31 (6 lines)
-  - § MINOR defaults taken in 2.0.4 (incl. STATUS deviations) — L32-46 (15 lines)
-  - § Rejected or considered — L48-65 (18 lines)
-  - § Product risks (current, 2.0.4) — L67-78 (12 lines)
-  - § Open questions (deviations and REQ-280 to confirm) — L80-91 (12 lines)
+  - § MINOR defaults taken in 2.0.4 (incl. STATUS deviations, second call) — L32-48 (17 lines)
+  - § Rejected or considered — L49-67 (19 lines)
+  - § Product risks (current, 2.0.4) — L68-80 (13 lines)
+  - § Open questions (deviations, REQ-177) — L81-92 (12 lines)
 
-## Checkpoint 2.0.4 (STATUS done, 2026-11-21, version 2.0.4)
+## Checkpoint 2.0.4 (STATUS done, all 2.0.4 REQs implemented except REQ-177; 2026-11-21, version 2.0.4)
 - Process state: `ai-docs/roadmap-2_0-checkpoint.md` § Product Manager.
-- Requirements: REQ-180..299 except 253, 257-260, 268, 273, 281, 286-288 are `(implemented)` (109 IDs, each with a `// covers:` test by grep; REQ-280 included on the user's list). The 11 stay `(planned)` (2.0.5 batch in docs/roadmap_tasks.md). REQ-177 untouched (planned). REQ-001..176 and 178..179 implemented. Next free ID: REQ-300.
+- STATUS done, all 2.0.4 REQs implemented except REQ-177 (2026-11-21). Requirements: REQ-180..299 all `(implemented)` (120 IDs, each with a `// covers:` test by grep; the 11 of the second call were marked then). REQ-177 stays `(planned)` (open decision). REQ-001..176 and 178..179 implemented. Next free ID: REQ-300.
 - Deviations written into the built REQ lines as built (Andrea's answer still open): REQ-202, 195, 222, 244, 248, 183, 182 (flag), 279 (speechnorm, D61), 293 (LUT limits); REQ-206 spec confirmed, no text change. Details: business-decisions.md § MINOR defaults and § Open questions.
 - Still open for Andrea: REQ-177; the deviations listed in business-decisions.md § Open questions.
 - Decisions D57-D61 in `ai-docs/business-decisions.md` (standing rules). Feature coverage target 100%, line coverage target 85%.

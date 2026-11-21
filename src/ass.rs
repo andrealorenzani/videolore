@@ -233,6 +233,37 @@ pub fn words_of(l: &ShownLine) -> Vec<Word> {
         .collect()
 }
 
+/// The chunks of a line for the word highlight (REQ-257): each is a few words with its
+/// start and end, the words joined by spaces and the time of each word in hundredths of a
+/// second (a word lasts until the next one starts).
+pub fn highlight_chunks(l: &ShownLine) -> Vec<(Micros, Micros, String, Vec<u32>)> {
+    let words = words_of(l);
+    let chunks: Vec<&[Word]> = words.chunks(HIGHLIGHT_CHUNK).collect();
+    let mut out = Vec::new();
+    for (ci, chunk) in chunks.iter().enumerate() {
+        let start = chunk[0].start.max(l.start);
+        let end = chunks
+            .get(ci + 1)
+            .map(|n| n[0].start)
+            .unwrap_or(l.end)
+            .max(start + Micros(10_000));
+        let mut cursor = start;
+        let mut cs = Vec::new();
+        for wi in 0..chunk.len() {
+            let until = chunk.get(wi + 1).map(|n| n.start).unwrap_or(end);
+            cs.push(((until - cursor).0.max(0) / 10_000).max(1) as u32);
+            cursor = until;
+        }
+        let text = chunk
+            .iter()
+            .map(|w| w.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        out.push((start, end, text, cs));
+    }
+    out
+}
+
 fn dialogue(start: Micros, end: Micros, text: &str) -> String {
     format!(
         "Dialogue: 0,{},{},Default,,0,0,0,,{text}\n",

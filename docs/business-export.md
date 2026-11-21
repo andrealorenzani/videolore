@@ -46,7 +46,7 @@ The real-hardware check of this feature is the quality goal QG-05, in [Settings,
 - (0.4.0) **Best quality is the default everywhere; Faster is opt-in.** Upgrades from 0.3.x load as Best quality, so nothing changes until the user chooses Faster.
 - (0.4.0) Every hardware result is checked (full decode, frame count and details, three sample frames compared with a normal render), because some driver faults produce bad video without reporting an error.
 - (0.4.0) Quality target for Faster: at most 3 VMAF points below Best quality, and files at most 1.5 times the Best quality size (checked by hand, QG-05).
-- (0.4.0) Only H.264 and HEVC use hardware: they are the formats with the broadest hardware support. (2.0.2, Andrea) AV1 and VP9 encoding are in scope as well, and so is hardware decoding; they are not built yet, and their requirements come with the batch that builds them.
+- (0.4.0) Only H.264 and HEVC use hardware: they are the formats with the broadest hardware support. (2.0.2, Andrea) AV1 and VP9 encoding are in scope as well, and so is hardware decoding; they are built in 2.0.4 (REQ-212, REQ-213).
 - (2.0.2, Andrea) The Export dialog keeps its fixed presets and "Same as source": custom resolutions, frame rates, bitrates and encoder options are not planned.
 - (2.0.2, Andrea) Hardware export always goes through ffmpeg (the bundled one, or the one the user chose); no separate vendor pipeline.
 - (0.4.0) The hardware aims at the same average bitrate as the normal method, so file sizes stay close to Best quality. If the source bitrate is unknown, the normal method is used.

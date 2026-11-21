@@ -107,7 +107,13 @@ impl AppState {
                     let min = self.frame_len();
                     let at = self.playhead;
                     self.edit(now, label, |e| {
-                        e.timeline.split(at, min).map(|_| ()).map_err(err)
+                        let from = e.timeline.locate(at).map(|(i, _)| e.timeline.clips[i].id);
+                        let id = e.timeline.split(at, min).map_err(err)?;
+                        // both halves keep the clip's own camera path (REQ-268)
+                        if let Some(from) = from {
+                            e.camera.copy_clip(from.0, id.0);
+                        }
+                        Ok(())
                     })
                 }
                 Command::Copy => {
@@ -121,6 +127,7 @@ impl AppState {
                         .timeline
                         .lut_of(FrameTarget::Clip(id))
                         .map(str::to_string);
+                    self.clipboard_camera = self.project.camera.own_path(id.0).cloned();
                     self.status = "Clip copied".into();
                     self.clipboard_text = Some(crate::app::CLIPBOARD_MARKER.into());
                     Ok(())
@@ -136,6 +143,7 @@ impl AppState {
                         .timeline
                         .lut_of(FrameTarget::Clip(id))
                         .map(str::to_string);
+                    let camera = self.project.camera.own_path(id.0).cloned();
                     self.edit(now, label, |e| {
                         e.timeline.remove(id).map(|_| ()).map_err(err)
                     })?;
@@ -144,6 +152,7 @@ impl AppState {
                         self.clipboard = clip;
                         self.clipboard_frames = frames;
                         self.clipboard_lut = lut;
+                        self.clipboard_camera = camera;
                     }
                     self.selected_clip = None;
                     Ok(())
@@ -160,8 +169,12 @@ impl AppState {
                     let mut new_id = None;
                     let frames = self.clipboard_frames.clone();
                     let lut = self.clipboard_lut.clone();
+                    let camera = self.clipboard_camera.clone();
                     self.edit(now, label, |e| {
                         let id = e.timeline.insert_at(&clip, at, min).map_err(err)?;
+                        if let Some(own) = camera {
+                            e.camera.put_own(id.0, own);
+                        }
                         if let Some(p) = lut {
                             e.timeline
                                 .set_lut(FrameTarget::Clip(id), Some(p))

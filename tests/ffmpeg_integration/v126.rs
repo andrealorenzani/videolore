@@ -14,15 +14,15 @@ const LINE_LON: f64 = 30.0;
 /// Latitude (degrees, 0 = horizon) of the white parallel of the test sphere.
 const LINE_LAT: f64 = 20.0;
 
-/// A 2048x1024 equirectangular picture, black with one thin white meridian at
+/// A 1024x512 equirectangular picture, black with one thin white meridian at
 /// [`LINE_LON`] and one thin white parallel at [`LINE_LAT`]: where they show up in a view
 /// tells the direction of the camera.
 fn sphere_file(env: &Env, secs: u32) -> PathBuf {
-    let x = ((LINE_LON + 180.0) / 360.0 * 2048.0) as u32 - 3;
-    let y = ((90.0 - LINE_LAT) / 180.0 * 1024.0) as u32 - 3;
+    let x = ((LINE_LON + 180.0) / 360.0 * 1024.0) as u32 - 2;
+    let y = ((90.0 - LINE_LAT) / 180.0 * 512.0) as u32 - 2;
     let src = format!(
-        "color=c=black:s=2048x1024:r=10:d={secs},drawbox=x={x}:y=0:w=6:h=1024:color=white:t=fill,\
-         drawbox=x=0:y={y}:w=2048:h=6:color=white:t=fill"
+        "color=c=black:s=1024x512:r=10:d={secs},drawbox=x={x}:y=0:w=4:h=512:color=white:t=fill,\
+         drawbox=x=0:y={y}:w=1024:h=4:color=white:t=fill"
     );
     env.fixture(
         &format!("sphere{secs}.mp4"),

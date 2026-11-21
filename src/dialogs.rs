@@ -79,4 +79,10 @@ impl Dialogs for NativeDialogs {
             .add_filter("Subtitles", &["srt", "vtt"])
             .pick_file()
     }
+
+    fn pick_picture(&mut self) -> Option<PathBuf> {
+        rfd::FileDialog::new()
+            .add_filter("PNG image", &["png"])
+            .pick_file()
+    }
 }

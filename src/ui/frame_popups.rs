@@ -75,7 +75,7 @@ pub fn key_range(app: &AppState, t: FrameTarget) -> Option<(Micros, Micros, Micr
         // the first clip with keys, on a timeline as long as the longest clip (REQ-148)
         FrameTarget::Whole => {
             let from = tl.frame_start(FrameTarget::Whole);
-            let longest = tl.clips.iter().map(|c| c.len()).max()?;
+            let longest = tl.clips.iter().map(|c| c.src_len()).max()?;
             Some((from, from + longest, Micros::ZERO))
         }
         FrameTarget::Clip(id) => {

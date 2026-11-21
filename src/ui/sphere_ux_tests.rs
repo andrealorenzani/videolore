@@ -280,9 +280,20 @@ fn set_pov_button_stores_the_view_and_the_marker_opens_its_popup() {
     h.drag(pic.center(), pic.center() + vec2(60.0, 0.0));
     let n = h.app.history.undo_len();
     h.click_label("Set POV");
-    assert_eq!(h.app.project.camera.path(m).len(), 1);
+    assert_eq!(
+        h.app
+            .project
+            .camera
+            .path_of(Some(h.app.project.timeline.clips[0].id.0), m)
+            .len(),
+        1
+    );
     assert_eq!(h.app.history.undo_len(), n + 1);
-    let pov = h.app.project.camera.path(m)[0];
+    let pov = h
+        .app
+        .project
+        .camera
+        .path_of(Some(h.app.project.timeline.clips[0].id.0), m)[0];
     assert_eq!(pov.t, Micros(1_000_000));
     assert!(pov.cam.yaw_cd < 0);
     // its marker on the timeline (tooltip with the angles)
@@ -345,7 +356,13 @@ fn pov_markers_follow_the_clip_and_hide_outside_the_kept_part() {
     .unwrap();
     let xs: Vec<f32> = all(&app).iter().map(|k| k.x).collect();
     assert_eq!(xs, vec![20.0]);
-    assert_eq!(app.project.camera.path(m).len(), 2);
+    assert_eq!(
+        app.project
+            .camera
+            .path_of(Some(app.project.timeline.clips[0].id.0), m)
+            .len(),
+        2
+    );
     assert_eq!(
         app.instance_start(Instance::Pov(m, Micros(1_000_000))),
         None
@@ -611,8 +628,28 @@ fn the_arrow_keys_turn_the_camera_and_enter_adds_a_point_of_view_only_with_the_p
         "Page Up zooms in"
     );
     // Enter makes a point of view at the playhead
-    assert!(h.app.project.camera.path(m).is_empty());
+    assert!(
+        h.app
+            .project
+            .camera
+            .path_of(Some(h.app.project.timeline.clips[0].id.0), m)
+            .is_empty()
+    );
     h.key(Key::Enter, Modifiers::NONE);
-    assert_eq!(h.app.project.camera.path(m).len(), 1);
-    assert_eq!(h.app.project.camera.path(m)[0].t, h.app.playhead);
+    assert_eq!(
+        h.app
+            .project
+            .camera
+            .path_of(Some(h.app.project.timeline.clips[0].id.0), m)
+            .len(),
+        1
+    );
+    assert_eq!(
+        h.app
+            .project
+            .camera
+            .path_of(Some(h.app.project.timeline.clips[0].id.0), m)[0]
+            .t,
+        h.app.playhead
+    );
 }

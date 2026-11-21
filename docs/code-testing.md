@@ -69,7 +69,7 @@
   the speech model, do not count). They are skipped when ffmpeg is missing, unless
   `VIDEOLORE_REQUIRE_FFMPEG=1` (set in CI, where missing libx265/libass also fail).
 - **Real speech recognition** (`real_speech_is_transcribed`, feature `stt`) runs only when
-  `VIDEOLORE_STT_MODEL` points to the pinned Fast file and `espeak-ng` is installed (both in CI).
+  `VIDEOLORE_STT_MODEL` points to the pinned Fast file (in CI); the speech is the committed `tests/fixtures/align/speech.mkv`.
   `higher_levels_are_at_least_as_accurate` needs `VIDEOLORE_STT_MODELS_DIR` with the three
   speech files (cached in CI): the word error rate of Balanced and Most accurate on a spoken
   reference sentence must not be worse than Fast's.
@@ -100,7 +100,7 @@ glue outside the gated test.
 
 | Job | When | What |
 |---|---|---|
-| `check` | every push / PR, `ubuntu-24.04` | the tests' ffmpeg is the pinned linux-x86_64 build of `packaging/ffmpeg.lock` (`scripts/fetch-ffmpeg.sh`, cached by the hash of the lock; `VIDEOLORE_FFMPEG`/`VIDEOLORE_FFPROBE` and `PATH` point to it; with `VIDEOLORE_REQUIRE_FFMPEG=1` the integration tests fail when its version differs from the lock, QG-07, QG-08); `cargo about --version` must print 0.9.3; apt `libasound2-dev pkg-config cmake libclang-dev espeak-ng`; the three speech files cached (checked by SHA-256); fmt; clippy with default, no and all features; the tests once, instrumented (`cargo llvm-cov`, line coverage ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check` (vulnerabilities and yanked crates fail; exceptions only in `deny.toml` with a reason); Rust crate notices up to date; version check; feature coverage 100 %; frozen release docs untouched; fmt, clippy, tests and coverage run with `--workspace`, and the player's `cargo tree` is searched for network and speech crates |
+| `check` | every push / PR, `ubuntu-24.04` | the tests' ffmpeg is the pinned linux-x86_64 build of `packaging/ffmpeg.lock` (`scripts/fetch-ffmpeg.sh`, cached by the hash of the lock; `VIDEOLORE_FFMPEG`/`VIDEOLORE_FFPROBE` and `PATH` point to it; with `VIDEOLORE_REQUIRE_FFMPEG=1` the integration tests fail when its version differs from the lock, QG-07, QG-08); `cargo about --version` must print 0.9.3; apt `libasound2-dev pkg-config cmake libclang-dev`; the three speech files cached (checked by SHA-256); fmt; clippy with default, no and all features; the tests once, instrumented (`cargo llvm-cov`, line coverage ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check` (vulnerabilities and yanked crates fail; exceptions only in `deny.toml` with a reason); Rust crate notices up to date; version check; feature coverage 100 %; frozen release docs untouched; fmt, clippy, tests and coverage run with `--workspace`, and the player's `cargo tree` is searched for network and speech crates |
 | (all jobs) | | `Swatinem/rust-cache` with `prefix-key: v2-rust-ggml-portable`, bumped whenever the whisper.cpp build flags change so no old build is reused |
 | (test steps) | | `cargo test` output is saved; on failure `scripts/test-annotations.sh` turns failing tests (name, file/line, panic message), compiler errors and crashed test binaries into GitHub error annotations, readable without logging in |
 | `package-config` | every push / PR | Installer configuration (QG-10): `package.sh <windows-x86_64\|macos-aarch64> <editor\|player> --config-only` and `package.sh linux-x86_64 <editor\|player> --stub`, with checks of the files made; nothing is uploaded |
@@ -147,8 +147,10 @@ every word timed inside its line, at least half of the words found) and the accu
   (`project` fifo load 1 s, `media` stuck probe 5 s, `machine` detection 3 s) pass on the best
   of up to five samples (`base::testing::best_of`, `#[cfg(test)]`, std only; all samples are
   printed when every one is over), the limits are unchanged; waits for results (preview
-  frames, hardware checks) are harness timeouts of 120 s. The four UI frame gates are not
-  sampled: each is one scenario of many frames (see the roadmap). Load check of 2.0.2: with 8 busy-loop processes on 8 threads the library tests pass except `stays_responsive_while_exporting_and_transcribing` (a frame over 200 ms), which is the known open item.
+  frames, hardware checks) are harness timeouts of 120 s. The four UI frame gates are sampled
+  the same way (`sampled` in `ui/tests.rs`: the scenario runs up to five times and passes at the
+  first run within its limit, 200 ms for a frame, or at most two frames over 200 ms and none over a second for the
+  responsiveness test; a real slowdown makes every run slow). Load check of 2.0.2: with 8 busy-loop processes on 8 threads the library tests passed except `stays_responsive_while_exporting_and_transcribing` (a frame over 200 ms), before the gates were sampled.
 - Player: `player/src/tests.rs` uses a scripted `Runner` (ffprobe answers by file name, ffmpeg
   writes a subtitle track, spawned processes hold their output until killed). The UI test
   harnesses of both programs read egui's accessibility tree; the editor's strips the leading
@@ -172,8 +174,8 @@ tests export 1920x1080 views of 360° videos (about 25 s each).
 - `tests/ffmpeg_integration/v21.rs`: the text size against the drawn pixels (measure, cap, preview = export), readability pixels on a white frame, blink, an installed font (a copy of the bundled font under another name and another `usWinAscent`, `tests/support/patched_font.rs`, never installed in the system, so only the copy in the work `fonts/` lets the renderer find it), a missing font, the centre of a line after a second line. `v20` has the paused picture at the end of a clip.
 - Unit and interface tests: `measure::tests`, `placement::tests`, `app::placing_tests`, `ui::placing_ux_tests`, `fonts::tests`; `stt::tests` has the recognition pieces (a fake transcriber that hears what lies in the audio it is given, fragments at its ends).
 - `VIDEOLORE_REQUIRE_STT=1` (CI): a missing speech model fails the speech tests instead of skipping them; the speech fixture is checked by SHA-256 (`v12::check_fixture`).
-- Locally the speech test `real_speech_is_transcribed` needs `espeak-ng`; with `VIDEOLORE_REQUIRE_FFMPEG=1` its absence fails (as in CI, where it is installed).
-- Load-sensitive gates: `hw::the_real_hardware_check_is_quick_and_stable` tries a slow pair of checks up to four times; `ui::tests::stays_responsive_while_exporting_and_transcribing` allows at most two frames over 200 ms and none over a second.
+- The speech tests use the committed `speech.mkv`; no speech synthesiser is needed to run them (QG-14).
+- Load-sensitive gates: `hw::the_real_hardware_check_is_quick_and_stable` tries a slow pair of checks up to four times; `ui::tests::stays_responsive_while_exporting_and_transcribing` allows at most two frames over 200 ms and none over a second (each run, best of up to five).
 
 ## 2.0.4 additions (stages 0 to 3)
 
@@ -190,3 +192,10 @@ tests export 1920x1080 views of 360° videos (about 25 s each).
 - `tests/ffmpeg_integration/hw.rs`: the simulated hardware stands in with SVT-AV1 and libvpx-vp9 (AV1 presets drop `-maxrate`, which SVT-AV1 refuses); AV1 and VP9 projects use 1 s clips (the software encoders are slow); the 60-cut project of `the_check_accepts_correct_files_of_rich_projects` is what showed that a short check cannot rely on the plan's frame count (it falls back to the whole graph). `v204.rs` compares the preview with a kept background with the whole render of the same picture (mean difference below 2 of 255).
 - The `cpu_message` test name is a contract with CI: `cargo test … cpu_message` must run at least one test.
 - Test counts after stage 7: 735 library tests (2 ignored), 80 integration tests (3 ignored), 7 module-cycle tests, 34 player tests, 3 player integration tests; the workspace run takes about 70 s on this computer.
+
+## 2.0.4 additions (stages 8 to 14)
+
+- Spatial sound: `spatial::tests` (rotation, cardioid pair, camera path, WAV header, pre-pass with a fake runner including the partial-frame carry, failure and cancel), `render::tests` (the graph input and offsets, the 360 video export and the preview cap), `export::tests` (pre-pass before the export, failure, cancel), and the real-ffmpeg tests in `tests/ffmpeg_integration/v204b.rs` (a 4-channel clip made by `pan=quad`: the export and the preview put a left sound in front when the camera turns left, behind it on the other side, and a 360 video export keeps the sound; `the_pre_pass_runs_far_faster_than_real_time` prints the speed).
+- Picture subtitles: `media::tests` (stream numbers and kinds, caps, sanitising), `render::tests` (the overlay and the split), the player menu tests, and `player/tests/ffmpeg.rs` with a hand-written PGS stream (`pgs`).
+- Quality items: golden argv of formats 4 and 5 (`render/golden_tests.rs`), the large-picture memory test (`memory_stays_small_with_a_large_picture`), pointer tests of the colour picker and the Export dropdowns, and the notices test for the bundled fonts. The speech tests read `tests/fixtures/align/speech.mkv`; the 360 test sphere of `v126.rs` is 1024 x 512.
+- Measured on the development machine: the cycle check (`tests/module_cycles.rs`) runs in 1.7 s; the pinned ffmpeg and ffprobe are 173 MB each unpacked; the pre-pass of 120 s of 4-channel sound takes 1.7 s in the test profile. The size of the download and the CI times (QG-06) are read from the first CI run.

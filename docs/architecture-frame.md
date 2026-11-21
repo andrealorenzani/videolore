@@ -62,7 +62,13 @@ Any Change aspect, Scale or Move makes the export a re-encode, even at the defau
 - The blurred background adds at most 10% to the composition time (estimate).
 - Memory: no new buffer; frames up to 4096 px on the longer side.
 
-## 2.0.3 (planned): blur fill on small pictures
+## 2.0.4 additions (stages 6 and 11)
+- **Blur levels (REQ-284, ADR-193):** Low, Medium (default) and High for the blurred fill. **Blur divisor (ADR-180):** the blurred background is computed at an eighth of each side (`BLUR_DIVISOR` 8), measured on the bundled 9.0.2 build (4K: 2.9 to 3.1 s, against 3.3 to 3.7 s for a quarter); REQ-222 names a quarter, and the product decision is open. A project without blur is unchanged.
+- **Custom aspect (REQ-285, ADR-193):** any ratio from 1:4 to 4:1 can be typed; the frame's longer side keeps the 4096 px cap.
+- **Background of a still:** one raw RGBA file in the private folder, for stills only (see [media pipeline](architecture-media-pipeline.md#preview-and-export-additions-204)).
+- **Clip Change aspect (REQ-286):** a clip's own frame, padded into the project frame (see [effects](architecture-effects.md#effects-added-in-204)).
+
+## 2.0.3: blur fill on small pictures
 - A blurred background is made from a picture of at least 8 pixels on each side (it was 2), and its blur radius for the colour planes is limited to what the picture can take. Before, a frame about 64 pixels wide or less with a blurred fill made the export fail with an ffmpeg error. Pictures of normal size are unchanged.
 - Test: the blurred fill of a 68 by 120 frame exports; the radius rule holds for sizes from 8 to 600 pixels.
 
@@ -77,7 +83,7 @@ No new crate. The `ffmpeg` filters used (`color`, `split`, `scale`, `boxblur`, `
 ## Visible edges (1.6.1)
 - The Scale box works through its visible edges (REQ-145): the part of each edge inside the frame is a handle, so a side cut by Change aspect or a Scale above 100% can still be dragged. Corners are hit first, then the visible edges, then the Move target.
 - Dragging an edge scales the picture proportionally: the factor is the pointer's distance from the opposite edge over the box's side at the start, applied to both sides; the opposite side stays fixed. Limits 10% and 400%, one drag is one undo step. The corners are drawn on the visible part of the picture.
-- Pure geometry in `ui/frame_handles` (`Hit` gets an edge variant; `scale_to` takes the axis of the edge). Subtitle and text boxes use the same visible-part rule (see [boxes](architecture-boxes.md#visible-edges-161)).
+- Pure geometry in `ui/frame_handles` (`Hit` gets an edge variant; `scale_to` takes the axis of the edge). Subtitle and text boxes use the same visible-part rule (see [boxes](architecture-boxes.md#visible-edges-161-req-145-req-146)).
 
 ## Whole-video Scale and Move (1.6.1)
 - There is no whole-video Scale or Move in the format any more (REQ-148). A double-click gives each clip its own copy: its keyframes are in the source time of the clip, from the clip's start on, like the clip's own keys, so a trim or cut never moves a copy (its keys stay on the same part of the source). The whole-video popup shows the first clip's keyframes on a timeline as long as the longest clip, and each change in it is applied to every copy at the same clip time (add where the copy is long enough, set, or remove keeping each copy's last key).

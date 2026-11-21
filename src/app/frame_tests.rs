@@ -81,24 +81,27 @@ fn change_aspect_starts_16_9_fit_width_black_and_every_change_is_one_undo_step()
     assert_eq!(app.project.timeline.frame_aspect, Some(b));
 }
 
-// covers: REQ-130
+// covers: REQ-130, REQ-286, REQ-288
 #[test]
-fn change_aspect_is_for_the_whole_video_only() {
+fn change_aspect_on_a_clip_gives_that_clip_its_own_aspect_and_not_the_whole_video() {
     let (_d, mut app) = two();
     let c = clip(&app, 0);
     let cmd = Command::ApplyEffect {
         effect: EffectKind::ChangeAspect,
         target: Target::Clip(c),
     };
-    assert!(!app.is_enabled(&cmd));
-    assert_eq!(
-        app.disabled_reason(&cmd),
-        Some("Change aspect applies to the whole video")
-    );
+    assert!(app.is_enabled(&cmd));
     let n = app.history.undo_len();
-    assert!(app.dispatch(cmd, now()).is_err());
-    assert_eq!(app.history.undo_len(), n);
-    assert!(app.project.timeline.frame_aspect.is_none());
+    app.dispatch(cmd, now()).unwrap();
+    assert_eq!(app.history.undo_len(), n + 1, "one undo step");
+    assert!(app.project.timeline.own_aspect(c).is_some());
+    assert!(app.project.timeline.own_aspect(clip(&app, 1)).is_none());
+    assert!(
+        app.project.timeline.frame_aspect.is_none(),
+        "not the whole video"
+    );
+    app.dispatch(Command::Undo, now()).unwrap();
+    assert!(app.project.timeline.own_aspect(c).is_none());
 }
 
 // covers: REQ-130
@@ -465,4 +468,46 @@ fn the_easing_of_a_keyframe_segment_reaches_the_preview_value_and_the_export_exp
         )
         .is_err()
     );
+}
+
+// covers: REQ-281
+#[test]
+fn speed_changes_the_clip_length_in_one_undo_step_and_the_popup_offers_it() {
+    let (_d, mut app) = two();
+    let c0 = clip(&app, 0);
+    let before = app.project.timeline.duration();
+    let undo = app.history.undo_len();
+    app.dispatch(
+        Command::SetSpeed {
+            clip: c0,
+            speed: 2000,
+        },
+        now(),
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), undo + 1);
+    assert_eq!(app.project.timeline.clips[0].len(), Micros(2_500_000));
+    assert_eq!(app.project.timeline.duration(), before - Micros(2_500_000));
+    // the same value again is not a step; a value outside 50-200 % is refused
+    app.dispatch(
+        Command::SetSpeed {
+            clip: c0,
+            speed: 2000,
+        },
+        now(),
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), undo + 1);
+    assert!(
+        app.dispatch(
+            Command::SetSpeed {
+                clip: c0,
+                speed: 100
+            },
+            now()
+        )
+        .is_err()
+    );
+    app.dispatch(Command::Undo, now()).unwrap();
+    assert_eq!(app.project.timeline.duration(), before);
 }

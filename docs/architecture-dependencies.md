@@ -50,7 +50,9 @@ No new crate was added in 1.5.0 (frame effects use the existing `egui` colour pi
 
 Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDLA-Permissive-2.0). Both are listed in the notices and allowed by the CI licence check.
 
-## Font crates for measuring text (2.0.3, planned)
+**2.0.4.** New direct dependencies, all checked by cargo-deny: `objc2-app-kit` 0.3.2 (macOS only, minimal features; the one-call menu bar of REQ-232, no menu crate); the `accesskit` feature of eframe (accesskit_winit 0.34.2 on Windows, macOS and Linux, REQ-246). No other crate: the one-window lock uses `std::fs::File::try_lock`; the VTT and ASS writers, the `.3dl` and `.csp` readers, the spatial sound (ambisonics in Rust, a WAV writer by hand), the picture size (PNG header) and the MKV marker are in-house. `image` keeps only its `gif` feature (no `png`). The speech fixture is committed, so no speech synthesiser is installed in CI. The test font is named in both notice files (QG-18); the picture subtitle test stream is written by hand in `player/tests/ffmpeg.rs` (own work).
+
+## Font crates for measuring text (2.0.3)
 - `skrifa` 0.44 (MIT or Apache-2.0) reads a font's metrics and glyph widths; `harfrust` 0.12 (MIT) shapes the text, kerning included, as the subtitle path does. Both are already in the program's lock file (through the GUI library), so no new package is downloaded; they become direct dependencies. Their minimum Rust version (1.85) is below the policy of the latest stable toolchain.
 - Not added: `rustybuzz`, `ttf-parser`, `fontdue` and `ab_glyph` (a second shaper or rasteriser for one measure).
 - The whisper.cpp word-timing presets use the existing `whisper-rs` 0.16 binding; no new crate.
@@ -61,7 +63,8 @@ Indirect licences worth noting: `ring` (Apache-2.0 AND ISC), `webpki-roots` (CDL
 | `ffmpeg`, `ffprobe` (GPL builds: BtbN for Windows/Linux, Martin Riedl for macOS) | GPL-3.0-or-later (includes x264, x265: GPL-2.0-or-later; libass and others) | All media decoding, encoding and subtitle rendering. See [ffmpeg](architecture-ffmpeg.md). |
 | Noto Sans Bold | SIL Open Font License 1.1 | Subtitle font. |
 | Phosphor Icons, Regular weight (1.6.0) | MIT | Icons of the whole interface, bundled as one font file. See [icons](architecture-icons.md). |
-| Splash pictures `assets/splash/splash.gif` (editor, the 1.6.1 picture renamed in 1.6.2) and `assets/splash/splash-player.gif` (player, 1.6.2) | Origin and licence not yet recorded (open at release 1.6.3) | Splash screens of both programs. See [splash](architecture-splash.md). |
+| Noto Sans Arabic Bold and Noto Sans Devanagari Bold (2.0.4, committed in `assets/fonts`) | SIL Open Font License 1.1 | Subtitle and text fonts for these scripts; CJK is not bundled. |
+| Splash pictures `assets/splash/splash.gif` (editor) and `assets/splash/splash-player.gif` (player) | Own work of the author, MIT (recorded in the notices since 1.6.3) | Splash screens of both programs. See [splash](architecture-splash.md). |
 
 Downloaded after consent, not bundled: the whisper models of the three subtitle quality levels (`ggml-tiny-q5_1.bin`, `ggml-small-q5_1.bin`, `ggml-large-v3-turbo-q5_0.bin`, all MIT). See [subtitles](architecture-subtitles.md#subtitle-quality-levels-030).
 
@@ -74,7 +77,6 @@ Not part of `videolore`; not linked.
 | appimagetool | pinned in `packaging/tools.lock` | Linux AppImage. |
 | cargo-deny | 0.20.2 | Licence, advisory and banned-crate checks. |
 | cargo-about | 0.9.3 | Generates the Rust crate notices. |
-| `espeak-ng` | system package | Synthetic speech for the speech-to-text and accuracy tests; since 1.2.0 also to recreate the committed word-matching test clip (`tests/fixtures/align/make.sh`, not needed to run the tests). |
 | cargo-llvm-cov | installed in CI | Line coverage; since 0.3.0 CI runs the tests once, under coverage. |
 | `qemu-user` (optional) | system package | Running the tests on an emulated older processor to confirm the old-processor check. |
 | `cmake`, libclang, C++ compiler | system | Building whisper.cpp. |

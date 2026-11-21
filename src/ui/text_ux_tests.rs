@@ -637,3 +637,66 @@ fn the_text_popup_offers_readability_and_notes_a_missing_font() {
     // the saved font name is still the missing one
     assert_eq!(h.app.project.texts.get(id).unwrap().font, "Gone Sans");
 }
+
+// covers: REQ-108
+#[test]
+fn the_colour_button_opens_the_picker_and_a_click_in_it_changes_the_colour() {
+    let (_d, mut app) = loaded();
+    let id = text_at(&mut app, "Hi", 4);
+    app.dispatch(Command::OpenText(id), Instant::now()).unwrap();
+    let mut h = Harness::new(app, 1280.0, 900.0);
+    let before = h.app.project.texts.get(id).unwrap().colour;
+    let button = h.find("Color").expect("the colour button").rect;
+    h.click(button.center());
+    h.idle(3);
+    // the picker is a new popup with a square: the largest interactive widget
+    let square = h
+        .nodes
+        .iter()
+        .filter(|n| n.interactive && n.rect.width() > 100.0 && n.rect.height() > 100.0)
+        .map(|n| n.rect)
+        .next()
+        .expect("the picker's colour square");
+    h.click(pos2(square.left() + 5.0, square.top() + 5.0));
+    h.idle(2);
+    // a click elsewhere closes the picker and the new colour is stored in one step
+    h.click(pos2(5.0, 400.0));
+    h.idle(3);
+    let after = h.app.project.texts.get(id).unwrap().colour;
+    assert_ne!(
+        before, after,
+        "the colour changed by the click in the picker"
+    );
+}
+
+// covers: REQ-103
+#[test]
+fn the_export_dialog_dropdowns_open_on_a_click_and_a_choice_is_kept() {
+    use crate::ui::export_dialog as d;
+    let (_d, app) = loaded();
+    let mut h = Harness::new(app, 1000.0, 800.0);
+    h.key(Key::E, Modifiers::COMMAND);
+    h.idle(3);
+    let mode = |h: &Harness| match &h.app.modal {
+        Some(Modal::Export(c)) => c.mode,
+        _ => panic!("no export dialog"),
+    };
+    let first = mode(&h);
+    let other = crate::export::choice::Mode::ALL
+        .iter()
+        .copied()
+        .find(|m| *m != first)
+        .unwrap();
+    // the Mode dropdown shows the current choice; a click lists every mode
+    h.click_label(first.label());
+    for m in crate::export::choice::Mode::ALL {
+        assert!(h.has(m.label()), "{} in {:#?}", m.label(), h.labels());
+    }
+    h.click_label(other.label());
+    assert_eq!(mode(&h), other);
+    // the Video dropdown lists "Same as source" and at least one preset
+    h.click_label(d::SAME_AS_SOURCE);
+    let n = h.labels().len();
+    assert!(n > 10, "the list is open: {:#?}", h.labels());
+    h.key(Key::Escape, Modifiers::NONE);
+}

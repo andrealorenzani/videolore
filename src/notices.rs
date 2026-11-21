@@ -195,6 +195,30 @@ mod tests {
         assert!(include_str!("../assets/icons/SOURCE.txt").contains("2.1.2"));
     }
 
+    // covers: REQ-187
+    #[test]
+    fn every_bundled_font_and_the_font_of_the_tests_are_in_the_notices_under_the_ofl() {
+        for f in [
+            "Noto Sans Bold",
+            "Noto Sans Arabic Bold",
+            "Noto Sans Devanagari Bold",
+        ] {
+            assert!(THIRD_PARTY.contains(f), "{f}");
+        }
+        let ofl = THIRD_PARTY
+            .matches("SIL Open Font License 1.1 (OFL-1.1)")
+            .count();
+        assert!(ofl >= 3, "one licence line per bundled face: {ofl}");
+        assert!(include_str!("../assets/fonts/OFL.txt").contains("SIL OPEN FONT LICENSE"));
+        // the copy of a font made by the tests (never shipped) is named with its licence, in
+        // both programs' notices
+        let entry = "Font of the tests (not shipped)";
+        for text in [about_text(None), about_text_player(None)] {
+            let at = text.find(entry).expect("the test font is listed");
+            assert!(text[at..].contains("SIL Open Font License 1.1"));
+        }
+    }
+
     // covers: REQ-031
     #[test]
     fn the_splash_images_are_own_work_licensed_mit() {

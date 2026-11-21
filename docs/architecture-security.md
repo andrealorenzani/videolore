@@ -96,13 +96,21 @@ There are no secrets, accounts or telemetry.
 - The player's splash adds no code path that reads or writes a file; the player's network rule is unchanged.
 - Resolved in 1.6.3: the origin and licence of `splash.gif` and `splash-player.gif` are recorded in the notices as the author's own work, licensed MIT.
 
-## Fonts and speech test (2.0.3, planned)
+## Fonts and speech test (2.0.3)
 - A project stores a font's name only; the program finds the font in the system's font list and copies its file into the private work folder (at most 64 MiB, named by a checksum prefix, removed with the folder). A missing font is never read from a path in the project.
 - The font libraries used for measuring parse font files in memory-safe Rust without unsafe code of this program; a broken font gives no measurement and the bundled font is used.
 - The speech test's fixtures are checked by checksum; CI sets a variable that makes a missing speech model a failure.
 
 ## Unsafe code
-Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in two reviewed places: the cancel callback passed to whisper.cpp and the macOS "open document" handler.
+Rust's `unsafe` is forbidden in the whole program (enforced by the compiler since 0.3.0) except in three reviewed places: the cancel callback passed to whisper.cpp (`stt.rs`), and in `desktop.rs` the macOS "open document" handler and, since 2.0.4 (ADR-183, amends ADR-034), the one allow-listed call that builds the macOS menu bar.
+
+## 2.0.4 additions
+The full list of new untrusted inputs, bounds and processes is in [2.0.4 quality, security and verification](architecture-2.0.4-quality.md#security-model-additions). In short:
+- **Pictures (REQ-287):** a PNG is read only for its 24-byte header (size; each side at most 16384 px; path at most 4096 bytes); ffmpeg decodes it as an input. Not embedded, not written.
+- **Picture subtitles (REQ-253):** the player's track list is sanitised like the other track data; the chosen stream is passed to ffmpeg by its number counted by videolore, never by a name from the file.
+- **Spatial sound (REQ-273):** the WAV is written under a fixed prefix and a hashed name in the private work folder (`.part`, then rename); a clip's own file is read, never a preview copy; cancel and failure leave nothing. Four channels are assumed by the layout, not checked against metadata.
+- **Speed and volume keys:** numbers only, with the limits of the model (speed 500 to 2000 thousandths; volume keys 0 to 100 percent); no text reaches the filter graph.
+- **Speech fixture:** committed and checked by SHA-256; the tests do not run any speech synthesiser.
 
 ## Unsigned installers
 The installers are not code-signed (decided by Andrea), so Windows and macOS show a warning on first launch; the README explains the steps. The macOS app is sealed with an ad-hoc signature only. Signing is postponed, not rejected.

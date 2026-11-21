@@ -495,15 +495,17 @@ fn an_srt_file_is_opened_chosen_and_listed() {
     assert_eq!(q.project.subtitles.lines.len(), 2);
 }
 
-// covers: REQ-140
+// covers: REQ-140, REQ-253
 #[test]
 fn embedded_text_tracks_are_listed_by_name_and_read_when_chosen() {
     let d = tempfile::tempdir().unwrap();
     let mut p = player(d.path());
     open(&mut p, file(d.path(), "tracks.mkv"));
-    // only the text tracks (the picture track is not listed)
+    // the text tracks, then the picture track, marked in the menu (REQ-253)
     let names: Vec<String> = p.subs.sources.iter().map(Source::name).collect();
-    assert_eq!(names, ["English — Main", "Italian"]);
+    assert_eq!(names, ["English — Main", "Italian", "French"]);
+    assert_eq!(p.subs.sources[2].menu_name(), "French (picture)");
+    assert_eq!(p.subs.sources[0].menu_name(), "English — Main");
     // the first is not readable by the fake (error shown, nothing chosen)
     p.dispatch(Command::ChooseSubtitles(Some(0)), now());
     settle(&mut p);

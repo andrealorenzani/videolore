@@ -104,7 +104,13 @@ Gates are marked GATE; everything else is an estimate or target. Grouped by area
 - QG-11 (not a gate): export of 4K and HEVC at 1080p and 4K, large frames (4096 px cap), blurred fill, Clean audio cost on a weak computer; recorded in the developer documentation.
 - QG-12 (not a gate): 360 export on 8K x 4K; moving-camera export on bundled 9.0.2 measured; 4K and 8K frame times of preview and look-around against REQ-104 (200 ms).
 - QG-13 (not a gate): Apply LUT with 33 and 65-point LUTs: preview within 20 % of playback without a LUT; export ≤ 1.5 times the re-encode without one (assumptions).
-- QG-14..18: not built (designs in ai-docs/roadmap-2_0-checkpoint.md § Architect).
+- QG-14..18: BUILT (stage 14, ADR-201); QG-11..13 measured, not gated.
+- GATE REQ-280 (built): volume keyframes 0 % at 0 s, 100 % at 4 s, 50 % at 2 s = gain 0.25; preview and export agree.
+- GATE REQ-281 (built, tests in tests/ffmpeg_integration/v204b.rs and render/tests.rs): 4 s at 200 % lasts 2 s; pitch within 1 %; a subtitle within 0.1 s of its word; a sped-up clip is never stream copied.
+- MEASURED REQ-273 (built): spatial pre-pass 120 s of four-channel sound in 1.7 s, debug profile (69x real time); a one-minute preview clip waits about 1 s; CPU on weak hardware unmeasured; preview clips over 10 min keep recorded sound.
+- GATE REQ-253 (built): picture subtitle golden argv: projects without a chosen picture subtitle export with the same argv; the overlay test checks the pixels of the box before, inside and after its time.
+- ESTIMATE REQ-287 (built): PNG header read only; no count, file size or pixel limit in the code (ADR-192 limits OPEN).
+- Measured 2.0.4 (not gated): blurred fill divisor 8 at 4K 2.9 to 3.1 s vs 3.3 to 3.7 s; cycle check 1.7 s; pinned ffmpeg 173 MB unpacked each.
 - Settings file cap 64 KiB unchanged (worst case ~35 KB, ADR-195); project read cap 16 MiB → 96 MiB in format 11 (ADR-191; `MAX_PROJECT_BYTES`).
 - Platforms: Linux x86_64 (glibc 2.39 max, unchanged), macOS aarch64 and Windows x86_64 (unchanged; Intel Mac, ARM Windows and ARM Linux out of scope, REQ-040 targets unchanged); the one-window channel is file based on Windows and Linux (ADR-182).
 - Accessibility: AccessKit adapters on all three OS (D61, Q-4 closed); the UI frame gate is measured with the tree on.

@@ -1,5 +1,5 @@
 New in this version
 The player remembers its volume, mute, last folder and full-screen start, and has a playlist (File > Add to playlist, File > Open folder).
 Open in player and Open in editor move a file between the two programs; the installers add the player to Open with.
-Subtitle positions stay while the same file is open, and very large videos keep their sound.
+Picture subtitles (Blu-ray, DVD, DVB) are listed and drawn in the player; not on 360 video. Very large videos keep their sound.
 The About screen lists the player's own components.

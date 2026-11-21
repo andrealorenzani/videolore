@@ -82,7 +82,7 @@ Applies to subtitle lines and to text items ([Text](business-text.md)). The accu
 - (1.2.0) Matching a video's subtitles to the speech works only as well as the subtitle text follows what is actually said: translated or paraphrased tracks often fall back to evenly spread words. A message says so when at least half of the lines fall back (REQ-179).
 - (1.2.0) Lines with their own position are not kept apart: two lines shown at the same time at the same place overlap. Both are marked with a warning (REQ-169); nothing moves by itself.
 - (1.2.0) When a video's own subtitles are reused, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the accuracy target of REQ-095 (at least 90% of words matched, each within 0.3 s) is not met with the Fast level (23 of 28 words matched on the reference clip; the matched words start 0.48 s late on average). REQ-177 is still planned; see [Subtitle accuracy](business-subtitle-accuracy.md).
-- (1.3.0) A subtitle line added on a 360 clip is drawn as plain white text in the preview and in the export: it has no preset box and no word-by-word highlight.
+- (1.3.0) A subtitle line added on a 360 clip is drawn as plain white text in the preview and in the export: it has no preset box and no word-by-word highlight. (Fixed in 2.0.4: REQ-257.)
 
 ## Out of scope
 - Positions in the `.srt` file (the `.ass` export has them).

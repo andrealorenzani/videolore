@@ -1385,6 +1385,7 @@ fn graph_of(p: &Project) -> (Graph, Geometry, bool) {
                 inputs: vec![],
                 graph: String::new(),
                 command_files: vec![],
+                spatial: vec![],
             },
             Geometry {
                 width: 0,
@@ -2253,4 +2254,474 @@ fn volume_keys_in_percent_become_a_squared_gain_expression_and_force_a_re_encode
     p.timeline.remove_volume_key(id, Micros::ZERO).unwrap();
     p.timeline.remove_volume_key(id, s(4)).unwrap();
     assert!(!p.timeline.any_volume_keys());
+}
+
+// covers: REQ-286
+#[test]
+fn a_clip_with_its_own_aspect_is_made_in_its_own_frame_and_placed_in_the_project_frame() {
+    let mut p = project(&[(4, 1920, 1080, 30), (4, 1920, 1080, 30)]);
+    let id = p.timeline.clips[1].id;
+    let plan0 = format!("{:?}", plan_export(&p, &enc(), |_, _| true).unwrap());
+    assert!(plan0.contains("Copy"), "identical clips are copied");
+    let a = FrameAspect {
+        shape: Shape::Tall9x16,
+        fit: Fit::Height,
+        fill: Fill::Colour(crate::frame::Rgb::BLACK),
+        blur: Default::default(),
+    };
+    p.timeline.set_clip_aspect(id, Some(a)).unwrap();
+    let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
+    let Plan::Reencode {
+        graph, settings, ..
+    } = &plan
+    else {
+        panic!("not a stream copy")
+    };
+    assert_eq!(
+        (settings.width, settings.height),
+        (1920, 1080),
+        "the output size is unchanged"
+    );
+    // the 9:16 clip is made 608x1080 and centred in 1920x1080 with empty sides
+    assert!(
+        graph.graph.contains("608") && graph.graph.contains("pad=1920:1080:(ow-iw)/2:(oh-ih)/2"),
+        "{}",
+        graph.graph
+    );
+    assert_eq!(
+        graph
+            .graph
+            .matches("pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format")
+            .count(),
+        1,
+        "only that clip"
+    );
+    // removing it brings back the stream copy
+    p.timeline.set_clip_aspect(id, None).unwrap();
+    assert!(format!("{:?}", plan_export(&p, &enc(), |_, _| true).unwrap()).contains("Copy"));
+    assert!(
+        p.timeline
+            .set_clip_aspect(crate::timeline::ClipId(999), None)
+            .is_err()
+    );
+}
+
+// covers: REQ-281
+#[test]
+fn a_clip_at_another_speed_reads_the_source_and_makes_the_output_in_the_graph() {
+    let mut p = project(&[(4, 640, 360, 30), (4, 640, 360, 30)]);
+    let id = p.timeline.clips[0].id;
+    p.timeline.set_speed(id, 2000).unwrap();
+    let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
+    assert_eq!(segs[0].len, s(2), "the output length");
+    assert_eq!(segs[0].src_to(), s(4), "the source read");
+    assert_eq!(segs[0].rendered_src(), s(4));
+    // stream copy is refused for a clip with a speed
+    let Plan::Reencode { graph, .. } = plan_export(&p, &enc(), |_, _| true).unwrap() else {
+        panic!("a clip with a speed is re-encoded")
+    };
+    let g = &graph.graph;
+    assert!(g.contains("setpts=(PTS-STARTPTS)*1000/2000"), "{g}");
+    assert!(g.contains("atempo=2.000000"), "{g}");
+    assert!(g.contains("atrim=start=0.000000:duration=4.000000"), "{g}");
+    assert_eq!(g.matches("atempo").count(), 1, "the other clip is normal");
+    // a preview that starts 1 s into the clip reads 2 s of source later
+    let segs = segments(&p, s(1), Source::Export).unwrap();
+    assert_eq!(segs[0].src_from(), s(2));
+    assert_eq!(segs[0].rendered(), s(1));
+    // the camera commands are timed on the output clock
+    let path = vec![
+        crate::camera::Pov {
+            t: Micros::ZERO,
+            cam: crate::camera::Camera::FRONT,
+            ease: Default::default(),
+        },
+        crate::camera::Pov {
+            t: s(4),
+            cam: crate::camera::Camera {
+                yaw_cd: 9000,
+                ..crate::camera::Camera::FRONT
+            },
+            ease: Default::default(),
+        },
+    ];
+    let cmds = crate::camera::command_lines_speed(
+        "v360@c0",
+        &path,
+        Micros::ZERO,
+        s(4),
+        Fps::new(10, 1).unwrap(),
+        (640, 360),
+        0,
+        2000,
+    );
+    let last = cmds.lines().last().unwrap();
+    assert!(last.starts_with("1.8") || last.starts_with("1.9"), "{last}");
+}
+
+// covers: REQ-281
+#[test]
+fn a_subtitle_line_stays_with_its_speech_when_the_clip_is_sped_up() {
+    let mut p = project(&[(8, 640, 360, 30)]);
+    let id = p.timeline.clips[0].id;
+    p.timeline.set_speed(id, 2000).unwrap();
+    let media = p.media[0].id;
+    let tl = p.timeline.clone();
+    let line = p
+        .subtitles
+        .add_at(&tl, s(1), "word", Micros(100_000))
+        .unwrap();
+    // the word is spoken at 4 s of the source: 2 s on the timeline
+    let l = p.subtitles.lines.iter_mut().find(|l| l.id == line).unwrap();
+    assert_eq!(l.media, media);
+    l.start = s(4);
+    l.end = s(5);
+    let shown = p.subtitles.project(&tl);
+    assert_eq!(shown[0].start, s(2));
+    assert_eq!(shown[0].end, Micros(2_500_000));
+}
+
+// covers: REQ-287
+#[test]
+fn a_picture_item_is_overlaid_for_its_time_and_forces_a_re_encode() {
+    let dir = tempfile::tempdir().unwrap();
+    let png = dir.path().join("logo.png");
+    std::fs::write(&png, crate::picture::tests::header(200, 100)).unwrap();
+    let mut p = project(&[(6, 640, 360, 30)]);
+    let pic = crate::picture::read(&png).unwrap();
+    let id = p.texts.new_id();
+    let mut item = crate::text::TextItem::new_picture(id, pic, s(2), (640, 360));
+    item.ttl = s(3);
+    p.texts.add(item).unwrap();
+    let Plan::Reencode {
+        graph, subtitles, ..
+    } = plan_export(&p, &enc(), |_, _| true).unwrap()
+    else {
+        panic!("a picture is burned in: a re-encode")
+    };
+    assert!(subtitles.is_none(), "no text, no ASS file");
+    assert_eq!(graph.inputs.len(), 2);
+    assert!(graph.inputs[1].still);
+    let g = &graph.graph;
+    assert!(g.contains("[1:v:0]format=rgba,scale=192:96[pi0]"), "{g}");
+    // centred: (640 - 192) / 2 and (360 - 96) / 2
+    assert!(
+        g.contains("overlay=x=224:y=132:enable='between(t,2.000000,5.000000)'"),
+        "{g}"
+    );
+    assert!(g.contains("[outv]"));
+    let args = strs(&input_args(&graph.inputs));
+    assert!(args.windows(2).any(|w| w == ["-loop", "1"]), "{args:?}");
+    // a preview that starts at 3 s counts the times from there
+    let o = picture_overlays(
+        &p,
+        &Geometry {
+            width: 640,
+            height: 360,
+            fps: Fps::new(25, 1).unwrap(),
+        },
+        s(3),
+        Source::Export,
+    )
+    .unwrap();
+    assert_eq!((o[0].start, o[0].end), (Micros::ZERO, s(2)));
+    // after its end there is nothing to draw
+    let none = picture_overlays(
+        &p,
+        &Geometry {
+            width: 640,
+            height: 360,
+            fps: Fps::new(25, 1).unwrap(),
+        },
+        s(5),
+        Source::Export,
+    )
+    .unwrap();
+    assert!(none.is_empty());
+    // the picture goes over the video before the subtitles of the same graph
+    let spec = GraphSpec {
+        subtitles: true,
+        ..spec(true, false)
+    };
+    let segs = segments(&p, Micros::ZERO, Source::Export).unwrap();
+    let g = build_graph_with(&segs, None, &spec, &o).graph;
+    assert!(g.contains("[cv]subtitles"), "{g}");
+    assert!(g.contains("format=yuv420p[cv]"), "{g}");
+    // a file that is gone stops an export and is left out of a preview
+    std::fs::remove_file(&png).unwrap();
+    assert_eq!(
+        plan_export(&p, &enc(), |_, _| true).unwrap_err(),
+        RenderError::Picture("logo.png".into())
+    );
+    let g = Geometry {
+        width: 640,
+        height: 360,
+        fps: Fps::new(25, 1).unwrap(),
+    };
+    assert!(
+        picture_overlays(&p, &g, Micros::ZERO, Source::Preview { proxies: false })
+            .unwrap()
+            .is_empty()
+    );
+}
+
+// covers: REQ-257
+#[test]
+fn a_line_fixed_to_a_360_clip_has_the_preset_box_and_the_word_highlight() {
+    use crate::base::pos::Anchor360;
+    use crate::subtitles::{NewLine, Preset, Word};
+    let mut p = sphere_project();
+    let media = p.timeline.clips[0].media;
+    let w = |a: i64, b: i64, t: &str| Word {
+        start: Micros(a * 1_000_000),
+        end: Micros(b * 1_000_000),
+        text: t.into(),
+    };
+    p.subtitles.replace_all(
+        vec![NewLine {
+            media,
+            start: s(1),
+            end: s(3),
+            text: "one two three".into(),
+            words: vec![w(1, 2, "one"), w(2, 3, "two"), w(3, 3, "three")],
+        }],
+        None,
+    );
+    p.subtitles.lines[0].anchor = Some(Anchor360 {
+        yaw_cd: 0,
+        pitch_cd: 0,
+        height_cd: 500,
+        width_cd: 6000,
+    });
+    let doc = |p: &Project| {
+        let segs = segments(p, Micros::ZERO, Source::Export).unwrap();
+        segs[0].anchored.clone().unwrap()
+    };
+    // Classic: an outline; Box: the box style
+    p.subtitles.preset = Preset::Classic;
+    let d = doc(&p);
+    assert!(
+        d.contains(",Text,") && !d.contains("TextBox") && !d.contains("\\k"),
+        "{d}"
+    );
+    p.subtitles.preset = Preset::Boxed;
+    assert!(doc(&p).contains(",TextBox,"));
+    // Word highlight: karaoke words, the spoken one yellow
+    p.subtitles.preset = Preset::WordHighlight;
+    let d = doc(&p);
+    assert!(
+        d.contains("{\\k100}one {\\k100}two") || d.contains("{\\k100}one"),
+        "{d}"
+    );
+    assert!(d.contains("\\1c&H00FFFF&"), "{d}");
+}
+
+// ---- 2.0.4: spatial sound (REQ-273) ----
+
+/// A 360 project whose first clip has four audio channels (first-order ambisonics) and a camera
+/// turned 90 degrees to the left.
+fn ambisonic_project() -> Project {
+    let mut p = project(&[(4, 3840, 1920, 30), (3, 640, 360, 30)]);
+    p.media[0].format.spherical = Some(true);
+    p.media[0].format.channels = Some(4);
+    p.media[0].format.bit_rate = Some(40_000_000);
+    let m = p.media[0].id;
+    p.camera
+        .set(m, Pov::new(Micros::ZERO, Camera::new(-9000, 0, 9000)))
+        .unwrap();
+    p
+}
+
+// covers: REQ-273
+#[test]
+fn the_sound_of_an_ambisonic_360_clip_is_read_from_its_turned_copy_in_the_work_folder() {
+    let p = ambisonic_project();
+    let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
+    let [job] = plan.spatial() else {
+        panic!("one clip has turned sound: {:?}", plan.spatial());
+    };
+    assert_eq!(job.src_in, Micros::ZERO);
+    assert_eq!(job.len, Micros(4_000_000));
+    assert_eq!(job.path[0].cam.yaw_cd, -9000);
+    let Plan::Reencode { graph, .. } = &plan else {
+        panic!("a 360 clip is re-encoded");
+    };
+    // the wav is the input after the clips' files, read from its start
+    let wav = job.wav_name();
+    let at = graph
+        .inputs
+        .iter()
+        .position(|i| i.path == Path::new(&wav))
+        .unwrap();
+    assert_eq!(at, graph.inputs.len() - 1);
+    assert!(
+        graph
+            .graph
+            .contains(&format!("[{at}:a:0]atrim=start=0.000000:duration=4.000000"))
+    );
+    // and it is not decoded twice: the picture comes from the clip, the sound from the wav
+    assert!(!graph.graph.contains("[0:a:0]atrim"), "{}", graph.graph);
+    assert!(graph.graph.contains("[0:v:0]"));
+    // the arguments read it as a plain input
+    let a = args(&plan);
+    assert!(a.iter().any(|x| x.ends_with(&wav)), "{a:?}");
+}
+
+// covers: REQ-273
+#[test]
+fn a_clip_starting_mid_way_reads_its_turned_sound_from_the_matching_offset() {
+    let p = ambisonic_project();
+    // a preview from 1.5 s: the wav of the clip is the same file, read from 1.5 s
+    let segs = segments(
+        &p,
+        s(1) + Micros(500_000),
+        Source::Preview { proxies: false },
+    )
+    .unwrap();
+    let job = segs[0].spatial.clone().unwrap();
+    assert_eq!(job.len, Micros(4_000_000));
+    assert_eq!(
+        preview_spatial(
+            &p,
+            s(1) + Micros(500_000),
+            Source::Preview { proxies: false }
+        )
+        .unwrap(),
+        vec![job.clone()]
+    );
+    let a = strs(
+        &preview_audio_args(
+            &p,
+            s(1) + Micros(500_000),
+            48_000,
+            2,
+            FfVersion::Dev,
+            Path::new("/tmp/a.txt"),
+            Source::Preview { proxies: false },
+        )
+        .unwrap(),
+    )
+    .join(" ");
+    assert!(a.contains(&job.wav_name()), "{a}");
+    assert!(a.contains("atrim=start=1.500000"), "{a}");
+}
+
+// covers: REQ-273
+#[test]
+fn a_360_video_a_flat_clip_and_a_long_preview_keep_the_sound_as_recorded() {
+    let mut p = ambisonic_project();
+    // the 360 video export keeps the sound as recorded
+    p.media[1].format.spherical = Some(true);
+    p.media[1].format.width = 3840;
+    p.media[1].format.height = 1920;
+    let plan = plan_export_mode(&p, &enc(), ExportMode::Sphere360, |_, _| true).unwrap();
+    assert!(plan.spatial().is_empty());
+    // a normal clip with four channels, and a 360 clip with two, are not turned
+    let mut q = ambisonic_project();
+    q.media[1].format.channels = Some(4);
+    let segs = segments(&q, Micros::ZERO, Source::Export).unwrap();
+    assert!(segs[0].spatial.is_some() && segs[1].spatial.is_none());
+    q.media[0].format.channels = Some(2);
+    assert!(
+        segments(&q, Micros::ZERO, Source::Export).unwrap()[0]
+            .spatial
+            .is_none()
+    );
+    // a preview does not wait for the pre-pass of a clip longer than ten minutes
+    let mut long = project(&[(700, 3840, 1920, 30)]);
+    long.media[0].format.spherical = Some(true);
+    long.media[0].format.channels = Some(4);
+    let preview = Source::Preview { proxies: false };
+    assert!(
+        segments(&long, Micros::ZERO, preview).unwrap()[0]
+            .spatial
+            .is_none()
+    );
+    assert!(
+        segments(&long, Micros::ZERO, Source::Export).unwrap()[0]
+            .spatial
+            .is_some()
+    );
+}
+
+// ---- 2.0.4: picture subtitles in the player (REQ-253) ----
+
+// covers: REQ-253
+#[test]
+fn a_chosen_picture_subtitle_track_is_overlaid_on_the_clip_picture_before_the_fit() {
+    let mut p = project(&[(4, 1280, 720, 30)]);
+    let eg = Geometry {
+        width: 640,
+        height: 360,
+        fps: Fps::new(30, 1).unwrap(),
+    };
+    let sc = Path::new("/tmp/g.txt");
+    let src = Source::Preview { proxies: false };
+    let plain = strs(
+        &preview_video_args(&p, Micros::ZERO, &eg, FfVersion::Dev, sc, src)
+            .unwrap()
+            .args,
+    )
+    .join(" ");
+    assert!(!plain.contains(":s:"), "nothing is drawn by default");
+    // the third subtitle stream of the file
+    p.picture_sub = Some((p.media[0].id, 2));
+    let with = strs(
+        &preview_video_args(&p, Micros::ZERO, &eg, FfVersion::Dev, sc, src)
+            .unwrap()
+            .args,
+    )
+    .join(" ");
+    assert!(
+        with.contains("[0:v:0][0:s:2]overlay=eof_action=pass:format=auto[ps0]"),
+        "{with}"
+    );
+    // the overlay comes first: the trim and the fit work on the picture with its subtitles
+    assert!(with.contains("[ps0]trim=start="), "{with}");
+    // the choice of another media does nothing; a 360 clip is left alone
+    p.picture_sub = Some((crate::media::MediaId(99), 2));
+    assert_eq!(
+        strs(
+            &preview_video_args(&p, Micros::ZERO, &eg, FfVersion::Dev, sc, src)
+                .unwrap()
+                .args
+        )
+        .join(" "),
+        plain
+    );
+    p.picture_sub = Some((p.media[0].id, 2));
+    p.media[0].format.spherical = Some(true);
+    let sphere = strs(
+        &preview_video_args(&p, Micros::ZERO, &eg, FfVersion::Dev, sc, src)
+            .unwrap()
+            .args,
+    )
+    .join(" ");
+    assert!(!sphere.contains(":s:2"), "{sphere}");
+}
+
+// covers: REQ-253
+#[test]
+fn two_clips_of_one_file_share_its_picture_subtitle_stream_through_a_split() {
+    let mut p = project(&[(4, 1280, 720, 30)]);
+    let m = p.timeline.clips[0].media;
+    let at = Micros(2_000_000);
+    p.timeline.split(at, Micros(33_333)).unwrap();
+    p.picture_sub = Some((m, 0));
+    let g = build_graph(
+        &segments(&p, Micros::ZERO, Source::Export).unwrap(),
+        None,
+        &spec(true, false),
+    );
+    assert!(
+        g.graph.contains("[0:s:0]split=2[s0s0][s0s1]"),
+        "{}",
+        g.graph
+    );
+    assert!(
+        g.graph.contains("[0:v:0]split=2") || g.graph.contains("[v0s0]"),
+        "{}",
+        g.graph
+    );
+    assert!(g.graph.contains("[s0s1]overlay="), "{}", g.graph);
 }

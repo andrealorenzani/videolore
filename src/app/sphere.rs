@@ -70,21 +70,50 @@ impl AppState {
         let c = tl.clips[i];
         let m = self.project.media(c.media)?;
         (m.is_ready() && !m.missing && m.format.is_360())
-            .then_some((c.media, c.src_in + (self.playhead - start)))
+            .then_some((c.media, c.src_at(self.playhead - start)))
+    }
+
+    /// The clip whose camera path source time `t` of `media` belongs to (REQ-268): the clip
+    /// under the playhead when it plays that part of the source, else the first clip of the
+    /// source whose kept part contains it.
+    pub fn clip_for(&self, media: MediaId, t: Micros) -> Option<crate::timeline::ClipId> {
+        let tl = &self.project.timeline;
+        let inside =
+            |c: &crate::timeline::Clip| c.media == media && c.src_in <= t && t <= c.src_out;
+        tl.locate(self.playhead)
+            .map(|(i, _)| &tl.clips[i])
+            .filter(|c| inside(c))
+            .or_else(|| tl.clips.iter().find(|c| inside(c)))
+            .map(|c| c.id)
+    }
+
+    /// The camera path that applies to source time `t` of `media`.
+    pub fn path_at(&self, media: MediaId, t: Micros) -> &[Pov] {
+        let clip = self.clip_for(media, t).map(|c| c.0);
+        self.project.camera.path_of(clip, media)
+    }
+
+    /// The camera path of `media` where the playhead is (for the live view).
+    fn path_here(&self, media: MediaId) -> &[Pov] {
+        match self.sphere_at_playhead() {
+            Some((m, t)) if m == media => self.path_at(m, t),
+            _ => self.project.camera.path(media),
+        }
     }
 
     /// Where on the timeline the POV of `media` at source time `t` is: in the first clip
     /// of the source whose kept part contains it (a POV outside every clip is hidden).
     pub fn pov_position(&self, media: MediaId, t: Micros) -> Option<Micros> {
-        if !self.project.camera.path(media).iter().any(|p| p.t == t) {
-            return None;
-        }
         let tl = &self.project.timeline;
-        tl.clips
+        let (i, c) = tl
+            .clips
             .iter()
             .enumerate()
-            .find(|(_, c)| c.media == media && c.src_in <= t && t < c.src_out)
-            .map(|(i, c)| tl.start_of(i) + (t - c.src_in))
+            .find(|(_, c)| c.media == media && c.src_in <= t && t < c.src_out)?;
+        let path = self.project.camera.path_of(Some(c.id.0), media);
+        path.iter()
+            .any(|p| p.t == t)
+            .then(|| tl.start_of(i) + c.to_timeline(t - c.src_in))
     }
 
     /// The camera of 360 source `media` at source time `t`: the live one when a drag took
@@ -94,7 +123,7 @@ impl AppState {
         if let Some(l) = live.filter(|l| l.overriding) {
             return l.cam;
         }
-        camera::at(self.project.camera.path(media), t)
+        camera::at(self.path_at(media, t), t)
             .or(live.map(|l| l.cam))
             .unwrap_or_else(|| {
                 self.project.media(media).map_or(Camera::FRONT, |m| {
@@ -114,7 +143,7 @@ impl AppState {
     pub(super) fn live_overlay(&self) -> Vec<(MediaId, Camera)> {
         self.live
             .iter()
-            .filter(|(m, l)| l.overriding || self.project.camera.path(**m).is_empty())
+            .filter(|(m, l)| l.overriding || self.path_here(**m).is_empty())
             .map(|(m, l)| (*m, l.cam))
             .collect()
     }
@@ -170,7 +199,7 @@ impl AppState {
     }
 
     fn set_live(&mut self, media: MediaId, cam: Camera, now: Instant) {
-        let has_path = !self.project.camera.path(media).is_empty();
+        let has_path = !self.path_here(media).is_empty();
         let l = LiveView {
             cam,
             overriding: has_path,
@@ -223,7 +252,8 @@ impl AppState {
     pub(super) fn set_pov(&mut self, now: Instant) -> Result<(), String> {
         let (media, t) = self.sphere_at_playhead().ok_or(NOT_A_360)?;
         let cam = self.effective_camera(media, t);
-        let existing = self.project.camera.path(media).iter().find(|p| p.t == t);
+        let clip = self.clip_for(media, t).map(|c| c.0);
+        let existing = self.path_at(media, t).iter().find(|p| p.t == t);
         if existing.is_some_and(|p| p.cam == cam) {
             return Ok(());
         }
@@ -236,7 +266,8 @@ impl AppState {
         );
         self.edit(now, "Set POV", |e| {
             e.camera
-                .set(
+                .set_in_clip(
+                    clip,
                     media,
                     Pov {
                         t,
@@ -265,11 +296,14 @@ impl AppState {
             cam: pov.cam.clamped(),
             ease: Default::default(),
         };
-        if old_t == pov.t && self.project.camera.path(media).contains(&pov) {
+        if old_t == pov.t && self.path_at(media, old_t).contains(&pov) {
             return Ok(());
         }
+        let clip = self.clip_for(media, old_t).map(|c| c.0);
         self.edit(now, "Edit POV", |e| {
-            e.camera.edit(media, old_t, pov).map_err(pov_error)
+            e.camera
+                .edit_in_clip(clip, media, old_t, pov)
+                .map_err(pov_error)
         })
     }
 
@@ -279,11 +313,12 @@ impl AppState {
         t: Micros,
         now: Instant,
     ) -> Result<(), String> {
-        if !self.project.camera.path(media).iter().any(|p| p.t == t) {
+        if !self.path_at(media, t).iter().any(|p| p.t == t) {
             return Err(pov_error(PovError::BadTime));
         }
+        let clip = self.clip_for(media, t).map(|c| c.0);
         self.edit(now, "Remove POV", |e| {
-            e.camera.remove(media, t);
+            e.camera.remove_in_clip(clip, media, t);
             Ok(())
         })
     }

@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use videolore::base::pos::Pos;
-use videolore::media::{MediaId, SubtitleTrack, display_name};
+use videolore::media::{MediaId, PictureTrack, SubtitleTrack, display_name};
 use videolore::srt::Cue;
 use videolore::subtitles::NewLine;
 
@@ -22,6 +22,9 @@ pub enum Source {
     Embedded(SubtitleTrack),
     /// A `.srt` file opened with Subtitles > Open .srt…
     File(PathBuf),
+    /// A picture-based track of the video file (DVD, Blu-ray PGS, DVB; REQ-253): drawn on the
+    /// picture by the shared graph; it has no text lines to move.
+    Picture(PictureTrack),
 }
 
 impl Source {
@@ -30,6 +33,16 @@ impl Source {
         match self {
             Source::Embedded(t) => t.label(),
             Source::File(p) => display_name(p),
+            Source::Picture(t) => t.label(),
+        }
+    }
+
+    /// The name in the Subtitles menu: picture tracks are marked "picture", files "file".
+    pub fn menu_name(&self) -> String {
+        match self {
+            Source::Embedded(_) => self.name(),
+            Source::File(_) => format!("{} (file)", self.name()),
+            Source::Picture(_) => format!("{} (picture)", self.name()),
         }
     }
 }
@@ -50,8 +63,15 @@ pub struct Subs {
 impl Subs {
     /// The sources of a freshly opened video: its text tracks.
     pub fn for_tracks(tracks: &[SubtitleTrack]) -> Subs {
+        Subs::for_media(tracks, &[])
+    }
+
+    /// The sources of a freshly opened video: its text tracks, then its picture tracks.
+    pub fn for_media(tracks: &[SubtitleTrack], pictures: &[PictureTrack]) -> Subs {
+        let text = tracks.iter().cloned().map(Source::Embedded);
+        let pics = pictures.iter().cloned().map(Source::Picture);
         Subs {
-            sources: tracks.iter().cloned().map(Source::Embedded).collect(),
+            sources: text.chain(pics).collect(),
             ..Subs::default()
         }
     }

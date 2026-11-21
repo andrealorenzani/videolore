@@ -53,6 +53,7 @@ pub enum ActionId {
     GenerateSubtitles,
     AddSubtitleLine,
     AddText,
+    AddPicture,
     ApplyClipFade,
     ApplyClipSubtitles,
     ApplyClipVolume,
@@ -71,6 +72,7 @@ pub enum ActionId {
     AlignHorizontal,
     AlignVertical,
     MoveInside,
+    ReAnchor,
     ResetObjects,
     SetPov,
     ToggleBoxes,
@@ -335,6 +337,12 @@ pub const ACTIONS: &[Action] = &[
         "Opens a popup to add a text at the playhead"
     ),
     action!(
+        AddPicture,
+        "Add picture at playhead",
+        [],
+        "Adds a PNG picture at the playhead"
+    ),
+    action!(
         ApplyClipFade,
         "Fade IN/OUT",
         [],
@@ -441,6 +449,12 @@ pub const ACTIONS: &[Action] = &[
         "Move inside the picture",
         [],
         "Move the selected items by the least distance that puts each wholly inside the picture"
+    ),
+    action!(
+        ReAnchor,
+        "Re-anchor",
+        [],
+        "Fix the selected subtitle lines and texts of a 360 clip to the centre of the current view"
     ),
     action!(
         ResetObjects,
@@ -614,6 +628,7 @@ impl ActionId {
             GenerateSubtitles => Command::GenerateSubtitles,
             AddSubtitleLine => Command::AddSubtitle,
             AddText => Command::OpenNewText,
+            AddPicture => Command::AddPicture(None),
             ApplyClipFade => apply(EffectKind::Fade, Target::Selected),
             ApplyClipSubtitles => apply(EffectKind::Subtitles, Target::Selected),
             ApplyClipVolume => apply(EffectKind::Volume, Target::Selected),
@@ -632,6 +647,7 @@ impl ActionId {
             AlignHorizontal => Command::AlignSelected(Axis::Horizontal),
             AlignVertical => Command::AlignSelected(Axis::Vertical),
             MoveInside => Command::MoveInside,
+            ReAnchor => Command::ReAnchor,
             ResetObjects => Command::ResetObjects,
             SetPov => Command::SetPov,
             ToggleBoxes => Command::ToggleBoxes,
@@ -701,9 +717,11 @@ impl ActionId {
             ApplyLut | ApplyClipLut | ApplyWholeLut => i::PALETTE,
             GenerateSubtitles => i::MAGIC_WAND,
             AddText => i::TEXT_T,
+            AddPicture => i::IMAGE,
             AlignHorizontal => i::ALIGN_CENTER_HORIZONTAL,
             AlignVertical => i::ALIGN_CENTER_VERTICAL,
             MoveInside => i::CORNERS_OUT,
+            ReAnchor => i::CROSSHAIR,
             ResetObjects => i::ARROW_COUNTER_CLOCKWISE,
             SetPov => i::CROSSHAIR,
             ToggleBoxes => i::BOUNDING_BOX,

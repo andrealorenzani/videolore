@@ -234,7 +234,14 @@ fn video_render_bg(
 ) -> Result<PreviewRender, String> {
     let subtitles = subtitles_doc(project, export, from);
     let g = export.preview();
-    let graph = build_graph_bg(
+    // the background alone has no pictures on it either
+    let pics = if bg == Background::Only {
+        Vec::new()
+    } else {
+        picture_overlays(project, &g, from, Source::Preview { proxies: false })
+            .map_err(|e| e.to_string())?
+    };
+    let graph = build_graph_pics(
         segs,
         None,
         &GraphSpec {
@@ -248,6 +255,7 @@ fn video_render_bg(
             camera_updates: 0,
         },
         bg,
+        &pics,
     );
     let mut a = head();
     a.extend(input_args(&graph.inputs));
@@ -360,7 +368,8 @@ pub struct CheckGraph {
 pub fn check_graph(project: &Project, geometry: &Geometry) -> Result<Graph, RenderError> {
     let segs = segments(project, Micros::ZERO, Source::Export)?;
     let subtitles = subtitles_doc(project, geometry, Micros::ZERO).is_some();
-    Ok(build_graph(
+    let pics = picture_overlays(project, geometry, Micros::ZERO, Source::Export)?;
+    Ok(build_graph_with(
         &segs,
         None,
         &GraphSpec {
@@ -372,6 +381,7 @@ pub fn check_graph(project: &Project, geometry: &Geometry) -> Result<Graph, Rend
             mix: project.mix,
             camera_updates: crate::camera::EXPORT_UPDATES_PER_SECOND,
         },
+        &pics,
     ))
 }
 
@@ -398,7 +408,8 @@ pub fn check_range_graph(
         .unwrap_or(segs.len());
     segs.truncate(keep.max(1));
     let subtitles = subtitles_doc_with(project, geometry, from, burn_lines);
-    let graph = build_graph(
+    let pics = picture_overlays(project, geometry, from, Source::Export)?;
+    let graph = build_graph_with(
         &segs,
         None,
         &GraphSpec {
@@ -410,6 +421,7 @@ pub fn check_range_graph(
             mix: project.mix,
             camera_updates: crate::camera::EXPORT_UPDATES_PER_SECOND,
         },
+        &pics,
     );
     Ok(CheckGraph { graph, subtitles })
 }
@@ -496,6 +508,21 @@ pub fn preview_audio_args(
         "pipe:1".to_string(),
     ]));
     Ok(a)
+}
+
+/// The ambisonic sound a preview from `from` turns by the camera first (REQ-273): the
+/// pre-pass of each clip with such sound, before the audio process starts.
+pub fn preview_spatial(
+    project: &Project,
+    from: Micros,
+    src: Source,
+) -> Result<Vec<crate::spatial::SpatialJob>, String> {
+    let segs = segments(project, from, src).map_err(|e| e.to_string())?;
+    Ok(segs
+        .into_iter()
+        .filter(|s| s.has_audio)
+        .filter_map(|s| s.spatial)
+        .collect())
 }
 
 /// A subtitle on screen as part of a [`FrameKey`]: text, highlighted word, own position
@@ -592,15 +619,16 @@ pub fn frame_key(
         })
         .collect();
     let g = export.preview();
-    let camera = m
-        .format
-        .is_360()
-        .then(|| camera::at(project.camera.path(m.id), c.src_in + offset).unwrap_or(Camera::FRONT));
+    let camera = m.format.is_360().then(|| {
+        camera::at(project.camera.path_of(Some(c.id.0), m.id), c.src_at(offset))
+            .unwrap_or(Camera::FRONT)
+    });
     let stack = tl.frame_stack(i);
-    let placement = (tl.frame_aspect.is_some() || !stack.is_empty()).then(|| {
+    let aspect = tl.own_aspect(c.id).or(tl.frame_aspect);
+    let placement = (aspect.is_some() || !stack.is_empty()).then(|| {
         let p = stack.at(offset);
         let q = |v: f64| (v * 1_000_000.0).round() as i64;
-        (tl.frame_aspect, (q(p.factor), q(p.ox), q(p.oy)))
+        (aspect, (q(p.factor), q(p.ox), q(p.oy)))
     });
     let hash = |t| {
         lut_for(tl, t, src)
@@ -614,7 +642,7 @@ pub fn frame_key(
         crop: c.crop,
         placement,
         path: src.path_of(m),
-        frame: fps.frame_index(c.src_in + offset),
+        frame: fps.frame_index(c.src_at(offset)),
         fade: in_fade.then_some((fin, fout, offset, c.len())),
         size: (g.width, g.height),
         subtitles,

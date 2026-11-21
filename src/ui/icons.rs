@@ -47,6 +47,7 @@ pub const FRAME_CORNERS: &str = "\u{e626}";
 pub const ARROWS_OUT: &str = "\u{e0a2}";
 pub const ARROWS_OUT_CARDINAL: &str = "\u{e0a4}";
 pub const PALETTE: &str = "\u{e6c8}";
+pub const IMAGE: &str = "\u{e2ca}";
 pub const TEXT_T: &str = "\u{e48a}";
 pub const MAGIC_WAND: &str = "\u{e6b6}";
 pub const CHAT_TEXT: &str = "\u{e17a}";
@@ -130,6 +131,7 @@ pub const ALL: &[&str] = &[
     ARROWS_OUT_CARDINAL,
     PALETTE,
     TEXT_T,
+    IMAGE,
     MAGIC_WAND,
     CHAT_TEXT,
     ALIGN_CENTER_HORIZONTAL,

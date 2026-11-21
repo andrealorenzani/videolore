@@ -203,6 +203,10 @@ fn existing(ui: &mut Ui, app: &AppState, cache: &mut UiCache, id: TextId, cmds: 
         ui.label(tr!(ThisTextNoLongerExists));
         return;
     };
+    if let Some(pic) = &stored.picture {
+        picture_body(ui, app, stored, &pic.name(), cmds);
+        return;
+    }
     ui.strong(tr!(TextWord));
     ui.label(format!(
         "{} – {}",
@@ -225,5 +229,34 @@ fn existing(ui: &mut Ui, app: &AppState, cache: &mut UiCache, id: TextId, cmds: 
     let del = Command::DeleteTexts(vec![id]);
     if ui.button(tr!(Delete)).clicked() {
         cmds.push(del);
+    }
+}
+
+/// The popup of a picture item (REQ-287): its file, when it shows, and Delete. Its place and
+/// size are set on the picture in the preview, as for a text.
+fn picture_body(
+    ui: &mut Ui,
+    app: &AppState,
+    stored: &TextItem,
+    name: &str,
+    cmds: &mut Vec<Command>,
+) {
+    ui.strong(format!("Picture {name}"));
+    ui.label(format!(
+        "{} – {}",
+        crate::time::timecode(stored.start),
+        crate::time::timecode(stored.end())
+    ));
+    let mut item = stored.clone();
+    ui.horizontal(|ui| {
+        ui.label(tr!(TimeToLive));
+        let max = app.project.timeline.duration().max(MIN_TTL);
+        if time_value(ui, &mut item.ttl, MIN_TTL, max) {
+            cmds.push(Command::EditText(item.clone()));
+        }
+    });
+    ui.separator();
+    if ui.button(tr!(Delete)).clicked() {
+        cmds.push(Command::DeleteTexts(vec![stored.id]));
     }
 }

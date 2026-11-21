@@ -9,8 +9,6 @@ use super::*;
 use crate::frame::FrameAspect;
 use crate::keyframes;
 
-/// Why Change aspect cannot go on a clip (REQ-130).
-pub const ASPECT_WHOLE_ONLY: &str = "Change aspect applies to the whole video";
 /// Reason for the keyframe buttons when no keyframe is selected.
 pub const SELECT_A_KEY: &str = "Select a keyframe first";
 
@@ -27,8 +25,17 @@ impl AppState {
         let tl = &self.project.timeline;
         match effect {
             EffectKind::ChangeAspect => {
-                if clip.is_some() {
-                    return Err(ASPECT_WHOLE_ONLY.into());
+                // dropped on a clip: that clip gets its own aspect (REQ-288, REQ-286)
+                if let Some(id) = clip {
+                    if tl.own_aspect(id).is_none() {
+                        self.edit(now, "Change aspect", |e| {
+                            e.timeline
+                                .set_clip_aspect(id, Some(FrameAspect::default()))
+                                .map_err(err)
+                        })?;
+                    }
+                    self.status = "This clip has its own aspect: change it in Clip details".into();
+                    return Ok(());
                 }
                 if tl.frame_aspect.is_none() {
                     self.edit(now, "Change aspect", |e| {
@@ -463,7 +470,7 @@ impl AppState {
         let tl = &self.project.timeline;
         let (_, start) = tl.locate(self.playhead)?;
         let c = tl.get(copy)?;
-        Some(c.src_in + (self.playhead - start).clamp(Micros::ZERO, c.len()))
+        Some(c.src_at((self.playhead - start).clamp(Micros::ZERO, c.len())))
     }
 }
 

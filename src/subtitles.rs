@@ -238,7 +238,7 @@ impl Subtitles {
         let mut out = Vec::new();
         let mut clip_start = Micros::ZERO;
         for c in &tl.clips {
-            let map = |t: Micros| clip_start + (t - c.src_in);
+            let map = |t: Micros| clip_start + c.to_timeline(t - c.src_in);
             for l in self.lines.iter().filter(|l| l.media == c.media) {
                 if l.end <= c.src_in || l.start >= c.src_out {
                     continue;
@@ -291,9 +291,9 @@ impl Subtitles {
     ) -> Result<LineId, SubtitleError> {
         let (i, start) = tl.locate(t).ok_or(SubtitleError::NotInsideClip)?;
         let c = tl.clips[i];
-        let s = c.src_in + (t - start);
-        let e = (s + NEW_LINE_LEN).min(c.src_out);
-        if e - s < min_len.max(Micros(1)) {
+        let s = c.src_at(t - start);
+        let e = (s + c.to_src(NEW_LINE_LEN)).min(c.src_out);
+        if c.to_timeline(e - s) < min_len.max(Micros(1)) {
             return Err(SubtitleError::TooShort);
         }
         let id = self.new_id();
@@ -348,9 +348,9 @@ impl Subtitles {
         if line_media != c.media {
             return Err(SubtitleError::NotInClip);
         }
-        let to_src = |t: Micros| (c.src_in + (t - clip_start)).clamp(c.src_in, c.src_out);
+        let to_src = |t: Micros| c.src_at(t - clip_start).clamp(c.src_in, c.src_out);
         let (s, e) = (to_src(start), to_src(end));
-        if e - s < min_len.max(Micros(1)) {
+        if c.to_timeline(e - s) < min_len.max(Micros(1)) {
             return Err(SubtitleError::TooShort);
         }
         let l = self.get_mut(id)?;

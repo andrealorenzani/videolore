@@ -686,7 +686,10 @@ impl PlayerState {
             self.notice = Some(e.to_string());
             return;
         }
-        self.subs = Subs::for_tracks(m.format.subtitle_tracks.as_deref().unwrap_or(&[]));
+        self.subs = Subs::for_media(
+            m.format.subtitle_tracks.as_deref().unwrap_or(&[]),
+            &m.format.picture_tracks,
+        );
         // lines dragged earlier in this session are where they were left (REQ-251)
         if let Some(placed) = self.placed_memory.get(&memory_key(&path)) {
             self.subs.set_placed(placed.clone());
@@ -902,6 +905,7 @@ impl PlayerState {
     fn choose_subtitles(&mut self, choice: Option<usize>, now: Instant) -> Result<(), String> {
         let Some(i) = choice else {
             self.subs.selected = None;
+            self.project.picture_sub = None;
             self.apply_cues(&[], now);
             return Ok(());
         };
@@ -912,6 +916,16 @@ impl PlayerState {
             .cloned()
             .ok_or("That subtitle list no longer exists")?;
         self.subs.selected = Some(i);
+        // a picture track is drawn by the shared graph from the file itself (REQ-253); every
+        // other choice takes it away
+        self.project.picture_sub = match (&source, self.project.media.first()) {
+            (Source::Picture(t), Some(m)) => Some((m.id, t.ordinal)),
+            _ => None,
+        };
+        if matches!(source, Source::Picture(_)) {
+            self.apply_cues(&[], now);
+            return Ok(());
+        }
         if let Some(c) = self.subs.cues(i).cloned() {
             self.apply_cues(&c, now);
             return Ok(());
@@ -924,6 +938,7 @@ impl PlayerState {
                 Ok(())
             }
             Source::Embedded(t) => self.read_embedded(i, t.ordinal),
+            Source::Picture(_) => Ok(()),
         }
     }
 

@@ -67,6 +67,9 @@ pub struct Project {
     pub camera: CameraPaths,
     pub texts: Texts,
     pub next_media_id: u64,
+    /// The picture-based subtitle track the player draws: the media and the track's ordinal
+    /// (REQ-253). Never saved; the editor leaves it empty.
+    pub picture_sub: Option<(MediaId, u8)>,
 }
 
 /// The saved content of a project (for "unsaved changes" detection): media that finished
@@ -497,6 +500,11 @@ pub fn from_json_noted(
                 .map(crate::media::SubtitleTrack::sanitised)
                 .collect()
         });
+        format.picture_tracks = std::mem::take(&mut format.picture_tracks)
+            .into_iter()
+            .take(crate::media::MAX_SUBTITLE_TRACKS)
+            .filter_map(crate::media::PictureTrack::sanitised)
+            .collect();
         media.push(MediaItem {
             id: e.id,
             path: found.clone().unwrap_or(e.path_abs),
@@ -528,6 +536,9 @@ pub fn from_json_noted(
         if c.src_in < Micros::ZERO || c.src_out <= c.src_in || c.src_out > m.duration {
             return Err(invalid("clip range outside its source"));
         }
+        if !(crate::timeline::MIN_SPEED..=crate::timeline::MAX_SPEED).contains(&c.speed) {
+            return Err(invalid("clip speed outside 50% to 200%"));
+        }
         if c.volume > crate::timeline::FULL_VOLUME {
             return Err(invalid("clip volume above 100%"));
         }
@@ -554,6 +565,8 @@ pub fn from_json_noted(
     camera
         .validate(|m| media.iter().find(|x| x.id == m).map(|x| x.duration))
         .map_err(invalid)?;
+    // an own camera path of a clip that is not there (a damaged file) is left out
+    camera.retain_clips(|c| timeline.clips.iter().any(|x| x.id.0 == c));
     let texts = Texts {
         next_id: file.texts.iter().map(|t| t.id.0).max().unwrap_or(0),
         items: file.texts,
@@ -570,6 +583,7 @@ pub fn from_json_noted(
         camera,
         texts,
         next_media_id: file.next_media_id.max(max_media),
+        picture_sub: None,
     };
     project.timeline.next_clip_id = project.timeline.next_clip_id.max(max_clip);
     let note = (version < 10)

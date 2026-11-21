@@ -64,6 +64,8 @@ pub enum RenderError {
     SphereTooLarge,
     #[error("The colour LUT file '{0}' cannot be used: {1}")]
     Lut(String, String),
+    #[error("The picture file '{0}' is missing")]
+    Picture(String),
     #[error("This ffmpeg cannot make the chosen format")]
     NoEncoder,
     #[error(

@@ -47,6 +47,9 @@ pub struct Segment {
     pub skip: Micros,
     pub fade_in: Micros,
     pub fade_out: Micros,
+    /// Playing speed in thousandths (1000 = normal, REQ-281): `src_in`, `lead` and the
+    /// instants read from the file are source time, `len`, `skip` and the output are timeline time.
+    pub speed: u16,
     /// Linear gain of the clip's own sound (1.0 = unchanged).
     pub gain: f64,
     /// Clean audio is on for this clip (REQ-114): applied before the gain and the fades.
@@ -76,6 +79,12 @@ pub struct Segment {
     /// The frame rate of the source picture (REQ-155): the frame that holds the first
     /// rendered instant starts before it and must not be dropped.
     pub grid: Option<crate::time::Fps>,
+    /// First-order ambisonic sound turned by the camera (REQ-273): the pre-pass to run and
+    /// whose file replaces the clip's own sound. `None`: the sound is read from the clip.
+    pub spatial: Option<crate::spatial::SpatialJob>,
+    /// The ordinal of the picture-based subtitle track drawn over this clip (REQ-253, the
+    /// player): the file's own subtitle stream is overlaid on the picture. Not on a 360 clip.
+    pub picture_sub: Option<u8>,
 }
 
 /// The LUT of `target` for a render: `None` without one; a file that cannot be used is an
@@ -109,10 +118,44 @@ pub(super) fn lut_for(
 #[derive(Debug, Clone, PartialEq)]
 pub struct SegFrame {
     pub aspect: Option<frame::FrameAspect>,
+    /// The aspect is this clip's own (REQ-286): made in its own frame, then placed in the
+    /// project's frame.
+    pub own: bool,
     pub stack: frame::Stack,
 }
 
 impl Segment {
+    /// A length of timeline time as source time.
+    pub fn to_src(&self, t: Micros) -> Micros {
+        if self.speed == crate::timeline::NORMAL_SPEED {
+            return t;
+        }
+        Micros((i128::from(t.0) * i128::from(self.speed) / 1000) as i64)
+    }
+
+    /// A length of source time as timeline time.
+    pub fn to_timeline(&self, t: Micros) -> Micros {
+        if self.speed == crate::timeline::NORMAL_SPEED {
+            return t;
+        }
+        Micros((i128::from(t.0) * 1000 / i128::from(self.speed.max(1))) as i64)
+    }
+
+    /// The source instant of the first rendered instant.
+    pub fn src_from(&self) -> Micros {
+        self.src_in + self.to_src(self.skip)
+    }
+
+    /// The source instant at the end of the clip.
+    pub fn src_to(&self) -> Micros {
+        self.src_in + self.to_src(self.len)
+    }
+
+    /// The source time the rendered part spans.
+    pub fn rendered_src(&self) -> Micros {
+        self.to_src(self.rendered())
+    }
+
     /// Length actually rendered.
     pub fn rendered(&self) -> Micros {
         self.len - self.skip
@@ -123,13 +166,18 @@ impl Segment {
     /// without a known frame rate. The picture is read from that frame, so a paused still
     /// in the last frame of a clip, or playback started inside a frame, has a picture.
     pub fn lead(&self) -> Micros {
+        self.to_timeline(self.lead_src())
+    }
+
+    /// [`Self::lead`] in source time.
+    pub fn lead_src(&self) -> Micros {
         let (Some(f), None) = (self.grid, &self.sphere) else {
             return Micros::ZERO;
         };
         if self.skip <= Micros::ZERO {
             return Micros::ZERO;
         }
-        let t = (self.src_in + self.skip).0 as i128;
+        let t = self.src_from().0 as i128;
         let per = 1_000_000i128 * f.den as i128;
         let n = t * f.num as i128 / per;
         let first = (n * per + f.num as i128 / 2) / f.num as i128;
@@ -139,7 +187,7 @@ impl Segment {
     /// How much earlier than the first rendered instant the picture is read: the lead plus
     /// a millisecond so that rounding cannot drop the frame again.
     pub(super) fn read_back(&self) -> Micros {
-        match self.lead() {
+        match self.lead_src() {
             Micros(0) => Micros::ZERO,
             l => l + Micros(1_000),
         }
@@ -179,6 +227,7 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 skip: (from - start).max(Micros::ZERO),
                 fade_in,
                 fade_out,
+                speed: c.speed,
                 gain: crate::music::clip_gain(c),
                 clean: c.clean_audio,
                 clean_strength: c.clean_strength,
@@ -189,19 +238,28 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 sphere: m
                     .format
                     .is_360()
-                    .then(|| start_path(m, project.camera.path(m.id))),
+                    .then(|| start_path(m, project.camera.path_of(Some(c.id.0), m.id))),
                 anchored: m
                     .format
                     .is_360()
                     .then(|| anchored_doc(project, m, start, end, from))
                     .flatten(),
                 grid: m.format.fps,
+                spatial: spatial_job(m, c, project.camera.path_of(Some(c.id.0), m.id), src),
+                picture_sub: project
+                    .picture_sub
+                    .filter(|(id, _)| *id == m.id && !m.format.is_360())
+                    .map(|(_, ordinal)| ordinal),
                 frame: {
                     let stack = tl.frame_stack(i);
-                    (tl.frame_aspect.is_some() || !stack.is_empty()).then_some(SegFrame {
-                        aspect: tl.frame_aspect,
-                        stack,
-                    })
+                    let own = tl.own_aspect(c.id);
+                    (tl.frame_aspect.is_some() || own.is_some() || !stack.is_empty()).then_some(
+                        SegFrame {
+                            aspect: own.or(tl.frame_aspect),
+                            own: own.is_some(),
+                            stack,
+                        },
+                    )
                 },
             });
         }
@@ -277,15 +335,37 @@ pub(super) fn anchored_line_items(
                 .get(l.clip)
                 .is_some_and(|c| c.media == m.id)
         })
-        .map(|l| {
-            let mut t = crate::text::TextItem::new(
-                crate::text::TextId(0),
-                crate::text::clean_text(&l.text).unwrap_or_else(|| " ".into()),
-                l.start,
-            );
-            t.ttl = (l.end - l.start).max(crate::text::MIN_TTL);
-            t.anchor = l.anchor;
-            (t, l.size.unwrap_or(crate::subtitles::SIZE_NORMAL))
+        .flat_map(|l| {
+            let size = l.size.unwrap_or(crate::subtitles::SIZE_NORMAL);
+            let preset = project.subtitles.preset;
+            let make = |text: &str, from: Micros, to: Micros| {
+                let mut t = crate::text::TextItem::new(
+                    crate::text::TextId(0),
+                    crate::text::clean_text(text).unwrap_or_else(|| " ".into()),
+                    from,
+                );
+                t.ttl = (to - from).max(crate::text::MIN_TTL);
+                t.anchor = l.anchor;
+                // the style of the project's preset (REQ-257)
+                t.readability = if preset == crate::subtitles::Preset::Boxed {
+                    crate::text::Readability::Box
+                } else {
+                    crate::text::Readability::Outline
+                };
+                t
+            };
+            if preset != crate::subtitles::Preset::WordHighlight {
+                return vec![(make(&l.text, l.start, l.end), size)];
+            }
+            // a few words at a time, the one being spoken turns yellow
+            crate::ass::highlight_chunks(&l)
+                .into_iter()
+                .map(|(from, to, text, cs)| {
+                    let mut t = make(&text, from, to);
+                    t.karaoke = cs;
+                    (t, size)
+                })
+                .collect()
         })
         .collect()
 }
@@ -339,6 +419,29 @@ pub fn effective_format(m: &MediaItem) -> MediaFormat {
         (f.width, f.height) = SPHERE_FORMAT;
     }
     f
+}
+
+/// The sound of a 360 clip with ambisonic sound, turned by its camera (REQ-273). A preview
+/// leaves a very long clip as recorded: it waits for the pre-pass.
+fn spatial_job(
+    m: &crate::media::MediaItem,
+    c: &crate::timeline::Clip,
+    path: &[Pov],
+    src: Source,
+) -> Option<crate::spatial::SpatialJob> {
+    if !crate::spatial::is_ambisonic(&m.format) {
+        return None;
+    }
+    let len = c.src_len();
+    if matches!(src, Source::Preview { .. }) && len > crate::spatial::PREVIEW_MAX {
+        return None;
+    }
+    Some(crate::spatial::SpatialJob {
+        source: m.path.clone(),
+        src_in: c.src_in,
+        len,
+        path: start_path(m, path),
+    })
 }
 
 /// The camera path of a 360 source with the file's own initial view as the first point
