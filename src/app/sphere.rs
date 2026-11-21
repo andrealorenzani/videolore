@@ -96,7 +96,11 @@ impl AppState {
         }
         camera::at(self.project.camera.path(media), t)
             .or(live.map(|l| l.cam))
-            .unwrap_or(Camera::FRONT)
+            .unwrap_or_else(|| {
+                self.project.media(media).map_or(Camera::FRONT, |m| {
+                    crate::camera::start_camera(m.format.pose)
+                })
+            })
     }
 
     /// Where the 360 clip at the playhead looks now (for the preview's readout).
@@ -136,6 +140,27 @@ impl AppState {
         Ok(())
     }
 
+    /// Shift and drag on the picture of a 360 clip: the roll (REQ-270).
+    pub(super) fn roll_camera(&mut self, dx: f32, view_w: f32, now: Instant) -> Result<(), String> {
+        let (m, t) = self.sphere_at_playhead().ok_or(NOT_A_360)?;
+        let cam = self.effective_camera(m, t).rolled(dx, view_w);
+        self.set_live(m, cam, now);
+        Ok(())
+    }
+
+    /// The arrow keys: the camera of the 360 clip at the playhead turns (REQ-272).
+    pub(super) fn turn_camera(
+        &mut self,
+        yaw_cd: i32,
+        pitch_cd: i32,
+        now: Instant,
+    ) -> Result<(), String> {
+        let (m, t) = self.sphere_at_playhead().ok_or(NOT_A_360)?;
+        let cam = self.effective_camera(m, t).turned(yaw_cd, pitch_cd);
+        self.set_live(m, cam, now);
+        Ok(())
+    }
+
     /// Wheel or pinch zoom of a 360 clip.
     pub(super) fn zoom_camera(&mut self, scroll: f32, now: Instant) -> Result<(), String> {
         let (m, t) = self.sphere_at_playhead().ok_or(NOT_A_360)?;
@@ -154,6 +179,10 @@ impl AppState {
             return;
         }
         self.live.insert(media, l);
+        // half-size pictures while the view is being turned; the full picture comes back
+        // a moment after the last change (REQ-267)
+        self.preview.set_draft(true);
+        self.camera_restart = Some(now + CAMERA_RESTART);
         self.camera_changed(now);
     }
 
@@ -176,6 +205,10 @@ impl AppState {
             return;
         }
         self.camera_restart = None;
+        if self.preview.is_draft() {
+            self.preview.set_draft(false);
+            self.refresh_still(now);
+        }
         if self.preview.is_playing() {
             let at = self.preview.position(now);
             self.playhead = at;
@@ -202,7 +235,16 @@ impl AppState {
             },
         );
         self.edit(now, "Set POV", |e| {
-            e.camera.set(media, Pov { t, cam }).map_err(pov_error)
+            e.camera
+                .set(
+                    media,
+                    Pov {
+                        t,
+                        cam,
+                        ease: Default::default(),
+                    },
+                )
+                .map_err(pov_error)
         })
     }
 
@@ -221,6 +263,7 @@ impl AppState {
         let pov = Pov {
             t: pov.t,
             cam: pov.cam.clamped(),
+            ease: Default::default(),
         };
         if old_t == pov.t && self.project.camera.path(media).contains(&pov) {
             return Ok(());
@@ -257,6 +300,18 @@ impl AppState {
     /// View > Show boxes on the picture.
     pub(super) fn toggle_boxes(&mut self) -> Result<(), String> {
         self.settings.show_boxes = !self.settings.show_boxes;
+        self.save_settings()
+    }
+
+    /// View > Snap to guides (REQ-198).
+    pub(super) fn toggle_snap(&mut self) -> Result<(), String> {
+        self.settings.snap_to_guides = !self.settings.snap_to_guides;
+        self.save_settings()
+    }
+
+    /// View > Show safe areas (REQ-199).
+    pub(super) fn toggle_safe_areas(&mut self) -> Result<(), String> {
+        self.settings.show_safe_areas = !self.settings.show_safe_areas;
         self.save_settings()
     }
 

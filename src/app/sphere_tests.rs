@@ -173,6 +173,7 @@ fn a_drag_overrides_the_path_until_seek_play_or_reset() {
     let pov = |t: i64, yaw: i32| Pov {
         t: s(t),
         cam: Camera::new(i64::from(yaw) * 100, 0, 9000),
+        ease: Default::default(),
     };
     app.project.camera.set(m, pov(0, 0)).unwrap();
     app.project.camera.set(m, pov(4, 80)).unwrap();
@@ -262,6 +263,7 @@ fn povs_can_be_edited_removed_and_are_limited() {
     let edit = Pov {
         t: s(2),
         cam: Camera::new(12_000, 500, 5000),
+        ease: Default::default(),
     };
     app.dispatch(
         Command::EditPov {
@@ -293,7 +295,9 @@ fn povs_can_be_edited_removed_and_are_limited() {
             yaw_cd: 99_999,
             pitch_cd: 99_999,
             fov_cd: 1,
+            roll_cd: 0,
         },
+        ease: Default::default(),
     };
     app.dispatch(
         Command::EditPov {
@@ -309,6 +313,7 @@ fn povs_can_be_edited_removed_and_are_limited() {
         let bad = Pov {
             t: Micros(t),
             cam: Camera::FRONT,
+            ease: Default::default(),
         };
         assert!(
             app.dispatch(
@@ -351,6 +356,7 @@ fn povs_can_be_edited_removed_and_are_limited() {
                 Pov {
                     t: Micros(i * 10_000),
                     cam: Camera::FRONT,
+                    ease: Default::default(),
                 },
             )
             .unwrap();
@@ -839,4 +845,139 @@ fn media_of_older_projects_are_checked_for_spherical_information_without_becomin
     app.refresh_dirty();
     assert!(!app.dirty);
     settle(&mut app);
+}
+
+// covers: REQ-270, REQ-271
+#[test]
+fn roll_and_ease_of_a_point_of_view_reach_the_picture_and_the_export() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = sphere_app(dir.path());
+    let now = Instant::now();
+    let m = a(&app);
+    // Shift and drag turns the live camera round its line of sight, without touching the project
+    let undo = app.history.undo_len();
+    app.dispatch(
+        Command::RollCamera {
+            dx: 200.0,
+            view_w: 800.0,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.camera_at_playhead().unwrap().roll_cd, 2250);
+    assert_eq!(app.history.undo_len(), undo);
+    // a POV with roll 30 and an eased move to the next one
+    let first = Pov {
+        ease: crate::camera::Ease::EaseInOut,
+        ..Pov::new(s(0), Camera::FRONT)
+    };
+    let second = Pov::new(s(4), Camera::new(9000, 0, 9000).with_roll(3000));
+    app.dispatch(
+        Command::EditPov {
+            media: m,
+            old_t: s(9),
+            pov: first,
+        },
+        now,
+    )
+    .ok();
+    app.project.camera.set(m, first).unwrap();
+    app.project.camera.set(m, second).unwrap();
+    // at the middle of the eased move the camera is half way, in yaw and in roll
+    let mid = crate::camera::at(app.project.camera.path(m), s(2)).unwrap();
+    assert_eq!((mid.yaw_cd, mid.roll_cd), (4500, 1500));
+    // the export graph carries the roll in its commands
+    let plan = render::plan_export(&app.project, &app.encoders(), |_, _| true).unwrap();
+    let render::Plan::Reencode { graph, .. } = &plan else {
+        panic!("a re-encode")
+    };
+    let text: String = graph.command_files.iter().map(|f| f.1.clone()).collect();
+    assert!(text.contains(" roll "), "{text}");
+    // an edit of the POV keeps its roll and ease and is one undo step
+    let edit = Pov {
+        ease: crate::camera::Ease::Straight,
+        ..second
+    };
+    app.dispatch(
+        Command::EditPov {
+            media: m,
+            old_t: s(4),
+            pov: edit,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.project.camera.path(m)[1], edit);
+}
+
+// covers: REQ-263
+#[test]
+fn a_plain_two_to_one_video_can_be_marked_as_360_and_the_mark_survives_saving() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = state(FakeDialogs::default());
+    import(&mut app, files(dir.path()));
+    let now = Instant::now();
+    let (a, b) = (app.project.media[0].id, app.project.media[1].id);
+    app.project.media[0].format.width = 2048;
+    app.project.media[0].format.height = 1024;
+    app.project.media[0].format.spherical = Some(false);
+    assert!(!app.project.media[0].format.is_360(), "unmarked: flat");
+    app.dispatch(Command::SetMarked360(a, true), now).unwrap();
+    assert!(app.project.media[0].format.is_360(), "marked: the camera");
+    // only a picture twice as wide as high can be marked
+    assert!(app.dispatch(Command::SetMarked360(b, true), now).is_err());
+    assert!(!app.project.media[1].format.is_360());
+    // the mark is saved with the media and read back; an unmarked one writes nothing new
+    let text = serde_json::to_string(&app.project.media[0].format).unwrap();
+    assert!(text.contains("marked_360"));
+    let back: crate::media::MediaFormat = serde_json::from_str(&text).unwrap();
+    assert!(back.is_360());
+    assert!(
+        !serde_json::to_string(&app.project.media[1].format)
+            .unwrap()
+            .contains("marked_360")
+    );
+    app.dispatch(Command::SetMarked360(a, false), now).unwrap();
+    assert!(!app.project.media[0].format.is_360());
+    // a video that is not 2:1 does not become 360 whatever the field says
+    let mut f = app.project.media[1].format.clone();
+    f.marked_360 = true;
+    assert!(!f.is_360());
+}
+
+// covers: REQ-267
+#[test]
+fn the_picture_is_half_size_while_the_view_is_dragged_and_full_size_right_after() {
+    let g = render::Geometry {
+        width: 1920,
+        height: 1080,
+        fps: crate::time::Fps::new(30, 1).unwrap(),
+    };
+    let half = crate::preview::draft_geometry(&g);
+    assert_eq!((half.width, half.height), (960, 540));
+    let tiny = crate::preview::draft_geometry(&render::Geometry {
+        width: 3,
+        height: 1,
+        ..g
+    });
+    assert_eq!((tiny.width, tiny.height), (2, 2));
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = sphere_app(dir.path());
+    let now = Instant::now();
+    assert!(!app.preview.is_draft());
+    app.dispatch(
+        Command::DragCamera {
+            dx: 50.0,
+            dy: 0.0,
+            view_w: 900.0,
+        },
+        now,
+    )
+    .unwrap();
+    assert!(app.preview.is_draft(), "half size while dragging");
+    // a tick before the quiet time keeps it; the full size is back within 200 ms of the release
+    app.tick(now + std::time::Duration::from_millis(50));
+    assert!(app.preview.is_draft());
+    app.tick(now + std::time::Duration::from_millis(200));
+    assert!(!app.preview.is_draft(), "full size after the drag");
 }

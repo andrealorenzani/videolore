@@ -32,26 +32,42 @@ pub const BLUR_RADIUS: u32 = 3;
 /// Smallest side of the small copy (even), so both radii stay valid.
 pub const BLUR_MIN_SIDE: u32 = 8;
 
-/// The shape of the frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// The shape of the frame: one of the three presets or a custom ratio from 1:4 to 4:1
+/// (REQ-285). Written in the project as "w:h".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Shape {
-    #[serde(rename = "4:3")]
     Wide4x3,
-    #[serde(rename = "16:9")]
     Wide16x9,
-    #[serde(rename = "9:16")]
     Tall9x16,
+    /// Width and height of the ratio, whole numbers; see [`Shape::custom`].
+    Custom(u8, u8),
 }
 
+/// Why a custom ratio is refused.
+pub const CUSTOM_RATIO_NOTE: &str = "A ratio goes from 1:4 to 4:1, in whole numbers.";
+
 impl Shape {
+    /// The presets (the Custom choice is made by typing the two numbers).
     pub const ALL: [Shape; 3] = [Shape::Wide4x3, Shape::Wide16x9, Shape::Tall9x16];
 
-    pub fn name(self) -> &'static str {
-        match self {
-            Shape::Wide4x3 => "4:3",
-            Shape::Wide16x9 => "16:9",
-            Shape::Tall9x16 => "9:16",
+    /// A custom shape `w:h`: both from 1 to 100 and the ratio from 1:4 to 4:1. A preset's
+    /// ratio gives the preset itself.
+    pub fn custom(w: u32, h: u32) -> Option<Shape> {
+        if w == 0 || h == 0 || w > 100 || h > 100 || w > 4 * h || h > 4 * w {
+            return None;
         }
+        let s = Shape::Custom(w as u8, h as u8);
+        Some(
+            Shape::ALL
+                .into_iter()
+                .find(|p| p.ratio().0 * h == p.ratio().1 * w && p.ratio() == (w, h))
+                .unwrap_or(s),
+        )
+    }
+
+    pub fn name(self) -> String {
+        let (w, h) = self.ratio();
+        format!("{w}:{h}")
     }
 
     /// Width and height of the ratio.
@@ -60,7 +76,27 @@ impl Shape {
             Shape::Wide4x3 => (4, 3),
             Shape::Wide16x9 => (16, 9),
             Shape::Tall9x16 => (9, 16),
+            Shape::Custom(w, h) => (u32::from(w), u32::from(h)),
         }
+    }
+
+    /// Reads "w:h".
+    pub fn parse(s: &str) -> Option<Shape> {
+        let (w, h) = s.split_once(':')?;
+        Shape::custom(w.trim().parse().ok()?, h.trim().parse().ok()?)
+    }
+}
+
+impl Serialize for Shape {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.name())
+    }
+}
+
+impl<'de> Deserialize<'de> for Shape {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Shape, D::Error> {
+        let s = String::deserialize(d)?;
+        Shape::parse(&s).ok_or_else(|| serde::de::Error::custom("a shape is w:h from 1:4 to 4:1"))
     }
 }
 
@@ -140,12 +176,51 @@ impl Fill {
     }
 }
 
+/// How blurred the background of a Change aspect frame is (REQ-284).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlurLevel {
+    Low,
+    /// The blur of every earlier version.
+    #[default]
+    Medium,
+    High,
+}
+
+impl BlurLevel {
+    pub const ALL: [BlurLevel; 3] = [BlurLevel::Low, BlurLevel::Medium, BlurLevel::High];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            BlurLevel::Low => "Low",
+            BlurLevel::Medium => "Medium",
+            BlurLevel::High => "High",
+        }
+    }
+
+    /// The box blur radius on the small copy.
+    pub fn radius(self) -> u32 {
+        match self {
+            BlurLevel::Low => 1,
+            BlurLevel::Medium => BLUR_RADIUS,
+            BlurLevel::High => 2 * BLUR_RADIUS,
+        }
+    }
+}
+
+fn is_medium(b: &BlurLevel) -> bool {
+    *b == BlurLevel::Medium
+}
+
 /// The Change aspect effect of the whole video (REQ-124).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FrameAspect {
     pub shape: Shape,
     pub fit: Fit,
     pub fill: Fill,
+    /// The blur of a blurred fill; not written when Medium.
+    #[serde(default, skip_serializing_if = "is_medium")]
+    pub blur: BlurLevel,
 }
 
 impl Default for FrameAspect {
@@ -155,6 +230,7 @@ impl Default for FrameAspect {
             shape: Shape::Wide16x9,
             fit: Fit::Width,
             fill: Fill::Colour(Rgb::BLACK),
+            blur: BlurLevel::Medium,
         }
     }
 }
@@ -183,11 +259,25 @@ fn capped(size: (u32, u32), max: u32) -> (u32, u32) {
 /// The frame of `aspect` over a video whose size without the effect is `base`; with no
 /// aspect the frame is the base (REQ-125). Sides are even and at most [`MAX_SIDE`].
 pub fn frame_size(base: (u32, u32), aspect: Option<&FrameAspect>) -> (u32, u32) {
-    let Some(a) = aspect else {
-        return base;
-    };
+    match aspect {
+        None => base,
+        Some(a) => capped(wanted_frame(base, a), MAX_SIDE),
+    }
+}
+
+/// True when the frame of `aspect` over a video of size `base` has a longer side above
+/// [`MAX_SIDE`] before the cap: it is scaled down and the export takes longer (REQ-221).
+pub fn over_cap(base: (u32, u32), aspect: Option<&FrameAspect>) -> bool {
+    aspect.is_some_and(|a| {
+        let f = wanted_frame(base, a);
+        f.0.max(f.1) > MAX_SIDE
+    })
+}
+
+/// The frame of `a` over `base`, not yet capped.
+fn wanted_frame(base: (u32, u32), a: &FrameAspect) -> (u32, u32) {
     let (rw, rh) = a.shape.ratio();
-    let frame = match a.fit {
+    match a.fit {
         Fit::Width => (
             base.0,
             even(f64::from(base.0) * f64::from(rh) / f64::from(rw)),
@@ -196,8 +286,7 @@ pub fn frame_size(base: (u32, u32), aspect: Option<&FrameAspect>) -> (u32, u32) 
             even(f64::from(base.1) * f64::from(rw) / f64::from(rh)),
             base.1,
         ),
-    };
-    capped(frame, MAX_SIDE)
+    }
 }
 
 /// The same frame for a preview at most `height` high.
@@ -282,6 +371,12 @@ impl Scale {
 
     pub fn factor(self) -> f64 {
         f64::from(self.permille) / 1000.0
+    }
+}
+
+impl Lerp for u8 {
+    fn lerp(a: u8, b: u8, num: i64, den: i64) -> u8 {
+        lerp_i64(i64::from(a), i64::from(b), num, den).clamp(0, 100) as u8
     }
 }
 
@@ -444,9 +539,21 @@ fn secs(t: Micros) -> String {
     num(t.0 as f64 / 1_000_000.0)
 }
 
+/// The expression of volume keys (percent, REQ-280) in the variable `t` of a clip whose sound
+/// starts at `start` on the chain's clock: the level is interpolated, the gain is its square
+/// (REQ-280, D12).
+pub fn volume_expression(keys: &[Key<u8>], start: Micros) -> String {
+    let tr = Track {
+        keys: keys.to_vec(),
+        offset: Micros::ZERO - start,
+    };
+    format!("pow({}/100,2)", piecewise(&tr, |v| f64::from(*v)))
+}
+
 /// The piecewise linear expression of a track in the variable `t`.
 fn piecewise<T: Copy>(tr: &Track<T>, f: impl Fn(&T) -> f64) -> String {
     let pts: Vec<(Micros, f64)> = tr.keys.iter().map(|k| (k.t - tr.offset, f(&k.v))).collect();
+    let eases: Vec<crate::keyframes::Ease> = tr.keys.iter().map(|k| k.ease).collect();
     match pts.as_slice() {
         [] => "0".into(),
         [(_, v)] => num(*v),
@@ -464,12 +571,18 @@ fn piecewise<T: Copy>(tr: &Track<T>, f: impl Fn(&T) -> f64) -> String {
                     } else {
                         format!("(t-{})", secs(t0))
                     };
-                    format!(
-                        "({a}+({d})*{clamp}/{span})",
-                        a = num(a),
-                        d = num(b - a),
-                        span = secs(t1 - t0)
-                    )
+                    if eases[i] == crate::keyframes::Ease::EaseInOut {
+                        // smoothstep of the part of the segment done (REQ-282)
+                        let f = format!("({clamp}/{})", secs(t1 - t0));
+                        format!("({a}+({d})*{f}*{f}*(3-2*{f}))", a = num(a), d = num(b - a))
+                    } else {
+                        format!(
+                            "({a}+({d})*{clamp}/{span})",
+                            a = num(a),
+                            d = num(b - a),
+                            span = secs(t1 - t0)
+                        )
+                    }
                 };
                 if seg != e {
                     e = format!("if(lt(t,{}),{seg},{e})", secs(t1));
@@ -493,6 +606,7 @@ mod tests {
                 dx: 0,
                 dy: 0,
             },
+            ease: Default::default(),
         }
     }
 
@@ -536,6 +650,7 @@ mod tests {
                     shape,
                     fit,
                     fill: Fill::Blur,
+                    blur: BlurLevel::Medium,
                 };
                 for base in [(1920, 1080), (1280, 720), (1000, 998), (4, 6)] {
                     let f = frame_size(base, Some(&a));
@@ -620,7 +735,7 @@ mod tests {
         let ok = r##"{"a":{"shape":"9:16","fit":"height","fill":{"colour":"#000000"}}}"##;
         assert!(serde_json::from_str::<W>(ok).unwrap().a.is_some());
         for bad in [
-            r#"{"a":{"shape":"3:1","fit":"height","fill":"blur"}}"#,
+            r#"{"a":{"shape":"5:1","fit":"height","fill":"blur"}}"#,
             r#"{"a":{"shape":"9:16","fit":"both","fill":"blur"}}"#,
             r#"{"a":{"shape":"9:16","fit":"width","fill":"paint"}}"#,
             r#"{"a":5}"#,
@@ -649,6 +764,7 @@ mod tests {
                 keys: vec![Key {
                     t: Micros::ZERO,
                     v: Pos { x: 6000, y: 5000 },
+                    ease: Default::default(),
                 }],
                 offset: Micros::ZERO,
             }],
@@ -689,6 +805,13 @@ mod tests {
             "if(lt(t,2.5),(1+(1)*max(0,t-0.5)/2),2)"
         );
         assert_eq!(Stack::default().scale_factor(), "1");
+        // an eased segment is a smoothstep of the part done; the straight ones are unchanged
+        let mut eased = three.clone();
+        eased.scale[0].keys[0].ease = crate::keyframes::Ease::EaseInOut;
+        assert_eq!(
+            eased.scale_factor(),
+            "if(lt(t,2.5),(1+(1)*(max(0,t-0.5)/2)*(max(0,t-0.5)/2)*(3-2*(max(0,t-0.5)/2))),2)"
+        );
         assert_eq!(num(-0.25), "(-0.25)");
         assert_eq!(num(f64::NAN), "0");
     }
@@ -714,6 +837,7 @@ mod tests {
                         dx: (next() % 20000) as i16 - 10000,
                         dy: (next() % 20000) as i16 - 10000,
                     },
+                    ease: Default::default(),
                 });
             }
             let st = Stack {
@@ -759,5 +883,67 @@ mod tests {
             Pos::lerp(CENTRE, Pos { x: 0, y: 10000 }, 1, 2),
             Pos { x: 2500, y: 7500 }
         );
+    }
+
+    // covers: REQ-285
+    #[test]
+    fn a_custom_ratio_from_one_to_four_to_four_to_one_is_a_shape() {
+        assert_eq!(Shape::custom(1, 1), Some(Shape::Custom(1, 1)));
+        assert_eq!(Shape::custom(1, 4), Some(Shape::Custom(1, 4)));
+        assert_eq!(Shape::custom(4, 1), Some(Shape::Custom(4, 1)));
+        assert_eq!(
+            Shape::custom(16, 9),
+            Some(Shape::Wide16x9),
+            "a preset stays the preset"
+        );
+        assert_eq!(Shape::custom(1, 5), None);
+        assert_eq!(Shape::custom(5, 1), None);
+        assert_eq!(Shape::custom(0, 3), None);
+        assert_eq!(Shape::custom(101, 100), None);
+        // 1:1 is a square frame on a 1920x1080 video
+        let a = FrameAspect {
+            shape: Shape::Custom(1, 1),
+            ..Default::default()
+        };
+        let (w, h) = frame_size((1920, 1080), Some(&a));
+        assert_eq!(w, h);
+        assert_eq!(a.shape.name(), "1:1");
+        // written as "w:h" and read back; a bad one is refused when a project is read
+        let text = serde_json::to_string(&a).unwrap();
+        assert!(text.contains("\"1:1\""), "{text}");
+        assert_eq!(serde_json::from_str::<FrameAspect>(&text).unwrap(), a);
+        assert!(serde_json::from_str::<Shape>("\"1:5\"").is_err());
+        assert!(serde_json::from_str::<Shape>("\"x\"").is_err());
+        assert_eq!(
+            serde_json::from_str::<Shape>("\"4:3\"").unwrap(),
+            Shape::Wide4x3
+        );
+    }
+
+    // covers: REQ-284
+    #[test]
+    fn the_blur_levels_have_growing_radius_and_medium_is_not_written() {
+        let r: Vec<u32> = BlurLevel::ALL.iter().map(|b| b.radius()).collect();
+        assert!(r[0] < r[1] && r[1] < r[2], "{r:?}");
+        assert_eq!(BlurLevel::default(), BlurLevel::Medium);
+        assert_eq!(
+            BlurLevel::Medium.radius(),
+            BLUR_RADIUS,
+            "the blur of every earlier version"
+        );
+        let plain = serde_json::to_string(&FrameAspect::default()).unwrap();
+        assert!(!plain.contains("blur"), "{plain}");
+        let high = FrameAspect {
+            blur: BlurLevel::High,
+            ..Default::default()
+        };
+        let back: FrameAspect =
+            serde_json::from_str(&serde_json::to_string(&high).unwrap()).unwrap();
+        assert_eq!(back.blur, BlurLevel::High);
+        // a project written before the levels has Medium
+        let old: FrameAspect =
+            serde_json::from_str(r##"{"shape":"16:9","fit":"width","fill":{"colour":"#000000"}}"##)
+                .unwrap();
+        assert_eq!(old.blur, BlurLevel::Medium);
     }
 }

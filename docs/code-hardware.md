@@ -48,8 +48,15 @@ quantiser (about 6 steps halve the size, aiming at 1.3×, at most 40). The outpu
 refuses a constant-quality file larger than 1.5× the usual size; the normal method then makes
 the file, and this is not remembered as a hardware problem (it depends on the video).
 
-An unknown source bitrate, stream copy, or any other format (VP9, AV1, MPEG-4) always uses the
-normal method.
+An unknown source bitrate, stream copy, or any other format (MPEG-4) always uses the normal
+method. Since 2.0.4 the formats are H.264, HEVC, AV1 and VP9: the encoders are `<format>_<method>`
+(`av1_nvenc`, `av1_qsv`, `av1_amf`, `av1_vaapi`, `av1_videotoolbox`, `vp9_vaapi`, `vp9_qsv`) and exist
+only where the ffmpeg in use has them; AV1 and VP9 take no `-profile:v`. VP9 hardware is rare
+(software is the usual answer). A preset has no bitrate of its own, so a hardware export of a
+preset aims at `hwenc::preset_bitrate` (about 8 Mb/s for H.264 at 1920x1080 and 25 fps, in
+proportion to the pixels per second; HEVC 0.6, VP9 0.65, AV1 0.5 of it). Quick Sync also has a
+constant-quality variant (`-global_quality 23`, no bitrate) for drivers that refuse bitrate
+control, with the same size guard (REQ-215).
 
 ## The hardware check (probe)
 
@@ -95,16 +102,32 @@ replaces an older one (a generation number ignores late results). An export star
 check ends uses the normal method. The hardware is also never used when the ffmpeg lacks the
 `psnr` filter the output check needs.
 
+### Changes of 2.0.4 (REQ-206 to 219)
+
+- Every working candidate is kept (`HwStatus.working`, best first), so Settings > Advanced can list the devices by name and the user can choose one (`Settings.graphics_card`, `HwStatus::chosen`); Automatic is the first of each format. The probe covers the four formats; its limits (1 s, retry 4 s, 10 s in total) are the same.
+- The probe command prints its progress on stdout. A try that runs out of time is classified by `hwenc::classify`: output or 20 ms of processor time (`Process::cpu_ms`) is busy and gets the retry; neither is hanging and is skipped after its first try (`Reason::Hanging`); no reading is unknown (retry). A candidate that hangs, or runs out of time twice when it is not busy, is remembered for the session (`AppState.hw_slow`, never saved) and not tried by the next checks (`Reason::SkippedSlow`); a restart, "Try video hardware again" and the automatic repeat of an inconclusive check try it again.
+- The check waits for an export or a subtitle job (`pause_or_resume_hw_probe`): it is stopped and started again when the last one ends.
+- After the encoders, `hwdec::probe_all` finds the decoders (a probe clip made by the bundled software encoder, decoded with `-hwaccel <method>`; all 15 frames and no message about falling back). With Faster the preview and the preview copies decode with the decoder of the chosen device; a failed run goes on without it, at the playhead, silently.
+- An old system libva (`Platform.libva_version`, from the library's file name) gives `HwStatus.libva_note` with both versions.
+
 ## The export
 
 1. The hardware run writes `.<name>.hw.videolore-partial` (private, registered for crash
    clean-up). Progress 0–85%. A watchdog reads `-progress` every 100 ms: cancel, or no progress
    for 30 s, kills the process (after a kill it waits at most 5 s, then leaves the process to a
-   background thread, which keeps its slot until it really ends).
+   background thread, which keeps its slot until it really ends). The bar never goes back during
+   a run (`Attempt::progress` keeps the highest value; ffmpeg's last time can be a little under an
+   earlier one); it starts again from 0 only for the redo and for the second constant-quality run.
 2. The output check (85–100%), all with software tools:
    - ffprobe metadata: codec, profile, `yuv420p`, size, frame rate, square pixels, `hvc1`,
      audio codec / 48 kHz / stereo, packet count;
    - a strict full decode (`-xerror`, no error output): one frame per packet;
+   - (since 2.0.4, REQ-206) when the file has the frame count the plan gives (`render::expected_frames`,
+     within one frame), three short runs of the normal method's graph, one per sample
+     (`outcheck::sample_ranges`, `compare_range_args`: the graph from the start of the range, cut
+     after one second, next to the file read from the same place). A sample that fails that way,
+     or a file with another count (a clip whose length is not whole frames gets a frame more from
+     the rounding of `fps`, which shifts every later frame), goes to the exact check:
    - one pass that renders the normal method's video graph (no encoding) next to the file: the
      graph's frame count must equal the file's (±1) and its duration the file's (within 2 frames),
      and 3 samples (10%, 50%, 90% of the frames,

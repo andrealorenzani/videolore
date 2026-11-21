@@ -20,6 +20,20 @@ pub const FONTS_DIR: &str = "fonts";
 pub const FONT_FILE: &str = "NotoSans-Bold.ttf";
 /// Noto Sans Bold (SIL Open Font License 1.1): Latin, Greek and Cyrillic.
 pub const FONT: &[u8] = include_bytes!("../assets/fonts/NotoSans-Bold.ttf");
+/// Noto Sans Arabic Bold: the bundled face for Arabic (REQ-187).
+pub const FONT_ARABIC: &[u8] = include_bytes!("../assets/fonts/NotoSansArabic-Bold.ttf");
+/// Noto Sans Devanagari Bold: the bundled face for Hindi (REQ-187).
+pub const FONT_DEVANAGARI: &[u8] = include_bytes!("../assets/fonts/NotoSansDevanagari-Bold.ttf");
+/// The family names of the bundled script faces (what `\fn` writes).
+pub const FAMILY_ARABIC: &str = "Noto Sans Arabic";
+pub const FAMILY_DEVANAGARI: &str = "Noto Sans Devanagari";
+
+/// Every bundled face: the file name written into the fonts folder, and its bytes.
+pub const BUNDLED_FACES: [(&str, &[u8]); 3] = [
+    (FONT_FILE, FONT),
+    ("NotoSansArabic-Bold.ttf", FONT_ARABIC),
+    ("NotoSansDevanagari-Bold.ttf", FONT_DEVANAGARI),
+];
 /// Words shown at once by the word-highlight preset.
 pub const HIGHLIGHT_CHUNK: usize = 4;
 
@@ -41,6 +55,47 @@ pub fn escape(text: &str) -> String {
             c => c,
         })
         .collect()
+}
+
+/// [`escape`] plus the font of each Arabic and Devanagari run: the subtitle font has no
+/// glyphs for them and libass does not look for another font of the fonts folder by itself,
+/// so a run is written with its bundled face (`{\fnNoto Sans Arabic}`) and the base font
+/// comes back after it. Other characters (CJK included) are left to the renderer's own
+/// fallback to the installed fonts. Text without those scripts is returned as it was.
+pub fn escape_scripts(text: &str) -> String {
+    use crate::base::font::{DEFAULT_FONT, Script, script_of};
+    let plain = escape(text);
+    if !plain
+        .chars()
+        .any(|c| script_of(c).is_some_and(Script::is_bundled))
+    {
+        return plain;
+    }
+    let family = |s: Script| match s {
+        Script::Arabic => FAMILY_ARABIC,
+        _ => FAMILY_DEVANAGARI,
+    };
+    let mut out = String::with_capacity(plain.len() + 48);
+    let mut current: Option<Script> = None;
+    for c in plain.chars() {
+        let next = match script_of(c) {
+            Some(s) if s.is_bundled() => Some(s),
+            // spaces, digits and punctuation stay in the run they are in; letters of any
+            // other script go back to the base font
+            None if !c.is_alphabetic() => current,
+            _ => None,
+        };
+        if next != current {
+            let font = next.map_or(DEFAULT_FONT, family);
+            out.push_str(&format!("{{\\fn{font}}}"));
+            current = next;
+        }
+        out.push(c);
+    }
+    if current.is_some() {
+        out.push_str(&format!("{{\\fn{DEFAULT_FONT}}}"));
+    }
+    out
 }
 
 /// `H:MM:SS.cc` (centiseconds, rounded down).
@@ -198,6 +253,19 @@ pub fn document(
     document_with_texts(lines, preset, width, height, shift, &[])
 }
 
+/// The `.ass` file of File > Export subtitles (REQ-181): every line with the project's
+/// style, its own place (`\an5\pos`) and size (`\fs`), on a frame of `width` x `height`
+/// (the project's), at timeline times.
+pub fn export_file(lines: &[ShownLine], preset: Preset, width: u32, height: u32) -> String {
+    let mut sorted: Vec<ShownLine> = lines
+        .iter()
+        .filter(|l| !l.text.trim().is_empty())
+        .cloned()
+        .collect();
+    sorted.sort_by_key(|l| (l.start, l.line));
+    document(&sorted, preset, width, height, Micros::ZERO)
+}
+
 /// Text height at 100%: 5% of the picture height (assumption of REQ-111).
 pub const BASE_HEIGHT: f64 = 0.05;
 
@@ -275,7 +343,7 @@ pub fn document_with_texts(
         // only this module writes tags: the position comes from validated numbers
         let tag = line_tag(l, width, height);
         if preset != Preset::WordHighlight {
-            let text = format!("{tag}{}", escape(&l.text));
+            let text = format!("{tag}{}", escape_scripts(&l.text));
             s.push_str(&dialogue(at(l.start), at(l.end), &text));
             continue;
         }
@@ -297,7 +365,7 @@ pub fn document_with_texts(
                 // each word lasts until the next one starts (gaps go to the previous word)
                 let until = chunk.get(wi + 1).map(|n| n.start).unwrap_or(end);
                 let cs = ((until - cursor).0.max(0) / 10_000).max(1);
-                text.push_str(&format!("{{\\k{cs}}}{} ", escape(&w.text)));
+                text.push_str(&format!("{{\\k{cs}}}{} ", escape_scripts(&w.text)));
                 cursor = until;
             }
             s.push_str(&dialogue(at(start), at(end), text.trim_end()));
@@ -460,5 +528,149 @@ mod tests {
         assert_eq!(d.matches("{\\fs14\\bord1}{\\k").count(), 2, "{d}");
         assert_eq!(sized_font(1280, 720, 1000), font_size(1280, 720));
         assert_eq!(sized_font(10, 10, 250), 2);
+    }
+
+    /// A small ASS reader that does not share code with the writer: the `Format:` line of
+    /// the Events section gives the columns, every `Dialogue:` line is split into them.
+    fn reference_events(doc: &str) -> Vec<std::collections::BTreeMap<String, String>> {
+        let events = doc.split("[Events]\n").nth(1).expect("an Events section");
+        let mut lines = events.lines();
+        let cols: Vec<String> = lines
+            .next()
+            .and_then(|l| l.strip_prefix("Format: "))
+            .expect("a Format line")
+            .split(", ")
+            .map(str::to_string)
+            .collect();
+        lines
+            .filter_map(|l| l.strip_prefix("Dialogue: "))
+            .map(|l| {
+                cols.iter()
+                    .cloned()
+                    .zip(l.splitn(cols.len(), ','))
+                    .map(|(k, v)| (k, v.to_string()))
+                    .collect()
+            })
+            .collect()
+    }
+
+    // covers: REQ-181
+    #[test]
+    fn the_ass_file_has_every_line_with_its_own_place_and_size() {
+        let (w, h) = (1920, 1080);
+        let mut a = line(1000, 2000, "at the corner", vec![]);
+        a.position = Some(Pos { x: 1000, y: 1000 }); // 10% across and 10% down
+        let mut b = line(3000, 4000, "big", vec![]);
+        b.size = Some(1500);
+        b.line = LineId(2);
+        let c = line(5000, 6000, "plain", vec![]);
+        let doc = export_file(&[c.clone(), b.clone(), a.clone()], Preset::Boxed, w, h);
+        let events = reference_events(&doc);
+        assert_eq!(events.len(), 3, "a reference reader reads all the lines");
+        assert!(doc.contains("PlayResX: 1920\nPlayResY: 1080"));
+        // in time order, with the project's style
+        assert!(events[0]["Text"].ends_with("at the corner"));
+        assert!(events.iter().all(|e| e["Style"] == "Default"));
+        assert!(doc.contains("Style: Default,Noto Sans,59,"));
+        // the place: x = 192, y = 108, within 1% of the frame
+        let tag = &events[0]["Text"];
+        let nums: Vec<f64> = tag
+            .split("\\pos(")
+            .nth(1)
+            .unwrap()
+            .split(')')
+            .next()
+            .unwrap()
+            .split(',')
+            .map(|n| n.parse().unwrap())
+            .collect();
+        assert!(
+            (nums[0] - 0.10 * f64::from(w)).abs() <= 0.01 * f64::from(w),
+            "{tag}"
+        );
+        assert!(
+            (nums[1] - 0.10 * f64::from(h)).abs() <= 0.01 * f64::from(h),
+            "{tag}"
+        );
+        assert!(tag.starts_with("{\\an5"));
+        // 150% of the style size (59 px)
+        let fs: f64 = events[1]["Text"]
+            .split("\\fs")
+            .nth(1)
+            .unwrap()
+            .split('\\')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(fs, (59.0_f64 * 1.5).round());
+        // empty lines are not written
+        let e = line(7000, 8000, "  ", vec![]);
+        assert_eq!(
+            reference_events(&export_file(&[e], Preset::Classic, w, h)).len(),
+            0
+        );
+    }
+
+    // covers: REQ-187
+    #[test]
+    fn arabic_and_devanagari_runs_get_their_bundled_font_and_the_rest_is_untouched() {
+        assert_eq!(escape_scripts("plain {text}"), escape("plain {text}"));
+        assert_eq!(
+            escape_scripts("日本語 한국어"),
+            escape("日本語 한국어"),
+            "CJK: the renderer's fallback"
+        );
+        let t = escape_scripts("hi مرحبا 12 नमस्ते end");
+        assert_eq!(
+            t,
+            "hi {\\fnNoto Sans Arabic}مرحبا 12 {\\fnNoto Sans Devanagari}नमस्ते {\\fnNoto Sans}end"
+        );
+        // the text ends inside a run: the base font comes back
+        assert_eq!(
+            escape_scripts("مر"),
+            "{\\fnNoto Sans Arabic}مر{\\fnNoto Sans}"
+        );
+        // lines use it
+        let doc = document(
+            &[line(0, 1000, "سلام", vec![])],
+            Preset::Classic,
+            640,
+            360,
+            Micros::ZERO,
+        );
+        assert!(doc.contains("{\\fnNoto Sans Arabic}سلام"));
+        assert_eq!(BUNDLED_FACES.len(), 3);
+        assert!(
+            BUNDLED_FACES
+                .iter()
+                .all(|(n, b)| n.ends_with(".ttf") && b.len() > 100_000)
+        );
+    }
+
+    // covers: REQ-187, REQ-031
+    #[test]
+    fn the_bundled_faces_are_the_ones_recorded_with_their_licence_and_fit_the_size_limit() {
+        use sha2::{Digest, Sha256};
+        let source = include_str!("../assets/fonts/SOURCE.txt");
+        let notices = include_str!("../packaging/notices/third-party.txt");
+        for (name, bytes) in BUNDLED_FACES {
+            let hash: String = Sha256::digest(bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            assert!(source.contains(&hash), "{name}: SHA-256 is in SOURCE.txt");
+            assert!(source.contains(name), "{name} is in SOURCE.txt");
+        }
+        assert!(source.contains("SIL Open Font License 1.1"));
+        for n in ["Noto Sans Arabic Bold", "Noto Sans Devanagari Bold"] {
+            assert!(notices.contains(n), "{n} is in the third-party notices");
+        }
+        // the scripts added in 2.0.4 add at most 25 MB (the installer check prints the size)
+        let added = FONT_ARABIC.len() + FONT_DEVANAGARI.len();
+        assert!(added < 25 * 1024 * 1024, "{added} bytes");
+        assert!(include_str!("../scripts/package.sh").contains("the added fonts exceed 25 MB"));
+        // no CJK face is bundled: Chinese, Japanese and Korean use the installed fonts
+        assert!(source.contains("No CJK font is bundled"));
     }
 }

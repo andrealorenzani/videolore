@@ -15,6 +15,56 @@ use crate::subtitles::{Preset, ShownLine};
 use crate::text::{self, TextItem};
 use crate::time::Micros;
 
+/// How close (as a share of the picture's width or height) a dragged box's centre must be to
+/// a guide to snap to it (REQ-198).
+pub const SNAP_TOLERANCE: f64 = 0.01;
+/// The vertical and horizontal guides besides the centre lines: the thirds.
+pub const THIRDS: [f64; 2] = [0.33, 0.67];
+/// Action-safe and title-safe areas as shares of the picture (REQ-199).
+pub const ACTION_SAFE: f64 = 0.90;
+pub const TITLE_SAFE: f64 = 0.80;
+
+/// The guide lines a snapped box sits on, in frame pixels (`x`: a vertical line).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Guides {
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+}
+
+/// Snaps the centre `c` of a dragged box to the centre lines and thirds of a `frame` picture
+/// and to the centres of `others`, each axis on its own, within [`SNAP_TOLERANCE`] of the
+/// picture size (REQ-198). Returns the centre to use and the guides it is on.
+pub fn snap(c: (f64, f64), frame: (u32, u32), others: &[(f64, f64)]) -> ((f64, f64), Guides) {
+    let axis = |v: f64, size: u32, centres: &mut dyn Iterator<Item = f64>| -> Option<f64> {
+        let size = f64::from(size);
+        let tol = SNAP_TOLERANCE * size;
+        let fixed = [0.5, THIRDS[0], THIRDS[1]].map(|f| f * size);
+        fixed
+            .into_iter()
+            .chain(centres)
+            .filter(|g| (g - v).abs() <= tol)
+            .min_by(|a, b| (a - v).abs().total_cmp(&(b - v).abs()))
+    };
+    let gx = axis(c.0, frame.0, &mut others.iter().map(|o| o.0));
+    let gy = axis(c.1, frame.1, &mut others.iter().map(|o| o.1));
+    (
+        (gx.unwrap_or(c.0), gy.unwrap_or(c.1)),
+        Guides { x: gx, y: gy },
+    )
+}
+
+/// The action-safe and title-safe rectangles of a `frame` picture: `(left, top, right,
+/// bottom)` in frame pixels (REQ-199).
+pub fn safe_area(frame: (u32, u32), share: f64) -> (f64, f64, f64, f64) {
+    let (w, h) = (f64::from(frame.0), f64::from(frame.1));
+    (
+        (1.0 - share) / 2.0 * w,
+        (1.0 - share) / 2.0 * h,
+        (1.0 + share) / 2.0 * w,
+        (1.0 + share) / 2.0 * h,
+    )
+}
+
 /// A box on the picture, by its centre and size (frame pixels).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {

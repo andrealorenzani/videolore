@@ -4,6 +4,7 @@
 //! The popups of Change aspect, Scale and Move (REQ-124, REQ-127..129). egui stays thin:
 //! the timeline of keyframes is laid out by the pure [`KeyBar`].
 
+use super::strings::tr;
 use super::{UiCache, button};
 use crate::app::{AppState, Command, EffectKind, FrameDrag, FrameFx, FrameValue, Target};
 use crate::base::pos::{POS_MAX, Pos};
@@ -15,7 +16,15 @@ use eframe::egui::{self, Color32, Sense, Stroke, Ui, pos2, vec2};
 /// Narrowest timeline of keyframes (screen pixels).
 pub const MIN_BAR_WIDTH: f32 = 240.0;
 /// How close a click must be to a keyframe to select it (screen pixels).
-pub const KEY_TOLERANCE: f32 = 6.0;
+pub const KEY_TOLERANCE: f32 = 8.0;
+/// Across (screen pixels) of a keyframe marker, at least (REQ-203).
+pub const KEY_MARKER: f32 = 12.0;
+
+/// Where the window records that the keyframe bar has the keyboard focus, so that the
+/// arrow keys move the keyframe and not the playhead (REQ-203).
+pub fn bar_focus_id() -> egui::Id {
+    egui::Id::unique("videolore-keybar-focus")
+}
 
 /// The timeline of keyframes of one popup: a time range laid over a width.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -80,7 +89,7 @@ pub fn key_range(app: &AppState, t: FrameTarget) -> Option<(Micros, Micros, Micr
 /// The body of the Change aspect popup.
 pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let Some(cur) = app.project.timeline.frame_aspect else {
-        ui.label("Change aspect is not applied.");
+        ui.label(tr!(ChangeAspectIsNotApplied));
         button(
             ui,
             app,
@@ -97,7 +106,7 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     egui::Grid::new("aspect-grid")
         .num_columns(2)
         .show(ui, |ui| {
-            ui.label("Aspect");
+            ui.label(tr!(Aspect));
             egui::ComboBox::from_id_salt("aspect-shape")
                 .selected_text(a.shape.name())
                 .show_ui(ui, |ui| {
@@ -106,7 +115,10 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
                     }
                 });
             ui.end_row();
-            ui.label("Fit");
+            ui.label(tr!(CustomRatio));
+            custom_ratio(ui, &mut a);
+            ui.end_row();
+            ui.label(tr!(Fit));
             egui::ComboBox::from_id_salt("aspect-fit")
                 .selected_text(a.fit.name())
                 .show_ui(ui, |ui| {
@@ -115,7 +127,7 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
                     }
                 });
             ui.end_row();
-            ui.label("Empty space");
+            ui.label(tr!(EmptySpace));
             let is_colour = matches!(a.fill, Fill::Colour(_));
             egui::ComboBox::from_id_salt("aspect-fill")
                 .selected_text(a.fill.name())
@@ -132,8 +144,19 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
                     }
                 });
             ui.end_row();
+            if !is_colour {
+                ui.label(tr!(Blur));
+                egui::ComboBox::from_id_salt("aspect-blur")
+                    .selected_text(a.blur.name())
+                    .show_ui(ui, |ui| {
+                        for b in crate::frame::BlurLevel::ALL {
+                            ui.selectable_value(&mut a.blur, b, b.name());
+                        }
+                    });
+                ui.end_row();
+            }
             if let Fill::Colour(c) = a.fill {
-                ui.label("Colour");
+                ui.label(tr!(Colour));
                 let mut rgb = [c.0, c.1, c.2];
                 if egui::color_picker::color_edit_button_srgb(ui, &mut rgb).changed() {
                     a.fill = Fill::Colour(Rgb(rgb[0], rgb[1], rgb[2]));
@@ -148,7 +171,73 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     button(ui, app, "Remove effect", Command::RemoveAspect, cmds);
 }
 
-/// The body of the Scale or Move popup of `target`.
+/// The two numbers of a custom ratio and the button that uses them (REQ-285): a ratio from
+/// 1:4 to 4:1 is used, anything else is explained and nothing changes.
+fn custom_ratio(ui: &mut Ui, a: &mut crate::frame::FrameAspect) {
+    let id = egui::Id::unique("custom-ratio");
+    let (mut w, mut h): (u32, u32) = ui.data(|d| d.get_temp(id)).unwrap_or_else(|| {
+        let (w, h) = a.shape.ratio();
+        (w, h)
+    });
+    ui.horizontal(|ui| {
+        ui.add(egui::DragValue::new(&mut w).range(1..=100));
+        ui.monospace(":");
+        ui.add(egui::DragValue::new(&mut h).range(1..=100));
+        match crate::frame::Shape::custom(w, h) {
+            Some(shape) => {
+                if ui.button(tr!(UseThisRatio)).clicked() {
+                    a.shape = shape;
+                }
+            }
+            None => {
+                ui.colored_label(ui.visuals().warn_fg_color, crate::frame::CUSTOM_RATIO_NOTE);
+            }
+        }
+    });
+    ui.data_mut(|d| d.insert_temp(id, (w, h)));
+}
+
+/// The rows of the whole-video Scale or Move popup: one per clip that has its own copy of
+/// the keyframes (REQ-200). A click selects the row; what the popup shows and edits is that
+/// copy only.
+fn copy_rows(ui: &mut Ui, app: &AppState, fx: FrameFx, cmds: &mut Vec<Command>) {
+    let tl = &app.project.timeline;
+    let selected = app.selected_copy(fx);
+    ui.label(tr!(OneCopyPerClipSelect));
+    for (i, c) in tl.clips.iter().enumerate() {
+        let has = match fx {
+            FrameFx::Scale => !tl.scale_keys(FrameTarget::Clip(c.id)).is_empty(),
+            FrameFx::Move => !tl.move_keys(FrameTarget::Clip(c.id)).is_empty(),
+        };
+        if !has {
+            continue;
+        }
+        let name = app
+            .project
+            .media(c.media)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| "?".into());
+        let n = match fx {
+            FrameFx::Scale => tl.scale_keys(FrameTarget::Clip(c.id)).len(),
+            FrameFx::Move => tl.move_keys(FrameTarget::Clip(c.id)).len(),
+        };
+        let label = format!(
+            "{}. {name} ({n} keyframe{})",
+            i + 1,
+            if n == 1 { "" } else { "s" }
+        );
+        if ui
+            .add(egui::Button::selectable(selected == Some(c.id), label).truncate())
+            .clicked()
+        {
+            cmds.push(Command::SelectCopy(c.id));
+        }
+    }
+    ui.separator();
+}
+
+/// The body of the Scale or Move popup of `target`. For the whole video it lists one row per
+/// clip and edits the selected copy only (REQ-200); Remove effect removes every copy.
 pub fn key_body(
     ui: &mut Ui,
     app: &AppState,
@@ -157,7 +246,20 @@ pub fn key_body(
     fx: FrameFx,
     cmds: &mut Vec<Command>,
 ) {
+    let remove_target = target;
     let tl = &app.project.timeline;
+    let any = match fx {
+        FrameFx::Scale => !tl.scale_keys(target).is_empty(),
+        FrameFx::Move => !tl.move_keys(target).is_empty(),
+    };
+    let target = match (target, any) {
+        (FrameTarget::Whole, true) => {
+            copy_rows(ui, app, fx, cmds);
+            app.selected_copy(fx)
+                .map_or(FrameTarget::Whole, FrameTarget::Clip)
+        }
+        (t, _) => t,
+    };
     let keys: Vec<Micros> = match fx {
         FrameFx::Scale => tl.scale_keys(target).iter().map(|k| k.t).collect(),
         FrameFx::Move => tl.move_keys(target).iter().map(|k| k.t).collect(),
@@ -167,7 +269,7 @@ pub fn key_body(
         FrameFx::Move => EffectKind::Move,
     };
     let Some((from, to, start)) = key_range(app, target) else {
-        ui.label("This clip no longer exists.");
+        ui.label(tr!(ThisClipNoLongerExists));
         return;
     };
     if keys.is_empty() {
@@ -178,7 +280,7 @@ pub fn key_body(
             "Apply",
             Command::ApplyEffect {
                 effect,
-                target: match target {
+                target: match remove_target {
                     FrameTarget::Whole => Target::WholeVideo,
                     FrameTarget::Clip(c) => Target::Clip(c),
                 },
@@ -209,7 +311,11 @@ pub fn key_body(
             let c = pos2(rect.left() + x, rect.center().y);
             painter.circle(
                 c,
-                if on { 6.0 } else { 4.5 },
+                if on {
+                    KEY_MARKER * 0.6
+                } else {
+                    KEY_MARKER / 2.0
+                },
                 if on { Color32::YELLOW } else { Color32::WHITE },
                 Stroke::new(1.0, Color32::BLACK),
             );
@@ -218,6 +324,7 @@ pub fn key_body(
     if resp.clicked()
         && let Some(p) = resp.interact_pointer_pos()
     {
+        resp.request_focus();
         let x = p.x - rect.left();
         match bar.key_at(x, &keys) {
             Some(k) => cmds.push(Command::SelectKey(Some(k))),
@@ -227,7 +334,37 @@ pub fn key_body(
             }
         }
     }
-    resp.on_hover_text("Click a keyframe to select it; click elsewhere to move the playhead");
+    // with the focus in the popup, Left and Right move the selected keyframe by one frame
+    let focused = resp.has_focus();
+    if focused {
+        // the arrow keys are this widget's: egui does not move the focus with them
+        ui.memory_mut(|m| {
+            m.set_focus_lock_filter(
+                resp.id,
+                egui::EventFilter {
+                    horizontal_arrows: true,
+                    ..Default::default()
+                },
+            );
+        });
+    }
+    let pass = ui.ctx().cumulative_pass_nr();
+    ui.ctx()
+        .data_mut(|d| d.insert_temp(bar_focus_id(), (pass, focused)));
+    if focused && let (Some(k), FrameTarget::Clip(clip)) = (selected, target) {
+        let frame = app.frame_len();
+        for (key, dir) in [(egui::Key::ArrowLeft, -1), (egui::Key::ArrowRight, 1)] {
+            if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key)) {
+                cmds.push(Command::MoveKey {
+                    clip,
+                    effect: fx,
+                    from: k,
+                    to: k + Micros(frame.0 * dir),
+                });
+            }
+        }
+    }
+    resp.on_hover_text(tr!(ClickAKeyframeToSelect));
     ui.weak(format!(
         "{} keyframe{}. The value changes evenly between keyframes and stays the same before the first and after the last.",
         keys.len(),
@@ -248,15 +385,119 @@ pub fn key_body(
             Command::RemoveKey { target, effect: fx },
             cmds,
         );
+        // how the value moves on to the next keyframe (REQ-282)
+        if let Some(at) = selected {
+            let eased = app
+                .project
+                .timeline
+                .key_ease(target, fx == FrameFx::Scale, at)
+                == crate::keyframes::Ease::EaseInOut;
+            let mut on = eased;
+            if ui.checkbox(&mut on, tr!(EaseInAndOut2)).changed() {
+                cmds.push(Command::SetKeyEase {
+                    target,
+                    effect: fx,
+                    ease: if on {
+                        crate::keyframes::Ease::EaseInOut
+                    } else {
+                        crate::keyframes::Ease::Straight
+                    },
+                });
+            }
+        }
     });
+    if let FrameTarget::Clip(clip) = target {
+        key_time_field(ui, app, clip, fx, selected, from, to, cmds);
+        copy_paste(ui, app, clip, fx, cmds);
+    }
     values(ui, app, cache, target, fx, selected, cmds);
     button(
         ui,
         app,
         "Remove effect",
-        Command::RemoveFrameEffect { target, effect: fx },
+        Command::RemoveFrameEffect {
+            target: remove_target,
+            effect: fx,
+        },
         cmds,
     );
+}
+
+/// The time of the selected keyframe, typed in seconds of the clip (REQ-203).
+#[allow(clippy::too_many_arguments)]
+fn key_time_field(
+    ui: &mut Ui,
+    app: &AppState,
+    clip: crate::timeline::ClipId,
+    fx: FrameFx,
+    selected: Option<Micros>,
+    from: Micros,
+    to: Micros,
+    cmds: &mut Vec<Command>,
+) {
+    let Some(k) = selected else { return };
+    let mut secs = (k - from).as_secs_f64();
+    let max = (to - from).as_secs_f64();
+    ui.horizontal(|ui| {
+        ui.label(tr!(KeyframeTime));
+        let r = ui.add(
+            egui::DragValue::new(&mut secs)
+                .range(0.0..=max)
+                .speed(0.02)
+                .max_decimals(3)
+                .suffix(" s"),
+        );
+        if r.drag_stopped() || r.lost_focus() {
+            let to = from + Micros::from_secs_f64(secs);
+            if to != k {
+                cmds.push(Command::MoveKey {
+                    clip,
+                    effect: fx,
+                    from: k,
+                    to,
+                });
+            }
+        }
+    });
+    let _ = app;
+}
+
+/// "Copy keyframes" and the list "Paste keyframes to" the other clips (REQ-204).
+fn copy_paste(
+    ui: &mut Ui,
+    app: &AppState,
+    clip: crate::timeline::ClipId,
+    fx: FrameFx,
+    cmds: &mut Vec<Command>,
+) {
+    ui.horizontal_wrapped(|ui| {
+        button(
+            ui,
+            app,
+            "Copy keyframes",
+            Command::CopyKeys { clip, effect: fx },
+            cmds,
+        );
+        let tl = &app.project.timeline;
+        ui.add_enabled_ui(app.clipboard_keys.is_some(), |ui| {
+            ui.menu_button(tr!(PasteKeyframesTo), |ui| {
+                for (i, c) in tl.clips.iter().enumerate().filter(|(_, c)| c.id != clip) {
+                    let name = app
+                        .project
+                        .media(c.media)
+                        .map(|m| m.name.clone())
+                        .unwrap_or_else(|| "?".into());
+                    if ui.button(format!("{}. {name}", i + 1)).clicked() {
+                        cmds.push(Command::PasteKeys {
+                            clip: c.id,
+                            effect: fx,
+                        });
+                        ui.close();
+                    }
+                }
+            });
+        });
+    });
 }
 
 /// The value fields: Scale in percent, Move as the picture centre in percent of the frame.
@@ -296,7 +537,7 @@ fn values(
     let mut done = false;
     ui.horizontal(|ui| match fx {
         FrameFx::Scale => {
-            ui.label("Scale");
+            ui.label(tr!(Scale));
             let r = ui.add(
                 egui::DragValue::new(&mut v[0])
                     .range(f64::from(MIN_SCALE) / 10.0..=f64::from(MAX_SCALE) / 10.0)

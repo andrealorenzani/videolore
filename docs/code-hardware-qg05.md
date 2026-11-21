@@ -15,6 +15,8 @@ VIDEOLORE_QG05_PROJECT=reference.vlproj VIDEOLORE_QG05_OUT=qg05-out \
   cargo test --release --test ffmpeg_integration qg05 -- --ignored --nocapture
 ```
 
+Since 2.0.4 (REQ-207) the time target is measured per kind of graphics: on a computer whose Faster uses integrated graphics (Intel Quick Sync, Apple silicon, an Intel VA-API device) and on one with a dedicated card, each against Best quality; the integrated result is what the Faster note in Settings is about (it says Faster may not be quicker there). The helper prints the method of each Faster export; the kind follows `Candidate::graphics`. Also by system: AV1 and VP9 where the check finds an encoder, and the device choice on a two-card computer (business-verification items 14 and 15). Nothing of this can be measured on CI or on the development computer, which has no graphics hardware the check finds.
+
 Checklist per system:
 
 - a. Settings → Advanced shows the hardware for each format and "Last export: video hardware (…)";

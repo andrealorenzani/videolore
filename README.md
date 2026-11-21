@@ -1,9 +1,9 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-2.0.3-blue)
+![version](https://img.shields.io/badge/version-2.0.4-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
-![coverage](https://img.shields.io/badge/coverage-95.8%25-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-95.0%25-brightgreen)
 ![eframe](https://img.shields.io/badge/egui%2Feframe-0.37-blue)
 ![cpal](https://img.shields.io/badge/cpal-0.18-blue)
 ![rfd](https://img.shields.io/badge/rfd-0.18-blue)
@@ -17,6 +17,8 @@
 ![sha2](https://img.shields.io/badge/sha2-0.11-blue)
 ![sysinfo](https://img.shields.io/badge/sysinfo-0.40-blue)
 ![fontdb](https://img.shields.io/badge/fontdb-0.24-blue)
+![harfrust](https://img.shields.io/badge/harfrust-0.12-blue)
+![skrifa](https://img.shields.io/badge/skrifa-0.44-blue)
 ![image](https://img.shields.io/badge/image-0.25-blue)
 ![ffmpeg](https://img.shields.io/badge/ffmpeg-9.0.2%20bundled-informational)
 [![build](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg)](https://github.com/andrealorenzani/videolore/actions/workflows/build.yml)
@@ -164,9 +166,9 @@ The About screen lists every bundled third-party component with its version, lic
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
+- **2.0.4** — Subtitle files (WebVTT and ASS export, .srt and .vtt import, a separate subtitle track), autosave and crash recovery, drag to trim and re-time, faster hardware export with AV1 and VP9, a 360 marker for MKV and WebM, remembered window layouts, workspaces, themes and screen-reader names, the player's file association and playlist, and new effects (fade length, Crop, volume keyframes, Clean audio strength, LUT strength).
 - **2.0.3** — Readable text: texts can have an outline or a background box (Readability), their size is measured to fit the box, and the box height and the width can be set with handles; moved subtitle lines and text items get warnings for overlaps and can be moved back inside the picture; a paused picture at the end of a clip is shown again; projects saved by this version are refused by 2.0.2 and older.
 - **2.0.2** — The splash summary is shown in the largest text that fits its popup, down to a smaller size for a longer summary; it is never scrolled.
-- **1.6.2** — The video player opens with a start screen like the editor's, with its own picture and the release summary, until a video is opened. The editor's splash shows a longer summary for each release, sized to fit its box.
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
 
 ## License

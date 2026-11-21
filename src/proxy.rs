@@ -28,7 +28,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 
 /// Bump when the proxy encoding changes, so old cache entries are not reused.
-pub const PARAMS_VERSION: u32 = 1;
+pub const PARAMS_VERSION: u32 = 2;
 /// Proxies fit inside this size.
 pub const MAX_WIDTH: u32 = 960;
 pub const MAX_HEIGHT: u32 = 540;
@@ -184,6 +184,42 @@ impl ProxyCache {
         self.entries().iter().map(|e| e.2).sum()
     }
 
+    /// Keeps the cache within `limit` bytes (REQ-297): the files not used for the longest
+    /// time go first (modification time), the copies of the open project (`protected`
+    /// keys) and the ones being written stay. Only the cache's own files that really lie
+    /// inside the folder are removed. Returns the bytes freed.
+    pub fn enforce_limit(&self, limit: u64, protected: &[String]) -> u64 {
+        let Ok(root) = self.dir.canonicalize() else {
+            return 0;
+        };
+        let mut files: Vec<(std::time::SystemTime, PathBuf, u64)> = self
+            .entries()
+            .into_iter()
+            .filter(|(name, ..)| {
+                !name.ends_with(".partial")
+                    && !protected.iter().any(|k| name.starts_with(k.as_str()))
+            })
+            .filter_map(|(_, path, len)| {
+                let inside = path.canonicalize().ok()?.starts_with(&root);
+                let t = std::fs::metadata(&path).ok()?.modified().ok()?;
+                inside.then_some((t, path, len))
+            })
+            .collect();
+        let mut total = self.size();
+        files.sort();
+        let mut freed = 0;
+        for (_, path, len) in files {
+            if total <= limit {
+                break;
+            }
+            if std::fs::remove_file(&path).is_ok() {
+                total = total.saturating_sub(len);
+                freed += len;
+            }
+        }
+        freed
+    }
+
     /// Deletes cache files except those whose key is in `busy` (being generated).
     /// Returns the bytes freed.
     pub fn clear(&self, busy: &[String]) -> u64 {
@@ -208,6 +244,7 @@ pub fn proxy_args(
     format: &MediaFormat,
     version: FfVersion,
     threads: Option<u32>,
+    hwaccel: &[OsString],
 ) -> Vec<OsString> {
     let (mw, mh) = if format.is_360() {
         SPHERE_COPY
@@ -234,6 +271,7 @@ pub fn proxy_args(
             t.to_string(),
         ]));
     }
+    a.extend(hwaccel.iter().cloned());
     a.push("-i".into());
     a.push(file_arg(source));
     a.extend(argv(["-map", "0:v:0", "-map", "0:a:0?"]));
@@ -285,6 +323,9 @@ pub struct ProxyTask {
     pub format: MediaFormat,
     pub duration: Micros,
     pub cancel: Arc<AtomicBool>,
+    /// Input options of the hardware decoder of the source's format (REQ-214); empty: the
+    /// normal decoder. A failed run with them is made again without.
+    pub hwaccel: Vec<OsString>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -335,13 +376,14 @@ impl ProxyWorker {
             None => None,
         };
         let _work = work;
+        let mut hwaccel: &[OsString] = &task.hwaccel;
         loop {
             let preempt = Arc::new(AtomicBool::new(false));
             let r = self
                 .runner
                 .preemptible(Arc::clone(&preempt))
                 .cancellable(Arc::clone(&task.cancel));
-            let result = self.attempt(&r, task, &partial, &preempt, events);
+            let result = self.attempt(&r, task, &partial, &preempt, events, hwaccel);
             match result {
                 Attempt::Done => {
                     return Some(match std::fs::rename(&partial, &out) {
@@ -356,6 +398,12 @@ impl ProxyWorker {
                 Attempt::Cancelled => {
                     let _ = std::fs::remove_file(&partial);
                     return None;
+                }
+                Attempt::Failed(_) if !hwaccel.is_empty() => {
+                    // the hardware decoder did not work: the normal decoder, once
+                    let _ = std::fs::remove_file(&partial);
+                    hwaccel = &[];
+                    continue;
                 }
                 Attempt::Failed(e) => {
                     let _ = std::fs::remove_file(&partial);
@@ -372,6 +420,7 @@ impl ProxyWorker {
         partial: &Path,
         preempt: &AtomicBool,
         events: &Sender<ProxyEvent>,
+        hwaccel: &[OsString],
     ) -> Attempt {
         let args = proxy_args(
             &task.source,
@@ -379,6 +428,7 @@ impl ProxyWorker {
             &task.format,
             self.version,
             self.threads,
+            hwaccel,
         );
         let mut child = match runner.spawn(&self.ffmpeg, &args) {
             Ok(c) => c,
@@ -516,6 +566,7 @@ mod tests {
             },
             duration: Micros(2_000_000),
             cancel: Arc::new(AtomicBool::new(false)),
+            hwaccel: Vec::new(),
         }
     }
 
@@ -529,6 +580,49 @@ mod tests {
             threads: None,
             work_root: Some(dir.join("work")),
         }
+    }
+
+    // covers: REQ-214
+    #[test]
+    fn a_preview_copy_is_decoded_by_the_hardware_and_made_again_without_it_when_that_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut t = task(dir.path());
+        t.hwaccel = crate::ffmpeg::argv([
+            "-hwaccel",
+            "vaapi",
+            "-hwaccel_device",
+            "/dev/dri/renderD128",
+        ]);
+        let calls = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let c2 = Arc::clone(&calls);
+        let fake = FakeRunner::default().on(move |_, a| {
+            c2.lock().unwrap().push(a.join(" "));
+            if a.iter().any(|x| x == "-hwaccel") {
+                return crate::ffmpeg::fake::fail("Failed setup for format vaapi");
+            }
+            let out = a.last()?.strip_prefix("file:")?.to_string();
+            std::fs::write(out, b"proxy").ok()?;
+            ok("out_time_us=1000000\nprogress=end\n")
+        });
+        let w = worker(dir.path(), fake, FfVersion::Release(6, 1, 0));
+        let (tx, _rx) = channel();
+        let ev = w.generate(&t, &tx).unwrap();
+        assert!(matches!(ev, ProxyEvent::Ready(..)), "{ev:?}");
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2, "the hardware run, then the normal one");
+        // the decoder options come before the input they apply to
+        assert!(calls[0].contains("-hwaccel vaapi -hwaccel_device /dev/dri/renderD128 -i file:"));
+        assert!(!calls[1].contains("-hwaccel"));
+        // without a decoder the arguments are the old ones
+        let plain = proxy_args(
+            &t.source,
+            Path::new("/o.mkv"),
+            &t.format,
+            FfVersion::Dev,
+            None,
+            &[],
+        );
+        assert!(!plain.iter().any(|a| a == "-hwaccel"));
     }
 
     // covers: REQ-038
@@ -780,6 +874,7 @@ mod tests {
             &sphere(7680, 3840),
             FfVersion::Dev,
             None,
+            &[],
         );
         let text: Vec<String> = a.iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert!(

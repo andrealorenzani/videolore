@@ -8,20 +8,24 @@
 //! 1. metadata ([`check_metadata`], ffprobe JSON): codec, profile, 8-bit 4:2:0, size,
 //!    frame rate, square pixels, `hvc1` tag, audio, packet count and duration;
 //! 2. a full, strict decode ([`decode_args`]): no error, every packet gives a frame;
-//! 3. one pass ([`compare_args`]) that renders the normal method's video graph (no
-//!    encoding) next to the hardware file: the graph's frame count and duration must match
-//!    the file's, and 3 samples (10%, 50%, 90%, each with its neighbours) are compared frame by frame
-//!    with ffmpeg's `psnr` filter: each sample needs [`MIN_PSNR`] dB on Y, U and V.
+//! 3. the normal method's video graph (no encoding) is rendered next to the hardware file and
+//!    3 samples (10%, 50%, 90%, each with its neighbours) are compared frame by frame with
+//!    ffmpeg's `psnr` filter: each sample needs [`MIN_PSNR`] dB on Y, U and V. Two ways:
+//!    when the file has the frame count the plan gives ([`counts_match`]: no clip rounded a
+//!    frame up) the graph is rendered only around the three samples, three runs of
+//!    [`RANGE_LEN`] ([`sample_ranges`], [`compare_range_args`], REQ-206); otherwise, and
+//!    when a sample fails that way, the whole graph is rendered once ([`compare_args`]): it
+//!    counts the frames and the same position in both streams is compared.
 //!
 //! Frames are matched by their position in the stream: the hardware encoder received
-//! exactly the frames of the graph, in order, so no timing model is needed (clip lengths
-//! that are not whole frames, variable frame rate sources and many cuts stay exact).
+//! exactly the frames of the graph, in order (clip lengths that are not whole frames add
+//! frames, so the plan's count is only a fast-path test).
 //! This module builds the commands and judges their output; running them is the export's
 //! job ([`crate::export`]).
 
 use crate::ffmpeg::{FfVersion, argv, file_arg};
 use crate::hwenc::Codec;
-use crate::time::Fps;
+use crate::time::{Fps, Micros};
 use serde_json::Value;
 use std::ffi::OsString;
 use std::path::Path;
@@ -136,7 +140,9 @@ pub fn check_metadata(json: &[u8], exp: &Expected) -> Result<Measured, CheckFail
     if text(video, "codec_name") != Some(exp.codec.name()) {
         return Err(CheckFailure::Metadata("codec"));
     }
-    if text(video, "profile") != Some(exp.codec.probed_profile()) {
+    if let Some(profile) = exp.codec.probed_profile()
+        && text(video, "profile") != Some(profile)
+    {
         return Err(CheckFailure::Metadata("profile"));
     }
     if text(video, "pix_fmt") != Some("yuv420p") {
@@ -209,15 +215,60 @@ pub fn check_size(bytes: u64, bps: u64, duration_us: i64) -> Result<(), CheckFai
     Ok(())
 }
 
-/// The video lasts as long as the normal method's graph made it (`rendered_us`, the
-/// graph's output time), within 2 frames.
-pub fn check_duration(m: &Measured, rendered_us: i64, fps: Fps) -> Result<(), CheckFailure> {
+/// The video lasts as long as the plan says (`planned_us`), within 2 frames.
+pub fn check_duration(m: &Measured, planned_us: i64, fps: Fps) -> Result<(), CheckFailure> {
     let Some(d) = m.duration else { return Ok(()) };
-    let want = rendered_us as f64 / 1e6;
+    let want = planned_us as f64 / 1e6;
     if (d - want).abs() > 2.0 / fps.as_f64() + 0.001 {
         return Err(CheckFailure::Metadata("duration"));
     }
     Ok(())
+}
+
+/// The file has the number of frames the plan makes (`expected`, see
+/// [`crate::render::expected_frames`]), within one frame: no clip got a frame more from
+/// the rounding of the graph, so frame `k` of the file is at the time `k / fps` of the
+/// timeline and a short render of the normal method can be compared with it (REQ-206).
+pub fn counts_match(packets: u64, expected: u64) -> bool {
+    packets.abs_diff(expected) <= 1
+}
+
+/// Length of the normal-method render around a sample (REQ-206).
+pub const RANGE_LEN: Micros = Micros::SECOND;
+
+/// One sample: where its short render starts and which of its frames are compared.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SampleRange {
+    /// Index of the first frame of the range in the video.
+    pub first: u64,
+    /// Timeline time of that frame: where the normal method's render starts.
+    pub from: Micros,
+    /// The frames compared, as indices counted from `first`.
+    pub local: Vec<u64>,
+}
+
+impl SampleRange {
+    /// Where to seek in the hardware file: a millisecond before the first frame, so that
+    /// rounding cannot skip it.
+    pub fn seek(&self) -> Micros {
+        (self.from - Micros(1_000)).max(Micros::ZERO)
+    }
+}
+
+/// The ranges of the three sample groups at `fps` (at most three, each [`RANGE_LEN`] long).
+pub fn sample_ranges(groups: &[Vec<u64>; 3], fps: Fps) -> Vec<SampleRange> {
+    groups
+        .iter()
+        .filter_map(|g| {
+            let first = *g.iter().min()?;
+            let t = first as i128 * 1_000_000 * fps.den as i128;
+            Some(SampleRange {
+                first,
+                from: Micros(((t + fps.num as i128 / 2) / fps.num as i128) as i64),
+                local: g.iter().map(|k| k - first).collect(),
+            })
+        })
+        .collect()
 }
 
 /// The sample frame indices of a `frames`-long video (10%, 50%, 90%).
@@ -267,6 +318,63 @@ pub fn last_frame(lines: &[String]) -> Option<u64> {
 
 /// File (in the working folder) where the `psnr` filter writes one line per sample.
 pub const PSNR_LOG: &str = "psnr.log";
+
+/// The comparison run of one sample, the fast way (REQ-206): the normal method's video graph from
+/// `range.from` (`graph`, inputs `inputs`, output `[outv]`, cut after [`RANGE_LEN`]) and the
+/// hardware file, read from the same place, as the next input. The compared frames
+/// (`range.local`, scaled down alike above [`crate::render::CHECK_MAX_PIXELS`]) log their
+/// PSNR to [`PSNR_LOG`]. Runs in the working folder (subtitles and the log are relative to
+/// it).
+#[allow(clippy::too_many_arguments)]
+pub fn compare_range_args(
+    inputs: Vec<OsString>,
+    input_count: usize,
+    graph: &str,
+    file: &Path,
+    range: &SampleRange,
+    width: u32,
+    height: u32,
+    version: FfVersion,
+    threads: Option<u32>,
+    script: &Path,
+) -> std::io::Result<Vec<OsString>> {
+    let mut a = argv(["-hide_banner", "-nostdin", "-v", "error"]);
+    if let Some(t) = threads {
+        a.extend(argv(["-filter_complex_threads".to_string(), t.to_string()]));
+    }
+    a.extend(inputs);
+    if let Some(t) = threads {
+        a.extend(argv(["-threads".to_string(), t.to_string()]));
+    }
+    a.extend(argv([
+        "-ss".to_string(),
+        range.seek().ff(),
+        "-t".to_string(),
+        (RANGE_LEN + Micros::SECOND).ff(),
+        "-protocol_whitelist".to_string(),
+        "file".to_string(),
+        "-i".to_string(),
+    ]));
+    a.push(file_arg(file));
+    let select: Vec<String> = range.local.iter().map(|k| format!("eq(n,{k})")).collect();
+    let pick = format!(
+        "select='{}',settb=1/1000000,setpts=N,format=yuv420p{}",
+        select.join("+"),
+        crate::render::check_scale(width, height)
+    );
+    let full = format!(
+        "{graph};[outv]trim=duration={}[r];[r]{pick}[rs];[{input_count}:v:0]{pick}[hs];\
+         [hs][rs]psnr=stats_file={PSNR_LOG}[cmp]",
+        RANGE_LEN.ff()
+    );
+    a.extend(crate::ffmpeg::filter_graph_args(&full, version, script)?);
+    a.extend(argv(["-map", "[cmp]", "-f", "null", "-"]));
+    if let Some(t) = threads {
+        a.extend(argv(["-threads".to_string(), t.to_string()]));
+    }
+    a.extend(argv(["-progress", "pipe:1", "-nostats"]));
+    Ok(a)
+}
 
 /// The comparison pass: the normal method's video graph (`graph`, inputs `inputs`, output
 /// `[outv]`) and the hardware file as the next input. The first output counts every frame
@@ -362,6 +470,20 @@ pub fn judge(
         if best < MIN_PSNR {
             return Err(CheckFailure::Picture { index, psnr: best });
         }
+    }
+    Ok(())
+}
+
+/// Judges sample number `index`: `scores` are the PSNR lines of its compared frames. The
+/// sample passes when one of them reaches [`MIN_PSNR`] on every plane; no score (the file is
+/// short) scores 0.
+pub fn judge_sample(index: usize, scores: &[[f64; 3]]) -> Result<(), CheckFailure> {
+    let best = scores
+        .iter()
+        .map(|p| p.iter().copied().fold(f64::INFINITY, f64::min))
+        .fold(0.0, f64::max);
+    if best < MIN_PSNR {
+        return Err(CheckFailure::Picture { index, psnr: best });
     }
     Ok(())
 }

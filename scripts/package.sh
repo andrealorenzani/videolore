@@ -15,13 +15,17 @@
 #   scripts/package.sh linux-x86_64 [player] --stub
 #                                               -> an AppImage of stub programs in dist/stub/,
 #                                                  to check the AppDir and appimagetool (CI)
+#   scripts/package.sh tool NAME                -> downloads the pinned tool NAME of
+#                                                  packaging/tools.lock and checks its SHA-256
+#                                                  (VIDEOLORE_TOOLS_LOCK names another lock file)
 # <name> is videolore (editor) or videolore-player. Output goes to dist/. Tools:
 # cargo-packager (Windows, macOS; version in packaging/tools.lock), appimagetool + type2
 # runtime (Linux, pinned by SHA-256), curl, git.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-target="${1:?usage: package.sh linux-x86_64|windows-x86_64|macos-aarch64|sources [editor|player] [--config-only]}"
+target="${1:?usage: package.sh linux-x86_64|windows-x86_64|macos-aarch64|sources|tool [editor|player] [--config-only]}"
 shift
+toolslock="${VIDEOLORE_TOOLS_LOCK:-packaging/tools.lock}"
 product=editor
 config_only=0
 stub=0
@@ -30,7 +34,7 @@ for a in "$@"; do
     editor | player) product="$a" ;;
     --config-only) config_only=1 ;;
     --stub) stub=1 ;;
-    *) echo "unknown argument $a" >&2; exit 2 ;;
+    *) if [[ "$target" == tool ]]; then product="$a"; else echo "unknown argument $a" >&2; exit 2; fi ;;
     esac
 done
 VERSION=$(scripts/version.sh get)
@@ -44,6 +48,7 @@ if [[ "$product" == player ]]; then
     pident=io.github.andrealorenzani.videolore-player
     pdesc="Simple video player with a 360 view and subtitles"
     pcrates=rust-crates-player.txt
+    pthird=third-party-player.txt
     stage="$dist/stage-$target-player"
 else
     pname=videolore
@@ -51,6 +56,7 @@ else
     pident=io.github.andrealorenzani.videolore
     pdesc="Non-destructive video editor for short social videos"
     pcrates=rust-crates.txt
+    pthird=third-party.txt
     stage="$dist/stage-$target"
 fi
 ffdir="$dist/ffmpeg-$target"
@@ -74,11 +80,23 @@ sha256() {
 # fetch_tool NAME FILE: downloads a pinned tool from packaging/tools.lock and checks it.
 fetch_tool() {
     local url sha
-    url=$(lockval packaging/tools.lock "$1" url)
-    sha=$(lockval packaging/tools.lock "$1" sha256)
+    url=$(lockval "$toolslock" "$1" url)
+    sha=$(lockval "$toolslock" "$1" sha256)
+    [[ -n "$url" && -n "$sha" ]] || { echo "no pinned tool $1 in $toolslock" >&2; exit 1; }
     curl -fsSL --retry 3 -o "$2" "$url"
     [[ "$(sha256 "$2")" == "$sha" ]] || { echo "checksum mismatch for $1" >&2; exit 1; }
 }
+
+# package.sh tool NAME: the pinned tool is downloaded and checked, nothing else (CI, tests).
+if [[ "$target" == tool ]]; then
+    name="${product}"
+    [[ "$name" != editor ]] || { echo "usage: package.sh tool NAME" >&2; exit 2; }
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    fetch_tool "$name" "$tmp"
+    echo "$name is the pinned file"
+    exit 0
+fi
 
 # Video hardware encoders ("Export: Faster") each bundled ffmpeg must have.
 hw_encoders() {
@@ -108,11 +126,21 @@ smoke_test() {
 # Notices and the subtitle font licence shipped with every package.
 stage_notices() {
     mkdir -p "$1/notices" "$1/fonts" "$1/icons"
-    cp packaging/notices/third-party.txt LICENSE "$1/notices/"
+    # each program names its own components (the player has no speech engine)
+    cp "packaging/notices/$pthird" "$1/notices/third-party.txt"
+    cp LICENSE "$1/notices/"
     cp "packaging/notices/$pcrates" "$1/notices/"
     cp packaging/ffmpeg.lock "$1/notices/ffmpeg-builds.txt"
     cp assets/fonts/OFL.txt assets/fonts/SOURCE.txt "$1/fonts/"
     cp assets/icons/LICENSE-Phosphor.txt assets/icons/SOURCE.txt "$1/icons/"
+    # the subtitle fonts are compiled into the program: report what they add (REQ-187: at
+    # most 25 MB for the scripts added since 2.0.3; the Latin face is the 2.0.3 baseline)
+    local added=0 f
+    for f in assets/fonts/NotoSansArabic-Bold.ttf assets/fonts/NotoSansDevanagari-Bold.ttf; do
+        added=$((added + $(wc -c <"$f")))
+    done
+    echo "subtitle fonts added in 2.0.4 (Arabic, Devanagari): $added bytes"
+    [ "$added" -le $((25 * 1024 * 1024)) ] || { echo "the added fonts exceed 25 MB" >&2; exit 1; }
 }
 
 # Absolute path in the form the native tools understand (D:/a/... under Git Bash on
@@ -131,7 +159,7 @@ native_path() {
 # set: without it cargo-packager tries to enter the config file as if it were a folder
 # to look for a Cargo.toml, and stops with "Not a directory".
 packager_config() {
-    local root res formats dll
+    local root res formats dll licence
     root=$(native_path "$PWD")
     res=$(native_path "$stage/res")
     local resources='"'"$res/notices"'", "'"$res/fonts"'", "'"$res/icons"'"'
@@ -145,14 +173,34 @@ packager_config() {
     else
         formats='["app"]'
     fi
-    # only the editor opens projects: the player has no file association
+    # the editor opens projects; the player is offered for the six video types it plays
+    # (REQ-248): macOS lists it under "Open With" with the Viewer role, which never makes
+    # it the default by itself
     local assoc=""
     if [[ "$product" == editor ]]; then
         assoc='file-associations = [
     { extensions = ["vlproj"], name = "videolore project", description = "videolore project", mime-type = "application/x-videolore-project", role = "editor" },
 ]'
+    else
+        assoc='file-associations = [
+    { extensions = ["mp4", "m4v"], name = "MPEG-4 video", description = "MPEG-4 video", mime-type = "video/mp4", role = "viewer" },
+    { extensions = ["mov"], name = "QuickTime movie", description = "QuickTime movie", mime-type = "video/quicktime", role = "viewer" },
+    { extensions = ["mkv"], name = "Matroska video", description = "Matroska video", mime-type = "video/x-matroska", role = "viewer" },
+    { extensions = ["webm"], name = "WebM video", description = "WebM video", mime-type = "video/webm", role = "viewer" },
+    { extensions = ["avi"], name = "AVI video", description = "AVI video", mime-type = "video/x-msvideo", role = "viewer" },
+]'
+    fi
+    # the player has its own installer template: the video types are "Open with" entries only
+    local nsis_template=""
+    if [[ "$product" == player && "$target" == windows-x86_64 ]]; then
+        nsis_template='template = "'"$(native_path "$PWD/packaging/windows-player.nsi")"'"'
     fi
     mkdir -p "$stage"
+    # The licence page of the Windows installer reads the file as UTF-8 only when it starts
+    # with a byte-order mark: the notices have non-ASCII text (REQ-229). The copy in the
+    # repository stays plain (the program shows it as it is).
+    licence="$stage/third-party-licence.txt"
+    { printf '\357\273\277'; cat "packaging/notices/$pthird"; } >"$licence"
     cat >"$stage/Packager.toml" <<TOML
 name = "${pname}"
 product-name = "${pdisplay}"
@@ -161,7 +209,7 @@ version = "${VERSION}"
 description = "${pdesc}"
 authors = ["Andrea Lorenzani"]
 publisher = "Andrea Lorenzani"
-license-file = "${root}/packaging/notices/third-party.txt"
+license-file = "$(native_path "$licence")"
 out-dir = "$(native_path "$stage/out")"
 binaries-dir = "$(native_path "$stage/bin")"
 binaries = [
@@ -176,6 +224,7 @@ ${assoc}
 
 [nsis]
 installMode = "currentUser"
+${nsis_template}
 
 [macos]
 minimum-system-version = "11.0"
@@ -246,6 +295,7 @@ Exec=$pname %f
 Icon=$pname
 Terminal=false
 Categories=AudioVideo;Player;Video;
+MimeType=video/mp4;video/quicktime;video/x-matroska;video/webm;video/x-m4v;video/x-msvideo;
 DESKTOP
     else
         cat >"$appdir/$pname.desktop" <<DESKTOP
@@ -266,14 +316,19 @@ DESKTOP
     ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$stage/appimagetool" --no-appstream \
         --runtime-file "$stage/runtime" "$appdir" "$dist/${pname}-${VERSION}-linux-x86_64.AppImage"
     chmod 0755 "$dist/${pname}-${VERSION}-linux-x86_64.AppImage"
-    if [[ $stub -eq 1 ]]; then ls -l "$dist"/"$pname"-"${VERSION}"-*; exit 0; fi
-    # --- tar.gz: a folder that runs by double-clicking `$pname`
+    # --- tar.gz (a stub run makes one too, to check its content): a folder that runs by double-clicking `$pname`
     top="${pname}-${VERSION}-linux-x86_64"
     folder="$stage/$top"
     mkdir -p "$folder"
     install -m 0755 "$exe" "$ffdir/ffmpeg" "$ffdir/ffprobe" "$folder/"
     stage_notices "$folder"
     cp assets/icon/icon-256.png "$folder/$pname.png"
+    # A launcher and a desktop entry: file managers that do not start an extracted program
+    # on double-click can start it from the launcher or from the entry (REQ-231).
+    sed "s/@NAME@/$pname/g" packaging/linux/launcher.sh >"$folder/$pname.sh"
+    chmod 0755 "$folder/$pname.sh"
+    sed -e "s/@NAME@/$pname/g" -e "s/@DISPLAY@/$pdisplay/g" packaging/linux/launcher.desktop >"$folder/$pname.desktop"
+    chmod 0755 "$folder/$pname.desktop"
     if [[ "$product" == player ]]; then
         # the player does not add itself to the application menu: it says how to start
         cat >"$folder/README.txt" <<README
@@ -282,7 +337,9 @@ videolore player ${VERSION} for Linux (x86_64)
 Double-click "videolore-player" in this folder to start it, or run
 ./videolore-player some-video.mp4 from a terminal in this folder.
 
-If double-clicking does not start it, right-click "videolore-player" and choose "Run".
+If double-clicking does not start it, right-click "videolore-player" and choose "Run", or
+double-click "videolore-player.sh" (a launcher) or "videolore-player.desktop" (a menu entry
+for file managers that start those).
 
 videolore player plays one video at a time. It never changes your files. To uninstall,
 delete this folder.
@@ -296,7 +353,8 @@ Double-click "videolore" in this folder to start it. The first start adds videol
 your application menu and lets you open .vlproj projects with a double-click.
 
 If double-clicking does not start it, right-click "videolore" and choose "Run", or run
-./videolore once from a terminal in this folder.
+./videolore once from a terminal in this folder. A launcher ("videolore.sh") and a menu entry
+("videolore.desktop") are in the folder too, for file managers that start those instead.
 
 To uninstall: use "Remove from application menu" in videolore's About screen, then delete
 this folder. Your projects are never touched.
@@ -314,6 +372,13 @@ windows-x86_64 | macos-aarch64)
         echo "the Windows ffmpeg build has no DLLs in $ffdir: it would not start" >&2; exit 1
     fi
     packager_config
+    if [[ "$target" == windows-x86_64 ]]; then
+        # cargo-packager downloads this NSIS toolchain itself; the pinned file is checked
+        # first, so a changed file fails the build (REQ-228)
+        nsis_zip="$stage/nsis.zip"
+        fetch_tool nsis "$nsis_zip"
+        rm -f "$nsis_zip"
+    fi
     cargo packager --release --config "$stage/Packager.toml"
     if [[ "$target" == windows-x86_64 ]]; then
         setup=$(find "$stage/out" -name '*-setup.exe' | head -1)

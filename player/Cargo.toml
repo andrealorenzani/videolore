@@ -1,6 +1,6 @@
 [package]
 name = "videolore-player"
-version = "2.0.3"
+version = "2.0.4"
 edition = "2024"
 rust-version = "1.100"
 license = "GPL-3.0-only"
@@ -12,7 +12,10 @@ description = "Simple video player with 360 view and subtitles, built on the vid
 # The engine, without speech-to-text: the player has no network code (checked in CI).
 videolore = { path = "..", default-features = false, features = ["audio"] }
 rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal"] }
-eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "wayland", "x11"] }
+directories = "6.0.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "glow", "default_fonts", "wayland", "x11"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

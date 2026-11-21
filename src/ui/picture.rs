@@ -10,6 +10,7 @@ use super::boxes::{self, BoxItem, Corner, HANDLE_TOLERANCE, Hit, ObjectId};
 use super::frame_handles::{self, Grab};
 use super::{UiCache, actions::ActionId, menu, placement, subtitle_font};
 use crate::app::{AppState, Command, FrameDrag, FrameFx, FrameValue, ResizeDrag, TextEdge};
+use crate::selection::ObjRef;
 use crate::subtitles::{LineId, SIZE_NORMAL};
 use crate::time::Micros;
 use eframe::egui::{
@@ -238,6 +239,68 @@ pub fn interact(
             "Drag a subtitle to move it, a corner of its box to resize it"
         });
     let ctx = ui.ctx().clone();
+    // keyboard control of the 360 camera when the picture has the focus (REQ-272): arrows
+    // turn by 5 degrees, Page Up and Page Down zoom, Enter makes a point of view
+    if resp.clicked() || resp.drag_started() {
+        resp.request_focus();
+    }
+    let keys_to_camera = sphere && resp.has_focus();
+    if keys_to_camera {
+        // the arrow keys are ours, not the focus's
+        ctx.memory_mut(|m| {
+            m.set_focus_lock_filter(
+                resp.id,
+                egui::EventFilter {
+                    horizontal_arrows: true,
+                    vertical_arrows: true,
+                    ..Default::default()
+                },
+            );
+        });
+    }
+    ctx.data_mut(|d| d.insert_temp(keyboard_camera_id(), keys_to_camera));
+    if keys_to_camera {
+        const STEP: i32 = 500;
+        ctx.input_mut(|i| {
+            for (key, cmd) in [
+                (
+                    egui::Key::ArrowLeft,
+                    Command::TurnCamera {
+                        yaw_cd: -STEP,
+                        pitch_cd: 0,
+                    },
+                ),
+                (
+                    egui::Key::ArrowRight,
+                    Command::TurnCamera {
+                        yaw_cd: STEP,
+                        pitch_cd: 0,
+                    },
+                ),
+                (
+                    egui::Key::ArrowUp,
+                    Command::TurnCamera {
+                        yaw_cd: 0,
+                        pitch_cd: STEP,
+                    },
+                ),
+                (
+                    egui::Key::ArrowDown,
+                    Command::TurnCamera {
+                        yaw_cd: 0,
+                        pitch_cd: -STEP,
+                    },
+                ),
+                (egui::Key::PageUp, Command::ZoomCamera(100.0)),
+                (egui::Key::PageDown, Command::ZoomCamera(-100.0)),
+                (egui::Key::Enter, Command::SetPov),
+            ] {
+                if i.consume_key(egui::Modifiers::NONE, key) {
+                    cmds.push(cmd);
+                }
+            }
+        });
+    }
     let scale = (picture.width() / frame.0.max(1) as f32).max(f32::EPSILON);
     let tol = HANDLE_TOLERANCE / scale;
     let to_frame = |p: Pos2| placement::to_frame(p, picture, frame);
@@ -317,6 +380,7 @@ pub fn interact(
     }
 
     draw_frame_handles(ui, app, picture, frame);
+    draw_safe_areas(ui, app, picture, frame);
 
     let dragging = cache.subtitle_drag.is_some()
         || cache.frame_handle.is_some()
@@ -441,11 +505,19 @@ pub fn interact(
     if cache.camera_drag {
         let d = resp.drag_delta();
         if d != egui::Vec2::ZERO {
-            cmds.push(Command::DragCamera {
-                dx: d.x,
-                dy: d.y,
-                view_w: picture.width(),
-            });
+            // Shift and drag turns the picture round the line of sight (REQ-270)
+            if ui.input(|i| i.modifiers.shift) {
+                cmds.push(Command::RollCamera {
+                    dx: d.x,
+                    view_w: picture.width(),
+                });
+            } else {
+                cmds.push(Command::DragCamera {
+                    dx: d.x,
+                    dy: d.y,
+                    view_w: picture.width(),
+                });
+            }
         }
         ctx.set_cursor_icon(CursorIcon::Grabbing);
         if resp.drag_stopped() {
@@ -571,6 +643,29 @@ fn move_drag(
     if let Some(pos) = pos {
         let (fx, fy) = pos.fraction();
         let c = pos2(fx as f32 * frame.0 as f32, fy as f32 * frame.1 as f32);
+        // the box snaps to the guides (REQ-198), unless it is fixed to the sphere
+        let on_sphere = app
+            .project
+            .subtitles
+            .get(d.line)
+            .is_some_and(|l| l.anchor.is_some());
+        let dragged: Vec<ObjRef> = d
+            .ids
+            .iter()
+            .map(|id| ObjRef::Line(*id))
+            .chain(d.texts.iter().map(|id| ObjRef::Text(*id)))
+            .collect();
+        let (c, guides) = if on_sphere {
+            (c, placement::Guides::default())
+        } else {
+            placement::snapped(app, c, frame, &dragged)
+        };
+        let pos = if guides == placement::Guides::default() {
+            pos
+        } else {
+            placement::to_pos(c, frame)
+        };
+        placement::draw_guides(ui, &guides, picture, frame);
         let ghost = placement::to_screen(Rect::from_center_size(c, d.size), picture, frame);
         ui.painter().rect_stroke(
             ghost,
@@ -673,6 +768,19 @@ fn text_box_drag(
         } else {
             placement::clamp_to_picture(pointer - d.grab, d.frame)
         };
+        let c = if d.cam.is_some() {
+            c
+        } else {
+            let dragged: Vec<ObjRef> = d
+                .ids
+                .iter()
+                .map(|id| ObjRef::Text(*id))
+                .chain(d.lines.iter().map(|id| ObjRef::Line(*id)))
+                .collect();
+            let (c, guides) = placement::snapped(app, c, d.frame, &dragged);
+            placement::draw_guides(ui, &guides, picture, d.frame);
+            c
+        };
         (Rect::from_center_size(c, d.rect.size()), None)
     };
     let screen = placement::to_screen(rect, picture, d.frame);
@@ -761,28 +869,88 @@ fn text_box_drag(
     }
 }
 
-/// The box, corner handles and target of Scale and Move at the playhead (REQ-127, 128).
+/// The action-safe (90%) and title-safe (80%) areas, on the preview only (REQ-199).
+fn draw_safe_areas(ui: &Ui, app: &AppState, picture: Rect, frame: (u32, u32)) {
+    if !app.settings.show_safe_areas {
+        return;
+    }
+    let painter = ui.painter_at(picture);
+    for (share, colour) in [
+        (
+            placement::ACTION_SAFE_SHARE,
+            Color32::from_rgb(255, 200, 60),
+        ),
+        (placement::TITLE_SAFE_SHARE, Color32::from_rgb(90, 200, 255)),
+    ] {
+        let (l, t, r, b) = crate::placement::safe_area(frame, share);
+        let rect = placement::to_screen(
+            Rect::from_min_max(pos2(l as f32, t as f32), pos2(r as f32, b as f32)),
+            picture,
+            frame,
+        );
+        painter.rect_stroke(rect, 0.0, Stroke::new(1.0, colour), StrokeKind::Inside);
+    }
+}
+
+/// The box, corner handles and target of Scale and Move at the playhead (REQ-127, 128): the
+/// clip's own solid, and the copy selected in the whole-video popup dashed (REQ-202).
 fn draw_frame_handles(ui: &Ui, app: &AppState, picture: Rect, frame: (u32, u32)) {
     let (scale, moved) = (
         app.frame_target_at_playhead(FrameFx::Scale).is_some(),
         app.frame_target_at_playhead(FrameFx::Move).is_some(),
     );
-    if !scale && !moved {
-        return;
+    if (scale || moved)
+        && let Some((fr, _)) = app.picture_rect()
+    {
+        handle_set(ui, picture, frame, fr, scale, moved, false);
     }
-    let Some((fr, _)) = app.picture_rect() else {
-        return;
-    };
-    let s = placement::to_screen(frame_handles::to_rect(fr, frame), picture, frame);
+    let (ws, wm) = (
+        app.whole_handle_clip(FrameFx::Scale),
+        app.whole_handle_clip(FrameFx::Move),
+    );
+    if let Some(copy) = ws.or(wm)
+        && let Some((fr, _)) = app.picture_rect_of_copy(copy)
+    {
+        handle_set(ui, picture, frame, fr, ws.is_some(), wm.is_some(), true);
+    }
+}
+
+/// One set of handles on the rectangle `fr`: solid, or dashed for the whole video.
+fn handle_set(
+    ui: &Ui,
+    picture: Rect,
+    frame: (u32, u32),
+    fr: crate::frame::FractionRect,
+    scale: bool,
+    moved: bool,
+    dashed: bool,
+) {
+    let rect = frame_handles::to_rect(fr, frame);
+    let s = placement::to_screen(rect, picture, frame);
     let painter = ui.painter_at(picture.expand(HANDLE_SIDE));
+    let (blue, red) = if dashed {
+        (
+            Color32::from_rgb(140, 170, 255),
+            Color32::from_rgb(255, 150, 150),
+        )
+    } else {
+        (Color32::LIGHT_BLUE, Color32::LIGHT_RED)
+    };
     if scale {
-        painter.rect_stroke(
-            s,
-            0.0,
-            Stroke::new(1.5, Color32::LIGHT_BLUE),
-            StrokeKind::Outside,
-        );
-        let rect = frame_handles::to_rect(fr, frame);
+        let stroke = Stroke::new(1.5, blue);
+        if dashed {
+            let o = s.expand(1.0);
+            let pts = [
+                o.left_top(),
+                o.right_top(),
+                o.right_bottom(),
+                o.left_bottom(),
+                o.left_top(),
+            ];
+            painter.extend(egui::Shape::dashed_line(&pts, stroke, 6.0, 4.0));
+        } else {
+            painter.rect_stroke(s, 0.0, stroke, StrokeKind::Outside);
+        }
         let squares = boxes::handle_points(rect, frame, false)
             .into_iter()
             .map(|at| {
@@ -790,43 +958,69 @@ fn draw_frame_handles(ui: &Ui, app: &AppState, picture: Rect, frame: (u32, u32))
                 Rect::from_center_size(at.min, vec2(HANDLE_SIDE, HANDLE_SIDE))
             });
         for h in squares {
-            painter.rect_filled(h, 0.0, Color32::LIGHT_BLUE);
-            painter.rect_stroke(
-                h,
-                0.0,
-                Stroke::new(1.0, Color32::BLACK),
-                StrokeKind::Outside,
-            );
+            if dashed {
+                painter.rect_stroke(h, 0.0, Stroke::new(1.5, blue), StrokeKind::Outside);
+            } else {
+                painter.rect_filled(h, 0.0, blue);
+                painter.rect_stroke(
+                    h,
+                    0.0,
+                    Stroke::new(1.0, Color32::BLACK),
+                    StrokeKind::Outside,
+                );
+            }
         }
     }
     if moved {
-        painter.circle(
-            s.center(),
-            7.0,
-            Color32::TRANSPARENT,
-            Stroke::new(2.0, Color32::LIGHT_RED),
-        );
-        painter.circle_filled(s.center(), 2.0, Color32::LIGHT_RED);
+        painter.circle(s.center(), 7.0, Color32::TRANSPARENT, Stroke::new(2.0, red));
+        if !dashed {
+            painter.circle_filled(s.center(), 2.0, red);
+        }
     }
 }
 
-/// The handle of Scale or Move under frame point `f`, as a drag to start.
+/// The handle of Scale or Move under frame point `f`, as a drag to start: the clip's own
+/// handles first, then the dashed ones of the whole-video copy (REQ-202).
 fn grab_at(app: &AppState, f: Pos2, tol: f32, frame: (u32, u32)) -> Option<Grab> {
-    let (fr, _) = app.picture_rect()?;
-    let scale_t = app.frame_target_at_playhead(FrameFx::Scale);
-    let move_t = app.frame_target_at_playhead(FrameFx::Move);
+    let own = app.picture_rect().and_then(|(fr, _)| {
+        let scale_t = app.frame_target_at_playhead(FrameFx::Scale);
+        let move_t = app.frame_target_at_playhead(FrameFx::Move);
+        let rect = frame_handles::to_rect(fr, frame);
+        let hit = frame_handles::hit(rect, frame, scale_t.is_some(), move_t.is_some(), f, tol)?;
+        let target = match hit {
+            frame_handles::Hit::Corner(_) | frame_handles::Hit::Edge(_) => scale_t?,
+            frame_handles::Hit::Target => move_t?,
+        };
+        Some(Grab {
+            target,
+            hit,
+            rect,
+            scale: app.scale_at(target).unwrap_or(crate::frame::Scale::NORMAL),
+            pos: app.move_at(target).unwrap_or(crate::frame::CENTRE),
+            grab: f - rect.center(),
+            frame,
+        })
+    });
+    if own.is_some() {
+        return own;
+    }
+    let (ws, wm) = (
+        app.whole_handle_clip(FrameFx::Scale),
+        app.whole_handle_clip(FrameFx::Move),
+    );
+    let copy = ws.or(wm)?;
+    let (fr, _) = app.picture_rect_of_copy(copy)?;
     let rect = frame_handles::to_rect(fr, frame);
-    let hit = frame_handles::hit(rect, frame, scale_t.is_some(), move_t.is_some(), f, tol)?;
-    let target = match hit {
-        frame_handles::Hit::Corner(_) | frame_handles::Hit::Edge(_) => scale_t?,
-        frame_handles::Hit::Target => move_t?,
-    };
+    let hit = frame_handles::hit(rect, frame, ws.is_some(), wm.is_some(), f, tol)?;
+    let target = crate::timeline::FrameTarget::Clip(copy);
     Some(Grab {
         target,
         hit,
         rect,
-        scale: app.scale_at(target).unwrap_or(crate::frame::Scale::NORMAL),
-        pos: app.move_at(target).unwrap_or(crate::frame::CENTRE),
+        scale: app
+            .scale_of_copy(copy)
+            .unwrap_or(crate::frame::Scale::NORMAL),
+        pos: app.move_of_copy(copy).unwrap_or(crate::frame::CENTRE),
         grab: f - rect.center(),
         frame,
     })
@@ -894,4 +1088,10 @@ fn frame_drag(
     } else if app.frame_drag != Some(drag) {
         cmds.push(Command::DragPicture(Some(drag)));
     }
+}
+
+/// Remembers (for the next frame's shortcut handling) that the picture of a 360 clip has the
+/// focus, so the arrow keys are the camera's and not the playhead's.
+pub fn keyboard_camera_id() -> Id {
+    Id::unique("videolore-keyboard-camera")
 }

@@ -7,12 +7,19 @@
 //! Text is measured by a function passed in (egui with the subtitle font in the app, a
 //! fake in tests). Pure.
 
+use crate::app::AppState;
 use crate::ass;
 use crate::base::pos::{POS_MAX, Pos};
 use crate::project::Project;
+use crate::selection::ObjRef;
 use crate::subtitles::{LineId, Preset};
 use crate::time::Micros;
-use eframe::egui::{Pos2, Rect, Vec2, pos2, vec2};
+use eframe::egui::{Color32, Pos2, Rect, Stroke, Ui, Vec2, pos2, vec2};
+
+/// Share of the picture of the action-safe and title-safe areas (REQ-199).
+pub const ACTION_SAFE_SHARE: f64 = crate::placement::ACTION_SAFE;
+pub const TITLE_SAFE_SHARE: f64 = crate::placement::TITLE_SAFE;
+pub use crate::placement::Guides;
 
 /// A subtitle being dragged in the preview.
 #[derive(Debug, Clone, PartialEq)]
@@ -270,6 +277,37 @@ pub fn to_screen(r: Rect, picture: Rect, frame: (u32, u32)) -> Rect {
         picture.min + r.min.to_vec2() * s,
         picture.min + r.max.to_vec2() * s,
     )
+}
+
+/// The centre `c` (frame pixels) of a box being dragged, snapped to the guides when the
+/// View option is on (REQ-198): the centre to use and the guides it sits on. The other
+/// boxes shown at the playhead (not the `dragged` ones) are guides too.
+pub fn snapped(app: &AppState, c: Pos2, frame: (u32, u32), dragged: &[ObjRef]) -> (Pos2, Guides) {
+    if !app.settings.snap_to_guides {
+        return (c, Guides::default());
+    }
+    let others: Vec<(f64, f64)> = crate::placement::rects_at(&app.project, app.playhead, frame)
+        .into_iter()
+        .filter(|(o, _)| !dragged.contains(o))
+        .map(|(_, r)| (r.cx, r.cy))
+        .collect();
+    let ((x, y), g) = crate::placement::snap((f64::from(c.x), f64::from(c.y)), frame, &others);
+    (pos2(x as f32, y as f32), g)
+}
+
+/// Draws the guide lines a snapped box sits on, over the picture.
+pub fn draw_guides(ui: &Ui, g: &Guides, picture: Rect, frame: (u32, u32)) {
+    let s = picture.width() / frame.0.max(1) as f32;
+    let stroke = Stroke::new(1.0, Color32::from_rgb(255, 80, 200));
+    let painter = ui.painter_at(picture);
+    if let Some(x) = g.x {
+        let sx = picture.min.x + x as f32 * s;
+        painter.line_segment([pos2(sx, picture.min.y), pos2(sx, picture.max.y)], stroke);
+    }
+    if let Some(y) = g.y {
+        let sy = picture.min.y + y as f32 * s;
+        painter.line_segment([pos2(picture.min.x, sy), pos2(picture.max.x, sy)], stroke);
+    }
 }
 
 #[cfg(test)]

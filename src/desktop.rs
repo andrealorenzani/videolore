@@ -38,12 +38,15 @@ pub fn push_open_request(path: PathBuf) {
     }
 }
 
-/// Takes the queued projects to open.
+/// Takes the queued projects to open, with the one another start of the program handed to
+/// this window (REQ-230).
 pub fn take_open_requests() -> Vec<PathBuf> {
-    OPEN_REQUESTS
+    let mut v = OPEN_REQUESTS
         .lock()
         .map(|mut q| std::mem::take(&mut *q))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    v.extend(crate::instance::poll_current());
+    v
 }
 
 /// The project given on the command line, if any. macOS adds `-psn_…` when launched from
@@ -224,6 +227,65 @@ pub fn remove_integration() -> io::Result<()> {
     Ok(())
 }
 
+/// What a menu item of the macOS menu bar does (the standard actions of the system).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    Hide,
+    HideOthers,
+    ShowAll,
+    Minimize,
+    Zoom,
+}
+
+/// One item of the macOS menu bar: its title, action and key (with Command, and Option when
+/// `option`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuEntry {
+    pub title: String,
+    pub action: MenuAction,
+    /// The key equivalent ("" for none).
+    pub key: &'static str,
+    pub option: bool,
+}
+
+/// One menu of the macOS menu bar; `None` in `entries` is a separator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuSpec {
+    pub title: String,
+    pub entries: Vec<Option<MenuEntry>>,
+}
+
+/// The macOS menu bar (REQ-232): the application menu with Hide, Hide Others and Show All,
+/// and the Window menu with Minimize and Zoom. There is no Quit item and no Cmd+Q here on
+/// purpose: Cmd+Q reaches the program, which asks about unsaved changes first (REQ-028).
+pub fn macos_menu(app_name: &str) -> Vec<MenuSpec> {
+    let entry = |title: String, action, key, option| {
+        Some(MenuEntry {
+            title,
+            action,
+            key,
+            option,
+        })
+    };
+    vec![
+        MenuSpec {
+            title: app_name.to_string(),
+            entries: vec![
+                entry(format!("Hide {app_name}"), MenuAction::Hide, "h", false),
+                entry("Hide Others".into(), MenuAction::HideOthers, "h", true),
+                entry("Show All".into(), MenuAction::ShowAll, "", false),
+            ],
+        },
+        MenuSpec {
+            title: "Window".to_string(),
+            entries: vec![
+                entry("Minimize".into(), MenuAction::Minimize, "m", false),
+                entry("Zoom".into(), MenuAction::Zoom, "", false),
+            ],
+        },
+    ]
+}
+
 #[cfg(target_os = "macos")]
 // Objective-C runtime calls (objc2 `define_class!`/`msg_send!`): see the SAFETY comments.
 #[allow(unsafe_code)]
@@ -233,9 +295,67 @@ pub mod macos {
     //! (so a project opened at launch is caught and AppKit's default handler is replaced),
     //! and every received path goes to [`super::push_open_request`].
     use objc2::rc::Retained;
-    use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol};
-    use objc2::{AllocAnyThread, define_class, msg_send, sel};
+    use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, Sel};
+    use objc2::{AllocAnyThread, MainThreadMarker, define_class, msg_send, sel};
+    use objc2_app_kit::{NSApplication, NSEventModifierFlags, NSMenu, NSMenuItem};
     use objc2_foundation::{NSAppleEventDescriptor, NSAppleEventManager, NSNotification, NSString};
+
+    /// The Objective-C selector of a standard action: all of them are handled by AppKit
+    /// itself through the responder chain (`NSApplication` and `NSWindow`).
+    fn selector(action: super::MenuAction) -> Sel {
+        match action {
+            super::MenuAction::Hide => sel!(hide:),
+            super::MenuAction::HideOthers => sel!(hideOtherApplications:),
+            super::MenuAction::ShowAll => sel!(unhideAllApplications:),
+            super::MenuAction::Minimize => sel!(performMiniaturize:),
+            super::MenuAction::Zoom => sel!(performZoom:),
+        }
+    }
+
+    /// Builds the menu bar of [`super::macos_menu`] and makes it the application's menu.
+    /// Called once, on the main thread, when the application is about to finish launching
+    /// (winit's own default menu is switched off in `native_options`).
+    fn install_menu(mtm: MainThreadMarker) {
+        let app = NSApplication::sharedApplication(mtm);
+        let bar = NSMenu::new(mtm);
+        for (n, spec) in super::macos_menu("videolore").into_iter().enumerate() {
+            let sub = NSMenu::initWithTitle(mtm.alloc(), &NSString::from_str(&spec.title));
+            for entry in spec.entries {
+                let item = match entry {
+                    None => NSMenuItem::separatorItem(mtm),
+                    Some(e) => {
+                        // SAFETY: the selector is one of the standard AppKit actions named
+                        // in `selector` (`hide:`, `hideOtherApplications:`,
+                        // `unhideAllApplications:`, `performMiniaturize:`, `performZoom:`);
+                        // each takes one `id` argument, as a menu item action must.
+                        let item = unsafe {
+                            NSMenuItem::initWithTitle_action_keyEquivalent(
+                                mtm.alloc(),
+                                &NSString::from_str(&e.title),
+                                Some(selector(e.action)),
+                                &NSString::from_str(e.key),
+                            )
+                        };
+                        let mut mask = NSEventModifierFlags::Command;
+                        if e.option {
+                            mask |= NSEventModifierFlags::Option;
+                        }
+                        item.setKeyEquivalentModifierMask(mask);
+                        item
+                    }
+                };
+                sub.addItem(&item);
+            }
+            let top = NSMenuItem::new(mtm);
+            top.setSubmenu(Some(&sub));
+            bar.addItem(&top);
+            // the second menu is the one AppKit lists the open windows in
+            if n == 1 {
+                app.setWindowsMenu(Some(&sub));
+            }
+        }
+        app.setMainMenu(Some(&bar));
+    }
 
     /// `kCoreEventClass` ('aevt').
     const CORE_EVENT_CLASS: u32 = u32::from_be_bytes(*b"aevt");
@@ -254,6 +374,10 @@ pub mod macos {
         impl OpenHandler {
             #[unsafe(method(willFinishLaunching:))]
             fn will_finish_launching(&self, _note: &NSNotification) {
+                // the menu bar: the notification arrives on the main thread
+                if let Some(mtm) = MainThreadMarker::new() {
+                    install_menu(mtm);
+                }
                 let manager = NSAppleEventManager::sharedAppleEventManager();
                 // SAFETY: `self` is a live Objective-C object that responds to the selector
                 // `handleOpen:reply:` (defined below, signature (id, id) -> void, which is
@@ -324,6 +448,51 @@ mod tests {
     use super::*;
 
     // covers: REQ-041
+    // covers: REQ-232
+    #[test]
+    fn the_mac_menu_bar_has_hide_hide_others_and_minimize_and_leaves_cmd_q_to_the_program() {
+        let menu = macos_menu("videolore");
+        let all: Vec<&MenuEntry> = menu
+            .iter()
+            .flat_map(|m| m.entries.iter().flatten())
+            .collect();
+        let title = |t: &str| all.iter().find(|e| e.title == t);
+        assert_eq!(
+            title("Hide videolore").map(|e| e.action),
+            Some(MenuAction::Hide)
+        );
+        assert_eq!(
+            title("Hide Others").map(|e| (e.action, e.option)),
+            Some((MenuAction::HideOthers, true))
+        );
+        assert_eq!(
+            title("Minimize").map(|e| (e.action, e.key)),
+            Some((MenuAction::Minimize, "m"))
+        );
+        assert!(title("Show All").is_some() && title("Zoom").is_some());
+        assert_eq!(menu[0].title, "videolore");
+        assert_eq!(menu[1].title, "Window");
+        // Cmd+Q is not a menu key: it reaches the program, which asks about unsaved changes
+        // (REQ-028), and there is no menu item that ends the program by itself
+        assert!(all.iter().all(|e| e.key != "q"), "no Cmd+Q in the menu");
+        assert!(all.iter().all(|e| !e.title.to_lowercase().contains("quit")));
+        // the keys are single letters without a clash
+        let mut keys: Vec<(&str, bool)> = all
+            .iter()
+            .filter(|e| !e.key.is_empty())
+            .map(|e| (e.key, e.option))
+            .collect();
+        keys.sort();
+        keys.dedup();
+        assert_eq!(keys.len(), all.iter().filter(|e| !e.key.is_empty()).count());
+        assert!(all.iter().all(|e| e.key.chars().count() <= 1));
+        // the names of other builds follow the program name
+        assert_eq!(
+            macos_menu("x")[0].entries[0].as_ref().unwrap().title,
+            "Hide x"
+        );
+    }
+
     #[test]
     fn menu_entry_and_file_type_content() {
         let e = desktop_entry(Path::new("/home/a b/Apps/videolore-0.2.0.AppImage"));

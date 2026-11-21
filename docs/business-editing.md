@@ -84,6 +84,4 @@ The window layout (REQ-024), how commands are reached (REQ-025), menus, toolbar,
 - The memory acceptance test runs on a few minutes of video, not 4 GB; assumption: since nothing in the application grows with file size, the result holds for larger files.
 
 ## Out of scope
-- Autosave, crash recovery (the recent-projects list is available since 1.1.0).
-- Dockable, movable or hideable panels (resizing is available since 1.1.0).
-- Fades on one side of a boundary only; a different length per fade.
+- Movable or floating panels: sections can be hidden, collapsed and docked left or right in 2.0.4 (see [Interface](business-interface.md)), but not moved freely.

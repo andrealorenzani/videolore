@@ -67,6 +67,47 @@ pub const MAX_SIDE: u32 = 4096;
 /// The most RGBA bytes kept for one picture (all frames).
 pub const MAX_BYTES: usize = 64 * 1024 * 1024;
 
+/// Whether the splash shows at this start (REQ-295). A start with a path argument never
+/// shows it; "Once for each version" shows it when `last` is not this version.
+pub fn should_show(
+    option: crate::settings::SplashOption,
+    last: Option<&str>,
+    version: &str,
+    has_path_arg: bool,
+) -> bool {
+    use crate::settings::SplashOption::*;
+    if has_path_arg {
+        return false;
+    }
+    match option {
+        Always => true,
+        OncePerVersion => last != Some(version),
+        Never => false,
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+    use crate::settings::SplashOption::*;
+
+    // covers: REQ-295
+    #[test]
+    fn each_option_decides_whether_the_splash_shows() {
+        assert!(should_show(Always, Some("2.0.4"), "2.0.4", false));
+        assert!(should_show(OncePerVersion, None, "2.0.4", false));
+        assert!(should_show(OncePerVersion, Some("2.0.3"), "2.0.4", false));
+        assert!(!should_show(OncePerVersion, Some("2.0.4"), "2.0.4", false));
+        assert!(!should_show(Never, None, "2.0.4", false));
+        for o in [Always, OncePerVersion, Never] {
+            assert!(
+                !should_show(o, None, "2.0.4", true),
+                "a path never shows it"
+            );
+        }
+    }
+}
+
 /// "Version X.Y" from `X.Y.Z` (the major and minor numbers).
 pub fn version_text(version: &str) -> String {
     let mut parts = version.split('.');

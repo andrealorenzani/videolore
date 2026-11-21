@@ -173,6 +173,7 @@ fn the_empty_background_keeps_its_colour() {
             shape: Shape::Tall9x16,
             fit: Fit::Width,
             fill: Fill::Colour(Rgb(0, 255, 0)),
+            blur: Default::default(),
         }))
         .unwrap();
     let out = env.dir.path().join("bg.mp4");

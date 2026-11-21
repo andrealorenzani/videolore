@@ -735,3 +735,33 @@ fn escape_closes_the_start_screen_before_the_full_screen_hint_and_the_controls_s
     h.key(Key::F11);
     assert!(h.app.fullscreen.on && h.app.splash);
 }
+
+// covers: REQ-254, REQ-250
+#[test]
+fn the_file_menu_offers_the_playlist_and_the_editor_and_next_previous_appear_with_a_list() {
+    let d = tempfile::tempdir().unwrap();
+    let mut app = crate::tests::player(d.path());
+    let now = Instant::now();
+    for n in ["a.mp4", "b.mp4"] {
+        let f = d.path().join(n);
+        std::fs::write(&f, n).unwrap();
+        app.dispatch(Command::AddToPlaylistPath(f), now);
+        let end = Instant::now() + Duration::from_secs(10);
+        while !(app.has_video() && app.idle_for_tests()) || app.opening() {
+            app.tick(Instant::now());
+            assert!(Instant::now() < end);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+    let mut h = Harness::new(app);
+    assert!(h.find("Next").is_some_and(|n| !n.disabled));
+    assert!(
+        h.find("Previous").is_some_and(|n| n.disabled),
+        "at the first video"
+    );
+    h.click_label("File");
+    for item in ["Add to playlist…", "Open folder…", "Open in editor"] {
+        assert!(h.find(item).is_some(), "{item}");
+    }
+    h.click_label("Next");
+}

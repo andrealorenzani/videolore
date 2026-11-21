@@ -139,6 +139,7 @@ fn a_paused_picture_in_the_last_frames_of_a_clip_is_shown() {
             shape: Shape::Tall9x16,
             fit: Fit::Width,
             fill: Fill::Blur,
+            blur: Default::default(),
         }))
         .unwrap();
     for at in [1_980_000, 1_995_000] {

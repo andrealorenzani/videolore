@@ -77,7 +77,14 @@ impl AppState {
         let Some(mut req) = self.pending_create.clone() else {
             return Ok(());
         };
-        let ranges = self.create_ranges(req.clip);
+        let ranges = match &req.import {
+            Some(i) => self
+                .import_ranges(i.media, req.clip)
+                .into_iter()
+                .map(|r| (i.media, Some(r)))
+                .collect(),
+            None => self.create_ranges(req.clip),
+        };
         if ranges.is_empty() {
             self.pending_create = None;
             return Err("the timeline has no sound to transcribe: add clips first".into());
@@ -87,7 +94,8 @@ impl AppState {
             self.status = CHECKING_TRACKS.into();
             return Ok(());
         }
-        let with_tracks = ranges.iter().any(|(m, _)| !self.tracks_of(*m).is_empty());
+        let with_tracks =
+            req.import.is_none() && ranges.iter().any(|(m, _)| !self.tracks_of(*m).is_empty());
         // 2. without subtitle tracks only speech recognition is possible
         if !with_tracks && let Some(stop) = self.recognition_blocked() {
             self.pending_create = None;
@@ -134,6 +142,9 @@ impl AppState {
                 .as_ref()
                 .and_then(|l| pick_track(self.tracks_of(*media), l));
             let mode = match track {
+                _ if let Some(i) = &req.import => Mode::Retime {
+                    cues: i.cues.clone(),
+                },
                 Some(t) if spread || !m.format.has_audio() => Mode::Spread { track: t.ordinal },
                 Some(t) => Mode::Align { track: t.ordinal },
                 None if m.format.has_audio() => Mode::Recognise,
@@ -193,6 +204,7 @@ impl AppState {
         };
         self.stt_matching = job.is_matching();
         self.creating_for = Some(req.clip);
+        self.creating_import = req.import.is_some();
         self.pending_create = None;
         self.stt = Some(stt::start(
             job,
@@ -252,11 +264,34 @@ impl AppState {
         self.continue_create()
     }
 
-    /// Starts checking the subtitle tracks of media analysed before 1.2.0.
+    /// Compares each file of the opened project with its size and modification time of the
+    /// last analysis (REQ-186): a changed file is analysed again by the track check; a
+    /// file without recorded values (a project of 2.0.3 or older) only records them.
+    pub(super) fn find_changed_media(&mut self) {
+        self.changed_media.clear();
+        self.reanalysed.clear();
+        for m in &mut self.project.media {
+            if !m.is_ready() || m.missing {
+                continue;
+            }
+            let now = media::FileStat::of(&m.path);
+            match (m.stat, now) {
+                (None, now) => m.stat = now,
+                (Some(old), Some(now)) if old != now => {
+                    self.changed_media.insert(m.id);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Starts checking the subtitle tracks of media analysed before 1.2.0, and analyses
+    /// again the media that changed on disk.
     pub(super) fn start_track_check(&mut self) {
         let Ok(ffprobe) = self.ffmpeg.as_ref().map(|i| i.ffprobe.clone()) else {
             return;
         };
+        let changed = self.changed_media.clone();
         let todo: Vec<(MediaId, PathBuf)> = self
             .project
             .media
@@ -264,8 +299,10 @@ impl AppState {
             .filter(|m| {
                 m.is_ready()
                     && !m.missing
-                    && m.has_video()
-                    && (m.format.subtitle_tracks.is_none() || m.format.spherical.is_none())
+                    && (changed.contains(&m.id)
+                        || (m.has_video()
+                            && (m.format.subtitle_tracks.is_none()
+                                || m.format.spherical.is_none())))
             })
             .map(|m| (m.id, m.path.clone()))
             .collect();
@@ -275,8 +312,9 @@ impl AppState {
         self.stop_track_check();
         let (tx, rx) = channel();
         let cancel = Arc::new(AtomicBool::new(false));
+        // looking at the subtitle tracks of the files waits behind playback and export too
         let runner = self
-            .limited(Priority::Probe)
+            .limited(Priority::Background)
             .cancellable(Arc::clone(&cancel));
         let flag = Arc::clone(&cancel);
         self.tracks_checking = todo.iter().map(|(id, _)| *id).collect();
@@ -291,14 +329,47 @@ impl AppState {
                     .as_ref()
                     .is_some_and(|m| m.format.spherical == Some(true));
                 let tracks = probed
-                    .and_then(|m| m.format.subtitle_tracks)
+                    .as_ref()
+                    .and_then(|m| m.format.subtitle_tracks.clone())
                     .unwrap_or_default();
-                if tx.send((id, tracks, spherical)).is_err() {
+                let probed = changed.contains(&id).then_some(probed).flatten();
+                let check = TrackCheck {
+                    id,
+                    tracks,
+                    spherical,
+                    probed,
+                };
+                if tx.send(check).is_err() {
                     return;
                 }
             }
         });
         self.track_check = Some((rx, cancel));
+    }
+
+    /// Takes the new analysis of a file that changed on disk: its format and tracks (and
+    /// its length, unless a clip would then reach past the end). The project does not
+    /// become "unsaved" because of it.
+    fn apply_reanalysis(&mut self, item: MediaItem) {
+        let used_to = self
+            .project
+            .timeline
+            .clips
+            .iter()
+            .filter(|c| c.media == item.id)
+            .map(|c| c.src_out)
+            .max()
+            .unwrap_or(Micros::ZERO);
+        let Some(m) = self.project.media.iter_mut().find(|m| m.id == item.id) else {
+            return;
+        };
+        m.format = item.format;
+        m.stat = item.stat;
+        if item.duration >= used_to {
+            m.duration = item.duration;
+        }
+        self.saved.set_media(m.id, m.duration, m.format.clone());
+        self.reanalysed.push(m.name.clone());
     }
 
     pub(super) fn stop_track_check(&mut self) {
@@ -320,8 +391,19 @@ impl AppState {
                 Err(std::sync::mpsc::TryRecvError::Disconnected)
             );
         let mut newly_360 = Vec::new();
-        for (id, tracks, spherical) in results {
+        for check in results {
+            let TrackCheck {
+                id,
+                tracks,
+                spherical,
+                probed,
+            } = check;
             self.tracks_checking.remove(&id);
+            if self.changed_media.remove(&id)
+                && let Some(item) = probed
+            {
+                self.apply_reanalysis(item);
+            }
             if let Some(m) = self.project.media.iter_mut().find(|m| m.id == id) {
                 if m.format.subtitle_tracks.is_none() {
                     m.format.subtitle_tracks = Some(tracks.clone());
@@ -346,6 +428,13 @@ impl AppState {
             self.track_check = None;
             self.tracks_checking.clear();
         }
+        if self.changed_media.is_empty() && !self.reanalysed.is_empty() {
+            self.status = format!(
+                "Changed since the last analysis, analysed again: {}",
+                self.reanalysed.join(", ")
+            );
+            self.reanalysed.clear();
+        }
         if self.tracks_checking.is_empty() {
             self.track_check = None;
             if self.pending_create.is_some()
@@ -361,7 +450,10 @@ impl AppState {
     /// The end of a creation: one undo step with every new line.
     pub(super) fn finish_create(&mut self, r: stt::SttResult, now: Instant) {
         let clip = self.creating_for.take().flatten();
-        let label = if clip.is_some() {
+        let import = std::mem::take(&mut self.creating_import);
+        let label = if import {
+            "Import subtitles"
+        } else if clip.is_some() {
             "Create subtitles"
         } else {
             "Generate subtitles"
@@ -374,7 +466,7 @@ impl AppState {
         let all = r.lines();
         let parts = r.ranges.clone();
         let _ = self.edit(now, label, |e| {
-            if clip.is_none() {
+            if clip.is_none() && !import {
                 e.subtitles.replace_all(all, language);
             } else {
                 for part in parts {
@@ -387,7 +479,18 @@ impl AppState {
             Ok(())
         });
         self.refresh_dirty();
-        self.status = if r.unmatched.0 > 0 {
+        self.status = if import {
+            let kept = r.unmatched.0;
+            if kept > 0 {
+                format!(
+                    "Imported {n} subtitle line(s); {kept} of {} kept the file's times \
+                     (no match in the speech)",
+                    r.unmatched.1
+                )
+            } else {
+                format!("Imported {n} subtitle line(s), re-timed from the speech")
+            }
+        } else if r.unmatched.0 > 0 {
             stt::unmatched_message(r.unmatched.0, r.unmatched.1)
         } else {
             format!("Generated {n} subtitle line(s)")

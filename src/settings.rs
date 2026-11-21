@@ -20,6 +20,9 @@ use crate::machine::Fingerprint;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+pub mod interface;
+pub use interface::Interface;
+
 /// Current settings file format.
 pub const VERSION: u32 = 2;
 /// Settings files larger than this are not read.
@@ -343,10 +346,121 @@ pub struct Settings {
     /// View > Show boxes on the picture (1.2.6); on when missing or not a yes/no.
     #[serde(default = "boxes_on", deserialize_with = "lenient_bool_true")]
     pub show_boxes: bool,
+    /// View > Snap to guides (2.0.4, REQ-198): a dragged box snaps to the centre lines and
+    /// thirds of the picture and to other boxes; on when missing or not a yes/no.
+    #[serde(default = "boxes_on", deserialize_with = "lenient_bool_true")]
+    pub snap_to_guides: bool,
+    /// View > Show safe areas (2.0.4, REQ-199); off when missing or not a yes/no.
+    #[serde(default, deserialize_with = "lenient_bool_false")]
+    pub show_safe_areas: bool,
+    /// The video hardware chosen in Settings > Advanced by device name (2.0.4, REQ-216);
+    /// `None` = Automatic. A program setting, never part of a project. It is only ever
+    /// compared with the names of the devices the check found.
+    #[serde(
+        default,
+        deserialize_with = "lenient_device",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub graphics_card: Option<String>,
+    /// Window, popups, sections, workspaces, toolbar, shortcuts, theme and text size
+    /// (2.0.4, REQ-234 to REQ-244).
+    #[serde(default, deserialize_with = "interface::lenient")]
+    pub interface: Interface,
+    /// When the splash picture is shown (2.0.4, REQ-295).
+    #[serde(default, deserialize_with = "lenient_splash")]
+    pub show_splash: SplashOption,
+    /// The version that last showed the splash (for "Once for each version").
+    #[serde(default, deserialize_with = "lenient_version")]
+    pub last_splash_version: Option<String>,
+    /// Most the preview copies may take, in bytes (2.0.4, REQ-297).
+    #[serde(
+        default = "default_cache_limit",
+        deserialize_with = "lenient_cache_limit"
+    )]
+    pub cache_limit: u64,
+    /// Favourite colour-look files, most recent first (REQ-294).
+    #[serde(default, deserialize_with = "lenient_favourites")]
+    pub favourite_luts: Vec<PathBuf>,
+}
+
+/// When the splash picture is shown (REQ-295).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum SplashOption {
+    /// At every start (the default).
+    #[default]
+    Always,
+    /// At the first start of each version.
+    OncePerVersion,
+    Never,
+}
+
+/// The preview copies' size limit by default: 4 GB.
+pub const DEFAULT_CACHE_LIMIT: u64 = 4_000_000_000;
+/// The smallest and the largest limit accepted from the file.
+pub const CACHE_LIMIT_RANGE: (u64, u64) = (100_000_000, 1_000_000_000_000);
+/// Most favourite colour looks (REQ-294).
+pub const MAX_FAVOURITES: usize = 20;
+
+fn default_cache_limit() -> u64 {
+    DEFAULT_CACHE_LIMIT
+}
+
+fn lenient_splash<'de, D: serde::Deserializer<'de>>(d: D) -> Result<SplashOption, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
+}
+
+fn lenient_version<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_str()
+        .filter(|s| !s.is_empty() && s.len() <= 32 && !s.chars().any(char::is_control))
+        .map(str::to_string))
+}
+
+fn lenient_cache_limit<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_u64()
+        .filter(|n| (CACHE_LIMIT_RANGE.0..=CACHE_LIMIT_RANGE.1).contains(n))
+        .unwrap_or(DEFAULT_CACHE_LIMIT))
+}
+
+fn lenient_favourites<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<PathBuf>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    let mut out: Vec<PathBuf> = Vec::new();
+    for s in v
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|s| s.as_str())
+    {
+        let p = PathBuf::from(s);
+        if valid_recent(&p) && out.len() < MAX_FAVOURITES && !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    Ok(out)
+}
+
+/// Longest remembered device name, in bytes.
+pub const MAX_DEVICE_NAME: usize = 100;
+
+/// Reads `graphics_card` leniently: a short text without control characters, else
+/// Automatic (`None`).
+fn lenient_device<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_str()
+        .filter(|s| !s.is_empty() && s.len() <= MAX_DEVICE_NAME && !s.chars().any(char::is_control))
+        .map(str::to_string))
 }
 
 fn boxes_on() -> bool {
     true
+}
+
+/// Reads a yes/no leniently: anything that is not a boolean is `false`.
+fn lenient_bool_false<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_bool().unwrap_or(false))
 }
 
 /// Reads a yes/no leniently: anything that is not a boolean is `true` (the default).
@@ -377,6 +491,14 @@ impl Settings {
             layout: None,
             recent: Vec::new(),
             show_boxes: true,
+            snap_to_guides: true,
+            show_safe_areas: false,
+            graphics_card: None,
+            interface: Interface::default(),
+            show_splash: SplashOption::Always,
+            last_splash_version: None,
+            cache_limit: DEFAULT_CACHE_LIMIT,
+            favourite_luts: Vec::new(),
         }
     }
 
@@ -823,6 +945,7 @@ fn current(value: serde_json::Value, fp: &Fingerprint, version: &str) -> Option<
         }
         // a different computer: its video hardware is tried again
         s.hardware_off.clear();
+        s.graphics_card = None;
         s.machine = Some(fp.clone());
         write = true;
     }

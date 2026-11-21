@@ -112,7 +112,12 @@ fn export(env: &Env, p: &Project, name: &str) -> PathBuf {
 }
 
 fn aspect(shape: Shape, fit: Fit, fill: Fill) -> FrameAspect {
-    FrameAspect { shape, fit, fill }
+    FrameAspect {
+        shape,
+        fit,
+        fill,
+        blur: Default::default(),
+    }
 }
 
 // covers: REQ-125

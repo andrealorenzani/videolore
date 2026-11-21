@@ -19,6 +19,8 @@ pub enum ActionId {
     Import,
     Export,
     ExportSubtitles,
+    ImportSubtitles,
+    OpenInPlayer,
     Quit,
     Undo,
     Redo,
@@ -72,6 +74,12 @@ pub enum ActionId {
     ResetObjects,
     SetPov,
     ToggleBoxes,
+    ToggleSnap,
+    ToggleSafeAreas,
+    PrevMarker,
+    NextMarker,
+    ShiftLinesEarlier,
+    ShiftLinesLater,
     ZoomIn,
     ZoomOut,
     ZoomFit,
@@ -138,9 +146,21 @@ pub const ACTIONS: &[Action] = &[
     ),
     action!(
         ExportSubtitles,
-        "Export subtitles (.srt)…",
+        "Export subtitles…",
         [],
-        "Save the subtitles of the timeline as an .srt file"
+        "Save the subtitles of the timeline as an .srt, .vtt or .ass file"
+    ),
+    action!(
+        OpenInPlayer,
+        "Open in player",
+        [],
+        "Watch the selected video in videolore player"
+    ),
+    action!(
+        ImportSubtitles,
+        "Import subtitles…",
+        [],
+        "Add the lines of a .srt or .vtt file to the clip or the whole video"
     ),
     action!(Quit, "Quit", [cmd(Key::Q)], "Close videolore"),
     action!(Undo, "Undo", [cmd(Key::Z)], "Undo the last change"),
@@ -441,6 +461,42 @@ pub const ACTIONS: &[Action] = &[
         "Show or hide the boxes around the objects you can move on the picture"
     ),
     action!(
+        ToggleSnap,
+        "Snap to guides",
+        [],
+        "A box you drag on the picture snaps to the centre lines, the thirds and the other boxes"
+    ),
+    action!(
+        ToggleSafeAreas,
+        "Show safe areas",
+        [],
+        "Draw the action-safe (90%) and title-safe (80%) areas on the preview"
+    ),
+    action!(
+        PrevMarker,
+        "Previous marker",
+        [plain(Key::OpenBracket)],
+        "Go to the previous marker of the timeline and select it"
+    ),
+    action!(
+        NextMarker,
+        "Next marker",
+        [plain(Key::CloseBracket)],
+        "Go to the next marker of the timeline and select it"
+    ),
+    action!(
+        ShiftLinesEarlier,
+        "Shift lines earlier by 0.5 s",
+        [],
+        "Move the selected subtitle lines 0.5 s earlier, together"
+    ),
+    action!(
+        ShiftLinesLater,
+        "Shift lines later by 0.5 s",
+        [],
+        "Move the selected subtitle lines 0.5 s later, together"
+    ),
+    action!(
         ZoomIn,
         "Zoom in",
         [cmd(Key::Equals), cmd(Key::Plus)],
@@ -497,6 +553,16 @@ pub fn action(id: ActionId) -> &'static Action {
 }
 
 impl ActionId {
+    /// The name kept in the settings (toolbar list and shortcuts): the variant's name.
+    pub fn name(self) -> String {
+        format!("{self:?}")
+    }
+
+    /// The action called `name`, if there is one.
+    pub fn from_name(name: &str) -> Option<ActionId> {
+        ACTIONS.iter().map(|a| a.id).find(|id| id.name() == name)
+    }
+
     /// The command this action runs now (Export becomes Cancel export while exporting).
     pub fn command(self, app: &AppState) -> Command {
         use ActionId::*;
@@ -509,6 +575,8 @@ impl ActionId {
             Export if app.is_exporting() => Command::CancelExport,
             Export => Command::PickExport,
             ExportSubtitles => Command::PickExportSrt,
+            ImportSubtitles => Command::PickImportSubtitles(app.target_clip()),
+            OpenInPlayer => Command::OpenInPlayer,
             Quit => Command::Quit,
             Undo => Command::Undo,
             Redo => Command::Redo,
@@ -518,6 +586,8 @@ impl ActionId {
             Delete if app.selection.primary_text().is_some() => {
                 Command::DeleteTexts(app.selection.texts())
             }
+            // with subtitle lines selected, Delete removes them (REQ-197)
+            Delete if app.selection.has_lines() => Command::DeleteSubtitles(app.selection.lines()),
             Delete => Command::Delete,
             Split => Command::Split,
             Merge => Command::Merge,
@@ -565,6 +635,18 @@ impl ActionId {
             ResetObjects => Command::ResetObjects,
             SetPov => Command::SetPov,
             ToggleBoxes => Command::ToggleBoxes,
+            ToggleSnap => Command::ToggleSnap,
+            ToggleSafeAreas => Command::ToggleSafeAreas,
+            PrevMarker => Command::StepMarker { forward: false },
+            NextMarker => Command::StepMarker { forward: true },
+            ShiftLinesEarlier => Command::ShiftLines {
+                ids: app.selection.lines(),
+                delta: Micros(-crate::subtitles::SHIFT_STEP.0),
+            },
+            ShiftLinesLater => Command::ShiftLines {
+                ids: app.selection.lines(),
+                delta: crate::subtitles::SHIFT_STEP,
+            },
             ZoomIn => Command::ZoomBy(ZOOM_STEP),
             ZoomOut => Command::ZoomBy(1.0 / ZOOM_STEP),
             ZoomFit => Command::ZoomFit,
@@ -587,6 +669,8 @@ impl ActionId {
             Import => i::DOWNLOAD_SIMPLE,
             Export => i::EXPORT,
             ExportSubtitles => i::SUBTITLES,
+            ImportSubtitles => i::SUBTITLES,
+            OpenInPlayer => i::MONITOR_PLAY,
             Quit => i::SIGN_OUT,
             Undo => i::ARROW_U_UP_LEFT,
             Redo => i::ARROW_U_UP_RIGHT,
@@ -623,6 +707,10 @@ impl ActionId {
             ResetObjects => i::ARROW_COUNTER_CLOCKWISE,
             SetPov => i::CROSSHAIR,
             ToggleBoxes => i::BOUNDING_BOX,
+            ToggleSnap => i::BOUNDING_BOX,
+            ToggleSafeAreas => i::BOUNDING_BOX,
+            PrevMarker | NextMarker => i::ARROWS_OUT_CARDINAL,
+            ShiftLinesEarlier | ShiftLinesLater => i::SUBTITLES,
             ZoomIn => i::MAGNIFYING_GLASS_PLUS,
             ZoomOut => i::MAGNIFYING_GLASS_MINUS,
             ZoomFit => i::CORNERS_OUT,
@@ -651,6 +739,14 @@ impl ActionId {
                 "Boxes are shown on the picture: click to hide them".into()
             }
             ActionId::ToggleBoxes => "Boxes are hidden: click to show them on the picture".into(),
+            ActionId::ToggleSnap if app.settings.snap_to_guides => {
+                "Snapping is on: click to turn it off".into()
+            }
+            ActionId::ToggleSnap => "Snapping is off: click to turn it on".into(),
+            ActionId::ToggleSafeAreas if app.settings.show_safe_areas => {
+                "The safe areas are drawn: click to hide them".into()
+            }
+            ActionId::ToggleSafeAreas => "The safe areas are hidden: click to draw them".into(),
             _ => action(self).tooltip.into(),
         }
     }

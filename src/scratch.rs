@@ -92,7 +92,9 @@ fn remove_targets(list: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::base::private::{Work, create_private_file, publish};
+    #[cfg(unix)]
+    use crate::base::private::publish;
+    use crate::base::private::{Work, create_private_file};
     use std::io::Write;
 
     fn mode(p: &Path) -> u32 {

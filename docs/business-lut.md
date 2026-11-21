@@ -33,4 +33,6 @@ Added in 1.6.0. **Apply LUT** is a colour effect: the user chooses a LUT file (a
 - (1.6.1) A clip has one LUT; a whole-video LUT is a copy on each clip, so a clip added later has none (REQ-147). A 1.6.0 clip with its own LUT keeps it when the project opens (REQ-149).
 
 ## Out of scope
-- Colour grading controls (wheels, curves, levels), LUT strength, creating or editing LUTs, LUT libraries, LUT files copied into projects.
+- Colour grading controls (wheels, curves, levels), creating or editing LUTs.
+- Colour management for LUTs (not planned yet).
+- Planned for 2.0.4 (see [New effects](business-effects-frame.md)): LUT strength, `.3dl` and `.csp` files, input ranges other than 0 to 1, a LUT copied into the project, favourite LUTs, and the choice when a LUT file is missing.

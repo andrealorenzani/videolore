@@ -176,7 +176,7 @@ fn player_with(
     )
 }
 
-fn player(work: &Path) -> PlayerState {
+pub(crate) fn player(work: &Path) -> PlayerState {
     player_with(
         Ok(info()),
         FakeDialogs {
@@ -341,6 +341,13 @@ fn the_player_has_no_save_export_or_edit_command() {
             | Command::ShowAbout
             | Command::CloseAbout
             | Command::DismissNotice
+            | Command::AddToPlaylist
+            | Command::AddToPlaylistPath(_)
+            | Command::OpenFolder
+            | Command::OpenFolderPath(_)
+            | Command::Next
+            | Command::Previous
+            | Command::OpenInEditor
             | Command::Quit => true,
         }
     }
@@ -560,15 +567,155 @@ fn a_dragged_line_keeps_its_place_for_the_session_only() {
         now(),
     );
     assert!(!p.status.is_empty());
-    // opening the file again gives the default place
+    // another video and back: the place is kept for the session (REQ-251); a new run
+    // starts with the default place
     open(&mut p, file(d.path(), "a.mp4"));
-    p.dispatch(Command::OpenSrt(srt), now());
+    p.dispatch(Command::OpenSrt(srt.clone()), now());
+    assert_eq!(p.project.subtitles.lines[1].position, Some(pos));
+    let mut again = player(d.path());
+    open(&mut again, file(d.path(), "a.mp4"));
+    again.dispatch(Command::OpenSrt(srt), now());
     assert!(
-        p.project
+        again
+            .project
             .subtitles
             .lines
             .iter()
             .all(|l| l.position.is_none())
+    );
+}
+
+// covers: REQ-251
+#[test]
+fn a_dragged_line_keeps_its_place_when_another_video_is_played_and_the_first_again() {
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    let srt = d.path().join("film.srt");
+    std::fs::write(&srt, SRT).unwrap();
+    let (a, b) = (file(d.path(), "a.mp4"), file(d.path(), "b.mp4"));
+    open(&mut p, a.clone());
+    p.dispatch(Command::OpenSrt(srt.clone()), now());
+    let id = p.project.subtitles.lines[0].id;
+    let pos = Pos { x: 1_000, y: 9_000 };
+    p.dispatch(Command::PlaceLines { ids: vec![id], pos }, now());
+    open(&mut p, b);
+    p.dispatch(Command::OpenSrt(srt.clone()), now());
+    assert_eq!(
+        p.project.subtitles.lines[0].position, None,
+        "the other video has its own"
+    );
+    open(&mut p, a);
+    p.dispatch(Command::OpenSrt(srt), now());
+    assert_eq!(p.project.subtitles.lines[0].position, Some(pos));
+}
+
+// covers: REQ-252
+#[test]
+fn volume_sound_folder_and_full_screen_are_remembered_in_the_players_own_file() {
+    use crate::settings::PlayerSettings;
+    let d = tempfile::tempdir().unwrap();
+    let videos = d.path().join("videos");
+    std::fs::create_dir(&videos).unwrap();
+    let cfg = d.path().join("config/player.json");
+    let before = listing(&videos);
+    let make =
+        || player(d.path()).with_settings(PlayerSettings::load(&cfg), Some(cfg.clone()), now());
+    let mut p = make();
+    open(&mut p, file(&videos, "a.mp4"));
+    let before = {
+        let mut b = before;
+        b.push(("a.mp4".into(), 5));
+        b.sort();
+        b
+    };
+    p.dispatch(Command::SetVolume(35), now());
+    p.dispatch(Command::ToggleMute, now());
+    p.dispatch(Command::ToggleFullScreen, now());
+    // restart: the same volume, sound off, full screen, and the dialogs start in the folder
+    let mut q = make();
+    assert!(q.fullscreen.on);
+    assert_eq!(q.settings.last_folder.as_deref(), Some(videos.as_path()));
+    open(&mut q, file(&videos, "a.mp4"));
+    assert_eq!((q.volume(), q.muted()), (35, true));
+    // nothing was written in the folder of the videos: the file is in the configuration folder
+    assert_eq!(listing(&videos), before);
+    assert!(cfg.is_file());
+    // a damaged file gives the defaults
+    std::fs::write(&cfg, "[1,").unwrap();
+    let r = make();
+    assert_eq!(
+        (r.settings.volume, r.settings.muted, r.fullscreen.on),
+        (100, false, false)
+    );
+}
+
+// covers: REQ-254
+#[test]
+fn a_playlist_plays_in_order_goes_next_and_back_and_stops_after_the_last() {
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    let names = ["a.mp4", "b.mp4", "c.mp4"];
+    for n in names {
+        p.dispatch(Command::AddToPlaylistPath(file(d.path(), n)), now());
+        settle(&mut p);
+    }
+    // the first one added started playing; the list is in the order added
+    assert_eq!(p.title(), "a.mp4 — videolore player");
+    assert_eq!(p.playlist.items.len(), 3);
+    p.dispatch(Command::Next, now());
+    settle(&mut p);
+    assert_eq!(p.title(), "b.mp4 — videolore player");
+    p.dispatch(Command::Previous, now());
+    settle(&mut p);
+    assert_eq!(p.title(), "a.mp4 — videolore player");
+    p.dispatch(Command::Previous, now());
+    assert!(p.status.contains("first video"));
+    // the end of a video starts the next; after the last it stops
+    assert!(p.after_end(now()));
+    settle(&mut p);
+    assert_eq!(p.title(), "b.mp4 — videolore player");
+    assert!(p.after_end(now()));
+    settle(&mut p);
+    assert_eq!(p.title(), "c.mp4 — videolore player");
+    assert!(!p.after_end(now()));
+    p.dispatch(Command::Next, now());
+    assert!(p.status.contains("last video"));
+    assert_eq!(p.title(), "c.mp4 — videolore player");
+    // a folder is a playlist in name order; the list is not kept by a new run
+    let folder = d.path().join("shows");
+    std::fs::create_dir(&folder).unwrap();
+    for n in ["z.mp4", "m.mp4", "notes.txt"] {
+        file(&folder, n);
+    }
+    p.dispatch(Command::OpenFolderPath(folder.clone()), now());
+    settle(&mut p);
+    assert_eq!(p.title(), "m.mp4 — videolore player");
+    assert_eq!(p.playlist.items.len(), 2);
+    p.dispatch(Command::OpenFolderPath(d.path().join("none")), now());
+    assert!(p.status.contains("no videos"));
+    assert!(player(d.path()).playlist.items.is_empty());
+}
+
+// covers: REQ-250
+#[test]
+fn open_in_editor_needs_a_video_and_a_missing_editor_is_explained() {
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    p.dispatch(Command::OpenInEditor, now());
+    assert!(p.status.contains("Open a video"));
+    let movie = file(d.path(), "a.mp4");
+    open(&mut p, movie.clone());
+    let before = listing(d.path());
+    p.dispatch(Command::OpenInEditor, now());
+    assert!(
+        p.status.contains("not installed next to this program"),
+        "{}",
+        p.status
+    );
+    assert_eq!(
+        listing(d.path()),
+        before,
+        "nothing is written next to the video"
     );
 }
 
@@ -748,4 +895,33 @@ fn a_start_without_a_video_opens_the_start_screen_and_one_with_a_video_does_not(
     s.show_splash();
     s.dispatch(Command::Escape, now());
     assert!(!s.splash);
+}
+
+// covers: REQ-295
+#[test]
+fn the_player_follows_the_splash_option_and_remembers_the_version() {
+    use videolore::settings::SplashOption::*;
+    let d = tempfile::tempdir().unwrap();
+    let cfg = d.path().join("player.json");
+    let make = || {
+        player(d.path()).with_settings(
+            crate::settings::PlayerSettings::load(&cfg),
+            Some(cfg.clone()),
+            now(),
+        )
+    };
+    let mut never = make();
+    never.start_splash(Never);
+    assert!(!never.splash);
+    let mut always = make();
+    always.start_splash(Always);
+    assert!(always.splash);
+    // once for each version: the first start shows it, the next one does not
+    std::fs::remove_file(&cfg).unwrap();
+    let mut first = make();
+    first.start_splash(OncePerVersion);
+    assert!(first.splash);
+    let mut second = make();
+    second.start_splash(OncePerVersion);
+    assert!(!second.splash);
 }

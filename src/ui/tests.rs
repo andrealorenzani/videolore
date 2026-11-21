@@ -563,7 +563,7 @@ fn settings_window_shows_the_three_choices_in_plain_words() {
         settings::RECOMMENDED_STATUS,
         settings::USE_RECOMMENDED,
     ] {
-        assert!(text.contains(t), "{t} missing");
+        assert!(text.contains(t), "{t} missing in {text}");
     }
     for l in PreviewQuality::ALL.map(|q| q.label()) {
         assert!(text.contains(l), "{l}");
@@ -620,7 +620,7 @@ fn settings_window_offers_the_export_choice() {
     // the Export choice is at the bottom of the main section: scroll down to it
     let down = || {
         vec![
-            Event::PointerMoved(pos2(640.0, 1200.0)),
+            Event::PointerMoved(pos2(1100.0, 300.0)),
             Event::MouseWheel {
                 unit: eframe::egui::MouseWheelUnit::Point,
                 delta: vec2(0.0, -400.0),
@@ -935,7 +935,11 @@ fn stays_responsive_while_exporting_and_transcribing() {
     // Export: Faster, with working (simulated) video hardware
     app.settings.export = crate::settings::ExportChoice::Faster;
     app.hw.probe = crate::app::HwProbe::Done(crate::hwenc::HwStatus {
-        h264: Some(crate::hwenc::Candidate::new(crate::hwenc::Vendor::Nvenc)),
+        working: [(
+            crate::hwenc::Codec::H264,
+            vec![crate::hwenc::Candidate::new(crate::hwenc::Vendor::Nvenc)],
+        )]
+        .into(),
         ..Default::default()
     });
     app.dispatch(Command::Export(dir.path().join("busy.mp4")), now)

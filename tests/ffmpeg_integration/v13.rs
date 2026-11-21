@@ -221,6 +221,7 @@ fn a_text_fixed_to_the_sphere_stays_at_its_point_while_the_camera_turns() {
     let pov = |t: f64, yaw: f64| Pov {
         t: Micros::from_secs_f64(t),
         cam: Camera::new((yaw * 100.0) as i64, 0, 9000),
+        ease: Default::default(),
     };
     p.camera.set(m, pov(0.0, 10.0)).unwrap();
     p.camera.set(m, pov(4.0, 60.0)).unwrap();
@@ -335,6 +336,7 @@ fn a_subtitle_line_fixed_to_the_sphere_stays_while_the_camera_turns_and_in_a_360
     let pov = |t: f64, yaw: f64| Pov {
         t: Micros::from_secs_f64(t),
         cam: Camera::new((yaw * 100.0) as i64, 0, 9000),
+        ease: Default::default(),
     };
     p.camera.set(m, pov(0.0, 10.0)).unwrap();
     p.camera.set(m, pov(4.0, 60.0)).unwrap();

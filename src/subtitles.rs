@@ -19,6 +19,35 @@ pub const MAX_TEXT: usize = 1000;
 pub const MAX_WORDS: usize = 200_000;
 /// Length of a line added by hand.
 pub const NEW_LINE_LEN: Micros = Micros(2_000_000);
+/// Step of a dragged start or end marker, and the shortest a line can be made by dragging
+/// (REQ-192).
+pub const EDGE_STEP: Micros = Micros(100_000);
+/// Step of "Shift lines earlier / later" (REQ-197).
+pub const SHIFT_STEP: Micros = Micros(500_000);
+
+/// Which end of a line a marker drag moves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineEdge {
+    Start,
+    End,
+}
+
+/// The `(start, end)` of a line that was shown from `start` to `end` when its `edge` marker
+/// is dragged to time `to` (REQ-192): moved in whole steps of [`EDGE_STEP`] from where it
+/// was, the start never past the end and each line at least one step long.
+pub fn dragged_edge(start: Micros, end: Micros, edge: LineEdge, to: Micros) -> (Micros, Micros) {
+    let snap = |from: Micros| {
+        let steps = ((to.0 - from.0) as f64 / EDGE_STEP.0 as f64).round() as i64;
+        from + Micros(steps.saturating_mul(EDGE_STEP.0))
+    };
+    match edge {
+        LineEdge::Start => (
+            snap(start).clamp(Micros::ZERO, (end - EDGE_STEP).max(Micros::ZERO)),
+            end,
+        ),
+        LineEdge::End => (start, snap(end).max(start + EDGE_STEP)),
+    }
+}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
@@ -330,6 +359,48 @@ impl Subtitles {
         l.words.retain(|w| w.start >= s && w.end <= e);
         l.edited = true;
         Ok(())
+    }
+
+    /// Deletes several lines in one step (REQ-197); unknown ids are an error and nothing
+    /// changes.
+    pub fn delete_many(&mut self, ids: &[LineId]) -> Result<(), SubtitleError> {
+        if ids.is_empty() || ids.iter().any(|id| self.get(*id).is_none()) {
+            return Err(SubtitleError::NoSuchLine);
+        }
+        self.lines.retain(|l| !ids.contains(&l.id));
+        Ok(())
+    }
+
+    /// Moves lines by `delta` together, keeping their lengths and their distances (REQ-197).
+    /// The move is cut short so that no line starts before 0 s or ends after its file
+    /// (`limit(media)`); the shift actually made is returned.
+    pub fn shift(
+        &mut self,
+        ids: &[LineId],
+        delta: Micros,
+        limit: impl Fn(MediaId) -> Micros,
+    ) -> Result<Micros, SubtitleError> {
+        if ids.is_empty() || ids.iter().any(|id| self.get(*id).is_none()) {
+            return Err(SubtitleError::NoSuchLine);
+        }
+        let picked = || self.lines.iter().filter(|l| ids.contains(&l.id));
+        let earliest = picked().map(|l| l.start).min().unwrap_or(Micros::ZERO);
+        let room = picked()
+            .map(|l| limit(l.media) - l.end)
+            .min()
+            .unwrap_or(Micros::ZERO)
+            .max(Micros::ZERO);
+        let made = delta.max(Micros::ZERO - earliest).min(room);
+        for l in self.lines.iter_mut().filter(|l| ids.contains(&l.id)) {
+            l.start = l.start + made;
+            l.end = l.end + made;
+            for w in &mut l.words {
+                w.start = w.start + made;
+                w.end = w.end + made;
+            }
+            l.edited = true;
+        }
+        Ok(made)
     }
 
     /// Replaces every line with freshly generated ones.
@@ -793,5 +864,74 @@ pub(crate) mod tests {
         subs.set_boxes(&[a], None, Some(Some(1500))).unwrap();
         let tl = setup().0;
         assert!(subs.project(&tl).iter().any(|l| l.size == Some(1500)));
+    }
+
+    // covers: REQ-192
+    #[test]
+    fn a_dragged_marker_moves_in_tenths_of_a_second_and_never_crosses_the_other() {
+        let (a, b) = (s(1), s(3));
+        let ms = |n: i64| Micros(n * 1000);
+        // the start 0.5 s later
+        assert_eq!(dragged_edge(a, b, LineEdge::Start, ms(1500)), (ms(1500), b));
+        // snapped to steps from where it was
+        assert_eq!(dragged_edge(a, b, LineEdge::Start, ms(1530)), (ms(1500), b));
+        assert_eq!(dragged_edge(a, b, LineEdge::Start, ms(1560)), (ms(1600), b));
+        // past the end: stops 0.1 s before it
+        assert_eq!(dragged_edge(a, b, LineEdge::Start, s(9)), (ms(2900), b));
+        // before 0 s: stops at 0
+        assert_eq!(
+            dragged_edge(a, b, LineEdge::Start, Micros(-9_000_000)).0,
+            Micros::ZERO
+        );
+        // the end marker: later, and never before the start plus a step
+        assert_eq!(dragged_edge(a, b, LineEdge::End, ms(3700)), (a, ms(3700)));
+        assert_eq!(
+            dragged_edge(a, b, LineEdge::End, Micros::ZERO),
+            (a, ms(1100))
+        );
+        // the drag moves the line in the project and one undo restores it
+        let (tl, mut subs) = setup();
+        let id = subs.lines[0].id;
+        let clip = tl.clips[0].id;
+        let (st, en) = dragged_edge(s(1), s(3), LineEdge::Start, ms(1500));
+        subs.retime(id, &tl, clip, st, en, Micros(33_333)).unwrap();
+        assert_eq!((subs.lines[0].start, subs.lines[0].end), (ms(1500), s(3)));
+    }
+
+    // covers: REQ-197
+    #[test]
+    fn lines_are_deleted_together_and_shifted_keeping_lengths_and_never_before_zero() {
+        let (_, mut subs) = setup();
+        let ids: Vec<LineId> = subs.lines.iter().map(|l| l.id).collect();
+        let limit = |_: MediaId| s(10);
+        // later by 0.5 s: both move, lengths kept
+        let made = subs.shift(&ids, SHIFT_STEP, limit).unwrap();
+        assert_eq!(made, SHIFT_STEP);
+        assert_eq!(
+            (subs.lines[0].start, subs.lines[0].end),
+            (Micros(1_500_000), Micros(3_500_000))
+        );
+        assert_eq!(subs.lines[0].words[0].start, Micros(1_500_000));
+        assert!(subs.lines.iter().all(|l| l.edited));
+        // earlier: stops when the first line reaches 0 s (the group keeps its shape)
+        let made = subs.shift(&ids, Micros(-9_000_000), limit).unwrap();
+        assert_eq!(made, Micros(-1_500_000));
+        assert_eq!(subs.lines[0].start, Micros::ZERO);
+        assert_eq!(subs.lines[1].start, Micros(5_000_000));
+        // later: stops when the last line reaches the end of its file
+        let made = subs.shift(&ids, s(99), limit).unwrap();
+        assert_eq!(subs.lines[1].end, s(10));
+        assert_eq!(made, Micros(10_000_000 - 7_000_000));
+        // unknown or no lines: an error, nothing changes
+        let before = subs.clone();
+        assert!(subs.shift(&[LineId(99)], SHIFT_STEP, limit).is_err());
+        assert!(subs.shift(&[], SHIFT_STEP, limit).is_err());
+        assert_eq!(subs, before);
+        // Delete: all of them or none
+        assert!(subs.delete_many(&[ids[0], LineId(99)]).is_err());
+        assert_eq!(subs.lines.len(), 2);
+        subs.delete_many(&ids).unwrap();
+        assert!(subs.lines.is_empty());
+        assert!(subs.delete_many(&[]).is_err());
     }
 }

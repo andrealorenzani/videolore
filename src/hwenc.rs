@@ -19,39 +19,39 @@
 
 use crate::ffmpeg::{Runner, argv};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-/// The two formats that may use video hardware.
+/// The formats that may use video hardware.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Codec {
     H264,
     Hevc,
+    Av1,
+    Vp9,
 }
 
 impl Codec {
-    pub const ALL: [Codec; 2] = [Codec::H264, Codec::Hevc];
+    pub const ALL: [Codec; 4] = [Codec::H264, Codec::Hevc, Codec::Av1, Codec::Vp9];
 
     /// ffmpeg/ffprobe codec name.
     pub fn name(self) -> &'static str {
         match self {
             Codec::H264 => "h264",
             Codec::Hevc => "hevc",
+            Codec::Av1 => "av1",
+            Codec::Vp9 => "vp9",
         }
     }
 
     /// The codec of an ffprobe codec name, when it may use hardware.
     pub fn from_name(name: &str) -> Option<Codec> {
-        match name {
-            "h264" => Some(Codec::H264),
-            "hevc" => Some(Codec::Hevc),
-            _ => None,
-        }
+        Codec::ALL.into_iter().find(|c| c.name() == name)
     }
 
     /// The codec the normal method encodes with `encoder`, when it may use hardware.
@@ -59,7 +59,20 @@ impl Codec {
         match encoder {
             "libx264" => Some(Codec::H264),
             "libx265" => Some(Codec::Hevc),
+            "libsvtav1" | "libaom-av1" => Some(Codec::Av1),
+            "libvpx-vp9" => Some(Codec::Vp9),
             _ => None,
+        }
+    }
+
+    /// The software encoders that make this format, best first (the Export presets use the
+    /// first one the ffmpeg in use has).
+    pub fn software_encoders(self) -> &'static [&'static str] {
+        match self {
+            Codec::H264 => &["libx264"],
+            Codec::Hevc => &["libx265"],
+            Codec::Av1 => &["libsvtav1", "libaom-av1"],
+            Codec::Vp9 => &["libvpx-vp9"],
         }
     }
 
@@ -67,22 +80,27 @@ impl Codec {
         match self {
             Codec::H264 => "H.264",
             Codec::Hevc => "HEVC",
+            Codec::Av1 => "AV1",
+            Codec::Vp9 => "VP9",
         }
     }
 
-    /// The profile the normal method produces (x264 "veryfast" High, x265 Main).
-    pub fn profile(self) -> &'static str {
+    /// The profile the normal method produces (x264 "veryfast" High, x265 Main); AV1 and
+    /// VP9 have no profile argument (8-bit 4:2:0 is their main profile).
+    pub fn profile(self) -> Option<&'static str> {
         match self {
-            Codec::H264 => "high",
-            Codec::Hevc => "main",
+            Codec::H264 => Some("high"),
+            Codec::Hevc => Some("main"),
+            Codec::Av1 | Codec::Vp9 => None,
         }
     }
 
     /// The profile name ffprobe reports for [`Codec::profile`].
-    pub fn probed_profile(self) -> &'static str {
+    pub fn probed_profile(self) -> Option<&'static str> {
         match self {
-            Codec::H264 => "High",
-            Codec::Hevc => "Main",
+            Codec::H264 => Some("High"),
+            Codec::Hevc => Some("Main"),
+            Codec::Av1 | Codec::Vp9 => None,
         }
     }
 }
@@ -158,7 +176,7 @@ impl Vendor {
     pub fn options(self) -> &'static [&'static str] {
         match self {
             Vendor::Nvenc => &["-preset", "-tune", "-rc", "-spatial_aq"],
-            Vendor::Qsv => &["-preset"],
+            Vendor::Qsv => &["-preset", "-global_quality"],
             Vendor::Amf => &["-usage", "-quality", "-rc"],
             Vendor::Vaapi => &["-rc_mode", "-qp"],
             Vendor::VideoToolbox => &["-allow_sw", "-realtime"],
@@ -174,7 +192,7 @@ pub enum RateControl {
     #[default]
     Bitrate,
     /// A constant quantiser ([`CQ_START_QP`], corrected by [`cq_retry_qp`]): only for
-    /// VA-API drivers that refuse bitrate control.
+    /// VA-API and Quick Sync drivers that refuse bitrate control.
     ConstantQuality,
 }
 
@@ -196,12 +214,14 @@ impl Candidate {
         }
     }
 
-    /// The same method with constant quality, when its driver may refuse bitrate control.
+    /// The same method with constant quality, when its driver may refuse bitrate control
+    /// (VA-API, and Quick Sync, REQ-215).
     pub fn constant_quality(&self) -> Option<Candidate> {
-        (self.vendor == Vendor::Vaapi && self.rc == RateControl::Bitrate).then(|| Candidate {
-            rc: RateControl::ConstantQuality,
-            ..self.clone()
-        })
+        (matches!(self.vendor, Vendor::Vaapi | Vendor::Qsv) && self.rc == RateControl::Bitrate)
+            .then(|| Candidate {
+                rc: RateControl::ConstantQuality,
+                ..self.clone()
+            })
     }
 
     /// The ffmpeg encoder name for `codec`.
@@ -223,6 +243,49 @@ impl Candidate {
         } else {
             format!("{} ({})", self.vendor.label(), extra.join(", "))
         }
+    }
+}
+
+/// The kind of graphics a method runs on (REQ-207).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Graphics {
+    /// Part of the processor (Intel Quick Sync, Apple silicon, a VA-API Intel device).
+    Integrated,
+    Dedicated,
+}
+
+/// The kind of graphics of a PCI vendor id read from the system (`0x8086` is Intel: its
+/// VA-API devices are the processor's graphics; other makers' devices count as dedicated).
+pub fn graphics_of_vendor_id(id: &str) -> Graphics {
+    if id.trim().eq_ignore_ascii_case("0x8086") {
+        Graphics::Integrated
+    } else {
+        Graphics::Dedicated
+    }
+}
+
+impl Candidate {
+    /// What kind of graphics runs this method. Quick Sync and VideoToolbox are the
+    /// processor's; NVIDIA and AMD methods are taken as dedicated cards (an AMD processor
+    /// graphics is not told apart); a VA-API device is told by its maker (`read` gives the
+    /// text of a system file, `/sys/class/drm/<node>/device/vendor`).
+    pub fn graphics(&self, read: impl Fn(&Path) -> Option<String>) -> Graphics {
+        match self.vendor {
+            Vendor::Qsv | Vendor::VideoToolbox => Graphics::Integrated,
+            Vendor::Nvenc | Vendor::Amf => Graphics::Dedicated,
+            Vendor::Vaapi => self
+                .device
+                .as_deref()
+                .and_then(Path::file_name)
+                .and_then(|n| read(&Path::new("/sys/class/drm").join(n).join("device/vendor")))
+                .map(|id| graphics_of_vendor_id(&id))
+                .unwrap_or(Graphics::Dedicated),
+        }
+    }
+
+    /// [`Candidate::graphics`] on this computer.
+    pub fn graphics_here(&self) -> Graphics {
+        self.graphics(|p| std::fs::read_to_string(p).ok())
     }
 }
 
@@ -258,6 +321,8 @@ pub struct Platform {
     /// The system video library (libva, Linux): `None` when not found, else whether it has
     /// the functions of libva 2.21+ ([`LIBVA_NEW_SYMBOL`]).
     pub system_libva_new: Option<bool>,
+    /// The version of that library as `(major, minor)` when its file name tells.
+    pub libva_version: Option<(u32, u32)>,
 }
 
 impl Platform {
@@ -269,15 +334,18 @@ impl Platform {
         } else {
             Vec::new()
         };
-        let system_libva_new = if os == Os::Linux {
-            find_system_libva().map(|l| file_mentions(&l, LIBVA_NEW_SYMBOL))
+        let libva = if os == Os::Linux {
+            find_system_libva()
         } else {
             None
         };
+        let system_libva_new = libva.as_deref().map(|l| file_mentions(l, LIBVA_NEW_SYMBOL));
+        let libva_version = libva.as_deref().and_then(libva_version_of);
         Platform {
             os,
             render_nodes,
             system_libva_new,
+            libva_version,
         }
     }
 
@@ -287,8 +355,38 @@ impl Platform {
             os: Os::Other,
             render_nodes: Vec::new(),
             system_libva_new: None,
+            libva_version: None,
         }
     }
+}
+
+/// The library version libva 2.`minor` in a file name: `libva.so.2.2000.0` is 2.20 (the
+/// middle number is the minor version times 100).
+pub fn libva_version_from_name(name: &str) -> Option<(u32, u32)> {
+    let rest = name.strip_prefix("libva.so.")?;
+    let mut parts = rest.split('.');
+    let major: u32 = parts.next()?.parse().ok()?;
+    let current: u32 = parts.next()?.parse().ok()?;
+    (major > 0 && current >= 100).then_some((major, current / 100))
+}
+
+/// The version of the libva at `path` (the link is followed: the real file's name has it).
+fn libva_version_of(path: &Path) -> Option<(u32, u32)> {
+    let real = std::fs::canonicalize(path).ok()?;
+    libva_version_from_name(real.file_name()?.to_str()?)
+}
+
+/// What Advanced says when the video library is too old (REQ-217): both versions, in plain
+/// words.
+pub fn libva_message(installed: Option<(u32, u32)>) -> String {
+    let have = match installed {
+        Some((a, b)) => format!("{a}.{b}"),
+        None => "older than 2.21".to_string(),
+    };
+    format!(
+        "The video library of this computer (libva {have}) is older than the one the included \
+         ffmpeg needs (libva 2.21 or newer): the normal method is used for Faster."
+    )
 }
 
 /// A function added in libva 2.21. ffmpeg builds that load libva at run time (the
@@ -410,14 +508,10 @@ fn is_char_device(_: &std::fs::FileType) -> bool {
     false
 }
 
-/// The methods to try for `codec`, best first. Methods whose encoder is missing from
-/// `encoders` (the ffmpeg in use was built without them) are skipped.
-pub fn candidates(
-    platform: &Platform,
-    codec: Codec,
-    encoders: &BTreeSet<String>,
-) -> Vec<Candidate> {
-    let mut out = match platform.os {
+/// The hardware methods this computer may have, best first (before the encoders of the
+/// ffmpeg in use are looked at): the order of REQ-061.
+pub fn methods(platform: &Platform) -> Vec<Candidate> {
+    match platform.os {
         Os::Windows => vec![
             Candidate::new(Vendor::Nvenc),
             Candidate::new(Vendor::Qsv),
@@ -434,7 +528,17 @@ pub fn candidates(
         }
         Os::MacOs => vec![Candidate::new(Vendor::VideoToolbox)],
         Os::Other => Vec::new(),
-    };
+    }
+}
+
+/// The methods to try for `codec`, best first. Methods whose encoder is missing from
+/// `encoders` (the ffmpeg in use was built without them) are skipped.
+pub fn candidates(
+    platform: &Platform,
+    codec: Codec,
+    encoders: &BTreeSet<String>,
+) -> Vec<Candidate> {
+    let mut out = methods(platform);
     out.retain(|c| encoders.contains(&c.encoder(codec)));
     out
 }
@@ -498,6 +602,22 @@ pub struct HwEncode {
     pub vcodec: Vec<OsString>,
 }
 
+/// The bitrate a hardware export of a preset aims at (the normal method uses constant
+/// quality there): 8 Mb/s for H.264 at 1920x1080 and 25 fps, in proportion to the pixels
+/// per second, less for the newer formats (HEVC 0.6, VP9 0.65, AV1 0.5 of it), between
+/// 0.5 and 80 Mb/s.
+pub fn preset_bitrate(codec: Codec, width: u32, height: u32, fps: crate::time::Fps) -> u64 {
+    let pixels = width as f64 * height as f64 * fps.as_f64();
+    let base = 8_000_000.0 * pixels / (1920.0 * 1080.0 * 25.0);
+    let factor = match codec {
+        Codec::H264 => 1.0,
+        Codec::Hevc => 0.6,
+        Codec::Vp9 => 0.65,
+        Codec::Av1 => 0.5,
+    };
+    (base * factor).clamp(500_000.0, 80_000_000.0) as u64
+}
+
 /// GOP length of every method (the x264/x265 default; ffmpeg's own default of 12 makes
 /// some hardware files much larger).
 pub const GOP: u32 = 250;
@@ -510,17 +630,28 @@ pub fn encode_args(cand: &Candidate, codec: Codec, target: Target) -> HwEncode {
     let m = t.saturating_mul(5) / 4;
     let buf = t.saturating_mul(2);
     let mut vcodec: Vec<String> = vec!["-c:v".into(), cand.encoder(codec)];
-    if v == Vendor::Vaapi && cand.rc == RateControl::ConstantQuality {
-        vcodec.extend([
-            "-rc_mode".to_string(),
-            "CQP".to_string(),
-            "-qp".to_string(),
-            target.qp.to_string(),
-            "-g".to_string(),
-            GOP.to_string(),
-            "-profile:v".to_string(),
-            codec.profile().to_string(),
-        ]);
+    let profile: Vec<String> = codec
+        .profile()
+        .map(|p| vec!["-profile:v".to_string(), p.to_string()])
+        .unwrap_or_default();
+    let gop = ["-g".to_string(), GOP.to_string()];
+    if cand.rc == RateControl::ConstantQuality {
+        match v {
+            Vendor::Vaapi => {
+                vcodec.extend(["-rc_mode".to_string(), "CQP".to_string()]);
+                vcodec.extend(["-qp".to_string(), target.qp.to_string()]);
+                vcodec.extend(gop);
+                vcodec.extend(profile);
+            }
+            // Quick Sync's intelligent constant quality: a quality value and no bitrate
+            _ => {
+                vcodec.extend(["-preset".to_string(), "medium".to_string()]);
+                vcodec.extend(["-global_quality".to_string(), target.qp.to_string()]);
+                vcodec.extend(gop);
+                vcodec.extend(profile);
+                vcodec.extend(["-pix_fmt".to_string(), "nv12".to_string()]);
+            }
+        }
         return vaapi_encode(cand, codec, vcodec);
     }
     let extra: &[&str] = match v {
@@ -554,11 +685,9 @@ pub fn encode_args(cand: &Candidate, codec: Codec, target: Target) -> HwEncode {
         m.to_string(),
         "-bufsize".to_string(),
         buf.to_string(),
-        "-g".to_string(),
-        GOP.to_string(),
-        "-profile:v".to_string(),
-        codec.profile().to_string(),
     ]);
+    vcodec.extend(gop);
+    vcodec.extend(profile);
     match v {
         Vendor::Nvenc | Vendor::VideoToolbox => {
             vcodec.extend(["-pix_fmt".into(), "yuv420p".into()])
@@ -613,7 +742,12 @@ pub enum Reason {
     LibvaTooOld,
     /// No such device or driver on this computer.
     NotAvailable,
+    /// Busy (output or processor use) but not finished in time, even on its second try.
     TimedOut,
+    /// No output and no processor use when its time ran out (REQ-210): skipped at once.
+    Hanging,
+    /// Ran out of time twice earlier in this session (REQ-209): not tried again.
+    SkippedSlow,
     Failed,
 }
 
@@ -624,6 +758,8 @@ impl Reason {
             Reason::LibvaTooOld => "needs a newer system video library (libva 2.21 or newer)",
             Reason::NotAvailable => "not available on this computer",
             Reason::TimedOut => "did not answer in time",
+            Reason::Hanging => "did not answer at all, skipped",
+            Reason::SkippedSlow => "skipped: too slow twice",
             Reason::Failed => "did not work",
         }
     }
@@ -654,32 +790,52 @@ pub fn reason_of(stderr: &str) -> Reason {
     }
 }
 
-/// The probe result: the working method of each format, and why others did not work.
+/// The probe result: the working methods of each format (best first), why others did not
+/// work, and which candidates were too slow.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HwStatus {
-    pub h264: Option<Candidate>,
-    pub hevc: Option<Candidate>,
+    pub working: BTreeMap<Codec, Vec<Candidate>>,
     pub notes: Vec<(Codec, Vendor, Reason)>,
+    /// Candidates that ran out of time twice (REQ-209): the app skips them for the rest of
+    /// the session.
+    pub slow: Vec<(Codec, Vendor)>,
+    /// The words of REQ-217 when the system video library is too old.
+    pub libva_note: Option<String>,
 }
 
 impl HwStatus {
+    /// The method [`GraphicsChoice::Automatic`] uses for `codec`: the best one.
     pub fn get(&self, codec: Codec) -> Option<&Candidate> {
-        match codec {
-            Codec::H264 => self.h264.as_ref(),
-            Codec::Hevc => self.hevc.as_ref(),
+        self.working.get(&codec).and_then(|v| v.first())
+    }
+
+    /// The method for `codec` on the device the user chose (`None`: Automatic). A chosen
+    /// device that is not in the working list (it went away, or it cannot make this format)
+    /// gives nothing, so the normal method is used (REQ-216).
+    pub fn chosen(&self, codec: Codec, device: Option<&str>) -> Option<&Candidate> {
+        match device {
+            None => self.get(codec),
+            Some(name) => self.working.get(&codec)?.iter().find(|c| c.label() == name),
         }
     }
 
-    fn set(&mut self, codec: Codec, c: Option<Candidate>) {
-        match codec {
-            Codec::H264 => self.h264 = c,
-            Codec::Hevc => self.hevc = c,
+    /// The working devices by name, in the order of the check, each once (REQ-216).
+    pub fn devices(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for list in self.working.values() {
+            for c in list {
+                let l = c.label();
+                if !out.contains(&l) {
+                    out.push(l);
+                }
+            }
         }
+        out
     }
 
     /// No format has working hardware.
     pub fn none_found(&self) -> bool {
-        self.h264.is_none() && self.hevc.is_none()
+        self.working.values().all(Vec::is_empty)
     }
 
     /// Some format has no working hardware but one of its candidates did not answer in
@@ -691,28 +847,47 @@ impl HwStatus {
     }
 }
 
-/// What an export may use (the probe result minus the methods turned off after a problem).
+/// What an export may use (the probe result minus the methods turned off after a problem,
+/// on the device the user chose).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HwOffer {
-    pub h264: Option<Candidate>,
-    pub hevc: Option<Candidate>,
+    pub found: BTreeMap<Codec, Candidate>,
 }
 
 impl HwOffer {
-    pub fn get(&self, codec: Codec) -> Option<&Candidate> {
-        match codec {
-            Codec::H264 => self.h264.as_ref(),
-            Codec::Hevc => self.hevc.as_ref(),
+    /// An offer of one method for one format.
+    pub fn one(codec: Codec, cand: Candidate) -> HwOffer {
+        HwOffer {
+            found: BTreeMap::from([(codec, cand)]),
         }
+    }
+
+    /// What Automatic offers: the best working method of each format.
+    pub fn automatic(status: &HwStatus) -> HwOffer {
+        HwOffer {
+            found: Codec::ALL
+                .into_iter()
+                .filter_map(|c| Some((c, status.get(c)?.clone())))
+                .collect(),
+        }
+    }
+
+    pub fn get(&self, codec: Codec) -> Option<&Candidate> {
+        self.found.get(&codec)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.found.is_empty()
     }
 }
 
 /// Time limits of the probe.
 ///
 /// A try that runs out of time is not taken as "this hardware does not work": on a busy
-/// computer a working encoder can take longer to start, so the candidate is tried once
-/// more, immediately (the preference order stays the same), with the longer `retry`
-/// limit. `total` is the hard bound of the whole check.
+/// computer a working encoder can take longer to start, so a candidate that was busy
+/// (output or processor use) is tried once more, immediately (the preference order stays
+/// the same), with the longer `retry` limit; one that did nothing at all is skipped (REQ-210).
+/// `total` is the hard bound of the whole check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProbeLimits {
     /// First try of a candidate, from the start of its process (waiting for a slot does
@@ -735,7 +910,8 @@ impl Default for ProbeLimits {
 }
 
 /// The probe encode of `cand`: 8 synthetic 640x360 frames with exactly the arguments of a
-/// real export, written nowhere.
+/// real export, written nowhere. Its progress goes to stdout, so that output shows that the
+/// try is alive (REQ-210).
 pub fn probe_args(cand: &Candidate, codec: Codec) -> Vec<OsString> {
     let hw = encode_args(cand, codec, Target::new(2_000_000));
     let mut a = argv(["-hide_banner", "-nostdin", "-v", "error"]);
@@ -752,16 +928,45 @@ pub fn probe_args(cand: &Candidate, codec: Codec) -> Vec<OsString> {
     a.push(format!("[0:v]format=yuv420p[outv]{}", hw.graph_tail).into());
     a.extend(argv(["-map", hw.out_label.as_str()]));
     a.extend(hw.vcodec);
-    a.extend(argv(["-f", "null", "-"]));
+    a.extend(argv(["-f", "null", "-", "-progress", "pipe:1", "-nostats"]));
     a
+}
+
+/// Whether a try that ran out of time was still doing something (REQ-210).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Activity {
+    /// It wrote output or used processor time.
+    Busy,
+    /// Neither.
+    Idle,
+    /// No output, and the processor use cannot be read.
+    Unknown,
+}
+
+/// Processor time (ms) a try must use to count as busy.
+const BUSY_CPU_MS: u64 = 20;
+
+/// The activity of a try from its output and its processor time at the start and now.
+pub fn classify(output: bool, cpu: Option<(u64, u64)>) -> Activity {
+    if output {
+        return Activity::Busy;
+    }
+    match cpu {
+        Some((a, b)) if b.saturating_sub(a) >= BUSY_CPU_MS => Activity::Busy,
+        Some(_) => Activity::Idle,
+        None => Activity::Unknown,
+    }
 }
 
 /// Outcome of one timed run.
 enum Run {
     Ok,
     Failed(String),
-    TimedOut,
+    TimedOut(Activity),
 }
+
+/// How often a try is looked at.
+const POLL: Duration = Duration::from_millis(10);
 
 /// Runs `args` for at most `limit` from the moment the process starts. Returns the
 /// outcome and the time it ran.
@@ -776,20 +981,45 @@ fn timed_run(
         Err(e) => return (Run::Failed(e.to_string()), Duration::ZERO),
     };
     let started = Instant::now();
-    let (tx, rx) = std::sync::mpsc::channel();
+    let cpu0 = p.cpu_ms();
+    // true: bytes seen; false: the output ended
+    let (tx, rx) = std::sync::mpsc::channel::<bool>();
     if let Some(mut out) = p.take_stdout() {
         std::thread::spawn(move || {
-            let mut sink = Vec::new();
-            let _ = out.by_ref().take(64 * 1024).read_to_end(&mut sink);
-            let _ = tx.send(());
+            let mut buf = [0u8; 4096];
+            let mut total = 0usize;
+            loop {
+                match out.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        // the rest is read and dropped (bounded, as before)
+                        if total < 64 * 1024 {
+                            let _ = tx.send(true);
+                        }
+                        total += n;
+                    }
+                }
+            }
+            let _ = tx.send(false);
         });
     } else {
-        let _ = tx.send(());
+        let _ = tx.send(false);
     }
-    if rx.recv_timeout(limit).is_err() {
-        p.kill();
-        let _ = p.wait();
-        return (Run::TimedOut, started.elapsed());
+    let mut output = false;
+    loop {
+        let left = limit.saturating_sub(started.elapsed());
+        if left.is_zero() {
+            let cpu = cpu0.zip(p.cpu_ms());
+            let activity = classify(output, cpu);
+            p.kill();
+            let _ = p.wait();
+            return (Run::TimedOut(activity), started.elapsed());
+        }
+        match rx.recv_timeout(left.min(POLL)) {
+            Ok(true) => output = true,
+            Ok(false) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+        }
     }
     let r = p.wait();
     let ran = started.elapsed();
@@ -806,14 +1036,22 @@ struct Budget {
     used: Duration,
 }
 
+/// What came of the tries of one candidate.
+struct Attempt {
+    result: Result<Candidate, Reason>,
+    /// It ran out of time twice, or hung (REQ-209, REQ-210): skip it for the session.
+    slow: bool,
+}
+
 impl Budget {
     fn left(&self) -> Duration {
         self.limits.total.saturating_sub(self.used)
     }
 
-    /// Runs the probe of `cand`: a first try of at most `per`; if it runs out of time (and
-    /// was not cut short by the total budget), one more try of at most `retry`. `None`
-    /// when nothing could be started (no time left, or cancelled).
+    /// Runs the probe of `cand`: a first try of at most `per`; if it runs out of time while
+    /// busy (and was not cut short by the total budget), one more try of at most `retry`; if
+    /// it ran out of time doing nothing it is skipped at once (REQ-210). `None` when
+    /// nothing could be started (no time left, or cancelled).
     fn attempt(
         &mut self,
         runner: &dyn Runner,
@@ -821,23 +1059,31 @@ impl Budget {
         cand: &Candidate,
         codec: Codec,
         cancel: &AtomicBool,
-    ) -> Option<Result<Candidate, Reason>> {
+    ) -> Option<Attempt> {
         let args = probe_args(cand, codec);
         let mut outcome = None;
-        for limit in [self.limits.per, self.limits.retry] {
+        for (n, limit) in [self.limits.per, self.limits.retry].into_iter().enumerate() {
             let left = self.left();
             if left.is_zero() || cancel.load(Ordering::SeqCst) {
                 break;
             }
             let (run, ran) = timed_run(runner, ffmpeg, &args, limit.min(left));
             self.used += ran;
-            let (result, again) = match run {
-                Run::Ok => (Ok(cand.clone()), false),
-                Run::Failed(err) => (Err(reason_of(&err)), false),
-                // a time-out only because the whole check is out of time is final
-                Run::TimedOut => (Err(Reason::TimedOut), limit <= left),
+            let (result, again, slow) = match run {
+                Run::Ok => (Ok(cand.clone()), false, false),
+                Run::Failed(err) => (Err(reason_of(&err)), false, false),
+                // doing nothing: no second try
+                Run::TimedOut(Activity::Idle) => (Err(Reason::Hanging), false, true),
+                // a time-out only because the whole check is out of time is final; a busy
+                // candidate is not counted against the session (REQ-210), an unknown one
+                // is, after its second time-out (REQ-209)
+                Run::TimedOut(a) => (
+                    Err(Reason::TimedOut),
+                    n == 0 && limit <= left,
+                    n == 1 && a == Activity::Unknown,
+                ),
             };
-            outcome = Some(result);
+            outcome = Some(Attempt { result, slow });
             if !again {
                 break;
             }
@@ -846,15 +1092,18 @@ impl Budget {
     }
 }
 
-/// Tries the candidates of each format in order and keeps the first that works. A try
-/// that runs out of time is repeated once with a longer limit before the next candidate
-/// (see [`ProbeLimits`]); once `limits.total` of running time is used up, the untried
-/// candidates count as not answering in time. Stops early when `cancel` is set.
+/// Tries the candidates of each format in order and keeps every one that works (the first is
+/// what Automatic uses, REQ-216). A try that runs out of time while busy is repeated once
+/// with a longer limit before the next candidate (see [`ProbeLimits`]); once
+/// `limits.total` of running time is used up, the untried candidates count as not answering
+/// in time. Candidates in `skip` ran out of time twice earlier in the session and are not
+/// tried (REQ-209). Stops early when `cancel` is set.
 pub fn probe(
     runner: &dyn Runner,
     ffmpeg: &Path,
     cands: &[(Codec, Vec<Candidate>)],
     limits: ProbeLimits,
+    skip: &BTreeSet<(Codec, Vendor)>,
     cancel: &AtomicBool,
 ) -> HwStatus {
     let mut status = HwStatus::default();
@@ -867,7 +1116,11 @@ pub fn probe(
             if cancel.load(Ordering::SeqCst) {
                 return status;
             }
-            let Some(mut outcome) = budget.attempt(runner, ffmpeg, c, *codec, cancel) else {
+            if skip.contains(&(*codec, c.vendor)) {
+                status.notes.push((*codec, c.vendor, Reason::SkippedSlow));
+                continue;
+            }
+            let Some(mut attempt) = budget.attempt(runner, ffmpeg, c, *codec, cancel) else {
                 if cancel.load(Ordering::SeqCst) {
                     return status;
                 }
@@ -875,17 +1128,17 @@ pub fn probe(
                 continue;
             };
             // a driver that refuses bitrate control may still encode at constant quality
-            if outcome == Err(Reason::Failed)
+            if attempt.result == Err(Reason::Failed)
                 && let Some(cq) = c.constant_quality()
                 && let Some(r) = budget.attempt(runner, ffmpeg, &cq, *codec, cancel)
             {
-                outcome = r;
+                attempt = r;
             }
-            match outcome {
-                Ok(found) => {
-                    status.set(*codec, Some(found));
-                    break;
-                }
+            if attempt.slow && !status.slow.contains(&(*codec, c.vendor)) {
+                status.slow.push((*codec, c.vendor));
+            }
+            match attempt.result {
+                Ok(found) => status.working.entry(*codec).or_default().push(found),
                 Err(r) => status.notes.push((*codec, c.vendor, r)),
             }
         }
@@ -900,6 +1153,7 @@ pub fn probe_all(
     encoders: &BTreeSet<String>,
     platform: &Platform,
     limits: ProbeLimits,
+    skip: &BTreeSet<(Codec, Vendor)>,
     cancel: &AtomicBool,
 ) -> HwStatus {
     let blocked = platform.os == Os::Linux
@@ -921,7 +1175,10 @@ pub fn probe_all(
             (*c, list)
         })
         .collect();
-    let mut status = probe(runner, ffmpeg, &cands, limits, cancel);
+    let mut status = probe(runner, ffmpeg, &cands, limits, skip, cancel);
+    if !skipped.is_empty() {
+        status.libva_note = Some(libva_message(platform.libva_version));
+    }
     status.notes.extend(skipped);
     status
 }

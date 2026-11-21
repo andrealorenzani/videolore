@@ -1,0 +1,75 @@
+name: Installer configuration
+
+# Runs by itself on pull requests that change the packaging, and is called by the Build
+# workflow, whose executables and installers wait for it (REQ-225).
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/package.sh"
+      - "packaging/**"
+      - "assets/icon/**"
+
+permissions:
+  contents: read
+
+jobs:
+  package-config:
+    # The installer configuration is checked without ffmpeg and without the real installers
+    # (QG-10): the Windows and macOS packager files, the pinned NSIS toolchain, and a Linux
+    # AppImage and archive made of stub programs with the pinned appimagetool. Nothing is
+    # uploaded.
+    name: installer configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Windows and macOS packager configuration
+        run: |
+          for t in windows-x86_64 macos-aarch64; do
+            for p in editor player; do
+              scripts/package.sh "$t" "$p" --config-only
+            done
+          done
+          for f in dist/stage-windows-x86_64/Packager.toml dist/stage-windows-x86_64-player/Packager.toml \
+                   dist/stage-macos-aarch64/Packager.toml dist/stage-macos-aarch64-player/Packager.toml; do
+            for key in '^name = ' '^identifier = ' '^version = ' '^formats = ' '^binaries = ' '^icons = ' '^resources = '; do
+              grep -q "$key" "$f" || { echo "$f: no line matching $key" >&2; exit 1; }
+            done
+          done
+          grep -q '^formats = \["nsis"\]' dist/stage-windows-x86_64/Packager.toml
+          grep -q '^formats = \["app"\]' dist/stage-macos-aarch64/Packager.toml
+          grep -q '^installMode = "currentUser"' dist/stage-windows-x86_64/Packager.toml
+      - name: Pinned NSIS toolchain (SHA-256 in packaging/tools.lock) and the licence page file
+        run: |
+          scripts/package.sh tool nsis
+          # the licence page reads the file as UTF-8 only with a byte-order mark (REQ-229)
+          for d in dist/stage-windows-x86_64 dist/stage-windows-x86_64-player; do
+            [[ "$(head -c 3 "$d/third-party-licence.txt" | xxd -p)" == efbbbf ]] ||
+              { echo "$d: the licence file has no byte-order mark" >&2; exit 1; }
+          done
+      - name: Linux AppImage from stub programs (pinned appimagetool, checksum checked)
+        run: |
+          version=$(scripts/version.sh get)
+          for p in editor player; do
+            scripts/package.sh linux-x86_64 "$p" --stub
+          done
+          ls dist/stub/videolore-${version}-linux-x86_64.AppImage dist/stub/videolore-player-${version}-linux-x86_64.AppImage
+          for n in videolore videolore-player; do
+            d=dist/stub/stage-linux-x86_64
+            [[ $n == videolore-player ]] && d=dist/stub/stage-linux-x86_64-player
+            for f in AppRun $n.desktop $n.png usr/bin/$n usr/bin/ffmpeg usr/bin/ffprobe usr/share/$n/notices/third-party.txt; do
+              [[ -e $d/AppDir/$f ]] || { echo "AppDir of $n lacks $f" >&2; exit 1; }
+            done
+          done
+          # the archive holds the launcher and the desktop entry (REQ-231)
+          for n in videolore videolore-player; do
+            tgz=dist/stub/$n-${version}-linux-x86_64.tar.gz
+            for f in $n $n.sh $n.desktop $n.png; do
+              tar -tzf "$tgz" | grep -qx "$n-${version}-linux-x86_64/$f" ||
+                { echo "$tgz lacks $f" >&2; exit 1; }
+            done
+            tar -tvzf "$tgz" | grep -E " $n-${version}-linux-x86_64/$n\.sh$" | grep -q '^-rwx' ||
+              { echo "the launcher of $n is not executable" >&2; exit 1; }
+          done

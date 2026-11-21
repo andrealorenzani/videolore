@@ -14,6 +14,14 @@ sha256 = 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 [cargo-packager]
 version = 0.11.8
 
+# The NSIS toolchain of the Windows installer. cargo-packager 0.11.8 downloads this very
+# file itself (and checks its SHA-1, 586855a743a6e0ade203d8758af303a48ee0716b); the installer
+# job downloads it too and refuses any other bytes (REQ-228).
+[nsis]
+version = 3.09
+url = https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.9/nsis-3.09.zip
+sha256 = f5dc52eef1f3884230520199bac6f36b82d643d86b003ce51bd24b05c6ba7c91
+
 [cargo-about]
 version = 0.9.3
 

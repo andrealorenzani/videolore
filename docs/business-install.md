@@ -30,8 +30,8 @@ Back to the [index](business.md).
 
 ## Known limitations
 - Unsigned installers: macOS and Windows show a warning on first launch, and the AppImage needs the "allow executing" permission once; the README explains each step.
-- Some Linux file managers do not start a program from the extracted `.tar.gz` on double-click; the README gives the fallback (right-click and run, or start it once from a terminal).
-- On Windows and Linux, double-clicking a project while videolore is open starts a second window instead of reusing the first.
+- Some Linux file managers do not start a program from the extracted `.tar.gz` on double-click; the README gives the fallback (right-click and run, or start it once from a terminal). Planned for 2.0.4: a launcher in the archive (REQ-231).
+- On Windows and Linux, double-clicking a project while videolore is open starts a second window instead of reusing the first. Planned for 2.0.4 (REQ-230, see [Platforms and installers](business-platforms.md)).
 - Assumption: the way source code is offered for bundled components has not been reviewed by a lawyer.
 
 ## Out of scope

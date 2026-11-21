@@ -23,20 +23,26 @@ pub mod media;
 pub mod menu;
 pub mod modals;
 pub mod picture;
+pub mod place;
 pub mod placement;
 pub mod popups;
 pub mod ruler;
+pub mod scripts;
 pub mod settings;
 pub mod splash_ui;
 pub mod splash_window;
 pub mod status;
+pub mod strings;
 pub mod text_popup;
+pub mod theme;
 pub mod timeline;
 pub mod toolbar;
+pub mod view_menu;
 pub mod zoom;
 
 use crate::app::{AppState, Command};
 use crate::music::Mix;
+use crate::settings::interface::Section;
 use crate::subtitles::LineId;
 use crate::time::{Micros, timecode};
 use actions::ActionId;
@@ -46,6 +52,7 @@ use eframe::egui::{
 };
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+use strings::tr;
 
 /// A scroll area drawn this frame: its visible part and the whole content (for the
 /// "everything reachable" checks).
@@ -73,6 +80,8 @@ pub struct UiCache {
     layout_drag_start: Option<layout::Fractions>,
     /// Where the sections were drawn this frame.
     pub sections: Option<layout::SectionRects>,
+    /// The saved window place was checked against the screen (REQ-234).
+    pub window_checked: bool,
     /// Scroll areas drawn this frame.
     pub containers: Vec<Container>,
     /// Timeline geometry of this frame.
@@ -100,7 +109,7 @@ pub struct UiCache {
     pub camera_drag: bool,
     /// Values of a point of view being edited in its popup: media, its time, and
     /// (time in s, yaw, pitch, zoom in degrees).
-    pub pov_edit: Option<(crate::media::MediaId, Micros, [f64; 4])>,
+    pub pov_edit: Option<(crate::media::MediaId, Micros, [f64; 5])>,
     /// Scale (percent) or Move (x, y percent) typed or dragged in a popup, kept until
     /// the edit ends.
     pub frame_edit: Option<[f64; 2]>,
@@ -120,6 +129,11 @@ pub struct UiCache {
     pub splash: Option<splash_window::Loaded>,
     /// Where the splash was drawn this frame.
     pub splash_rects: Option<splash_window::SplashRects>,
+    /// The edge of a clip being dragged to trim it, and the time it has moved (REQ-191):
+    /// nothing is stored until the release.
+    pub edge_drag: Option<timeline::EdgeDrag>,
+    /// A subtitle marker or a fade marker being dragged on the timeline (REQ-192, REQ-193).
+    pub marker_drag: Option<timeline::MarkerDrag>,
 }
 
 impl UiCache {
@@ -184,6 +198,8 @@ pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Ins
     let ctx = &ctx;
     register_subtitle_font(ctx);
     icons::install(ctx);
+    theme::apply(ctx, &app.settings.interface);
+    keymap::install(ctx, &app.settings.interface.shortcuts);
     app.tick(now);
     // Ctrl/Cmd +, - and 0 zoom the timeline, not the whole interface
     if ctx.options(|o| o.zoom_with_keyboard) {
@@ -198,6 +214,25 @@ pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Ins
     cache.containers.clear();
 
     let mut cmds = Vec::new();
+    // the window's size, place and maximised state are remembered (REQ-234); a saved place
+    // outside the screen is replaced by the system's (once, at the start)
+    ctx.input(|i| {
+        let v = i.viewport();
+        let saved = app.settings.interface.window;
+        if !cache.window_checked
+            && let (Some(w), Some(mon)) = (saved, v.monitor_size)
+        {
+            cache.window_checked = true;
+            if w.x.is_some() && w.visible_position((mon.x, mon.y)).is_none() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(1280.0, 800.0)));
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos2(40.0, 40.0)));
+            }
+        }
+        let maximised = v.maximized.unwrap_or(false);
+        if let Some(w) = place::window_to_save(saved, v.inner_rect, v.outer_rect, maximised) {
+            cmds.push(Command::WindowChanged(w));
+        }
+    });
     let dropped: Vec<PathBuf> = ctx.input(|i| {
         i.raw
             .dropped_files
@@ -237,6 +272,9 @@ pub fn frame_ui(root: &mut Ui, app: &mut AppState, cache: &mut UiCache, now: Ins
         if app.is_enabled(&c) {
             let _ = app.dispatch(c, now);
         }
+    }
+    if let Some(t) = app.clipboard_text.take() {
+        ctx.copy_text(t);
     }
     if app.quit_requested {
         app.quit_requested = false;
@@ -292,19 +330,26 @@ fn content(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Comm
     let f = cache
         .layout_drag
         .unwrap_or(app.settings.layout.unwrap_or_default());
-    let r = layout::sections(area, f, layout::MINS);
+    let arr = layout::Arrangement::of(&app.settings.interface);
+    let r = layout::arrange(area, f, layout::MINS, arr);
     cache.sections = Some(r);
     let zoom_range = timeline::zoom_range(app, r.timeline.width());
-    section(
-        ui,
-        cache,
-        cmds,
-        r.media,
-        "Media",
-        true,
-        |_, _| {},
-        |ui, _, cmds| media::media_panel(ui, app, cmds),
-    );
+    let ifc = &app.settings.interface;
+    let state = |s: Section| (ifc.is_collapsed(s), s);
+    if arr.media != layout::Mode::Hidden {
+        section(
+            ui,
+            cache,
+            cmds,
+            r.media,
+            "Media",
+            true,
+            state(Section::Media),
+            app,
+            |_, _| {},
+            |ui, _, cmds| media::media_panel(ui, app, cmds),
+        );
+    }
     section(
         ui,
         cache,
@@ -312,6 +357,8 @@ fn content(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Comm
         r.preview,
         "Preview",
         false,
+        (false, Section::Preview),
+        app,
         |_, _| {},
         |ui, cache, cmds| preview_panel(ui, app, cache, cmds),
     );
@@ -322,25 +369,75 @@ fn content(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Comm
         r.timeline,
         "Timeline",
         false,
+        (false, Section::Timeline),
+        app,
         |ui, cmds| timeline::header(ui, app, zoom_range, cmds),
         |ui, cache, cmds| timeline::timeline_panel(ui, app, cache, zoom_range, cmds),
     );
-    section(
-        ui,
-        cache,
-        cmds,
-        r.effects,
-        "Effects",
-        true,
-        |_, _| {},
-        |ui, _, cmds| effects::effects_panel(ui, app, cmds),
-    );
-    for (s, rect) in r.splitters {
-        splitter(ui, cache, cmds, area, f, s, rect);
+    if arr.effects != layout::Mode::Hidden {
+        section(
+            ui,
+            cache,
+            cmds,
+            r.effects,
+            "Effects",
+            true,
+            state(Section::Effects),
+            app,
+            |_, _| {},
+            |ui, _, cmds| effects::effects_panel(ui, app, cmds),
+        );
+    }
+    let flipped = [arr.media_right, !arr.effects_left, false];
+    for ((s, rect), flip) in r.splitters.into_iter().zip(flipped) {
+        // a hidden or collapsed section has no border to drag
+        if rect.width() > 0.0 && rect.height() > 0.0 {
+            splitter(ui, cache, cmds, area, f, s, rect, flip);
+        }
+    }
+}
+
+/// The menu of a section's header: hide, collapse and dock (REQ-237, REQ-238).
+fn section_menu(ui: &mut Ui, app: &AppState, s: Section, cmds: &mut Vec<Command>) {
+    let ifc = &app.settings.interface;
+    let collapsed = ifc.is_collapsed(s);
+    let collapse = if collapsed {
+        tr!(Expand)
+    } else {
+        tr!(Collapse)
+    };
+    if ui
+        .small_button(if collapsed { "+" } else { "–" })
+        .on_hover_text(collapse)
+        .clicked()
+    {
+        cmds.push(Command::SetSectionCollapsed(s, !collapsed));
+    }
+    if s.can_hide() {
+        ui.menu_button(tr!(MoreMenu), |ui| {
+            if ui.button(tr!(HideSection)).clicked() {
+                cmds.push(Command::SetSectionHidden(s, true));
+                ui.close();
+            }
+            let right = s == Section::Media;
+            let flipped = ifc.is_flipped(s);
+            // Media is at the left and Effects at the right by default
+            let to_right = right != flipped;
+            let label = if to_right {
+                strings::Key::DockLeft
+            } else {
+                strings::Key::DockRight
+            };
+            if ui.button(crate::ui::strings::get(label)).clicked() {
+                cmds.push(Command::SetSectionFlipped(s, !flipped));
+                ui.close();
+            }
+        });
     }
 }
 
 /// A draggable border: resize cursor, live update while dragging, one save on release.
+#[allow(clippy::too_many_arguments)]
 fn splitter(
     ui: &mut Ui,
     cache: &mut UiCache,
@@ -349,6 +446,7 @@ fn splitter(
     f: layout::Fractions,
     s: layout::Splitter,
     rect: Rect,
+    flip: bool,
 ) {
     let resp = ui
         .interact(rect, Id::unique(("videolore-splitter", s)), Sense::drag())
@@ -382,6 +480,7 @@ fn splitter(
         && let (Some(start), Some(d)) = (cache.layout_drag_start, resp.total_drag_delta())
     {
         let delta = if s.is_vertical() { d.x } else { d.y };
+        let delta = if flip { -delta } else { delta };
         cache.layout_drag = Some(layout::drag(start, s, delta, area, layout::MINS));
     }
     if resp.drag_stopped() {
@@ -402,6 +501,8 @@ fn section(
     rect: Rect,
     title: &str,
     scroll: bool,
+    (collapsed, which): (bool, Section),
+    app: &AppState,
     header: impl FnOnce(&mut Ui, &mut Vec<Command>),
     body: impl FnOnce(&mut Ui, &mut UiCache, &mut Vec<Command>),
 ) {
@@ -416,8 +517,14 @@ fn section(
                     ui.set_min_size(ui.available_size());
                     ui.horizontal(|ui| {
                         ui.strong(title);
-                        header(ui, cmds);
+                        section_menu(ui, app, which, cmds);
+                        if !collapsed {
+                            header(ui, cmds);
+                        }
                     });
+                    if collapsed {
+                        return;
+                    }
                     ui.separator();
                     if scroll {
                         let area = ScrollArea::both()
@@ -543,7 +650,7 @@ fn preview_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
                 // a 360° clip: save the view shown as a point of view
                 let id = ActionId::SetPov;
                 let r = ui
-                    .button("Set POV")
+                    .button(tr!(SetPOV))
                     .on_hover_text(action_tooltip(ui.ctx(), app, id));
                 if r.clicked() {
                     cmds.push(Command::SetPov);
@@ -558,7 +665,7 @@ fn preview_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
                 dur > Micros::ZERO,
                 egui::Slider::new(&mut secs, 0.0..=max).show_value(false),
             )
-            .on_hover_text("Seek: drag to move the playhead");
+            .on_hover_text(tr!(SeekDragToMoveThe));
         if r.changed() {
             cmds.push(Command::Seek(Micros::from_secs_f64(secs)));
         }
@@ -604,13 +711,21 @@ pub fn action_tooltip(ctx: &Context, app: &AppState, id: actions::ActionId) -> S
 }
 
 #[cfg(test)]
+mod clarity_ux_tests;
+#[cfg(test)]
 mod frame_ux_tests;
 #[cfg(test)]
+mod gesture_ux_tests;
+#[cfg(test)]
 mod icon_ux_tests;
+#[cfg(test)]
+mod interface_ux_tests;
 #[cfg(test)]
 mod lut_ux_tests;
 #[cfg(test)]
 mod placing_ux_tests;
+#[cfg(test)]
+mod script_ux_tests;
 #[cfg(test)]
 mod sphere_ux_tests;
 #[cfg(test)]

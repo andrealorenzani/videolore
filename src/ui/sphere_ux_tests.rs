@@ -320,6 +320,7 @@ fn pov_markers_follow_the_clip_and_hide_outside_the_kept_part() {
     let pov = |t: i64| crate::camera::Pov {
         t: Micros(t * 1_000_000),
         cam: crate::camera::Camera::FRONT,
+        ease: Default::default(),
     };
     app.project.camera.set(m, pov(1)).unwrap();
     app.project.camera.set(m, pov(4)).unwrap();
@@ -580,4 +581,38 @@ fn a_line_fixed_to_the_sphere_is_dragged_to_another_point_not_to_a_flat_place() 
         l.anchor
     );
     assert!(!h.app.live.contains_key(&h.app.project.media[0].id));
+}
+
+// covers: REQ-272
+#[test]
+fn the_arrow_keys_turn_the_camera_and_enter_adds_a_point_of_view_only_with_the_picture_focused() {
+    let (_d, app) = sphere_app();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let (m, t) = h.app.sphere_at_playhead().unwrap();
+    let yaw = |h: &Harness| h.app.effective_camera(m, t).yaw_cd;
+    // no focus on the picture: the arrows do not turn the camera
+    h.key(Key::ArrowRight, Modifiers::NONE);
+    assert_eq!(yaw(&h), 0);
+    // a click on the picture gives it the focus
+    let sections = h.cache.sections.unwrap();
+    let centre = sections.preview.center();
+    h.click(centre);
+    h.key(Key::ArrowRight, Modifiers::NONE);
+    assert_eq!(yaw(&h), 500, "5 degrees");
+    h.key(Key::ArrowLeft, Modifiers::NONE);
+    h.key(Key::ArrowLeft, Modifiers::NONE);
+    assert_eq!(yaw(&h), -500);
+    h.key(Key::ArrowUp, Modifiers::NONE);
+    assert_eq!(h.app.effective_camera(m, t).pitch_cd, 500);
+    let fov = h.app.effective_camera(m, t).fov_cd;
+    h.key(Key::PageUp, Modifiers::NONE);
+    assert!(
+        h.app.effective_camera(m, t).fov_cd < fov,
+        "Page Up zooms in"
+    );
+    // Enter makes a point of view at the playhead
+    assert!(h.app.project.camera.path(m).is_empty());
+    h.key(Key::Enter, Modifiers::NONE);
+    assert_eq!(h.app.project.camera.path(m).len(), 1);
+    assert_eq!(h.app.project.camera.path(m)[0].t, h.app.playhead);
 }

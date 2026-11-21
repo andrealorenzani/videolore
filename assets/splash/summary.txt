@@ -1,6 +1,6 @@
 New in this version
-The start screen uses the same videolore picture in every release, so only the version number and the summary change from one release to the next.
-It still opens at every start without a project or a video on the command line, and stays on top until you close it with Close, Esc or the window's close button.
-The summary on the right is written for this version: it lists the changes you will notice, in short lines you can read at once.
-The video player now has its own start screen, with its own picture and its own summary, shown in the same way as the editor's.
-Opening a project or a video from the command line still skips the start screen, so the work starts at once.
+Subtitles can be exported as WebVTT or ASS, imported from .srt and .vtt files, and kept as a separate track in the full video export.
+Autosave every 2 minutes with crash recovery; drag clip edges and markers on the timeline; the [ and ] keys jump between markers.
+Faster export on more hardware: AV1 and VP9 presets, hardware decoding in the preview, and a choice of graphics card in Settings.
+The window, popups and sections are remembered; workspaces, a customisable toolbar, themes and screen-reader names are new.
+Effects: fade length, Crop, volume keyframes, Clean audio strength, LUT strength and favourite LUTs; 360 videos keep their marker in MKV and WebM.

@@ -552,6 +552,52 @@ fn an_old_processor_gets_a_message_and_never_reaches_the_speech_engine() {
     assert!(app.status.starts_with("Exported"));
 }
 
+/// The processor-too-old path is tested on every run (REQ-227): the processor features are
+/// forced off through an injected machine value (the real processor is not touched), the
+/// friendly message is shown, and the speech engine is never reached. CI runs the tests of
+/// this name on their own and fails when none runs.
+// covers: REQ-227, REQ-054
+#[test]
+fn cpu_message_is_shown_when_the_processor_features_are_forced_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let fake = Arc::new(runner());
+    let mut app = loaded(dir.path(), &fake);
+    let loads = Arc::new(AtomicUsize::new(0));
+    let l2 = Arc::clone(&loads);
+    app.transcriber = Arc::new(move |_, _| {
+        l2.fetch_add(1, Ordering::SeqCst);
+        Err(stt::SttError::NotAvailable)
+    });
+    // every feature the speech engine's baseline needs is off
+    let mut m = Machine::new(8, 4, 16 * GIB, "linux", "x86_64", CpuFeatures::ALL);
+    m.cpu = CpuFeatures {
+        sse42: false,
+        avx: false,
+        avx2: false,
+        fma: false,
+        f16c: false,
+        bmi2: false,
+    };
+    assert_eq!(m.cpu.missing().len(), 6);
+    app.machine = m;
+    let r = app.dispatch(Command::GenerateSubtitles, Instant::now());
+    if stt::available() {
+        r.unwrap();
+        assert_eq!(app.notice.as_deref(), Some(TOO_OLD_FOR_SUBTITLES));
+        assert!(app.modal.is_none(), "no download is offered");
+        assert!(!app.is_generating());
+    } else {
+        // a build without the speech engine says so instead (nothing to run)
+        assert!(r.is_err() || app.notice.is_some());
+    }
+    assert_eq!(
+        loads.load(Ordering::SeqCst),
+        0,
+        "the engine is never reached"
+    );
+    assert!(!app.machine.speech_supported());
+}
+
 // covers: REQ-059
 #[test]
 fn export_temporary_files_are_private_and_gone_afterwards() {

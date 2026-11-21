@@ -81,6 +81,5 @@ Implemented in 1.2.6: everything that can be moved on the preview picture gets a
 
 ## Out of scope
 - Stereo 3D, cube maps, 180° VR video, headsets and motion sensors.
-- Easing curves or other speeds between POVs; camera roll; animating the zoom separately from the POVs.
-- Boxes for rotating objects, free-aspect resizing, snapping or guides, keyboard nudging.
-- Stickers, images and shapes to place on the picture (titles are text items since 1.3.0, see [Text](business-text.md)).
+- Animating the zoom separately from the POVs; boxes for rotating objects; free-aspect resizing of boxes.
+- Planned for 2.0.4 (see [360 video](business-360-video.md)): easing and camera roll between POVs, keyboard control, the sphere's subtitles and arrows, spatial sound. Shapes and images on the picture: PNG images are planned (see [New effects](business-effects-frame.md)); shapes stay out of scope.

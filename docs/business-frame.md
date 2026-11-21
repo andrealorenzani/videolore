@@ -66,6 +66,6 @@ Added in 1.5.0: three picture effects. **Change aspect** sets the shape of the w
 - (1.6.1) A converted 1.6.0 clip with its own and a whole-video Scale or Move: the picture is exact at the kept keyframe times and a straight line between them, so it can differ from 1.6.0 in between (REQ-149).
 
 ## Out of scope
-- Keyframes for other effects, easing curves, speed changes.
-- Rotation, cropping by hand, free aspect ratios beyond 4:3, 16:9 and 9:16.
-- A different aspect for each clip; stabilisation; transitions.
+- Keyframes for effects other than Scale, Move and (2.0.4) volume.
+- Rotation; stabilisation; transitions.
+- Planned for 2.0.4 (see [New effects](business-effects-frame.md)): easing curves, cropping by hand, free aspect ratios, a different aspect for each clip, a blur strength choice.

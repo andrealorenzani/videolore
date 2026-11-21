@@ -269,6 +269,7 @@ fn items_partly_outside_get_a_dashed_outline_a_status_text_and_a_move_inside_com
     );
     // in the Edit menu: greyed out with nothing selected, enabled with the line selected
     let nodes = open_menu(&mut h, "Edit");
+    let nodes = super::ux_tests::open_submenu(&mut h, &nodes, "Subtitles");
     let item = find_in(&nodes, "Move inside the picture").expect("in the Edit menu");
     assert!(item.disabled, "nothing selected");
     close_menus(&mut h);
@@ -277,6 +278,7 @@ fn items_partly_outside_get_a_dashed_outline_a_status_text_and_a_move_inside_com
         .unwrap();
     h.idle(3);
     let nodes = open_menu(&mut h, "Edit");
+    let nodes = super::ux_tests::open_submenu(&mut h, &nodes, "Subtitles");
     let item = find_in(&nodes, "Move inside the picture")
         .expect("in the Edit menu")
         .clone();
@@ -295,5 +297,6 @@ fn items_partly_outside_get_a_dashed_outline_a_status_text_and_a_move_inside_com
         .dispatch(Command::SelectLine(Some(ids[0])), now)
         .unwrap();
     let nodes = open_menu(&mut h, "Edit");
+    let nodes = super::ux_tests::open_submenu(&mut h, &nodes, "Subtitles");
     assert!(find_in(&nodes, "Move inside the picture").unwrap().disabled);
 }

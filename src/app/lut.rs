@@ -29,6 +29,28 @@ impl AppState {
             .filter(|t| crate::lut::path_ok(t))
             .ok_or("The LUT file name cannot be used (it is not plain text or is too long)")?
             .to_string();
+        // the file the clip already has: nothing changes, no undo step (REQ-205)
+        let tl = &self.project.timeline;
+        let already = match target {
+            FrameTarget::Clip(id) => {
+                tl.lut_of(target) == Some(text.as_str()) && tl.get(id).is_some()
+            }
+            FrameTarget::Whole => {
+                !tl.clips.is_empty()
+                    && tl
+                        .clips
+                        .iter()
+                        .all(|c| tl.lut_of(FrameTarget::Clip(c.id)) == Some(text.as_str()))
+            }
+        };
+        if already {
+            let name = crate::lut::display_name(&text);
+            self.status = match target {
+                FrameTarget::Clip(_) => format!("The clip already uses {name}"),
+                FrameTarget::Whole => format!("Every clip already uses {name}"),
+            };
+            return Ok(());
+        }
         crate::lut::cached(&text)
             .map_err(|e| format!("{}: {e}", crate::lut::display_name(&text)))?;
         let label = if self.project.timeline.lut_of(target).is_some() {
@@ -36,9 +58,6 @@ impl AppState {
         } else {
             "Apply LUT"
         };
-        if self.project.timeline.lut_of(target) == Some(text.as_str()) {
-            return Ok(());
-        }
         self.edit(now, label, |e| {
             e.timeline.set_lut(target, Some(text)).map_err(err)
         })?;
@@ -65,7 +84,7 @@ impl AppState {
         paths.dedup();
         paths
             .into_iter()
-            .filter(|p| !Path::new(p.as_str()).exists())
+            .filter(|p| !Path::new(p.as_str()).exists() && !crate::lut::has_embedded(p))
             .map(|p| crate::lut::display_name(p))
             .collect()
     }

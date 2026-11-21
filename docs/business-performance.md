@@ -104,7 +104,7 @@ QG-07 to QG-10 were delivered in 2.0.2. The new automatic-build checks (QG-08 to
 ## Out of scope
 - Detection or benchmarks inside installers; long benchmarks; online databases of computers; telemetry.
 - Speech recognition files other than the three offered; translation.
-- Graphics-card acceleration for preview or effects (export can use it since 0.4.0, see [Export](business-export.md)).
+- Graphics-card acceleration for effects and subtitles (export can use it since 0.4.0; preview decoding and AV1 or VP9 hardware are in 2.0.4, see [Faster hardware export](business-hardware-export.md)).
 - A slower fallback speech engine for processors without AVX2.
 - Performance settings per project.
 - Raw technical values (threads, cores, codecs) in the main part of Settings.

@@ -21,6 +21,8 @@ enum Hw {
     Crashes,
     /// Never makes progress.
     Hangs,
+    /// Works, but ffmpeg's last time is under an earlier one.
+    TimeGoesBack,
     /// Ends well, but the file has green frames.
     GreenFrames,
     /// Ends well, but frames are missing.
@@ -49,6 +51,8 @@ struct Sim {
     software_fails: bool,
     /// Each command, tagged with what it was.
     log: Mutex<Vec<&'static str>>,
+    /// The command lines of the comparison runs.
+    lines: Mutex<Vec<String>>,
     /// The quantiser of each hardware run ("" for bitrate control).
     qps: Mutex<Vec<String>>,
     /// Commands that found the camera command file `cam0.txt` in their folder.
@@ -57,7 +61,8 @@ struct Sim {
     size: (u32, u32),
 }
 
-const FRAMES: u64 = 50;
+/// The frames of the test project: 4 s at 30 fps.
+const FRAMES: u64 = 120;
 
 fn sim(hw: Hw) -> Sim {
     Sim {
@@ -66,6 +71,7 @@ fn sim(hw: Hw) -> Sim {
         cancel: Arc::new(AtomicBool::new(false)),
         software_fails: false,
         log: Mutex::new(Vec::new()),
+        lines: Mutex::new(Vec::new()),
         qps: Mutex::new(Vec::new()),
         cam_seen: Default::default(),
         size: (1280, 720),
@@ -119,7 +125,7 @@ impl Sim {
                 {"codec_type": "video", "codec_name": "h264", "profile": "High",
                  "pix_fmt": "yuv420p", "width": self.size.0, "height": self.size.1,
                  "r_frame_rate": "30/1", "nb_read_packets": packets.to_string(),
-                 "duration": "2.000000"},
+                 "duration": "4.000000"},
                 {"codec_type": "audio", "codec_name": "aac", "sample_rate": "48000",
                  "channels": 2}
             ]
@@ -181,7 +187,7 @@ impl Runner for Sim {
             std::fs::write(&out, b"hardware video").unwrap();
             self.qps.lock().unwrap().push(
                 a.iter()
-                    .position(|x| x == "-qp")
+                    .position(|x| x == "-qp" || x == "-global_quality")
                     .map(|i| a[i + 1].clone())
                     .unwrap_or_default(),
             );
@@ -197,7 +203,16 @@ impl Runner for Sim {
             }
             return match self.hw {
                 Hw::Works | Hw::GreenFrames | Hw::DropsFrames => done(PROGRESS, true, ""),
-                Hw::BigAtFirst if line.contains("-qp 23") => done(big, true, ""),
+                Hw::TimeGoesBack => done(
+                    "out_time_us=3000000\nprogress=continue\nout_time_us=1000000\nprogress=end\n",
+                    true,
+                    "",
+                ),
+                Hw::BigAtFirst
+                    if line.contains("-qp 23") || line.contains("-global_quality 23") =>
+                {
+                    done(big, true, "")
+                }
                 Hw::BigAtFirst => done(PROGRESS, true, ""),
                 Hw::AlwaysBig => done(big, true, ""),
                 Hw::ExitsWithError => done("out_time_us=1000\n", false, "Error while encoding"),
@@ -216,8 +231,13 @@ impl Runner for Sim {
             return done(&format!("frame={packets}\nprogress=end\n"), true, "");
         }
         if line.contains("psnr=stats_file") {
-            self.note("compare");
+            self.note(if line.contains("[all]") {
+                "compare-all"
+            } else {
+                "compare"
+            });
             self.see_camera(cwd);
+            self.lines.lock().unwrap().push(line.clone());
             let y = if self.hw == Hw::GreenFrames {
                 "psnr_y:30.0 psnr_u:8.0 psnr_v:7.0"
             } else {
@@ -226,7 +246,7 @@ impl Runner for Sim {
             let log: String = (1..=9).map(|n| format!("n:{n} {y}\n")).collect();
             std::fs::write(cwd.unwrap().join(outcheck::PSNR_LOG), log).unwrap();
             return done(
-                &format!("frame={FRAMES}\nout_time_us=1966667\nprogress=end\n"),
+                &format!("frame={FRAMES}\nout_time_us=3966667\nprogress=end\n"),
                 true,
                 "",
             );
@@ -253,13 +273,15 @@ fn hw_job(dir: &Path, vendor: Option<Vendor>) -> ExportJob {
         .unwrap();
     j.project.timeline.toggle_fade(0).unwrap();
     j.project.media[0].format.bit_rate = Some(2_000_000);
-    j.hw = vendor.map(|v| HwOffer {
-        h264: Some(Candidate {
-            vendor: v,
-            device: (v == Vendor::Vaapi).then(|| "/dev/dri/renderD128".into()),
-            rc: Default::default(),
-        }),
-        hevc: None,
+    j.hw = vendor.map(|v| {
+        HwOffer::one(
+            Codec::H264,
+            Candidate {
+                vendor: v,
+                device: (v == Vendor::Vaapi).then(|| "/dev/dri/renderD128".into()),
+                rc: Default::default(),
+            },
+        )
     });
     j.stall_timeout = Duration::from_millis(80);
     j
@@ -306,7 +328,12 @@ fn working_hardware_makes_the_file_after_the_check() {
         let (path, method) = r.unwrap();
         assert_eq!(method, ExportMethod::Hardware(v));
         assert_eq!(std::fs::read(&path).unwrap(), b"hardware video");
-        assert_eq!(log, ["hardware", "metadata", "decode", "compare"]);
+        assert_eq!(
+            log,
+            [
+                "hardware", "metadata", "decode", "compare", "compare", "compare"
+            ]
+        );
         let p = progress(&ev);
         assert!(p.windows(2).all(|w| w[0] <= w[1]), "{p:?}");
         assert!(p.iter().any(|f| *f >= 0.85) && p.iter().all(|f| (0.0..=1.0).contains(f)));
@@ -391,10 +418,7 @@ fn without_usable_hardware_the_normal_method_runs() {
     assert_eq!(log, ["software"]);
     // an offer for HEVC only does not help an H.264 export
     let mut j = hw_job(dir.path(), Some(Vendor::Nvenc));
-    j.hw = Some(HwOffer {
-        h264: None,
-        hevc: Some(Candidate::new(Vendor::Nvenc)),
-    });
+    j.hw = Some(HwOffer::one(Codec::Hevc, Candidate::new(Vendor::Nvenc)));
     let s = sim(Hw::Works);
     assert_eq!(export(&j, &s).0.unwrap().1, ExportMethod::Software);
     assert_eq!(*s.log.lock().unwrap(), ["software"]);
@@ -502,49 +526,51 @@ fn hardware_preparation_errors_stop_the_export() {
 /// A VA-API driver that only does constant quality: a run growing much bigger than the
 /// normal method is restarted once with a coarser quantiser; a file still too big is redone
 /// with the normal method.
-// covers: REQ-055, REQ-063
+// covers: REQ-055, REQ-063, REQ-215
 #[test]
 fn constant_quality_keeps_the_file_size_in_check() {
-    let cq = |j: &mut ExportJob| {
-        j.hw = Some(HwOffer {
-            h264: Some(Candidate {
-                vendor: Vendor::Vaapi,
-                device: Some("/dev/dri/renderD128".into()),
-                rc: hwenc::RateControl::ConstantQuality,
-            }),
-            hevc: None,
-        });
-    };
-    // a normal video: one run at the first quantiser
-    let dir = tempfile::tempdir().unwrap();
-    let mut j = hw_job(dir.path(), Some(Vendor::Vaapi));
-    cq(&mut j);
-    let s = sim(Hw::Works);
-    let (r, _, _) = export(&j, &s);
-    assert_eq!(r.unwrap().1, ExportMethod::Hardware(Vendor::Vaapi));
-    assert_eq!(*s.qps.lock().unwrap(), ["23"]);
-    // too big at first: a second run with a coarser quantiser, which passes
-    let s = sim(Hw::BigAtFirst);
-    let (r, ev, log) = export(&j, &s);
-    assert_eq!(r.unwrap().1, ExportMethod::Hardware(Vendor::Vaapi));
-    let qps = s.qps.lock().unwrap().clone();
-    assert_eq!(qps.len(), 2);
-    assert!(qps[1].parse::<u32>().unwrap() > 23, "{qps:?}");
-    assert_eq!(log.iter().filter(|x| **x == "hardware").count(), 2);
-    assert!(progress(&ev).iter().all(|f| (0.0..=1.0).contains(f)));
-    clean(dir.path());
-    // always too big: the normal method makes the file
-    let s = sim(Hw::AlwaysBig);
-    let (r, _, log) = export(&j, &s);
-    match r.unwrap().1 {
-        ExportMethod::SoftwareAfterProblem {
-            problem: Problem::CheckFailed(CheckFailure::TooLarge(x)),
-            ..
-        } => assert!(x > 1.5),
-        other => panic!("{other:?}"),
+    for vendor in [Vendor::Vaapi, Vendor::Qsv] {
+        let cq = |j: &mut ExportJob| {
+            j.hw = Some(HwOffer::one(
+                Codec::H264,
+                Candidate {
+                    vendor,
+                    device: (vendor == Vendor::Vaapi).then(|| "/dev/dri/renderD128".into()),
+                    rc: hwenc::RateControl::ConstantQuality,
+                },
+            ));
+        };
+        // a normal video: one run at the first quantiser
+        let dir = tempfile::tempdir().unwrap();
+        let mut j = hw_job(dir.path(), Some(vendor));
+        cq(&mut j);
+        let s = sim(Hw::Works);
+        let (r, _, _) = export(&j, &s);
+        assert_eq!(r.unwrap().1, ExportMethod::Hardware(vendor));
+        assert_eq!(*s.qps.lock().unwrap(), ["23"]);
+        // too big at first: a second run with a coarser quantiser, which passes
+        let s = sim(Hw::BigAtFirst);
+        let (r, ev, log) = export(&j, &s);
+        assert_eq!(r.unwrap().1, ExportMethod::Hardware(vendor));
+        let qps = s.qps.lock().unwrap().clone();
+        assert_eq!(qps.len(), 2);
+        assert!(qps[1].parse::<u32>().unwrap() > 23, "{qps:?}");
+        assert_eq!(log.iter().filter(|x| **x == "hardware").count(), 2);
+        assert!(progress(&ev).iter().all(|f| (0.0..=1.0).contains(f)));
+        clean(dir.path());
+        // always too big: the normal method makes the file
+        let s = sim(Hw::AlwaysBig);
+        let (r, _, log) = export(&j, &s);
+        match r.unwrap().1 {
+            ExportMethod::SoftwareAfterProblem {
+                problem: Problem::CheckFailed(CheckFailure::TooLarge(x)),
+                ..
+            } => assert!(x > 1.5),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(log.last(), Some(&"software"));
+        clean(dir.path());
     }
-    assert_eq!(log.last(), Some(&"software"));
-    clean(dir.path());
 }
 
 // covers: REQ-103, REQ-055, REQ-063
@@ -562,6 +588,7 @@ fn a_360_clip_with_a_camera_path_is_exported_in_hardware_and_checked() {
                 crate::camera::Pov {
                     t: Micros(t),
                     cam: crate::camera::Camera::new(yaw * 100, 0, 9000),
+                    ease: Default::default(),
                 },
             )
             .unwrap();
@@ -572,9 +599,14 @@ fn a_360_clip_with_a_camera_path_is_exported_in_hardware_and_checked() {
     let (r, _, log) = export(&j, &s);
     let (_, method) = r.unwrap();
     assert_eq!(method, ExportMethod::Hardware(Vendor::Nvenc));
-    assert_eq!(log, ["hardware", "metadata", "decode", "compare"]);
+    assert_eq!(
+        log,
+        [
+            "hardware", "metadata", "decode", "compare", "compare", "compare"
+        ]
+    );
     // the camera command file was in the folder of the hardware run and of the check
-    assert_eq!(s.cam_seen.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert!(s.cam_seen.load(std::sync::atomic::Ordering::SeqCst) >= 2);
     // the redo with the normal method gets it too
     let s = sim(Hw::ExitsWithError);
     let (r, _, log) = export(&j, &s);
@@ -585,4 +617,66 @@ fn a_360_clip_with_a_camera_path_is_exported_in_hardware_and_checked() {
     assert_eq!(log.last(), Some(&"software"));
     assert!(s.cam_seen.load(std::sync::atomic::Ordering::SeqCst) >= 1);
     clean(dir.path());
+}
+
+/// The compare runs of an export, as command lines.
+fn compare_lines(s: &Sim) -> Vec<String> {
+    s.lines
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l.contains("psnr=stats_file"))
+        .cloned()
+        .collect()
+}
+
+// covers: REQ-206
+#[test]
+fn the_check_renders_at_most_three_ranges_of_one_second() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = sim(Hw::Works);
+    let (r, _, log) = export(&hw_job(dir.path(), Some(Vendor::Nvenc)), &s);
+    assert_eq!(r.unwrap().1, ExportMethod::Hardware(Vendor::Nvenc));
+    assert_eq!(log.iter().filter(|l| l.starts_with("compare")).count(), 3);
+    assert!(!log.contains(&"compare-all"));
+    let lines = compare_lines(&s);
+    assert_eq!(lines.len(), 3);
+    for l in &lines {
+        // one second of the normal method, from the sample, and the hardware file from the same place
+        assert!(
+            l.contains("trim=duration=1.000000") && !l.contains("[all]"),
+            "{l}"
+        );
+        assert!(l.contains("-ss ") && l.contains(" -t 2.000000 "), "{l}");
+    }
+    clean(dir.path());
+}
+
+// covers: REQ-206, REQ-063
+#[test]
+fn a_file_with_another_frame_count_is_compared_over_the_whole_graph() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = sim(Hw::DropsFrames);
+    let (r, _, log) = export(&hw_job(dir.path(), Some(Vendor::Nvenc)), &s);
+    assert!(matches!(
+        r.unwrap().1,
+        ExportMethod::SoftwareAfterProblem {
+            problem: Problem::CheckFailed(CheckFailure::FrameCount { .. }),
+            ..
+        }
+    ));
+    assert!(log.contains(&"compare-all") && !log.contains(&"compare"));
+    clean(dir.path());
+}
+
+/// The progress bar never goes back during a run, whatever ffmpeg reports last.
+#[test]
+fn the_progress_never_goes_back_within_a_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = sim(Hw::TimeGoesBack);
+    let (r, ev, _) = export(&hw_job(dir.path(), Some(Vendor::Nvenc)), &s);
+    assert_eq!(r.unwrap().1, ExportMethod::Hardware(Vendor::Nvenc));
+    let p = progress(&ev);
+    assert!(p.windows(2).all(|w| w[0] <= w[1]), "{p:?}");
+    assert!(p.last().is_some_and(|f| *f > 0.99));
 }

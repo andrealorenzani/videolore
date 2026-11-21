@@ -1,0 +1,32 @@
+# Business — Interface (2.0.4)
+
+Back to the [index](business.md). Batch 12 of the [roadmap tasks](roadmap_tasks.md), built in the 2.0.4 development. The window, popups and toolbar remember their state and suit each user. These requirements change decisions of the window layout (REQ-024, REQ-066, REQ-067), which were fixed except for resizing.
+## Window and popups
+- REQ-234 (implemented): The window's size, position and maximised state are program settings, restored at the next start. If the saved position is outside every screen, the window opens on the main screen at the default size. Acceptance: resize and move, restart: same size and place; a saved position outside the screens opens the window visible.
+- REQ-235 (implemented): Each effect popup, the Clip details popup and the Settings window remember their position across sessions (a program setting per popup). Off-screen positions fall back to the default. Acceptance: move the Fades popup, restart, open it: same place; an off-screen place opens at the default.
+- REQ-236 (implemented): The default position of a popup is chosen so that it does not cover the track area of the timeline, when the window is at least 1280x800. Below that size the popup may cover it. Acceptance: at 1280x800, 1920x1080 and 2560x1440 the default rectangle of each popup does not overlap the timeline's track area.
+- REQ-237 (implemented): Each section (Media, Preview, Timeline, Effects) can be hidden from View > Sections, or collapsed to its title header with a button in the header. The remaining sections take the space. Preview and Timeline cannot be hidden (MINOR). Acceptance: hide Media: Preview grows; collapse Effects: only its header remains; restart keeps the state; Reset layout shows every section again.
+- REQ-238 (implemented): Media and Effects can be docked on the other side of the Preview (left or right) from the section's header menu; the choice is a program setting and Reset layout restores it. Amends the 1.1.0 rule that sections cannot be moved (MINOR, the only move built). Acceptance: docking Media to the right moves it to the right edge; restart keeps it; Reset layout moves it back; the minimum sizes of REQ-066 still hold.
+- REQ-239 (implemented): **View > Workspaces** saves the current layout (sections, sizes, hidden and collapsed sections, docking) under a name, switches to a saved one, and deletes one. Up to 10 workspaces (MINOR). Reset layout still restores the defaults. Acceptance: save "Edit" and "Review", switch between them; restart keeps both; delete removes one; a damaged entry is dropped without a crash (REQ-057).
+
+## Toolbar and shortcuts
+- REQ-240 (implemented): **View > Customise toolbar** chooses which commands the toolbar shows, from any command of the menus; the default is the 12 commands of REQ-070. Commands left out stay in the menus. **Reset toolbar** restores the default. Acceptance: remove Paste from the toolbar: it is not shown and still works from the Edit menu; restart keeps the choice; Reset toolbar brings it back.
+- REQ-241 (implemented): The toolbar shows **icons only** (default) or **icons and text**, a View option. Tooltips with the command name and shortcut (REQ-072) stay in both. Acceptance: the option switches the labels; the tooltips are unchanged.
+- REQ-242 (implemented): Help > Keyboard shortcuts lets the user change a binding by pressing the new keys. A key already used is reported, and the change waits until the conflict is resolved. **Reset shortcuts** restores the defaults. Menus, tooltips and the shortcuts window show the bindings in use (REQ-071). Acceptance: rebind Split to Ctrl+Shift+B and it works from the keyboard and in the menu; choosing a used key shows the conflict; Reset shortcuts restores Ctrl/Cmd+B; the bindings survive a restart.
+- REQ-247 (implemented): The Edit menu is grouped in submenus: Clipboard (Cut, Copy, Paste, Delete), History (Undo, Redo), Clip (Split, Merge, Move left, Move right, Clip details…), Subtitles (Generate subtitles, Add subtitle line, Align, Reset) and Settings…. Every item keeps its shortcut and works as before. Acceptance: each command runs from its submenu; the shortcuts are unchanged; the top level of the Edit menu has at most 6 entries.
+
+## Look and text
+- REQ-243 (implemented): **View > Theme**: System (default), Light or Dark. It applies to the whole window and every popup, and System follows the operating system's setting. Acceptance: each choice changes every section and popup; the body text and its background reach a contrast of at least 4.5 to 1 in both themes (test of the colour pairs); System follows the operating system when it changes.
+- REQ-244 (implemented): A **Text size** choice in Settings (in the collapsed "Appearance and start-up" header, plain words; built there instead of the main section; to be confirmed by Andrea): Normal, Large (125%) or Larger (150%) for menus, labels and popups. The timeline zoom is not affected. Every control stays reachable at 800x500 (REQ-068). Acceptance: Larger makes labels 1.5 times as high; at 800x500 every control is reachable with a scrollbar.
+- REQ-245 (implemented): The interface texts are kept in one table, in English only: no other language is added in 2.0.4. The table is the place where a language can be added later. Acceptance: every interface text has an English entry (a test); no interface text is written outside the table.
+- REQ-246 (implemented): Every toolbar button, menu item, section and popup control has an accessible name and role, exposed to screen readers through AccessKit, enabled in the release builds on Windows, macOS and Linux. Acceptance: an accessibility-tree test finds a name for every toolbar command and popup button; a screen-reader check on each system is in [verification](business-verification.md).
+
+## Key decisions (2.0.4)
+- [MINOR] Sections can be hidden, collapsed and placed left or right; they still cannot be moved freely. This partly reverses the 1.1.0 rule (layout fixed except resizing), to meet the roadmap item.
+- [MINOR] Workspaces, toolbar and shortcut choices are program settings, never in a project (rule C3).
+- [MINOR] Icons-only is the default toolbar, as since 1.6.0.
+- Translation: decided by Andrea: English only in 2.0.4; no other language is added. The text table is built so that a language can be added later.
+
+## Out of scope (2.0.4)
+- Free movement, floating or detaching of sections; resizing of the menu bar, toolbar or status bar.
+- Sub-second ruler labels and the multi-selection report (not in a batch).

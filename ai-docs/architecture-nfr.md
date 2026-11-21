@@ -85,3 +85,26 @@ Gates are marked GATE; everything else is an estimate or target. Grouped by area
 - Memory: no DTW (D56); the 10 ms energy envelope adds about 7 MB per hour of audio (estimate); the "Most accurate" memory note (about 1.3 GB, estimate) is unchanged; the 200 MB growth gate of the export stays.
 - Export of a project without texts or new features: argv byte-identical (GATE), except the blur fill of pictures smaller than 64 px wide (ADR-152).
 - Format 10: loading old projects is at most as slow as format 9 (no extra pass beyond the REQ-167 count, estimate).
+
+## 2.0.4 (built at the checkpoint 2026-11-21; REQ-180..299 except the 12 not built; plan ai-docs/architecture-plan-2.0.4.md)
+- GATE golden: projects without the new features export with the 2.0.3 argv (render/golden_tests); blurred projects may change pixels only by the ADR-180 blur (divisor 8, built). Export argv of a plain project unchanged.
+- GATE UI frame ≤ 200 ms with the new popups, keyframe widget, theme and autosave running during export and subtitle work (harness, extended per stage).
+- GATE REQ-206: normal-method reference renders at most three ranges of one second in the check.
+- GATE REQ-224: first playback frame ≤ 200 ms with ten imports queued (harness).
+- GATE REQ-223: ten Scale changes at one playhead draw the blurred background once (counted).
+- GATE REQ-267: half-size view while dragging; full size within 200 ms after release (estimate on 4K).
+- GATE REQ-266: at most 10 camera updates per second of video (a 10 s moving camera = at most 100).
+- GATE REQ-289 / REQ-290 / REQ-291: LUT strength, .3dl/.csp and DOMAIN fixtures within 2 colour levels of their references.
+- ESTIMATE REQ-297: cache enforcement < 100 ms for 1000 copies (measured once).
+- ESTIMATE REQ-187: added fonts are Arabic and Devanagari only, 1–2 MB each (to measure; the files are in assets/fonts); no CJK font is bundled (D61; CJK from system fonts, note when none); installer size reported by the configuration check; the 25 MB MINOR budget is not under pressure from CJK.
+- ESTIMATE project load ≤ 1 s for a 96 MiB file (format 11 with LUT copies); cap 96 MiB (ADR-191); LUT copies ≤ 20 MB each, ≤ 64 MiB per project.
+- ESTIMATE autosave: copy on the UI thread is O(clips); serialise and write on the worker; a 1 h project ≤ 10 MB JSON (estimate).
+- ESTIMATE hardware check: total time per candidate unchanged (REQ-061: 1 s and 4 s, 10 s total; repeat ≤ 20 s); AV1 and VP9 candidates add to the probe, bounded by the same limits.
+- QG-05 g per kind (integrated and dedicated) measured manually (REQ-207; manual item 14); the target is set after the measurement.
+- QG-11 (not a gate): export of 4K and HEVC at 1080p and 4K, large frames (4096 px cap), blurred fill, Clean audio cost on a weak computer; recorded in the developer documentation.
+- QG-12 (not a gate): 360 export on 8K x 4K; moving-camera export on bundled 9.0.2 measured; 4K and 8K frame times of preview and look-around against REQ-104 (200 ms).
+- QG-13 (not a gate): Apply LUT with 33 and 65-point LUTs: preview within 20 % of playback without a LUT; export ≤ 1.5 times the re-encode without one (assumptions).
+- QG-14..18: not built (designs in ai-docs/roadmap-2_0-checkpoint.md § Architect).
+- Settings file cap 64 KiB unchanged (worst case ~35 KB, ADR-195); project read cap 16 MiB → 96 MiB in format 11 (ADR-191; `MAX_PROJECT_BYTES`).
+- Platforms: Linux x86_64 (glibc 2.39 max, unchanged), macOS aarch64 and Windows x86_64 (unchanged; Intel Mac, ARM Windows and ARM Linux out of scope, REQ-040 targets unchanged); the one-window channel is file based on Windows and Linux (ADR-182).
+- Accessibility: AccessKit adapters on all three OS (D61, Q-4 closed); the UI frame gate is measured with the tree on.

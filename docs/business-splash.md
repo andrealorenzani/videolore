@@ -16,6 +16,9 @@ Added in 1.6.0 for the editor, and extended to the video player in 1.6.2 (REQ-15
 - REQ-134 (implemented): The splash has two parts side by side. Left: the picture `assets/splash/splash.gif` at its own size, the same picture in every version; the GIF plays as it is. Inside the picture, in the rectangle from x 74 to x 408 and from y 381 to y 465 (pixels, origin at the top left corner, so the rectangle is 334 by 84 pixels), the text "Version X.Y" is written in the largest size that fits, centred, touching neither edge. X and Y are the major and minor numbers of the version (1.6.2 gives "Version 1.6"). Right: a popup 400 pixels wide and exactly as high as the picture, with the summary of this version from `assets/splash/summary.txt` (written for each release) and a **Close** button. If the two parts do not fit the screen, both are scaled together, keeping proportions (assumption). Acceptance: the picture `splash.gif` shows "Version 1.6" entirely inside the rectangle; the popup is 400 pixels wide (±1 pixel) and as high as the picture (±1 pixel); Close closes it; the summary is the one of the running version.
 - REQ-154 (implemented): The summary is shown in the largest text, from 15 down to 7 image pixels, at which it fits the popup; a summary that is longer than the popup at 15 pixels uses a smaller text and is never scrolled. The summaries shipped with a version must fit at 7 pixels or more; a summary that does not fit fails the test suite, so it is not released. Acceptance: a summary with more lines than fit at 15 pixels is shown smaller, and every line is inside the popup; no scroll bar appears; the shipped editor and player summaries fit their popups; a summary that cannot fit even at 7 pixels fails the tests.
 
+### Show option (2.0.4)
+- REQ-295 (implemented): Settings has **Show the start screen**: "At every start" (the default, as now), "Once for each version" or "Never". The choice is a program setting; the player's start screen follows the same choice for the player. A start with a path on the command line never shows it. Acceptance: "Once for each version" shows the splash at the first start of a version and not at the next starts of that version; "Never" shows none; the default shows it at every start.
+
 ## Key decisions
 - (1.6.0) The splash shows at every start without a project or video path on the command line, not once per version, so the summary is seen by everyone who starts the program by hand. A start that opens a project or a video (first start or second window) shows no splash, so opening work is not delayed. No single-instance detection.
 - (1.6.0) The splash does not block the editor, so a user who opens a project at once is not held up; it stays on top until closed.
@@ -30,4 +33,5 @@ Added in 1.6.0 for the editor, and extended to the video player in 1.6.2 (REQ-15
 - A summary longer than the popup uses a smaller text, down to 7 pixels, and does not scroll (REQ-154). The rule is checked by the test suite for the shipped summaries.
 
 ## Out of scope
-- A "do not show again" option, animated text, sound.
+- Animated text, sound. The "do not show again" choice is the Show option of REQ-295 (2.0.4).
+- An animated splash image: the picture is kept as supplied until the requirement wording (REQ-134) is decided (open, MINOR default: static).

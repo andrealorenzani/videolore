@@ -90,6 +90,9 @@ pub enum Command {
     SetExport(ExportChoice),
     /// Forgets the hardware problems and checks the video hardware again.
     TryHardwareAgain,
+    /// Settings > Advanced: the video hardware to use, by device name (`None`: Automatic,
+    /// REQ-216). A program setting.
+    SetGraphicsCard(Option<String>),
     /// Detects the machine again and applies the recommended choices.
     UseRecommended,
     /// Asks before removing the downloaded speech recognition files.
@@ -150,8 +153,84 @@ pub enum Command {
     ZoomFit,
     /// New section sizes (saved in the settings).
     SetLayout(SavedLayout),
-    /// Back to the default section sizes.
+    /// Back to the default section sizes (and every section shown, in its place).
     ResetLayout,
+    /// File > Open in player: the selected media in videolore player (REQ-249).
+    OpenInPlayer,
+    /// A music clip's own level, mute, fades and Clean audio (REQ-276, REQ-277).
+    SetMusicEffects {
+        clip: MusicClipId,
+        volume: u8,
+        muted: bool,
+        fade_in: Micros,
+        fade_out: Micros,
+        clean_audio: bool,
+    },
+    /// The three answers to a missing LUT at export (REQ-292).
+    MissingLutFind,
+    MissingLutExportWithout,
+    /// How much of the LUT is used (REQ-289).
+    SetLutStrength {
+        target: FrameTarget,
+        percent: u8,
+    },
+    /// Volume keyframes of a clip, in percent, at clip time (REQ-280).
+    SetVolumeKey {
+        clip: ClipId,
+        at: Micros,
+        percent: u8,
+    },
+    RemoveVolumeKey {
+        clip: ClipId,
+        at: Micros,
+    },
+    /// Crop of a clip (REQ-283).
+    SetCrop {
+        clip: ClipId,
+        crop: crate::timeline::Crop,
+    },
+    /// The length of every fade (REQ-274) and the side of the fade at a boundary (REQ-275).
+    SetFadeLength(Micros),
+    SetFadeSide {
+        left: ClipId,
+        right: ClipId,
+        side: crate::timeline::FadeSide,
+    },
+    /// Marks (or unmarks) a plain 2:1 video as 360° video (REQ-263).
+    SetMarked360(MediaId, bool),
+    /// Adds or removes a LUT file from the favourites (REQ-294).
+    SetFavouriteLut(PathBuf, bool),
+    /// When the splash shows (REQ-295).
+    SetSplashOption(settings::SplashOption),
+    /// The most the preview copies may take (REQ-297).
+    SetCacheLimit(u64),
+    /// Theme and text size (REQ-243, REQ-244).
+    SetTheme(Theme),
+    SetTextSize(TextSize),
+    /// Toolbar with icons and text, or icons only (REQ-241).
+    SetToolbarLabels(bool),
+    /// Hides, collapses or docks on the other side Media or Effects (REQ-237, REQ-238).
+    SetSectionHidden(Section, bool),
+    SetSectionCollapsed(Section, bool),
+    SetSectionFlipped(Section, bool),
+    /// Workspaces (REQ-239).
+    SaveWorkspace(String),
+    ApplyWorkspace(String),
+    DeleteWorkspace(String),
+    /// Adds (`true`) or removes an action (by name) from the toolbar (REQ-240).
+    SetToolbarAction(String, bool),
+    ResetToolbar,
+    /// Shortcuts: wait for the new keys of an action (by name), the keys pressed, give up,
+    /// or restore the defaults (REQ-242).
+    StartRebind(String),
+    Rebind(String, String),
+    CancelRebind,
+    /// The keys pressed are used by another action (its label): wait for others.
+    RebindConflict(String),
+    ResetShortcuts,
+    /// The window changed (size, place, maximised) or a popup moved (REQ-234, REQ-235).
+    WindowChanged(Window),
+    PopupMoved(String, (f32, f32)),
     OpenRecent(PathBuf),
     ClearRecent,
     /// Files dropped on the window.
@@ -186,6 +265,12 @@ pub enum Command {
         target: FrameTarget,
         effect: FrameFx,
     },
+    /// How the value moves on from the selected keyframe (REQ-282).
+    SetKeyEase {
+        target: FrameTarget,
+        effect: FrameFx,
+        ease: crate::keyframes::Ease,
+    },
     /// Removes Scale or Move (all its keyframes).
     RemoveFrameEffect {
         target: FrameTarget,
@@ -199,6 +284,16 @@ pub enum Command {
     SetPicture(FrameDrag),
     /// Sound level (0–100 %) and mute of one video clip.
     /// Switches Clean audio on or off for a clip or the whole video (REQ-114).
+    /// Normalise speech on or off (REQ-279).
+    SetSpeechEnhance {
+        target: Target,
+        on: bool,
+    },
+    /// How strong Clean audio is (REQ-278), 0 to 100 %.
+    SetCleanStrength {
+        target: Target,
+        percent: u8,
+    },
     SetCleanAudio {
         target: Target,
         on: bool,
@@ -294,6 +389,16 @@ pub enum Command {
     DragLines(Option<(Vec<LineId>, Pos)>),
     /// Turns the camera of the 360 clip under the playhead: the picture was dragged by
     /// `dx`/`dy` pixels in a preview `view_w` pixels wide (not an edit).
+    /// Arrow keys on a 360 picture that has the focus (REQ-272).
+    TurnCamera {
+        yaw_cd: i32,
+        pitch_cd: i32,
+    },
+    /// Shift and drag on a 360 picture: turns it round the line of sight (REQ-270).
+    RollCamera {
+        dx: f32,
+        view_w: f32,
+    },
     DragCamera {
         dx: f32,
         dy: f32,
@@ -337,11 +442,81 @@ pub enum Command {
     MoveInside,
     /// View > Show boxes on the picture.
     ToggleBoxes,
-    /// Asks where to save the subtitles as an `.srt` file.
+    /// View > Snap to guides (REQ-198).
+    ToggleSnap,
+    /// View > Show safe areas (REQ-199).
+    ToggleSafeAreas,
+    /// Drags the end of a video clip to trim it (REQ-191): `delta` of timeline time moves
+    /// the edge, in whole frames, inside the source.
+    TrimEdge {
+        clip: ClipId,
+        edge: crate::timeline::ClipEdge,
+        delta: Micros,
+    },
+    /// The "Apply to new clips" button of the status bar (REQ-201).
+    ApplyWholeToNew,
+    /// Selects the copy shown by the whole-video Scale or Move popup (REQ-200).
+    SelectCopy(ClipId),
+    /// "Copy keyframes" of a clip's Scale or Move (REQ-204).
+    CopyKeys {
+        clip: ClipId,
+        effect: FrameFx,
+    },
+    /// "Paste keyframes to" a clip: replaces its keyframes of that effect (REQ-204).
+    PasteKeys {
+        clip: ClipId,
+        effect: FrameFx,
+    },
+    /// Moves a keyframe in time (typed time, Left and Right, REQ-203); times are source
+    /// times of the clip.
+    MoveKey {
+        clip: ClipId,
+        effect: FrameFx,
+        from: Micros,
+        to: Micros,
+    },
+    /// Drags a fade marker from one clip boundary to another (REQ-193).
+    MoveFade {
+        from: (ClipId, ClipId),
+        to: (ClipId, ClipId),
+    },
+    /// The keys [ and ]: the playhead goes to the previous or next marker and selects it
+    /// (REQ-194).
+    StepMarker {
+        forward: bool,
+    },
+    /// Delete with subtitle lines selected removes all of them (REQ-197).
+    DeleteSubtitles(Vec<LineId>),
+    /// Shifts the selected lines earlier or later (REQ-197); `delta` is a multiple of
+    /// [`crate::subtitles::SHIFT_STEP`].
+    ShiftLines {
+        ids: Vec<LineId>,
+        delta: Micros,
+    },
+    /// Asks where to save the subtitles (`.srt`, `.vtt` or `.ass`, REQ-180).
     PickExportSrt,
+    /// Saves the subtitles; the extension of the path chooses the format.
     ExportSrt(PathBuf),
+    /// Asks for a `.srt` or `.vtt` file and opens the import dialog (REQ-183): for the
+    /// range of the clip, or for the whole video (`None`).
+    PickImportSubtitles(Option<ClipId>),
+    /// Reads the file and opens the import dialog.
+    OpenImportSubtitles {
+        path: PathBuf,
+        clip: Option<ClipId>,
+    },
+    /// The re-time checkbox of the import dialog (REQ-184).
+    SetImportRetime(bool),
+    /// Imports the file of the open dialog.
+    ConfirmImportSubtitles,
     /// Answer to the subtitle source dialog.
     ChooseSubtitleSource(SourceChoice),
+    /// The start-up offer to recover an autosaved copy: open it as unsaved changes (REQ-190).
+    RecoverAutosave,
+    /// ... delete the copy.
+    DiscardAutosave,
+    /// ... leave it and open nothing.
+    CancelRecovery,
 }
 
 /// Zoom step of Zoom in / Zoom out.
@@ -365,6 +540,13 @@ impl Command {
             Command::SetFade { on: false, .. } => "Remove fade",
             Command::ToggleFade(_) | Command::ToggleFadeAtPlayhead => "Fade",
             Command::RemoveAllFades => "Remove all fades",
+            Command::SetFadeLength(_) => "Fade length",
+            Command::SetCrop { .. } => "Crop",
+            Command::SetVolumeKey { .. } => "Volume keyframe",
+            Command::RemoveVolumeKey { .. } => "Remove volume keyframe",
+            Command::SetLutStrength { .. } => "LUT strength",
+            Command::SetMusicEffects { .. } => "Music clip sound",
+            Command::SetFadeSide { .. } => "Fade side",
             Command::PlaceMusic(_) => "Add music",
             Command::MoveMusic { .. } => "Move music",
             Command::TrimMusic { .. } => "Trim music",
@@ -373,6 +555,14 @@ impl Command {
             Command::SetMix(_) => "Volume",
             Command::GenerateSubtitles | Command::ConfirmRegenerate => "Generate subtitles",
             Command::AddSubtitle => "Add subtitle line",
+            Command::ConfirmImportSubtitles => "Import subtitles",
+            Command::TrimEdge { .. } => "Trim",
+            Command::ApplyWholeToNew => "Apply to new clips",
+            Command::PasteKeys { .. } => "Paste keyframes",
+            Command::MoveKey { .. } => "Move keyframe",
+            Command::MoveFade { .. } => "Move fade",
+            Command::DeleteSubtitles(_) => "Delete subtitle lines",
+            Command::ShiftLines { .. } => "Shift subtitle lines",
             Command::AddText(_) => "Add text",
             Command::EditText(_) => "Edit text",
             Command::MoveText { .. }
@@ -419,6 +609,7 @@ impl Command {
             Command::RemoveAspect | Command::RemoveFrameEffect { .. } => "Remove effect",
             Command::AddKey { .. } => "Add keyframe",
             Command::RemoveKey { .. } => "Remove keyframe",
+            Command::SetKeyEase { .. } => "Keyframe easing",
             Command::SetPicture(FrameDrag {
                 value: FrameValue::Scale(_),
                 ..
@@ -426,6 +617,9 @@ impl Command {
             Command::SetPicture(_) => "Move",
             Command::ApplyEffect { .. } => "Volume",
             Command::SetClipVolume { .. } => "Clip volume",
+            Command::SetCleanStrength { .. } => "Clean audio strength",
+            Command::SetSpeechEnhance { on: true, .. } => "Normalise speech",
+            Command::SetSpeechEnhance { on: false, .. } => "Remove normalise speech",
             Command::SetCleanAudio { on: true, .. } => "Clean audio",
             Command::SetCleanAudio { on: false, .. } => "Remove clean audio",
             Command::SetEdgeFade { on: true, .. } => "Add fade",

@@ -12,8 +12,57 @@ use crate::time::Micros;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-/// Longest fade at a boundary.
+/// The usual length of a fade (REQ-274).
 pub const MAX_FADE: Micros = Micros(500_000);
+/// Shortest fade a user can choose, and the longest (a clip also limits it to half its own
+/// length).
+pub const MIN_FADE_LEN: Micros = Micros(100_000);
+pub const MAX_FADE_LEN: Micros = Micros(10_000_000);
+
+/// How much of each side of a picture is cut away, in whole percents (REQ-283).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct Crop {
+    pub left: u8,
+    pub top: u8,
+    pub right: u8,
+    pub bottom: u8,
+}
+
+/// Most of one side that can be cut away, in percent.
+pub const MAX_CROP: u8 = 45;
+
+impl Crop {
+    pub fn is_none(&self) -> bool {
+        *self == Crop::default()
+    }
+
+    pub fn is_valid(&self) -> bool {
+        [self.left, self.top, self.right, self.bottom]
+            .iter()
+            .all(|v| *v <= MAX_CROP)
+    }
+}
+
+/// Which clips of a fade at a boundary go through black (REQ-275).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FadeSide {
+    /// The clip before fades out and the one after fades in (the default).
+    #[default]
+    Both,
+    /// Only the clip before fades out.
+    OutOnly,
+    /// Only the clip after fades in.
+    InOnly,
+}
+
+impl FadeSide {
+    pub const ALL: [FadeSide; 3] = [FadeSide::Both, FadeSide::OutOnly, FadeSide::InOnly];
+}
+
+fn is_default_len(l: &Micros) -> bool {
+    *l == Micros::ZERO
+}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
@@ -44,6 +93,16 @@ pub struct Clip {
     /// Background noise of the clip's own sound is reduced (1.4.0, REQ-114; absent = off).
     #[serde(default)]
     pub clean_audio: bool,
+    /// How much of the clean sound is used, 0–100 % (REQ-278; absent = 100). 0 bypasses the
+    /// filter.
+    #[serde(default = "full_volume", skip_serializing_if = "is_full")]
+    pub clean_strength: u8,
+    /// Speech is made even in level ("Normalise speech", REQ-279; absent = off).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub speech_enhance: bool,
+    /// The part of the picture cut away, before the fit to the frame (REQ-283).
+    #[serde(default, skip_serializing_if = "Crop::is_none")]
+    pub crop: Crop,
     /// A fade in from black at this clip's start, used when the clip is the first one
     /// (1.6.1, REQ-083: it belongs to the clip; absent = none).
     #[serde(default, skip_serializing_if = "is_false")]
@@ -57,6 +116,10 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+fn is_full(v: &u8) -> bool {
+    *v == FULL_VOLUME
+}
+
 impl Clip {
     /// A clip at full volume, not muted.
     pub fn new(id: ClipId, media: MediaId, src_in: Micros, src_out: Micros) -> Clip {
@@ -68,6 +131,9 @@ impl Clip {
             volume: FULL_VOLUME,
             muted: false,
             clean_audio: false,
+            clean_strength: FULL_VOLUME,
+            crop: Crop::default(),
+            speech_enhance: false,
             fade_in: false,
             fade_out: false,
         }
@@ -86,10 +152,23 @@ impl Clip {
         self.len() <= Micros::ZERO
     }
 
-    /// Length of the fade applied at either end of this clip.
+    /// Length of the fade applied at either end of this clip with the usual length.
     pub fn fade_len(&self) -> Micros {
-        MAX_FADE.min(Micros(self.len().0 / 2))
+        self.fade_len_of(MAX_FADE)
     }
+
+    /// Length of the fade at either end of this clip when the chosen length is `chosen`: it
+    /// never goes over half the clip (REQ-274).
+    pub fn fade_len_of(&self, chosen: Micros) -> Micros {
+        chosen.min(Micros(self.len().0 / 2))
+    }
+}
+
+/// The edge of a clip that is dragged to trim it (REQ-191).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipEdge {
+    Start,
+    End,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Clone)]
@@ -108,6 +187,14 @@ pub enum EditError {
     InvalidRange,
     #[error("no boundary there")]
     NoSuchBoundary,
+    #[error("a volume key is from 0 to 100 % inside the clip")]
+    VolumeKey,
+    #[error("a crop is from 0 to 45 % of a side")]
+    CropRange,
+    #[error("a fade lasts from 0.1 s to 10 s")]
+    FadeLength,
+    #[error("that boundary already has a fade")]
+    BoundaryTaken,
     #[error("the clipboard is empty")]
     EmptyClipboard,
     #[error("no clip selected")]
@@ -157,19 +244,46 @@ pub struct ClipFrames {
     pub moved: Vec<Key<Pos>>,
 }
 
+/// The Scale or the Move keyframes of a clip, copied in the clip's own time (REQ-204).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeysClip {
+    Scale(Vec<Key<Scale>>),
+    Move(Vec<Key<Pos>>),
+}
+
 /// The Apply LUT file of one clip (1.6.0, ADR-111): the path of a `.cube` file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipLut {
     pub clip: ClipId,
     pub path: String,
+    /// How much of the LUT is used, 0–100 % (REQ-289; absent = 100).
+    #[serde(default = "full_volume", skip_serializing_if = "is_full")]
+    pub strength: u8,
+}
+
+/// The volume keyframes of one clip, in percent, in the clip's own time (REQ-280).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipVolume {
+    pub clip: ClipId,
+    pub keys: Vec<Key<u8>>,
 }
 
 /// The video track.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Timeline {
+    /// Volume keyframes of the clips that have them (REQ-280).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clip_volume: Vec<ClipVolume>,
     pub clips: Vec<Clip>,
     /// Boundaries with a fade, as (left clip, right clip). Only adjacent pairs are kept.
     pub fades: BTreeSet<(ClipId, ClipId)>,
+    /// How long the fades are when the user chose it (REQ-274); 0 = the usual 0.5 s. Read it
+    /// with [`Timeline::fade_len`].
+    #[serde(default, skip_serializing_if = "is_default_len")]
+    pub fade_length: Micros,
+    /// Fades that go through black on one side only (REQ-275), by boundary.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub fade_sides: std::collections::BTreeMap<(ClipId, ClipId), FadeSide>,
     pub next_clip_id: u64,
     /// Change aspect of the whole video (1.5.0, REQ-124); `None` = no effect.
     #[serde(
@@ -239,17 +353,72 @@ impl Timeline {
             return (Micros::ZERO, Micros::ZERO);
         };
         let last = index + 1 == self.clips.len();
-        let fin = if (index > 0 && self.has_fade(index - 1)) || (index == 0 && c.fade_in) {
-            c.fade_len()
-        } else {
-            Micros::ZERO
-        };
-        let fout = if self.has_fade(index) || (last && c.fade_out) {
-            c.fade_len()
+        let len = c.fade_len_of(self.fade_len());
+        let side_of = |b: usize| self.fade_side(b);
+        let fin =
+            if (index > 0 && self.has_fade(index - 1) && side_of(index - 1) != FadeSide::OutOnly)
+                || (index == 0 && c.fade_in)
+            {
+                len
+            } else {
+                Micros::ZERO
+            };
+        let fout = if (self.has_fade(index) && side_of(index) != FadeSide::InOnly)
+            || (last && c.fade_out)
+        {
+            len
         } else {
             Micros::ZERO
         };
         (fin, fout)
+    }
+
+    /// The length of the fades: the chosen one, or the usual 0.5 s.
+    pub fn fade_len(&self) -> Micros {
+        if self.fade_length == Micros::ZERO {
+            MAX_FADE
+        } else {
+            self.fade_length
+        }
+    }
+
+    /// The side of the fade at boundary `b` (Both when it has not been chosen).
+    pub fn fade_side(&self, b: usize) -> FadeSide {
+        match (self.clips.get(b), self.clips.get(b + 1)) {
+            (Some(l), Some(r)) => self
+                .fade_sides
+                .get(&(l.id, r.id))
+                .copied()
+                .unwrap_or_default(),
+            _ => FadeSide::Both,
+        }
+    }
+
+    /// Chooses the length of every fade, from 0.1 s to 10 s (REQ-274). A clip still limits
+    /// it to half its own length.
+    pub fn set_fade_length(&mut self, len: Micros) -> Result<(), EditError> {
+        if len < MIN_FADE_LEN || len > MAX_FADE_LEN {
+            return Err(EditError::FadeLength);
+        }
+        self.fade_length = len;
+        Ok(())
+    }
+
+    /// Chooses the side of the fade at boundary `b` (REQ-275).
+    pub fn set_fade_side(&mut self, b: usize, side: FadeSide) -> Result<(), EditError> {
+        let (Some(l), Some(r)) = (self.clips.get(b), self.clips.get(b + 1)) else {
+            return Err(EditError::NoSuchBoundary);
+        };
+        let key = (l.id, r.id);
+        if !self.fades.contains(&key) {
+            return Err(EditError::NoSuchBoundary);
+        }
+        if side == FadeSide::Both {
+            self.fade_sides.remove(&key);
+        } else {
+            self.fade_sides.insert(key, side);
+        }
+        Ok(())
     }
 
     /// Drops fades whose clips are no longer adjacent.
@@ -257,6 +426,8 @@ impl Timeline {
         let pairs: BTreeSet<(ClipId, ClipId)> =
             self.clips.windows(2).map(|w| (w[0].id, w[1].id)).collect();
         self.fades.retain(|p| pairs.contains(p));
+        let kept = self.fades.clone();
+        self.fade_sides.retain(|p, _| kept.contains(p));
     }
 
     fn rename_fade_left(&mut self, old: ClipId, new: ClipId) {
@@ -264,6 +435,9 @@ impl Timeline {
         for p in moved {
             self.fades.remove(&p);
             self.fades.insert((new, p.1));
+            if let Some(side) = self.fade_sides.remove(&p) {
+                self.fade_sides.insert((new, p.1), side);
+            }
         }
     }
 
@@ -397,7 +571,11 @@ impl Timeline {
         let (a, b) = (&self.clips[i], &self.clips[i + 1]);
         if (a.volume, a.muted) != (b.volume, b.muted) {
             Some(DIFFERENT_VOLUMES)
-        } else if a.clean_audio != b.clean_audio {
+        } else if a.clean_audio != b.clean_audio
+            || a.clean_strength != b.clean_strength
+            || a.crop != b.crop
+            || a.speech_enhance != b.speech_enhance
+        {
             Some(DIFFERENT_CLEAN_AUDIO)
         } else if self.keys_of(a.id) != self.keys_of(b.id) {
             Some(DIFFERENT_FRAMES)
@@ -445,6 +623,60 @@ impl Timeline {
         Ok(())
     }
 
+    /// The source range clip `id` gets when its `edge` is dragged by `delta` of timeline time
+    /// (REQ-191): in whole frames of `frame`, kept inside `[0, media_duration]` and at least
+    /// one frame long. `None` when there is no such clip.
+    pub fn trimmed_by_edge(
+        &self,
+        id: ClipId,
+        edge: ClipEdge,
+        delta: Micros,
+        media_duration: Micros,
+        frame: Micros,
+    ) -> Option<(Micros, Micros)> {
+        let c = self.get(id)?;
+        let frame = frame.max(Micros(1));
+        // whole frames, to the nearest one
+        let steps = (delta.0 as f64 / frame.0 as f64).round() as i64;
+        let moved = Micros(steps.saturating_mul(frame.0));
+        Some(match edge {
+            ClipEdge::Start => {
+                let hi = (c.src_out - frame).max(Micros::ZERO);
+                ((c.src_in + moved).clamp(Micros::ZERO, hi), c.src_out)
+            }
+            ClipEdge::End => {
+                let lo = (c.src_in + frame).min(media_duration);
+                (c.src_in, (c.src_out + moved).clamp(lo, media_duration))
+            }
+        })
+    }
+
+    /// Moves the fade between clips `from` to the boundary `to` (REQ-193): the fade leaves
+    /// its old boundary and a boundary keeps at most one fade. A boundary that has one, a
+    /// pair that is not adjacent and a fade that is not there change nothing.
+    pub fn move_fade(
+        &mut self,
+        from: (ClipId, ClipId),
+        to: (ClipId, ClipId),
+    ) -> Result<(), EditError> {
+        if !self.fades.contains(&from) {
+            return Err(EditError::NoSuchBoundary);
+        }
+        let adjacent = self.clips.windows(2).any(|w| (w[0].id, w[1].id) == to);
+        if !adjacent {
+            return Err(EditError::NoSuchBoundary);
+        }
+        if self.fades.contains(&to) {
+            return Err(EditError::BoundaryTaken);
+        }
+        self.fades.remove(&from);
+        self.fades.insert(to);
+        if let Some(side) = self.fade_sides.remove(&from) {
+            self.fade_sides.insert(to, side);
+        }
+        Ok(())
+    }
+
     /// Moves a clip to position `index` (clamped); the others ripple.
     pub fn move_to(&mut self, id: ClipId, index: usize) -> Result<(), EditError> {
         let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
@@ -462,6 +694,7 @@ impl Timeline {
             _ => return Err(EditError::NoSuchBoundary),
         };
         if self.fades.remove(&(a, n)) {
+            self.fade_sides.remove(&(a, n));
             Ok(false)
         } else {
             self.fades.insert((a, n));
@@ -479,6 +712,7 @@ impl Timeline {
                 self.fades.insert(pair);
             } else {
                 self.fades.remove(&pair);
+                self.fade_sides.remove(&pair);
             }
         };
         if i > 0 {
@@ -563,6 +797,7 @@ impl Timeline {
     /// Removes every fade (boundaries, start and end flags of every clip).
     pub fn clear_fades(&mut self) {
         self.fades.clear();
+        self.fade_sides.clear();
         for c in &mut self.clips {
             c.fade_in = false;
             c.fade_out = false;
@@ -606,10 +841,50 @@ impl Timeline {
 
     fn put_lut(&mut self, id: ClipId, path: Option<String>) {
         let path = path.filter(|p| !p.is_empty());
+        let strength = self
+            .clip_luts
+            .iter()
+            .find(|l| l.clip == id)
+            .map_or(FULL_VOLUME, |l| l.strength);
         self.clip_luts.retain(|l| l.clip != id);
         if let Some(path) = path {
-            self.clip_luts.push(ClipLut { clip: id, path });
+            self.clip_luts.push(ClipLut {
+                clip: id,
+                path,
+                strength,
+            });
             self.clip_luts.sort_by_key(|l| l.clip);
+        }
+    }
+
+    /// The strength of the LUT of `t` (the first clip's for the whole video), 100 when none.
+    pub fn lut_strength_of(&self, t: FrameTarget) -> u8 {
+        let id = match t {
+            FrameTarget::Clip(id) => Some(id),
+            FrameTarget::Whole => self.clips.first().map(|c| c.id),
+        };
+        id.and_then(|id| self.clip_luts.iter().find(|l| l.clip == id))
+            .map_or(FULL_VOLUME, |l| l.strength)
+    }
+
+    /// Chooses how much of the LUT is used, 0 to 100 % (REQ-289); the target must have one.
+    pub fn set_lut_strength(&mut self, t: FrameTarget, percent: u8) -> Result<(), EditError> {
+        let ids: Vec<ClipId> = match t {
+            FrameTarget::Clip(id) => {
+                self.get(id).ok_or(EditError::NoSuchClip)?;
+                vec![id]
+            }
+            FrameTarget::Whole => self.clips.iter().map(|c| c.id).collect(),
+        };
+        let mut any = false;
+        for l in self.clip_luts.iter_mut().filter(|l| ids.contains(&l.clip)) {
+            l.strength = percent.min(100);
+            any = true;
+        }
+        if any {
+            Ok(())
+        } else {
+            Err(EditError::NoSuchClip)
         }
     }
 
@@ -787,6 +1062,7 @@ impl Timeline {
                 c.scale.push(Key {
                     t: at,
                     v: Scale::NORMAL,
+                    ease: Default::default(),
                 })
             },
         )
@@ -801,6 +1077,7 @@ impl Timeline {
                 c.moved.push(Key {
                     t: at,
                     v: frame::CENTRE,
+                    ease: Default::default(),
                 })
             },
         )
@@ -963,6 +1240,43 @@ impl Timeline {
         }
     }
 
+    /// Chooses how the Scale or Move value moves on from the key at `at` (REQ-282).
+    pub fn set_key_ease(
+        &mut self,
+        t: FrameTarget,
+        scale: bool,
+        at: Micros,
+        ease: keyframes::Ease,
+    ) -> Result<(), EditError> {
+        match (t, scale) {
+            (FrameTarget::Whole, true) => self.whole_edit(
+                |e| &mut e.scale,
+                at,
+                |k, at| keyframes::set_ease(k, at, ease),
+            ),
+            (FrameTarget::Whole, false) => self.whole_edit(
+                |e| &mut e.moved,
+                at,
+                |k, at| keyframes::set_ease(k, at, ease),
+            ),
+            (FrameTarget::Clip(_), true) => self
+                .with_scale(t, |k| keyframes::set_ease(k, at, ease))?
+                .map_err(EditError::Key),
+            (FrameTarget::Clip(_), false) => self
+                .with_move(t, |k| keyframes::set_ease(k, at, ease))?
+                .map_err(EditError::Key),
+        }
+    }
+
+    /// The easing of the Scale or Move key at `at`.
+    pub fn key_ease(&self, t: FrameTarget, scale: bool, at: Micros) -> keyframes::Ease {
+        if scale {
+            keyframes::ease_at(self.scale_keys(t), at)
+        } else {
+            keyframes::ease_at(self.move_keys(t), at)
+        }
+    }
+
     pub fn remove_move_key(&mut self, t: FrameTarget, at: Micros) -> Result<(), EditError> {
         match t {
             FrameTarget::Whole => self.whole_edit(|e| &mut e.moved, at, keyframes::remove),
@@ -970,6 +1284,65 @@ impl Timeline {
                 .with_move(t, |k| keyframes::remove(k, at))?
                 .map_err(EditError::Key),
         }
+    }
+
+    /// The Scale keys of a clip in the clip's own time (REQ-204); `None` without any.
+    pub fn copy_scale_keys(&self, id: ClipId) -> Option<KeysClip> {
+        let c = self.get(id)?;
+        let keys = self.keys_of(id).0;
+        (!keys.is_empty()).then(|| KeysClip::Scale(keyframes::relative(keys, c.src_in)))
+    }
+
+    /// The Move keys of a clip in the clip's own time (REQ-204).
+    pub fn copy_move_keys(&self, id: ClipId) -> Option<KeysClip> {
+        let c = self.get(id)?;
+        let keys = self.keys_of(id).1;
+        (!keys.is_empty()).then(|| KeysClip::Move(keyframes::relative(keys, c.src_in)))
+    }
+
+    /// Puts copied keys on clip `id` at the same clip times, replacing the keys of that
+    /// effect only (REQ-204); the clip's other effects are not touched.
+    pub fn paste_keys(&mut self, id: ClipId, keys: &KeysClip) -> Result<(), EditError> {
+        let c = *self.get(id).ok_or(EditError::NoSuchClip)?;
+        let mut e = self.frames_of(id).cloned().unwrap_or(ClipFrames {
+            clip: id,
+            scale: vec![],
+            moved: vec![],
+        });
+        match keys {
+            KeysClip::Scale(k) => e.scale = keyframes::place(k, c.src_in, c.len()),
+            KeysClip::Move(k) => e.moved = keyframes::place(k, c.src_in, c.len()),
+        }
+        self.put_frames(e);
+        Ok(())
+    }
+
+    /// Moves the Scale key of a clip from `from` to `to` (source time, inside the clip).
+    pub fn move_scale_key(
+        &mut self,
+        id: ClipId,
+        from: Micros,
+        to: Micros,
+    ) -> Result<Micros, EditError> {
+        let c = *self.get(id).ok_or(EditError::NoSuchClip)?;
+        self.with_scale(FrameTarget::Clip(id), |k| {
+            keyframes::retime(k, from, to, c.src_in, c.src_out)
+        })?
+        .map_err(EditError::Key)
+    }
+
+    /// Moves the Move key of a clip from `from` to `to` (source time, inside the clip).
+    pub fn move_move_key(
+        &mut self,
+        id: ClipId,
+        from: Micros,
+        to: Micros,
+    ) -> Result<Micros, EditError> {
+        let c = *self.get(id).ok_or(EditError::NoSuchClip)?;
+        self.with_move(FrameTarget::Clip(id), |k| {
+            keyframes::retime(k, from, to, c.src_in, c.src_out)
+        })?
+        .map_err(EditError::Key)
     }
 
     /// Sets or removes Change aspect.
@@ -1041,9 +1414,107 @@ impl Timeline {
         Ok(())
     }
 
+    /// Chooses how strong Clean audio is on the clips `ids`, 0 to 100 % (REQ-278).
+    pub fn set_clean_strength(&mut self, ids: &[ClipId], percent: u8) -> Result<(), EditError> {
+        if ids.is_empty() {
+            return Err(EditError::NothingSelected);
+        }
+        if ids.iter().any(|i| self.get(*i).is_none()) {
+            return Err(EditError::NoSuchClip);
+        }
+        for c in self.clips.iter_mut().filter(|c| ids.contains(&c.id)) {
+            c.clean_strength = percent.min(100);
+        }
+        Ok(())
+    }
+
+    /// Switches Normalise speech on or off for the clips `ids` (REQ-279).
+    pub fn set_speech_enhance(&mut self, ids: &[ClipId], on: bool) -> Result<(), EditError> {
+        if ids.is_empty() {
+            return Err(EditError::NothingSelected);
+        }
+        if ids.iter().any(|i| self.get(*i).is_none()) {
+            return Err(EditError::NoSuchClip);
+        }
+        for c in self.clips.iter_mut().filter(|c| ids.contains(&c.id)) {
+            c.speech_enhance = on;
+        }
+        Ok(())
+    }
+
+    /// Adds or changes the volume key at clip time `at` (REQ-280): percent 0 to 100.
+    pub fn set_volume_key(&mut self, id: ClipId, at: Micros, percent: u8) -> Result<(), EditError> {
+        let c = self
+            .clips
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or(EditError::NoSuchClip)?;
+        if percent > 100 {
+            return Err(EditError::VolumeKey);
+        }
+        let len = c.len();
+        if at < Micros::ZERO || at > len {
+            return Err(EditError::VolumeKey);
+        }
+        let entry = match self.clip_volume.iter().position(|v| v.clip == id) {
+            Some(i) => i,
+            None => {
+                self.clip_volume.push(ClipVolume {
+                    clip: id,
+                    keys: Vec::new(),
+                });
+                self.clip_volume.len() - 1
+            }
+        };
+        keyframes::set(&mut self.clip_volume[entry].keys, at, percent).map_err(EditError::Key)
+    }
+
+    /// The volume keys of a clip (empty when it has none).
+    pub fn volume_keys(&self, id: ClipId) -> &[Key<u8>] {
+        self.clip_volume
+            .iter()
+            .find(|v| v.clip == id)
+            .map_or(&[], |v| v.keys.as_slice())
+    }
+
+    pub fn any_volume_keys(&self) -> bool {
+        self.clip_volume.iter().any(|v| !v.keys.is_empty())
+    }
+
+    /// Removes the volume key at clip time `at`.
+    pub fn remove_volume_key(&mut self, id: ClipId, at: Micros) -> Result<(), EditError> {
+        self.get(id).ok_or(EditError::NoSuchClip)?;
+        for v in &mut self.clip_volume {
+            if v.clip == id {
+                v.keys.retain(|k| k.t != at);
+            }
+        }
+        self.clip_volume.retain(|v| !v.keys.is_empty());
+        Ok(())
+    }
+
+    /// Cuts away part of the picture of a clip (REQ-283): 0 to 45 % of each side.
+    pub fn set_crop(&mut self, id: ClipId, crop: Crop) -> Result<(), EditError> {
+        if !crop.is_valid() {
+            return Err(EditError::CropRange);
+        }
+        let c = self
+            .clips
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or(EditError::NoSuchClip)?;
+        c.crop = crop;
+        Ok(())
+    }
+
+    /// True when any clip has a crop.
+    pub fn any_crop(&self) -> bool {
+        self.clips.iter().any(|c| !c.crop.is_none())
+    }
+
     /// True when any clip has Clean audio.
     pub fn any_clean_audio(&self) -> bool {
-        self.clips.iter().any(|c| c.clean_audio)
+        self.clips.iter().any(|c| c.clean_audio || c.speech_enhance)
     }
 
     /// Boundary closest to `t` (index and time), if any.
@@ -1084,6 +1555,7 @@ pub(crate) mod tests {
                 fps: crate::time::Fps::new(30, 1),
                 ..Default::default()
             },
+            stat: None,
             missing: false,
             status: Default::default(),
             proxy: Default::default(),
@@ -1094,6 +1566,10 @@ pub(crate) mod tests {
 
     fn s(n: i64) -> Micros {
         Micros(n * 1_000_000)
+    }
+
+    fn neg(n: i64) -> Micros {
+        Micros(-n * 1_000_000)
     }
 
     fn track() -> Timeline {
@@ -1219,6 +1695,67 @@ pub(crate) mod tests {
             t.trim(ClipId(77), s(0), s(1), s(4), F),
             Err(EditError::NoSuchClip)
         );
+    }
+
+    // covers: REQ-191
+    #[test]
+    fn dragging_an_edge_trims_in_whole_frames_inside_the_source() {
+        let mut t = Timeline::default();
+        t.append(&media(1, 4, true)).unwrap();
+        let a = t.clips[0].id;
+        let at = |t: &Timeline, e, d| t.trimmed_by_edge(a, e, d, s(4), F);
+        // the right edge 1 s to the left: 1 s shorter, within one frame
+        let (i, o) = at(&t, ClipEdge::End, neg(1)).unwrap();
+        assert_eq!(i, s(0));
+        assert!(((s(4) - o) - s(1)).0.abs() <= F.0, "{o:?}");
+        assert_eq!(((s(4) - o).0 % F.0), 0, "whole frames");
+        // the left edge 0.5 s to the right
+        let (i, o) = at(&t, ClipEdge::Start, Micros(500_000)).unwrap();
+        assert!((i - Micros(500_000)).0.abs() <= F.0 && o == s(4));
+        // limits: the source, and one frame at least
+        assert_eq!(at(&t, ClipEdge::End, s(9)).unwrap().1, s(4));
+        assert_eq!(at(&t, ClipEdge::Start, neg(9)).unwrap().0, s(0));
+        assert_eq!(at(&t, ClipEdge::End, neg(99)).unwrap(), (s(0), F));
+        assert_eq!(at(&t, ClipEdge::Start, s(99)).unwrap(), (s(4) - F, s(4)));
+        assert!(
+            t.trimmed_by_edge(ClipId(9), ClipEdge::End, s(1), s(4), F)
+                .is_none()
+        );
+        // the same trim as the clip details make
+        let (i, o) = at(&t, ClipEdge::End, neg(1)).unwrap();
+        let mut u = t.clone();
+        u.trim(a, i, o, s(4), F).unwrap();
+        assert_eq!(u.duration(), o);
+        // a clip already trimmed moves from its own edges
+        t.trim(a, s(1), s(3), s(4), F).unwrap();
+        assert_eq!(at(&t, ClipEdge::End, s(5)).unwrap(), (s(1), s(4)));
+        assert_eq!(at(&t, ClipEdge::Start, neg(5)).unwrap(), (s(0), s(3)));
+    }
+
+    // covers: REQ-193
+    #[test]
+    fn a_fade_moves_to_an_empty_boundary_only() {
+        let mut t = Timeline::default();
+        for i in 1..=4 {
+            t.append(&media(i, 2, true)).unwrap();
+        }
+        let ids: Vec<ClipId> = t.clips.iter().map(|c| c.id).collect();
+        let (b0, b1, b2) = ((ids[0], ids[1]), (ids[1], ids[2]), (ids[2], ids[3]));
+        t.toggle_fade(0).unwrap();
+        t.toggle_fade(2).unwrap();
+        // boundary 1 -> 2 (indexes 0 and 1)
+        t.move_fade(b0, b1).unwrap();
+        assert!(!t.has_fade(0) && t.has_fade(1) && t.has_fade(2));
+        // a boundary keeps at most one fade
+        assert_eq!(t.move_fade(b1, b2), Err(EditError::BoundaryTaken));
+        // no fade to move, no such boundary: nothing changes
+        assert_eq!(t.move_fade(b0, b1), Err(EditError::NoSuchBoundary));
+        assert_eq!(
+            t.move_fade(b1, (ids[0], ids[3])),
+            Err(EditError::NoSuchBoundary)
+        );
+        assert!(!t.has_fade(0) && t.has_fade(1) && t.has_fade(2));
+        assert!(EditError::BoundaryTaken.to_string().contains("already"));
     }
 
     // covers: REQ-010
@@ -1497,7 +2034,8 @@ pub(crate) mod tests {
             t.scale_keys(c),
             &[Key {
                 t: Micros::ZERO,
-                v: Scale::NORMAL
+                v: Scale::NORMAL,
+                ease: Default::default(),
             }]
         );
         assert_eq!(t.move_keys(FrameTarget::Whole).len(), 1);
@@ -1707,5 +2245,77 @@ pub(crate) mod tests {
         let old = Timeline::default();
         let j = serde_json::to_string(&old).unwrap();
         assert!(!j.contains("frame_aspect") && !j.contains("clip_frames"));
+    }
+
+    // covers: REQ-274
+    #[test]
+    fn the_fade_length_is_chosen_within_limits_and_a_short_clip_caps_it() {
+        let mut t = three();
+        t.toggle_fade(0).unwrap();
+        // the usual length until chosen, and not written then
+        assert_eq!(t.fades_of(0).1, Micros(500_000));
+        assert!(!serde_json::to_string(&t).unwrap().contains("fade_length"));
+        t.set_fade_length(Micros(1_500_000)).unwrap();
+        assert_eq!(
+            (t.fades_of(0).1, t.fades_of(1).0),
+            (Micros(1_500_000), Micros(1_500_000))
+        );
+        assert!(serde_json::to_string(&t).unwrap().contains("fade_length"));
+        let back: Timeline = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+        assert_eq!(back.fade_length, Micros(1_500_000));
+        // a clip of 2 s allows half of its length
+        let mut short = Timeline::default();
+        short.append(&media(1, 2, true)).unwrap();
+        short.append(&media(2, 5, true)).unwrap();
+        short.toggle_fade(0).unwrap();
+        short.set_fade_length(Micros(5_000_000)).unwrap();
+        assert_eq!(short.fades_of(0).1, Micros(1_000_000));
+        // limits: 0.1 s to 10 s
+        assert_eq!(
+            t.set_fade_length(Micros(99_999)),
+            Err(EditError::FadeLength)
+        );
+        assert_eq!(
+            t.set_fade_length(Micros(10_000_001)),
+            Err(EditError::FadeLength)
+        );
+        assert!(t.set_fade_length(Micros(100_000)).is_ok());
+    }
+
+    // covers: REQ-275
+    #[test]
+    fn a_fade_can_go_through_black_on_one_side_only() {
+        let mut t = three();
+        t.toggle_fade(0).unwrap();
+        let none = Micros::ZERO;
+        let usual = Micros(500_000);
+        assert_eq!((t.fades_of(0).1, t.fades_of(1).0), (usual, usual));
+        t.set_fade_side(0, FadeSide::OutOnly).unwrap();
+        assert_eq!(
+            (t.fades_of(0).1, t.fades_of(1).0),
+            (usual, none),
+            "only the clip before"
+        );
+        t.set_fade_side(0, FadeSide::InOnly).unwrap();
+        assert_eq!(
+            (t.fades_of(0).1, t.fades_of(1).0),
+            (none, usual),
+            "only the clip after"
+        );
+        // the choice goes with the boundary when the left clip is split, and goes when the fade does
+        t.split(s(2), Micros(100_000)).unwrap();
+        assert_eq!(t.fade_side(1), FadeSide::InOnly);
+        t.toggle_fade(1).unwrap();
+        assert!(t.fade_sides.is_empty());
+        assert_eq!(
+            t.set_fade_side(1, FadeSide::OutOnly),
+            Err(EditError::NoSuchBoundary)
+        );
+        t.toggle_fade(1).unwrap();
+        assert_eq!(
+            t.fade_side(1),
+            FadeSide::Both,
+            "a new fade starts with both"
+        );
     }
 }

@@ -174,3 +174,19 @@ tests export 1920x1080 views of 360° videos (about 25 s each).
 - `VIDEOLORE_REQUIRE_STT=1` (CI): a missing speech model fails the speech tests instead of skipping them; the speech fixture is checked by SHA-256 (`v12::check_fixture`).
 - Locally the speech test `real_speech_is_transcribed` needs `espeak-ng`; with `VIDEOLORE_REQUIRE_FFMPEG=1` its absence fails (as in CI, where it is installed).
 - Load-sensitive gates: `hw::the_real_hardware_check_is_quick_and_stable` tries a slow pair of checks up to four times; `ui::tests::stays_responsive_while_exporting_and_transcribing` allows at most two frames over 200 ms and none over a second.
+
+## 2.0.4 additions (stages 0 to 3)
+
+- New unit and interface files: `app/subs_import_tests.rs`, `app/recovery_tests.rs`, `app/clarity_tests.rs`, `ui/script_ux_tests.rs`, `ui/gesture_ux_tests.rs`, `ui/clarity_ux_tests.rs`; `tests/ffmpeg_integration/v204.rs` (real ffmpeg: a separate subtitle track in MP4 and MKV, glyphs of the bundled Arabic and Devanagari faces against a reference render; the render runs with an empty fontconfig file so no installed font can help).
+- The interface harness (`ui/ux_tests.rs:Harness`) counts the shapes of the last frame (`shapes`), which the safe-area test compares with and without the option. Pointer drags use `Harness::drag` and `press_and_move`; a drag moves in five steps, so a test that needs an exact distance reads the state during the drag (`cache.edge_drag`) or allows a frame.
+- Autosave tests pass a time (`tick(now + two minutes)`) instead of waiting; `AppState::finish_autosave` joins the worker. The copy and the project file are compared by modification time, so a test sets the project's time in the past.
+- `fonts::with_coverage` (test only) sets which scripts an installed font covers, one test at a time, so the note for missing CJK fonts is tested without a CJK font on the machine.
+- Test counts after stage 3: 688 library tests (2 ignored), 76 integration tests (3 ignored), 7 module-cycle tests, 34 player tests, 3 player integration tests.
+
+
+## 2.0.4 additions (stages 4 to 7)
+
+- New files: `hwdec/tests.rs` (decode probe with a fake ffmpeg), `instance/tests.rs` (lock, heartbeat, inbox limits, with real files in a temporary folder), `app/speed_tests.rs`; new cases in `hwenc/tests.rs` (a runner whose processes write after a delay and report processor time classifies busy and hanging tries; times are scaled to a hundredth of the 1 s and 4 s limits), `app/hw_tests.rs` (pause, session skip, device choice, decoders and the fallback, repeat text), `export/hw_tests.rs` (the compare runs of the check are counted and read), `preview.rs` (ten Scale changes draw the background once), `packaging.rs` (workflow texts, `package.sh tool` with a local file and a wrong hash, the licence file bytes, the launcher run through `sh`), `desktop.rs` (the menu data).
+- `tests/ffmpeg_integration/hw.rs`: the simulated hardware stands in with SVT-AV1 and libvpx-vp9 (AV1 presets drop `-maxrate`, which SVT-AV1 refuses); AV1 and VP9 projects use 1 s clips (the software encoders are slow); the 60-cut project of `the_check_accepts_correct_files_of_rich_projects` is what showed that a short check cannot rely on the plan's frame count (it falls back to the whole graph). `v204.rs` compares the preview with a kept background with the whole render of the same picture (mean difference below 2 of 255).
+- The `cpu_message` test name is a contract with CI: `cargo test … cpu_message` must run at least one test.
+- Test counts after stage 7: 735 library tests (2 ignored), 80 integration tests (3 ignored), 7 module-cycle tests, 34 player tests, 3 player integration tests; the workspace run takes about 70 s on this computer.

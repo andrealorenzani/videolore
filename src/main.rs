@@ -6,6 +6,10 @@
 
 fn main() -> eframe::Result {
     let project = videolore::desktop::project_arg(std::env::args_os());
+    // a project opened while videolore runs goes to the running window (Windows and Linux)
+    if !videolore::instance::start(project.as_deref()) {
+        return Ok(());
+    }
     videolore::prepare_desktop();
     eframe::run_native(
         "videolore",

@@ -36,17 +36,22 @@ fn every_menu_item_and_toolbar_button_shows_its_icon() {
     // the toolbar
     let all = crate::ui::toolbar::actions(&h.app);
     for id in &all {
+        // the button shows its icon (alone by default) and is named for screen readers
         let text = crate::ui::toolbar::text(&h.app, *id);
-        let n = h
-            .nodes
-            .iter()
-            .find(|n| n.raw == text)
-            .unwrap_or_else(|| panic!("toolbar {id:?} {text:?}: {:#?}", h.labels()));
-        assert!(has_icon(n, crate::ui::toolbar::icon(&h.app, *id)), "{id:?}");
+        let icon = crate::ui::toolbar::icon(&h.app, *id);
+        assert!(text.contains(icon), "{id:?}");
+        let name = crate::ui::toolbar::label(&h.app, *id);
+        assert!(
+            h.nodes.iter().any(|n| n.raw == name),
+            "toolbar {id:?} {name:?}: {:#?}",
+            h.labels()
+        );
     }
     // every menu, top level and the two submenus of Effects
     for (title, items) in menus() {
+        let before = h.nodes.clone();
         h.click_label(title);
+        let menu_nodes = crate::ui::ux_tests::opened(&before, &h.nodes);
         for item in &items {
             match item {
                 Item::Action(id) => {
@@ -58,8 +63,9 @@ fn every_menu_item_and_toolbar_button_shows_its_icon() {
                         .unwrap_or_else(|| panic!("{title} > {label}: {:#?}", h.labels()));
                     assert!(has_icon(n, id.icon()), "{title} > {label}: {:?}", n.raw);
                 }
+                Item::Sections | Item::Workspaces | Item::ThemeMenu | Item::ToolbarMenu => {}
                 Item::Submenu(name, ids) => {
-                    h.click_label(name);
+                    crate::ui::ux_tests::open_submenu(&mut h, &menu_nodes, name);
                     for id in *ids {
                         let label = id.label(&h.app);
                         let n = h
@@ -85,8 +91,9 @@ fn a_greyed_out_command_keeps_its_icon_and_is_greyed_with_it() {
     let h = Harness::new(app, 1280.0, 800.0);
     // Redo has nothing to redo: the button is disabled, its icon is part of its text
     let text = crate::ui::toolbar::text(&h.app, ActionId::Redo);
-    let n = h.nodes.iter().find(|n| n.raw == text).unwrap();
-    assert!(n.disabled && has_icon(n, ActionId::Redo.icon()));
+    assert!(text.contains(ActionId::Redo.icon()));
+    let n = h.nodes.iter().find(|n| n.raw == "Redo").unwrap();
+    assert!(n.disabled);
 }
 
 // covers: REQ-142

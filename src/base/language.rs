@@ -126,6 +126,12 @@ pub fn iso639_2_to_1(code: &str) -> Option<&'static str> {
     language_entry(code).map(|e| e.0)
 }
 
+/// The ISO 639-2 code (the first, bibliographic one) of a language code of the speech model
+/// or of a file; `None` when unknown.
+pub fn iso639_2(code: &str) -> Option<&'static str> {
+    language_entry(code).and_then(|e| e.1.first().copied())
+}
+
 /// English name of a language code (`it`, `ita`, …), when known.
 pub fn language_name(code: &str) -> Option<&'static str> {
     language_entry(code).map(|e| e.2)

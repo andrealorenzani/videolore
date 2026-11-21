@@ -233,18 +233,270 @@ mod tests {
     /// action is pinned to a full commit, every runner to an explicit image.
     #[test]
     fn ci_pins_runners_and_actions() {
-        let ci = include_str!("../.github/workflows/build.yml");
-        assert!(!ci.contains("-latest"), "floating runner label");
-        assert!(ci.contains("permissions:\n  contents: read"));
-        for line in ci.lines().filter(|l| l.contains("uses:")) {
-            let r = line.split("uses:").nth(1).unwrap().trim();
-            let (_, rev) = r.split_once('@').expect("action without a version");
-            let sha: String = rev.chars().take_while(|c| !c.is_whitespace()).collect();
+        for ci in [BUILD_YML, INSTALLER_YML, ADVISORIES_YML] {
+            assert!(!ci.contains("-latest"), "floating runner label");
+            assert!(ci.contains("permissions:\n  contents: read"));
+            for line in ci.lines().filter(|l| l.contains("uses:")) {
+                let r = line.split("uses:").nth(1).unwrap().trim();
+                // a workflow of this repository is not an action from outside
+                if r.starts_with("./") {
+                    continue;
+                }
+                let (_, rev) = r.split_once('@').expect("action without a version");
+                let sha: String = rev.chars().take_while(|c| !c.is_whitespace()).collect();
+                assert!(
+                    sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()),
+                    "not pinned to a commit: {line}"
+                );
+            }
+        }
+    }
+
+    /// The tests that run `package.sh --config-only` write the same stage folders in `dist/`:
+    /// one at a time.
+    #[cfg(unix)]
+    static STAGE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    const BUILD_YML: &str = include_str!("../.github/workflows/build.yml");
+    const INSTALLER_YML: &str = include_str!("../.github/workflows/installer-config.yml");
+    const ADVISORIES_YML: &str = include_str!("../.github/workflows/advisories.yml");
+
+    // covers: REQ-225
+    #[test]
+    fn the_installer_configuration_runs_on_packaging_pull_requests_and_gates_the_executables() {
+        // the triggers of the installer configuration list the packaging paths
+        let on = INSTALLER_YML.split("\njobs:").next().unwrap();
+        assert!(on.contains("pull_request:\n    paths:"));
+        for path in ["scripts/package.sh", "packaging/**", "assets/icon/**"] {
             assert!(
-                sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()),
-                "not pinned to a commit: {line}"
+                on.contains(&format!("- \"{path}\"")),
+                "no trigger for {path}"
             );
         }
+        assert!(on.contains("workflow_call:"));
+        // the Build workflow calls it, and neither the executables nor the installers start
+        // unless it passed
+        assert!(BUILD_YML.contains("uses: ./.github/workflows/installer-config.yml"));
+        let needs: Vec<&str> = BUILD_YML
+            .lines()
+            .filter(|l| l.trim_start().starts_with("needs:"))
+            .collect();
+        assert_eq!(needs.len(), 2, "{needs:?}");
+        assert!(
+            needs.iter().all(|n| n.contains("package-config")),
+            "{needs:?}"
+        );
+        // a broken configuration fails the job: every command of the job stops at its first
+        // failure (bash -e is the default of `run`)
+        assert!(INSTALLER_YML.contains("scripts/package.sh \"$t\" \"$p\" --config-only"));
+    }
+
+    // covers: REQ-226
+    #[test]
+    fn the_advisory_check_runs_every_week_and_cannot_write() {
+        assert!(ADVISORIES_YML.contains("schedule:\n    - cron: \""));
+        assert!(ADVISORIES_YML.contains("cargo deny --locked check advisories"));
+        assert!(ADVISORIES_YML.contains("permissions:\n  contents: read"));
+        assert!(!ADVISORIES_YML.contains("contents: write"));
+        assert!(!ADVISORIES_YML.contains("${{ secrets"));
+        // the weekly run is not a build: it does not build or publish anything
+        assert!(!ADVISORIES_YML.contains("cargo build") && !ADVISORIES_YML.contains("upload"));
+        // the check also stays in the build of every push
+        assert!(BUILD_YML.contains("cargo deny --locked check"));
+    }
+
+    // covers: REQ-227
+    #[test]
+    fn the_cpu_message_test_runs_on_every_push_and_fails_when_it_is_missing() {
+        assert!(BUILD_YML.contains("cargo test --locked -p videolore --lib cpu_message"));
+        assert!(BUILD_YML.contains("test result: ok\\. [1-9][0-9]* passed"));
+        assert!(BUILD_YML.contains("no cpu_message test ran"));
+        // the step belongs to the check job that runs on pushes and pull requests
+        let step = BUILD_YML.find("cpu_message").unwrap();
+        let build_job = BUILD_YML.find("\n  build:\n").unwrap();
+        assert!(step < build_job);
+        // and there is such a test in the library (the name of its module path matches)
+        let tests = include_str!("app/settings_tests.rs");
+        assert!(tests.contains("fn cpu_message_"));
+    }
+
+    // covers: REQ-228
+    #[test]
+    fn the_nsis_toolchain_is_pinned_by_checksum() {
+        let tools = parse_lock(TOOLS_LOCK).unwrap();
+        let nsis = tools
+            .iter()
+            .find(|e| e.name == "nsis")
+            .expect("an nsis entry");
+        assert_eq!(nsis.get("version"), Some("3.09"));
+        assert!(nsis.get("url").unwrap().starts_with("https://"));
+        assert!(is_sha256(nsis.get("sha256").unwrap()));
+        // the Windows installer is not built before the pinned file is checked
+        let script = include_str!("../scripts/package.sh");
+        let check = script.find("fetch_tool nsis").expect("the nsis check");
+        let packager = script.find("cargo packager --release").unwrap();
+        assert!(check < packager);
+    }
+
+    /// A pinned tool whose file changed fails (a wrong hash in a lock file that points at a
+    /// local file), and the right hash passes: the same function checks the NSIS toolchain.
+    // covers: REQ-228
+    #[cfg(unix)]
+    #[test]
+    fn a_wrong_hash_fails_the_tool_check() {
+        use sha2::{Digest, Sha256};
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("nsis.zip");
+        std::fs::write(&file, b"not the real toolchain").unwrap();
+        let good: String = Sha256::digest(b"not the real toolchain")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let lock = |sha: &str| {
+            let p = dir.path().join("tools.lock");
+            std::fs::write(
+                &p,
+                format!(
+                    "[nsis]\nversion = 3.09\nurl = file://{}\nsha256 = {sha}\n",
+                    file.display()
+                ),
+            )
+            .unwrap();
+            std::process::Command::new("bash")
+                .arg(root.join("scripts/package.sh"))
+                .args(["tool", "nsis"])
+                .env("VIDEOLORE_TOOLS_LOCK", &p)
+                .current_dir(root)
+                .output()
+                .expect("bash runs")
+        };
+        let ok = lock(&good);
+        assert!(
+            ok.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ok.stderr)
+        );
+        let bad = lock(&"0".repeat(64));
+        assert!(!bad.status.success());
+        assert!(String::from_utf8_lossy(&bad.stderr).contains("checksum mismatch for nsis"));
+        // a tool that is not in the lock file stops the build too
+        let missing = std::process::Command::new("bash")
+            .arg(root.join("scripts/package.sh"))
+            .args(["tool", "no-such-tool"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(!missing.status.success());
+    }
+
+    /// The licence file of the Windows installer is the notices with a UTF-8 byte-order mark
+    /// (the notices have non-ASCII text); the copy in the repository stays plain.
+    // covers: REQ-229
+    #[cfg(unix)]
+    #[test]
+    fn the_licence_file_of_the_windows_installer_starts_with_a_byte_order_mark() {
+        let _one = STAGE.lock().unwrap_or_else(|e| e.into_inner());
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        for product in ["editor", "player"] {
+            let out = std::process::Command::new("bash")
+                .arg(root.join("scripts/package.sh"))
+                .args(["windows-x86_64", product, "--config-only"])
+                .current_dir(root)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            let suffix = if product == "player" { "-player" } else { "" };
+            let dir = root.join(format!("dist/stage-windows-x86_64{suffix}"));
+            let made = std::fs::read(dir.join("third-party-licence.txt")).unwrap();
+            assert_eq!(&made[..3], b"\xEF\xBB\xBF");
+            let plain: &[u8] = if product == "player" {
+                include_bytes!("../packaging/notices/third-party-player.txt")
+            } else {
+                include_bytes!("../packaging/notices/third-party.txt")
+            };
+            assert_eq!(&made[3..], plain, "the text is the notices, unchanged");
+            let config = std::fs::read_to_string(dir.join("Packager.toml")).unwrap();
+            assert!(config.contains("third-party-licence.txt"));
+        }
+        // the program shows the notices without the mark
+        assert!(!crate::notices::THIRD_PARTY.starts_with('\u{feff}'));
+        assert!(
+            !include_bytes!("../packaging/notices/third-party.txt").starts_with(b"\xEF\xBB\xBF")
+        );
+    }
+
+    /// The archive has a launcher and a desktop entry next to the program, for file managers
+    /// that do not start an extracted program on double-click.
+    // covers: REQ-231
+    #[cfg(unix)]
+    #[test]
+    fn the_linux_archive_has_a_launcher_and_a_desktop_entry() {
+        use std::os::unix::fs::PermissionsExt;
+        let script = include_str!("../scripts/package.sh");
+        for name in ["$pname.sh", "$pname.desktop", "$pname.png"] {
+            assert!(script.contains(&format!("\"$folder/{name}\"")), "{name}");
+        }
+        assert!(script.contains("chmod 0755 \"$folder/$pname.sh\""));
+        let launcher = include_str!("../packaging/linux/launcher.sh");
+        let entry = include_str!("../packaging/linux/launcher.desktop");
+        assert!(launcher.starts_with("#!/bin/sh\n"));
+        for key in [
+            "Type=Application",
+            "Icon=@NAME@",
+            "Exec=",
+            "Name=@DISPLAY@",
+            "Terminal=false",
+        ] {
+            assert!(entry.lines().any(|l| l.starts_with(key)), "{key}");
+        }
+        assert!(entry.contains("%k"), "the entry finds the folder it is in");
+        // the launcher starts the program next to it, through a link too, with the arguments
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("videolore-1.0.0-linux-x86_64");
+        std::fs::create_dir(&folder).unwrap();
+        let program = folder.join("videolore");
+        std::fs::write(&program, "#!/bin/sh\necho \"started: $*\"\n").unwrap();
+        let sh = folder.join("videolore.sh");
+        std::fs::write(&sh, launcher.replace("@NAME@", "videolore")).unwrap();
+        for f in [&program, &sh] {
+            std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let run = |launch: &std::path::Path| {
+            let o = std::process::Command::new(launch)
+                .args(["a b.vlproj"])
+                .current_dir("/")
+                .output()
+                .unwrap();
+            assert!(o.status.success());
+            String::from_utf8_lossy(&o.stdout).trim().to_string()
+        };
+        assert_eq!(run(&sh), "started: a b.vlproj");
+        let link = dir.path().join("link.sh");
+        std::os::unix::fs::symlink(&sh, &link).unwrap();
+        assert_eq!(run(&link), "started: a b.vlproj");
+        // the entry runs the launcher from the folder of the entry (%k is its path)
+        let exec = entry
+            .lines()
+            .find_map(|l| l.strip_prefix("Exec="))
+            .unwrap()
+            .replace("@NAME@", "videolore");
+        let command = exec.replace(
+            "%k",
+            &format!("'{}'", folder.join("videolore.desktop").display()),
+        );
+        let o = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .current_dir("/")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        assert_eq!(String::from_utf8_lossy(&o.stdout).trim(), "started:");
     }
 
     #[test]
@@ -339,10 +591,11 @@ mod tests {
     /// values that cargo-packager 0.11.8 accepts (it rejects unknown keys and enum values
     /// are case-sensitive), and only absolute paths that exist: cargo-packager reads
     /// relative paths from the folder of the configuration file, not the repository.
-    // covers: REQ-040, REQ-041, REQ-042, REQ-138
+    // covers: REQ-040, REQ-041, REQ-042, REQ-138, REQ-248
     #[cfg(unix)]
     #[test]
     fn packager_config_is_valid_for_cargo_packager() {
+        let _one = STAGE.lock().unwrap_or_else(|e| e.into_inner());
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         // accepted spellings (camelCase field names plus the kebab/snake aliases)
         let top = [
@@ -373,23 +626,28 @@ mod tests {
             "mime-type",
             "role",
         ];
-        let nsis = ["installMode", "installer-mode", "installer_mode"];
+        let nsis = [
+            "installMode",
+            "installer-mode",
+            "installer_mode",
+            "template",
+        ];
         let macos = ["minimum-system-version"];
-        // (product, package name, identifier, stage folder suffix, has the .vlproj association)
+        // (product, package name, identifier, stage folder suffix, number of associations)
         let products = [
             (
                 "editor",
                 "videolore",
                 "io.github.andrealorenzani.videolore",
                 "",
-                true,
+                1,
             ),
             (
                 "player",
                 "videolore-player",
                 "io.github.andrealorenzani.videolore-player",
                 "-player",
-                false,
+                5,
             ),
         ];
         let mut identifiers = Vec::new();
@@ -433,7 +691,7 @@ mod tests {
             };
             // enum values: BundleTypeRole and NSISInstallerMode are camelCase
             let roles = get("{}", "role");
-            assert_eq!(roles.len(), usize::from(assoc), "{product} on {target}");
+            assert_eq!(roles.len(), assoc, "{product} on {target}");
             for r in &roles {
                 assert!(
                     ["editor", "viewer", "shell", "qLGenerator", "none"].contains(&unquote(r)),
@@ -478,13 +736,35 @@ mod tests {
             for icon in ["icon.png", "icon.ico", "icon.icns"] {
                 assert!(paths.iter().any(|p| p.ends_with(icon)), "{target}: {icon}");
             }
-            // the .vlproj association (REQ-041): only the editor has it (REQ-138)
-            if assoc {
+            // the .vlproj association (REQ-041) belongs to the editor (REQ-138); the player is
+            // offered for the six video types it plays, as a viewer only (REQ-248)
+            let exts = get("{}", "extensions").join(" ");
+            if product == "editor" {
                 assert_eq!(get("{}", "extensions"), ["[\"vlproj\"]"]);
                 assert!(text.contains("file-associations"));
             } else {
-                assert!(get("{}", "extensions").is_empty());
-                assert!(!text.contains("file-associations") && !text.contains("vlproj"));
+                for ext in ["mp4", "mov", "mkv", "webm", "m4v", "avi"] {
+                    assert!(exts.contains(&format!("\"{ext}\"")), "{target}: {ext}");
+                }
+                assert!(!text.contains("vlproj") && !roles.iter().any(|r| unquote(r) != "viewer"));
+                // Windows: its own installer template registers "Open with" entries only
+                if target == "windows-x86_64" {
+                    let template = get("nsis", "template");
+                    assert_eq!(template.len(), 1, "the player has an installer template");
+                    let path = unquote(&template[0]);
+                    assert!(
+                        path.ends_with("packaging/windows-player.nsi")
+                            && std::path::Path::new(path).is_file()
+                    );
+                    let nsi = std::fs::read_to_string(path).unwrap();
+                    assert!(nsi.contains("OpenWithProgids") && nsi.contains("APP_OPENWITH"));
+                    assert!(
+                        !nsi.contains("!insertmacro APP_ASSOCIATE"),
+                        "never the default"
+                    );
+                } else {
+                    assert!(get("nsis", "template").is_empty());
+                }
             }
             // the icons of both programs are the editor's
             for icon in ["icon.png", "icon.ico", "icon.icns"] {
@@ -495,5 +775,28 @@ mod tests {
         identifiers.sort();
         identifiers.dedup();
         assert_eq!(identifiers.len(), 2);
+    }
+
+    // covers: REQ-248
+    #[test]
+    fn the_player_is_offered_for_the_six_video_types_on_linux() {
+        let script = include_str!("../scripts/package.sh");
+        let player = script
+            .split("Categories=AudioVideo;Player;Video;")
+            .nth(1)
+            .and_then(|t| t.lines().nth(1))
+            .expect("the player's desktop entry");
+        for mime in [
+            "video/mp4",
+            "video/quicktime",
+            "video/x-matroska",
+            "video/webm",
+            "video/x-m4v",
+            "video/x-msvideo",
+        ] {
+            assert!(player.contains(mime), "{mime} in {player}");
+        }
+        // an "Open with" entry: nothing sets it as the default
+        assert!(!script.contains("xdg-mime default"));
     }
 }

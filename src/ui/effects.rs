@@ -6,6 +6,7 @@
 //! applies it to that clip (REQ-082). The popup bodies (REQ-076) are here too: Fades,
 //! Subtitles, Volume and the volume of one clip.
 
+use super::strings::tr;
 use super::{UiCache, button, record};
 use crate::app::{AppState, Command, Edge, EffectKind, Instance, Target};
 use crate::music::Mix;
@@ -198,9 +199,27 @@ pub fn fades_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let tl = &app.project.timeline;
     ui.label(
         "A Fade IN/OUT darkens the end of a clip to black and brings the next one \
-         up from black; the sound fades out and in with it. Every fade has the same fixed \
-         length.",
+         up from black; the sound fades out and in with it. Every fade has the same \
+         length, which you can change here.",
     );
+    // the length of every fade (REQ-274)
+    ui.horizontal(|ui| {
+        ui.label(tr!(FadeLength));
+        let mut secs = tl.fade_len().as_secs_f64();
+        let r = ui.add(
+            egui::DragValue::new(&mut secs)
+                .range(0.1..=10.0)
+                .speed(0.05)
+                .max_decimals(2)
+                .suffix(" s"),
+        );
+        if r.drag_stopped() || (r.changed() && !r.dragged()) || r.lost_focus() {
+            let len = Micros::from_secs_f64(secs);
+            if len != tl.fade_len() {
+                cmds.push(Command::SetFadeLength(len));
+            }
+        }
+    });
     let nearest = tl.nearest_boundary(app.playhead);
     let (enabled, why) = match nearest {
         None => (false, "Fades need at least two clips"),
@@ -208,10 +227,7 @@ pub fn fades_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         Some(_) => (true, ""),
     };
     let r = ui
-        .add_enabled(
-            enabled,
-            Button::new("Add fade at the boundary nearest the playhead"),
-        )
+        .add_enabled(enabled, Button::new(tr!(AddFadeAtTheBoundary)))
         .on_disabled_hover_text(why);
     if r.clicked()
         && let Some((b, _)) = nearest
@@ -312,6 +328,12 @@ pub fn volume_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut 
     }
 }
 
+/// The note of REQ-187 and REQ-188: the scripts of the subtitle lines that no installed font
+/// shows (Chinese, Japanese and Korean use the computer's fonts).
+pub fn subtitle_script_note(app: &AppState) -> Option<String> {
+    crate::fonts::missing_note_in(app.project.subtitles.lines.iter().map(|l| l.text.as_str()))
+}
+
 /// Height of one row of the subtitle line list.
 const LINE_ROW: f32 = 20.0;
 
@@ -321,8 +343,13 @@ pub const OVERLAPS: &str = "Overlaps another line shown at the same time";
 
 pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
     let subs = &app.project.subtitles;
+    // the fonts of the scripts the lines use (REQ-188)
+    super::scripts::install_for(
+        ui.ctx(),
+        &super::scripts::scripts_of_lines(subs.lines.iter().map(|l| l.text.as_str())),
+    );
     ui.horizontal_wrapped(|ui| {
-        ui.label("Style:");
+        ui.label(tr!(Style));
         egui::ComboBox::from_id_salt("preset")
             .selected_text(subs.preset.name())
             .show_ui(ui, |ui| {
@@ -334,7 +361,7 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
             });
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label("Language:");
+        ui.label(tr!(Language));
         let current = match (&subs.language, subs.language_overridden) {
             (Some(l), true) => l.clone(),
             (Some(l), false) => format!("detected: {l}"),
@@ -358,7 +385,7 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
             });
     });
     if !crate::stt::available() {
-        ui.label("Subtitle generation is not available in this build.");
+        ui.label(tr!(SubtitleGenerationIsNotAvailable));
     }
     ui.horizontal_wrapped(|ui| {
         if app.is_generating() {
@@ -379,21 +406,43 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
             },
             cmds,
         );
+        button(ui, app, "Export subtitles…", Command::PickExportSrt, cmds);
+    });
+    ui.horizontal_wrapped(|ui| {
+        let clip = app.target_clip();
         button(
             ui,
             app,
-            "Export subtitles (.srt)…",
-            Command::PickExportSrt,
+            "Import subtitles…",
+            Command::PickImportSubtitles(None),
             cmds,
         );
+        if let Some(c) = clip
+            && let Some(file) = app.import_offer(c)
+        {
+            let name = crate::media::display_name(file);
+            button(
+                ui,
+                app,
+                &format!("Import {name}"),
+                Command::OpenImportSubtitles {
+                    path: file.to_path_buf(),
+                    clip: Some(c),
+                },
+                cmds,
+            );
+        }
     });
+    if let Some(note) = subtitle_script_note(app) {
+        ui.label(super::icons::label(super::icons::WARNING, &note));
+    }
     if let Some(p) = app.model_progress {
-        ui.label("Downloading the speech recognition file…");
+        ui.label(tr!(DownloadingTheSpeechRecognitionFile));
         ui.add(ProgressBar::new(p).show_percentage());
     }
     if let Some(p) = app.stt_progress {
         if app.stt_matching {
-            ui.label("Matching subtitles to the speech");
+            ui.label(tr!(MatchingSubtitlesToTheSpeech));
         }
         ui.add(ProgressBar::new(p).show_percentage());
     }
@@ -410,7 +459,7 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
     let shown = subs.project(&app.project.timeline);
     ui.separator();
     ui.strong(count(shown.len(), "line", "lines"))
-        .on_hover_text("Ctrl/Cmd+click a line to select several");
+        .on_hover_text(tr!(CtrlCmdClickALine));
     // the gestures that select several (REQ-171)
     ui.weak(super::status::SELECTION_HINT);
     let overlaps = cache.overlapping_lines(app).clone();
@@ -475,7 +524,7 @@ pub fn clip_volume_controls(
     cmds: &mut Vec<Command>,
 ) {
     let Some(c) = app.project.timeline.get(clip) else {
-        ui.label("This clip no longer exists.");
+        ui.label(tr!(ThisClipNoLongerExists));
         return;
     };
     let (mut volume, mut muted) = match cache.clip_volume_drag {
@@ -485,7 +534,7 @@ pub fn clip_volume_controls(
     let mut commit = false;
     let mut dragging = false;
     ui.horizontal_wrapped(|ui| {
-        ui.label("Clip sound");
+        ui.label(tr!(ClipSound));
         let r = ui.add(egui::Slider::new(&mut volume, 0..=100).suffix("%"));
         dragging |= r.dragged();
         commit |= r.drag_stopped() || (r.changed() && !r.dragged());
@@ -548,7 +597,7 @@ pub fn clean_audio_clip_body(
     cmds: &mut Vec<Command>,
 ) {
     let Some(c) = app.project.timeline.get(clip) else {
-        ui.label("This clip no longer exists.");
+        ui.label(tr!(ThisClipNoLongerExists));
         return;
     };
     if let Some(name) = app.clip_name(clip) {
@@ -556,6 +605,8 @@ pub fn clean_audio_clip_body(
     }
     ui.weak(CLEAN_AUDIO_TEXT);
     if c.clean_audio {
+        strength_slider(ui, c.clean_strength, Target::Clip(clip), cmds);
+        speech_switch(ui, c.speech_enhance, Target::Clip(clip), cmds);
         button(
             ui,
             app,
@@ -567,7 +618,7 @@ pub fn clean_audio_clip_body(
             cmds,
         );
     } else {
-        ui.label("Clean audio is off for this clip.");
+        ui.label(tr!(CleanAudioIsOffFor));
         button(
             ui,
             app,
@@ -581,12 +632,51 @@ pub fn clean_audio_clip_body(
     }
 }
 
+/// The Strength of Clean audio, 0 to 100 % (REQ-278): 0 is the sound as it was.
+fn speech_switch(ui: &mut Ui, now: bool, target: Target, cmds: &mut Vec<Command>) {
+    let mut on = now;
+    if ui
+        .checkbox(&mut on, tr!(NormaliseSpeech))
+        .on_hover_text(tr!(NormaliseSpeechTip))
+        .changed()
+    {
+        cmds.push(Command::SetSpeechEnhance { target, on });
+    }
+}
+
+fn strength_slider(ui: &mut Ui, now: u8, target: Target, cmds: &mut Vec<Command>) {
+    ui.horizontal(|ui| {
+        ui.label(tr!(Strength));
+        let mut v = f32::from(now);
+        let r = ui.add(
+            egui::Slider::new(&mut v, 0.0..=100.0)
+                .step_by(1.0)
+                .suffix(" %"),
+        );
+        if (r.drag_stopped() || (r.changed() && !r.dragged())) && v.round() as u8 != now {
+            cmds.push(Command::SetCleanStrength {
+                target,
+                percent: v.round() as u8,
+            });
+        }
+    });
+}
+
 /// The Clean audio popup of the whole video: how many clips have it, apply and remove.
 pub fn clean_audio_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let clips = &app.project.timeline.clips;
     let on = clips.iter().filter(|c| c.clean_audio).count();
     ui.weak(CLEAN_AUDIO_TEXT);
     ui.label(format!("{on} of {} clips have Clean audio.", clips.len()));
+    if on > 0 {
+        let first = clips
+            .iter()
+            .find(|c| c.clean_audio)
+            .map_or(100, |c| c.clean_strength);
+        strength_slider(ui, first, Target::WholeVideo, cmds);
+        let speech = clips.iter().any(|c| c.speech_enhance);
+        speech_switch(ui, speech, Target::WholeVideo, cmds);
+    }
     ui.horizontal_wrapped(|ui| {
         button(
             ui,
@@ -619,7 +709,7 @@ pub fn edge_fade_body(ui: &mut Ui, app: &AppState, edge: Edge, cmds: &mut Vec<Co
         Edge::End => tl.end_fade(),
     };
     if !on {
-        ui.label("This fade no longer exists.");
+        ui.label(tr!(ThisFadeNoLongerExists));
         return;
     }
     ui.strong(match edge {

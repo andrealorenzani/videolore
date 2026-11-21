@@ -13,6 +13,7 @@
 //! rectilinear horizontal field of view we ask for. Runtime commands of `v360` ADD to the
 //! rotation unless the filter has `reset_rot=1`: with it every command is absolute.
 
+pub use crate::keyframes::Ease;
 use crate::media::MediaId;
 use crate::time::{Fps, Micros};
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,11 @@ pub const MAX_POVS: usize = 200;
 pub const MIN_FOV_CD: i32 = 3000;
 pub const MAX_FOV_CD: i32 = 11000;
 pub const DEFAULT_FOV_CD: i32 = 9000;
+/// Largest roll either way (REQ-270).
+pub const MAX_ROLL_CD: i32 = 18000;
+/// Most camera updates a second in an export (REQ-266): the camera moves in steps of at
+/// least a tenth of a second, which the eye does not see and the graph does not pay for.
+pub const EXPORT_UPDATES_PER_SECOND: u32 = 10;
 const FULL_TURN_CD: i32 = 36000;
 const HALF_TURN_CD: i32 = 18000;
 const MAX_PITCH_CD: i32 = 9000;
@@ -41,6 +47,14 @@ pub struct Camera {
     pub pitch_cd: i32,
     /// Horizontal field of view, `[3000, 11000]`.
     pub fov_cd: i32,
+    /// Roll round the line of sight, `[-18000, 18000]`; positive turns the picture
+    /// clockwise (REQ-270). Not written in the project when 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub roll_cd: i32,
+}
+
+fn is_zero(v: &i32) -> bool {
+    *v == 0
 }
 
 impl Default for Camera {
@@ -66,6 +80,7 @@ impl Camera {
         yaw_cd: 0,
         pitch_cd: 0,
         fov_cd: DEFAULT_FOV_CD,
+        roll_cd: 0,
     };
 
     /// Builds a camera from any values, bringing them into range (yaw wraps, the rest
@@ -75,12 +90,26 @@ impl Camera {
             yaw_cd: wrap_yaw(yaw_cd),
             pitch_cd: pitch_cd.clamp(-(MAX_PITCH_CD as i64), MAX_PITCH_CD as i64) as i32,
             fov_cd: fov_cd.clamp(MIN_FOV_CD as i64, MAX_FOV_CD as i64) as i32,
+            roll_cd: 0,
+        }
+    }
+
+    /// The same camera with this roll (clamped).
+    pub fn with_roll(self, roll_cd: i64) -> Camera {
+        Camera {
+            roll_cd: roll_cd.clamp(-(MAX_ROLL_CD as i64), MAX_ROLL_CD as i64) as i32,
+            ..self
         }
     }
 
     /// The same camera brought into range.
     pub fn clamped(self) -> Camera {
         Camera::new(self.yaw_cd as i64, self.pitch_cd as i64, self.fov_cd as i64)
+            .with_roll(self.roll_cd as i64)
+    }
+
+    pub fn roll_deg(self) -> f64 {
+        self.roll_cd as f64 / 100.0
     }
 
     pub fn is_in_range(self) -> bool {
@@ -112,6 +141,26 @@ impl Camera {
             self.pitch_cd as i64 + (dy as f64 * k).round() as i64,
             self.fov_cd as i64,
         )
+        .with_roll(self.roll_cd as i64)
+    }
+
+    /// The camera turned by whole hundredths of a degree (the arrow keys, REQ-272).
+    pub fn turned(self, yaw_cd: i32, pitch_cd: i32) -> Camera {
+        Camera::new(
+            i64::from(self.yaw_cd) + i64::from(yaw_cd),
+            i64::from(self.pitch_cd) + i64::from(pitch_cd),
+            i64::from(self.fov_cd),
+        )
+        .with_roll(i64::from(self.roll_cd))
+    }
+
+    /// The camera after turning the picture by `dx` pixels on a preview `view_w` wide
+    /// (Shift and drag, REQ-270): a full width is a quarter turn.
+    pub fn rolled(self, dx: f32, view_w: f32) -> Camera {
+        if !(view_w.is_finite() && view_w > 0.0 && dx.is_finite()) {
+            return self;
+        }
+        self.with_roll(self.roll_cd as i64 + (dx as f64 / view_w as f64 * 9000.0).round() as i64)
     }
 
     /// The camera after `scroll` points of wheel (positive zooms in) or a pinch.
@@ -125,6 +174,7 @@ impl Camera {
             self.pitch_cd as i64,
             (self.fov_cd as f64 * f).round() as i64,
         )
+        .with_roll(self.roll_cd as i64)
     }
 
     /// Camera `frac` (0..=1) of the way from `self` to `to`: yaw the short way round
@@ -140,6 +190,7 @@ impl Camera {
             mix(self.pitch_cd, to.pitch_cd).round() as i64,
             mix(self.fov_cd, to.fov_cd).round() as i64,
         )
+        .with_roll(mix(self.roll_cd, to.roll_cd).round() as i64)
     }
 }
 
@@ -148,6 +199,29 @@ impl Camera {
 pub struct Pov {
     pub t: Micros,
     pub cam: Camera,
+    /// How the camera moves from this POV to the next (REQ-271).
+    #[serde(default, skip_serializing_if = "crate::keyframes::is_straight")]
+    pub ease: Ease,
+}
+
+impl Pov {
+    /// A POV with a straight move to the next one.
+    pub fn new(t: Micros, cam: Camera) -> Pov {
+        Pov {
+            t,
+            cam,
+            ease: Ease::Straight,
+        }
+    }
+}
+
+/// The camera a 360 source starts at: the file's own initial view (yaw, pitch, roll in
+/// hundredths of a degree), else straight ahead (REQ-269).
+pub fn start_camera(pose: Option<[i32; 3]>) -> Camera {
+    match pose {
+        Some([y, p, r]) => Camera::new(i64::from(y), i64::from(p), 9000).with_roll(i64::from(r)),
+        None => Camera::FRONT,
+    }
 }
 
 /// The camera of a path (sorted by time, unique times) at source time `t`: it stays on
@@ -164,7 +238,7 @@ pub fn at(path: &[Pov], t: Micros) -> Option<Camera> {
     let i = path.partition_point(|p| p.t <= t);
     let (a, b) = (&path[i - 1], &path[i]);
     let frac = (t.0 - a.t.0) as f64 / (b.t.0 - a.t.0) as f64;
-    Some(a.cam.lerp(b.cam, frac))
+    Some(a.cam.lerp(b.cam, a.ease.apply(frac)))
 }
 
 /// The POVs of every 360 source of a project.
@@ -388,8 +462,14 @@ pub fn diagonal_fov_deg(h_fov_deg: f64, w: u32, h: u32) -> f64 {
 /// The `v360` filter named `v360@<id>` (so a command file can address it alone) for a
 /// camera, `w` x `h` output (initial values: those at the segment start).
 pub fn filter(id: &str, cam: Camera, w: u32, h: u32) -> String {
+    // the roll is written only when there is one (the filters of other projects are unchanged)
+    let roll = if cam.roll_cd != 0 {
+        format!(":roll={:.2}", cam.roll_deg())
+    } else {
+        String::new()
+    };
     format!(
-        "v360@{id}=input=e:output=flat:reset_rot=1:w={w}:h={h}:d_fov={:.4}:yaw={:.2}:pitch={:.2}:interp=linear",
+        "v360@{id}=input=e:output=flat:reset_rot=1:w={w}:h={h}:d_fov={:.4}:yaw={:.2}:pitch={:.2}{roll}:interp=linear",
         diagonal_fov_deg(cam.fov_deg(), w, h),
         cam.yaw_deg(),
         cam.pitch_deg()
@@ -412,12 +492,29 @@ pub fn command_lines(
     w: u32,
     h: u32,
 ) -> String {
+    command_lines_capped(target, path, src_in, src_out, fps, (w, h), 0)
+}
+
+/// [`command_lines`] with at most `max_per_second` updates a second (0: every frame),
+/// REQ-266: the camera is looked at once every `fps / max_per_second` frames.
+pub fn command_lines_capped(
+    target: &str,
+    path: &[Pov],
+    src_in: Micros,
+    src_out: Micros,
+    fps: Fps,
+    (w, h): (u32, u32),
+    max_per_second: u32,
+) -> String {
     let mut out = String::new();
     if path.len() < 2 || src_out <= src_in {
         return out;
     }
     let frames = fps.frame_index(src_out - src_in).max(1);
-    let step = ((frames + MAX_COMMAND_LINES - 1) / MAX_COMMAND_LINES).max(1);
+    let mut step = ((frames + MAX_COMMAND_LINES - 1) / MAX_COMMAND_LINES).max(1);
+    if max_per_second > 0 {
+        step = step.max((fps.as_f64() / f64::from(max_per_second)).ceil() as i64);
+    }
     let half = fps.frame_duration().0 / 2;
     let mut prev = at(path, src_in).unwrap_or_default();
     let mut k = step;
@@ -446,6 +543,10 @@ pub fn command_lines(
                     "{sep}{target} d_fov {:.4}",
                     diagonal_fov_deg(cam.fov_deg(), w, h)
                 );
+                sep = ", ";
+            }
+            if cam.roll_cd != prev.roll_cd {
+                let _ = write!(out, "{sep}{target} roll {:.2}", cam.roll_deg());
             }
             out.push_str(";\n");
             prev = cam;
@@ -534,10 +635,10 @@ mod tests {
         assert!(a.is_valid());
     }
     fn pov(t_s: i64, yaw: i32) -> Pov {
-        Pov {
-            t: Micros(t_s * 1_000_000),
-            cam: Camera::new(yaw as i64 * 100, 0, 9000),
-        }
+        Pov::new(
+            Micros(t_s * 1_000_000),
+            Camera::new(yaw as i64 * 100, 0, 9000),
+        )
     }
 
     // covers: REQ-102
@@ -642,7 +743,8 @@ mod tests {
                 m,
                 Pov {
                     t: Micros(-1),
-                    cam: Camera::FRONT
+                    cam: Camera::FRONT,
+                    ease: Default::default(),
                 }
             ),
             Err(PovError::BadTime)
@@ -662,6 +764,7 @@ mod tests {
                 Pov {
                     t: Micros(i),
                     cam: Camera::FRONT,
+                    ease: Default::default(),
                 },
             )
             .unwrap();
@@ -671,7 +774,8 @@ mod tests {
                 m,
                 Pov {
                     t: Micros(100_000),
-                    cam: Camera::FRONT
+                    cam: Camera::FRONT,
+                    ease: Default::default(),
                 }
             ),
             Err(PovError::TooMany)
@@ -682,6 +786,7 @@ mod tests {
             Pov {
                 t: Micros(3),
                 cam: Camera::new(5, 0, 9000),
+                ease: Default::default(),
             },
         )
         .unwrap();
@@ -701,11 +806,14 @@ mod tests {
                         yaw_cd: 99999,
                         pitch_cd: 99999,
                         fov_cd: 1,
+                        roll_cd: 0,
                     },
+                    ease: Default::default(),
                 },
                 Pov {
                     t: Micros(1),
                     cam: Camera::FRONT,
+                    ease: Default::default(),
                 },
             ],
         );
@@ -729,6 +837,7 @@ mod tests {
                 .map(|i| Pov {
                     t: Micros(i),
                     cam: Camera::FRONT,
+                    ease: Default::default(),
                 })
                 .collect(),
         );
@@ -824,10 +933,12 @@ mod tests {
         let a = Pov {
             t: Micros::ZERO,
             cam: Camera::new(0, 0, 9000),
+            ease: Default::default(),
         };
         let b = Pov {
             t: Micros(1_000_000),
             cam: Camera::new(0, 1000, 5000),
+            ease: Default::default(),
         };
         let s = command_lines(
             "v360@c0",
@@ -869,5 +980,138 @@ mod tests {
             1080,
         );
         assert!(s.lines().count() as i64 <= MAX_COMMAND_LINES);
+    }
+
+    // covers: REQ-271
+    #[test]
+    fn an_eased_segment_is_slow_at_the_ends_and_exact_at_both_of_them() {
+        let mut a = pov(0, 0);
+        a.ease = Ease::EaseInOut;
+        let b = pov(4, 90);
+        let path = [a, b];
+        let yaw = |t: i64| at(&path, Micros(t)).unwrap().yaw_deg();
+        assert_eq!(yaw(0), 0.0);
+        assert_eq!(yaw(4_000_000), 90.0);
+        assert!((yaw(2_000_000) - 45.0).abs() < 0.01, "the middle");
+        // a quarter of the time: smoothstep(0.25) = 0.15625 of the way, behind the straight 22.5
+        assert!(
+            (yaw(1_000_000) - 14.0625).abs() < 0.01,
+            "{}",
+            yaw(1_000_000)
+        );
+        assert!((yaw(3_000_000) - 75.9375).abs() < 0.01);
+        // straight stays straight, and the choice is of the segment that starts at the POV
+        let straight = [pov(0, 0), b];
+        assert!((at(&straight, Micros(1_000_000)).unwrap().yaw_deg() - 22.5).abs() < 0.01);
+        assert_eq!(Ease::Straight.apply(0.3), 0.3);
+        assert_eq!(Ease::EaseInOut.apply(-1.0), 0.0);
+        assert_eq!(Ease::EaseInOut.apply(2.0), 1.0);
+    }
+
+    // covers: REQ-270
+    #[test]
+    fn roll_turns_the_picture_and_is_written_only_when_there_is_one() {
+        let c = Camera::FRONT.with_roll(3000);
+        assert_eq!(c.roll_deg(), 30.0);
+        assert_eq!(Camera::FRONT.with_roll(99_999).roll_cd, MAX_ROLL_CD);
+        assert_eq!(Camera::FRONT.with_roll(-99_999).roll_cd, -MAX_ROLL_CD);
+        // dragging and zooming keep the roll; Shift and drag across the picture is a quarter turn
+        assert_eq!(c.dragged(10.0, 5.0, 800.0).roll_cd, 3000);
+        assert_eq!(c.zoomed(40.0).roll_cd, 3000);
+        assert_eq!(Camera::FRONT.rolled(200.0, 800.0).roll_cd, 2250);
+        assert_eq!(Camera::FRONT.rolled(f32::NAN, 800.0), Camera::FRONT);
+        // roll goes along a segment like the other values
+        let mid = Camera::FRONT.lerp(c, 0.5);
+        assert_eq!(mid.roll_cd, 1500);
+        // the filter names the roll only when it is not 0
+        assert!(!filter("c0", Camera::FRONT, 640, 360).contains("roll"));
+        assert!(filter("c0", c, 640, 360).contains(":roll=30.00:"));
+        // a path with roll 30 at 5 s: the commands carry it
+        let path = [
+            Pov::new(Micros(0), Camera::FRONT),
+            Pov::new(Micros(5_000_000), c),
+        ];
+        let lines = command_lines(
+            "v360@c0",
+            &path,
+            Micros(0),
+            Micros(5_000_000),
+            Fps::new(10, 1).unwrap(),
+            640,
+            360,
+        );
+        assert!(lines.contains("v360@c0 roll 29.40"), "{lines}");
+        assert!(!lines.contains("yaw"));
+        // Reset view: roll 0 again (the camera of a reset is the front view)
+        assert_eq!(Camera::FRONT.roll_cd, 0);
+        // a project without roll or ease is written as before and one with them is read back
+        let plain = serde_json::to_string(&Pov::new(Micros(1), Camera::FRONT)).unwrap();
+        assert!(
+            !plain.contains("roll") && !plain.contains("ease"),
+            "{plain}"
+        );
+        let rolled = Pov {
+            ease: Ease::EaseInOut,
+            ..Pov::new(Micros(1), c)
+        };
+        let back: Pov = serde_json::from_str(&serde_json::to_string(&rolled).unwrap()).unwrap();
+        assert_eq!(back, rolled);
+        let old: Pov = serde_json::from_str(&plain).unwrap();
+        assert_eq!((old.cam.roll_cd, old.ease), (0, Ease::Straight));
+    }
+
+    // covers: REQ-266
+    #[test]
+    fn an_export_updates_the_camera_at_most_ten_times_a_second() {
+        let path = [
+            Pov::new(Micros(0), Camera::new(-17000, 0, 9000)),
+            Pov::new(Micros(10_000_000), Camera::new(17000, 2000, 9000)),
+        ];
+        let fps = Fps::new(30, 1).unwrap();
+        let all = command_lines(
+            "v360@c0",
+            &path,
+            Micros(0),
+            Micros(10_000_000),
+            fps,
+            1920,
+            1080,
+        );
+        let capped = command_lines_capped(
+            "v360@c0",
+            &path,
+            Micros(0),
+            Micros(10_000_000),
+            fps,
+            (1920, 1080),
+            EXPORT_UPDATES_PER_SECOND,
+        );
+        assert!(all.lines().count() > 250, "{}", all.lines().count());
+        assert!(capped.lines().count() <= 100, "{}", capped.lines().count());
+        assert!(
+            capped.lines().count() >= 90,
+            "the camera still moves smoothly enough"
+        );
+        // 0 means every frame, and a slow frame rate is not slowed further
+        let same = command_lines_capped(
+            "v360@c0",
+            &path,
+            Micros(0),
+            Micros(10_000_000),
+            fps,
+            (1920, 1080),
+            0,
+        );
+        assert_eq!(same, all);
+        let slow = command_lines_capped(
+            "v360@c0",
+            &path,
+            Micros(0),
+            Micros(10_000_000),
+            Fps::new(5, 1).unwrap(),
+            (1920, 1080),
+            10,
+        );
+        assert!(slow.lines().count() <= 50);
     }
 }

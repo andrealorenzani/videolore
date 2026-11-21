@@ -6,6 +6,7 @@
 //! one undo step per change.
 
 use super::UiCache;
+use super::strings::tr;
 use crate::app::{AppState, Command, Popup};
 use crate::text::{
     EFFECT_DEFAULT, EFFECT_MAX, EFFECT_MIN, MIN_TTL, Readability, SlideDir, TextId, TextItem,
@@ -47,7 +48,7 @@ fn toggle_time(ui: &mut Ui, label: &str, v: &mut Option<Micros>) -> bool {
             done = true;
         }
         if let Some(t) = v {
-            ui.label("for");
+            ui.label(tr!(For));
             done |= time_value(ui, t, EFFECT_MIN, EFFECT_MAX);
         }
     });
@@ -70,7 +71,7 @@ fn slide_row(ui: &mut Ui, v: &mut Option<(SlideDir, Micros)>) -> bool {
                         done |= ui.selectable_value(dir, d, d.name()).changed();
                     }
                 });
-            ui.label("in");
+            ui.label(tr!(In));
             done |= time_value(ui, t, EFFECT_MIN, EFFECT_MAX);
         }
     });
@@ -81,7 +82,7 @@ fn slide_row(ui: &mut Ui, v: &mut Option<(SlideDir, Micros)>) -> bool {
 /// stored.
 fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String) -> bool {
     let mut done = false;
-    ui.label("Text (Enter starts a new line)");
+    ui.label(tr!(TextEnterStartsANew));
     let r = ui.add(
         egui::TextEdit::multiline(buffer)
             .desired_rows(3)
@@ -90,19 +91,19 @@ fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String)
     item.text = buffer.clone();
     done |= r.lost_focus();
     ui.separator();
-    ui.strong("Effects");
+    ui.strong(tr!(Effects));
     done |= toggle_time(ui, "Fade IN", &mut item.effects.fade_in);
     done |= toggle_time(ui, "Fade OUT", &mut item.effects.fade_out);
     done |= toggle_time(ui, "Blink every", &mut item.effects.blink);
     done |= slide_row(ui, &mut item.effects.slide);
     ui.separator();
     ui.horizontal(|ui| {
-        ui.label("Time to live");
+        ui.label(tr!(TimeToLive));
         let max = app.project.timeline.duration().max(MIN_TTL);
         done |= time_value(ui, &mut item.ttl, MIN_TTL, max);
     });
     ui.horizontal(|ui| {
-        ui.label("Colour");
+        ui.label(tr!(Colour));
         let before = item.colour;
         let r = egui::color_picker::color_edit_button_srgb(ui, &mut item.colour);
         if item.colour != before && !ui.input(|i| i.pointer.any_down()) {
@@ -111,7 +112,7 @@ fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String)
         done |= r.clicked_elsewhere() && item.colour != before;
     });
     ui.horizontal(|ui| {
-        ui.label("Font");
+        ui.label(tr!(Font));
         let shown = if item.font.is_empty() {
             crate::text::DEFAULT_FONT.to_string()
         } else {
@@ -122,7 +123,7 @@ fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String)
             .width(220.0)
             .show_ui(ui, |ui| match app.fonts.families() {
                 None => {
-                    ui.label("Loading fonts…");
+                    ui.label(tr!(LoadingFonts));
                 }
                 Some(list) => {
                     for f in list {
@@ -143,7 +144,7 @@ fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String)
         ui.weak(FONT_MISSING);
     }
     ui.horizontal(|ui| {
-        ui.label("Readability");
+        ui.label(tr!(Readability));
         egui::ComboBox::from_id_salt("text-readability")
             .selected_text(item.readability.name())
             .show_ui(ui, |ui| {
@@ -172,7 +173,7 @@ fn new_text(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Com
             String::new(),
         )
     });
-    ui.strong("New text");
+    ui.strong(tr!(NewText));
     ui.weak(format!(
         "It starts at the playhead ({}).",
         crate::time::timecode(app.playhead)
@@ -191,7 +192,7 @@ fn new_text(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Com
             cmds.push(cmd);
             cmds.push(Command::ClosePopup(Popup::Text));
         }
-        if ui.button("Close").clicked() {
+        if ui.button(tr!(Close)).clicked() {
             cmds.push(Command::ClosePopup(Popup::Text));
         }
     });
@@ -199,10 +200,10 @@ fn new_text(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Com
 
 fn existing(ui: &mut Ui, app: &AppState, cache: &mut UiCache, id: TextId, cmds: &mut Vec<Command>) {
     let Some(stored) = app.project.texts.get(id) else {
-        ui.label("This text no longer exists.");
+        ui.label(tr!(ThisTextNoLongerExists));
         return;
     };
-    ui.strong("Text");
+    ui.strong(tr!(TextWord));
     ui.label(format!(
         "{} – {}",
         crate::time::timecode(stored.start),
@@ -222,7 +223,7 @@ fn existing(ui: &mut Ui, app: &AppState, cache: &mut UiCache, id: TextId, cmds: 
     }
     ui.separator();
     let del = Command::DeleteTexts(vec![id]);
-    if ui.button("Delete").clicked() {
+    if ui.button(tr!(Delete)).clicked() {
         cmds.push(del);
     }
 }

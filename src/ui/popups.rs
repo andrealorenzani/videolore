@@ -7,6 +7,7 @@
 //! position is kept for the session), a close button, closes with Esc, stays inside the
 //! window and scrolls when its content does not fit.
 
+use super::strings::tr;
 use super::{UiCache, button, effects, keymap, scroll_body, settings};
 use crate::app::{AppState, Command, Edge, Instance, Popup};
 use crate::time::{Micros, timecode};
@@ -74,17 +75,38 @@ fn window(
     let screen = ctx.content_rect();
     let mut open = true;
     let width = if p == Popup::Settings { 460.0 } else { WIDTH };
+    let track = cache.sections.map(|s| s.timeline).unwrap_or(screen);
+    let width = super::place::fit_width(screen, track, width);
     let width = width.min(screen.width() - 24.0).max(120.0);
-    let max_h = (screen.height() - 90.0).max(80.0);
-    let offset = egui::vec2(24.0, 24.0) * (n % 5) as f32;
-    egui::Window::new(super::icons::label(popup_icon(app, p), &app.popup_title(p)))
-        .id(keymap::popup_id(p))
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .constrain(true)
-        .pivot(Align2::CENTER_CENTER)
-        .default_pos(screen.center() + offset)
+    // where it opens: where the user left it (REQ-235), else clear of the tracks (REQ-236)
+    let name = format!("{p:?}");
+    let remembered = app
+        .settings
+        .interface
+        .popups
+        .get(&name)
+        .and_then(|xy| super::place::saved(*xy, egui::vec2(width, 120.0), screen));
+    let place = super::place::default_place(screen, track, width, n);
+    let max_h = if remembered.is_some() {
+        (screen.height() - 90.0).max(80.0)
+    } else {
+        place.max_height
+    };
+    let start = remembered.or(place.pos);
+    let mut window =
+        egui::Window::new(super::icons::label(popup_icon(app, p), &app.popup_title(p)))
+            .id(keymap::popup_id(p))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .constrain(true);
+    window = match start {
+        Some(pos) => window.pivot(Align2::LEFT_TOP).default_pos(pos),
+        None => window
+            .pivot(Align2::CENTER_CENTER)
+            .default_pos(screen.center() + egui::vec2(24.0, 24.0) * (n % 5) as f32),
+    };
+    let shown = window
         .default_width(width)
         .max_width(width)
         .show(ctx, |ui| {
@@ -100,11 +122,30 @@ fn window(
                 Popup::CleanAudio => effects::clean_audio_body(ui, app, cmds),
                 Popup::ClipDetails => clip_details_body(ui, app, cache, cmds),
                 Popup::Instance => instance_body(ui, app, cache, cmds),
-                Popup::Shortcuts => shortcuts_body(ui),
+                Popup::Shortcuts => shortcuts_body(ui, app, cmds),
                 Popup::Text => super::text_popup::text_body(ui, app, cache, cmds),
                 Popup::Splash => {}
             });
         });
+    // a popup the user moved is remembered where it was left (REQ-235): its place when
+    // it was last at rest is compared with its place when the pointer is released
+    if let Some(r) = shown {
+        let min = r.response.rect.min;
+        let key = Id::unique(("popup-rest", p));
+        let rest: Option<egui::Pos2> = ctx.data(|d| d.get_temp(key));
+        match rest {
+            None => {
+                ctx.data_mut(|d| d.insert_temp(key, min));
+            }
+            Some(at) if ctx.input(|i| i.pointer.any_released()) => {
+                if open && (min - at).abs().max_elem() > 1.0 {
+                    cmds.push(Command::PopupMoved(name, (min.x, min.y)));
+                    ctx.data_mut(|d| d.insert_temp(key, min));
+                }
+            }
+            Some(_) => {}
+        }
+    }
     if !open {
         cmds.push(Command::ClosePopup(p));
     }
@@ -204,15 +245,45 @@ fn chooser(ctx: &Context, app: &AppState, cache: &UiCache, cmds: &mut Vec<Comman
     }
 }
 
-/// The keyboard shortcuts window: exactly the bound shortcuts.
-pub fn shortcuts_body(ui: &mut Ui) {
+/// The keyboard shortcuts window: exactly the bound shortcuts, each with a button to
+/// change it by pressing the new keys (REQ-242), and Reset shortcuts.
+pub fn shortcuts_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+    let over = keymap::current(ui.ctx());
+    if let Some((name, conflict)) = &app.rebind {
+        ui.horizontal(|ui| {
+            ui.strong(format!("{} {}", tr!(PressTheNewKeysFor), name));
+            if ui.button(tr!(Cancel)).clicked() {
+                cmds.push(Command::CancelRebind);
+            }
+        });
+        if let Some(by) = conflict {
+            ui.colored_label(
+                egui::Color32::from_rgb(230, 160, 40),
+                format!("{} {by}. {}", tr!(ThoseKeysAreUsedBy), tr!(PressOtherKeys)),
+            );
+        }
+    }
     egui::Grid::new("shortcuts-grid")
-        .num_columns(2)
+        .num_columns(3)
         .striped(true)
         .show(ui, |ui| {
-            for (s, label) in keymap::bindings() {
+            for (id, s, label) in keymap::bindings_in(&over) {
                 ui.monospace(ui.ctx().format_shortcut(&s));
                 ui.label(label);
+                if let Some(id) = id {
+                    let r = ui.small_button(tr!(Change));
+                    let r = r.on_hover_text(tr!(PressNewKeysToChange));
+                    r.widget_info(|| {
+                        egui::WidgetInfo::labeled(
+                            egui::Role::Button,
+                            true,
+                            format!("Change {label}"),
+                        )
+                    });
+                    if r.clicked() {
+                        cmds.push(Command::StartRebind(id.name()));
+                    }
+                }
                 ui.end_row();
             }
             for (gesture, label) in GESTURES {
@@ -221,13 +292,16 @@ pub fn shortcuts_body(ui: &mut Ui) {
                 ui.end_row();
             }
         });
+    if ui.button(tr!(ResetShortcuts)).clicked() {
+        cmds.push(Command::ResetShortcuts);
+    }
 }
 
 /// Settings of the fade or subtitle line the user clicked.
 pub fn instance_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
     match app.popups.instance {
         None => {
-            ui.label("Click a marker on the timeline.");
+            ui.label(tr!(ClickAMarkerOnThe));
         }
         Some(Instance::Fade(l, r)) => fade_instance(ui, app, l, r, cmds),
         Some(Instance::Line(id, clip)) => line_instance(ui, app, cache, id, clip, cmds),
@@ -265,7 +339,7 @@ fn pov_instance(
         .find(|p| p.t == t)
         .copied()
     else {
-        ui.label("This point of view no longer exists.");
+        ui.label(tr!(ThisPointOfViewNo));
         return;
     };
     let name = app
@@ -273,9 +347,9 @@ fn pov_instance(
         .media(media)
         .map(|m| m.name.clone())
         .unwrap_or_default();
-    ui.strong("360° point of view");
+    ui.strong(tr!(N360PointOfView));
     ui.add(egui::Label::new(format!("Source: {name}")).truncate());
-    ui.weak("The camera moves in a straight line, in time, from one point of view to the next.");
+    ui.weak("The camera moves from one point of view to the next, in a straight line unless you choose to ease in and out.");
     // values being edited (kept between frames until the edit ends)
     let mut v = match &cache.pov_edit {
         Some((m, old, v)) if *m == media && *old == t => *v,
@@ -284,6 +358,7 @@ fn pov_instance(
             p.cam.yaw_deg(),
             p.cam.pitch_deg(),
             p.cam.fov_deg(),
+            p.cam.roll_deg(),
         ],
     };
     let mut changed = false;
@@ -298,6 +373,7 @@ fn pov_instance(
             ("Direction (yaw)", 1, -180.0..=180.0, "°"),
             ("Up/down (pitch)", 2, -90.0..=90.0, "°"),
             ("Zoom (field of view)", 3, 30.0..=110.0, "°"),
+            ("Roll (tilt)", 4, -180.0..=180.0, "°"),
         ] {
             ui.label(label);
             let r = ui.add(
@@ -312,10 +388,13 @@ fn pov_instance(
             ui.end_row();
         }
     });
+    // how the camera moves on to the next point of view (REQ-271)
+    let mut eased = p.ease == crate::camera::Ease::EaseInOut;
+    let ease_changed = ui.checkbox(&mut eased, tr!(EaseInAndOut)).changed();
     if changed {
         cache.pov_edit = Some((media, t, v));
     }
-    if done || (changed && !ui.input(|i| i.pointer.any_down())) {
+    if ease_changed || done || (changed && !ui.input(|i| i.pointer.any_down())) {
         cache.pov_edit = None;
         let pov = crate::camera::Pov {
             t: Micros::from_secs_f64(v[0]),
@@ -323,7 +402,13 @@ fn pov_instance(
                 (v[1] * 100.0).round() as i64,
                 (v[2] * 100.0).round() as i64,
                 (v[3] * 100.0).round() as i64,
-            ),
+            )
+            .with_roll((v[4] * 100.0).round() as i64),
+            ease: if eased {
+                crate::camera::Ease::EaseInOut
+            } else {
+                crate::camera::Ease::Straight
+            },
         };
         if pov != p {
             cmds.push(Command::EditPov {
@@ -345,10 +430,10 @@ fn fade_instance(
 ) {
     let tl = &app.project.timeline;
     let Some(b) = app.boundary_of(l, r).filter(|b| tl.has_fade(*b)) else {
-        ui.label("This fade no longer exists.");
+        ui.label(tr!(ThisFadeNoLongerExists));
         return;
     };
-    ui.strong("Fade IN/OUT");
+    ui.strong(tr!(FadeINOUT));
     let name = |i: usize| {
         app.project
             .media(tl.clips[i].media)
@@ -357,7 +442,23 @@ fn fade_instance(
     };
     ui.add(egui::Label::new(format!("Between \"{}\" and \"{}\"", name(b), name(b + 1))).truncate());
     ui.label(format!("At {}", timecode(tl.start_of(b + 1))));
-    ui.weak("Fixed length; picture and sound fade together.");
+    ui.weak("Picture and sound fade together. The length is set in the Fades window.");
+    // which side goes through black (REQ-275)
+    ui.horizontal(|ui| {
+        for (side, text) in [
+            (crate::timeline::FadeSide::Both, tr!(FadeBothSides)),
+            (crate::timeline::FadeSide::OutOnly, tr!(FadeOutOnly)),
+            (crate::timeline::FadeSide::InOnly, tr!(FadeInOnly)),
+        ] {
+            if ui.radio(tl.fade_side(b) == side, text).clicked() {
+                cmds.push(Command::SetFadeSide {
+                    left: l,
+                    right: r,
+                    side,
+                });
+            }
+        }
+    });
     button(
         ui,
         app,
@@ -386,10 +487,10 @@ fn line_instance(
         .into_iter()
         .find(|x| x.line == id && x.clip == clip);
     let Some(l) = shown else {
-        ui.label("This subtitle line no longer exists.");
+        ui.label(tr!(ThisSubtitleLineNoLonger));
         return;
     };
-    ui.strong("Subtitle line");
+    ui.strong(tr!(SubtitleLine));
     ui.label(format!("{} – {}", timecode(l.start), timecode(l.end)));
     let text = match &mut cache.line_edit {
         Some((x, t)) if *x == id => t,
@@ -404,9 +505,16 @@ fn line_instance(
             &mut cache.line_edit.as_mut().expect("just set").1
         }
     };
+    super::scripts::install_for(
+        ui.ctx(),
+        &super::scripts::scripts_of_lines(std::iter::once(text.as_str())),
+    );
     let r = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
     if r.lost_focus() {
         cmds.push(Command::SetSubtitleText(id, text.clone()));
+    }
+    if let Some(note) = crate::fonts::missing_note(text) {
+        ui.label(super::icons::label(super::icons::WARNING, &note));
     }
     if !r.has_focus() && !r.lost_focus() {
         // not being edited: show the stored text (it may change with undo)
@@ -419,7 +527,7 @@ fn line_instance(
         end,
     };
     ui.horizontal_wrapped(|ui| {
-        ui.label("Start");
+        ui.label(tr!(Start));
         button(
             ui,
             app,
@@ -436,7 +544,7 @@ fn line_instance(
         );
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label("End");
+        ui.label(tr!(End));
         button(
             ui,
             app,
@@ -470,8 +578,8 @@ fn line_instance(
     };
     let r = ui
         .add_enabled(own || ids.len() > 1, Button::new(label))
-        .on_hover_text("Back to the place of the subtitle style")
-        .on_disabled_hover_text("The line is at the place of the subtitle style");
+        .on_hover_text(tr!(BackToThePlaceOf))
+        .on_disabled_hover_text(tr!(TheLineIsAtThe));
     if r.clicked() {
         cmds.push(Command::SetLinePositions { ids, pos: None });
     }
@@ -492,7 +600,7 @@ pub fn clip_details_body(
         .selected_music
         .filter(|id| app.project.music.get(*id).is_some());
     if video.is_none() && music.is_none() {
-        ui.label("Select a clip on the timeline (double-click opens this window).");
+        ui.label(tr!(SelectAClipOnThe));
     }
     if let Some(i) = video {
         clip_settings(ui, app, cache, i, cmds);
@@ -520,9 +628,77 @@ fn clip_settings(
         .media(c.media)
         .map(|m| m.name.clone())
         .unwrap_or_default();
-    ui.strong("Video clip");
+    ui.strong(tr!(VideoClip));
     ui.add(egui::Label::new(format!("Source: {name}")).truncate())
         .on_hover_text(&name);
+    // a plain 2:1 video can be marked as 360° video (REQ-263)
+    if let Some(m) = app.project.media(c.media)
+        && m.format.can_be_marked()
+        && m.format.spherical != Some(true)
+    {
+        let mut on = m.format.marked_360;
+        if ui
+            .checkbox(&mut on, tr!(N360Video3))
+            .on_hover_text(tr!(ShowThisVideoThroughTheCamera))
+            .changed()
+        {
+            cmds.push(Command::SetMarked360(c.media, on));
+        }
+    }
+    // volume keyframes (REQ-280): the level at the playhead, and the keys of the clip
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr!(VolumeKeys));
+        let at = (app.playhead - start).clamp(Micros::ZERO, c.len());
+        let now_level =
+            f32::from(crate::keyframes::at(tl.volume_keys(c.id), at).unwrap_or(c.volume));
+        let mut v = now_level;
+        let r = ui.add(
+            egui::Slider::new(&mut v, 0.0..=100.0)
+                .step_by(1.0)
+                .suffix(" %"),
+        );
+        if (r.drag_stopped() || (r.changed() && !r.dragged())) && v.round() != now_level {
+            cmds.push(Command::SetVolumeKey {
+                clip: c.id,
+                at,
+                percent: v.round() as u8,
+            });
+        }
+        for k in tl.volume_keys(c.id) {
+            if ui
+                .small_button(format!("{} {}% ✕", timecode(k.t), k.v))
+                .on_hover_text(tr!(RemoveThisKeyframe))
+                .clicked()
+            {
+                cmds.push(Command::RemoveVolumeKey {
+                    clip: c.id,
+                    at: k.t,
+                });
+            }
+        }
+    });
+    // part of the picture cut away (REQ-283)
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr!(CropPercent));
+        let mut crop = c.crop;
+        let mut changed = false;
+        for (name, v) in [
+            (tr!(CropLeft), &mut crop.left),
+            (tr!(CropTop), &mut crop.top),
+            (tr!(CropRight), &mut crop.right),
+            (tr!(CropBottom), &mut crop.bottom),
+        ] {
+            let r = ui.add(
+                egui::DragValue::new(v)
+                    .range(0..=crate::timeline::MAX_CROP)
+                    .prefix(format!("{name} ")),
+            );
+            changed |= r.drag_stopped() || (r.changed() && !r.dragged());
+        }
+        if changed && crop != c.crop {
+            cmds.push(Command::SetCrop { clip: c.id, crop });
+        }
+    });
     ui.label(format!(
         "In {}  Out {}  Length {}",
         timecode(c.src_in),
@@ -535,7 +711,7 @@ fn clip_settings(
         .is_some_and(|m| m.format.is_360())
     {
         // information only: a clip is 360 when its file says so (REQ-100)
-        ui.label("360° video").on_hover_text(
+        ui.label(tr!(N360Video2)).on_hover_text(
             "This file carries 360° video information, so it is shown through a camera \
              you can turn.",
         );
@@ -550,11 +726,11 @@ fn clip_settings(
     };
     let at_playhead = "Move the playhead inside this clip first";
     ui.horizontal_wrapped(|ui| {
-        ui.label("Trim in:");
+        ui.label(tr!(TrimIn));
         button(ui, app, "-1f", trim(c.src_in - frame, c.src_out), cmds);
         button(ui, app, "+1f", trim(c.src_in + frame, c.src_out), cmds);
         if ui
-            .add_enabled(inside, Button::new("at playhead"))
+            .add_enabled(inside, Button::new(tr!(AtPlayhead)))
             .on_disabled_hover_text(at_playhead)
             .clicked()
         {
@@ -562,11 +738,11 @@ fn clip_settings(
         }
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label("Trim out:");
+        ui.label(tr!(TrimOut));
         button(ui, app, "-1f", trim(c.src_in, c.src_out - frame), cmds);
         button(ui, app, "+1f", trim(c.src_in, c.src_out + frame), cmds);
         if ui
-            .add_enabled(inside, Button::new("at playhead"))
+            .add_enabled(inside, Button::new(tr!(AtPlayhead)))
             .on_disabled_hover_text(at_playhead)
             .clicked()
         {
@@ -602,7 +778,7 @@ fn clip_settings(
         let why = tl
             .merge_block_reason(c.id)
             .unwrap_or("Only two parts of the same clip, next to each other, can be merged");
-        ui.add_enabled(false, Button::new("Merge with next"))
+        ui.add_enabled(false, Button::new(tr!(MergeWithNext)))
             .on_disabled_hover_text(why);
     }
 }
@@ -611,7 +787,7 @@ fn music_clip_settings(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let Some(m) = app.selected_music.and_then(|id| app.project.music.get(id)) else {
         return;
     };
-    ui.strong("Music clip");
+    ui.strong(tr!(MusicClip));
     let name = app
         .project
         .media(m.media)
@@ -636,11 +812,11 @@ fn music_clip_settings(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     };
     let at_playhead = "Move the playhead inside this clip first";
     ui.horizontal_wrapped(|ui| {
-        ui.label("Start:");
+        ui.label(tr!(Start2));
         button(ui, app, "-1f", trim(m.src_in - frame, m.src_out), cmds);
         button(ui, app, "+1f", trim(m.src_in + frame, m.src_out), cmds);
         if ui
-            .add_enabled(inside, Button::new("at playhead"))
+            .add_enabled(inside, Button::new(tr!(AtPlayhead)))
             .on_disabled_hover_text(at_playhead)
             .clicked()
         {
@@ -648,11 +824,11 @@ fn music_clip_settings(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         }
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label("End:");
+        ui.label(tr!(End2));
         button(ui, app, "-1f", trim(m.src_in, m.src_out - frame), cmds);
         button(ui, app, "+1f", trim(m.src_in, m.src_out + frame), cmds);
         if ui
-            .add_enabled(inside, Button::new("at playhead"))
+            .add_enabled(inside, Button::new(tr!(AtPlayhead)))
             .on_disabled_hover_text(at_playhead)
             .clicked()
         {
@@ -673,4 +849,46 @@ fn music_clip_settings(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         button(ui, app, "Split", Command::SplitMusic, cmds);
         button(ui, app, "Delete", Command::DeleteMusic, cmds);
     });
+    // the clip's own level, mute, fades and Clean audio (REQ-276, REQ-277)
+    {
+        let (mut volume, mut muted, mut clean) = (f32::from(m.volume), m.muted, m.clean_audio);
+        let (mut fin, mut fout) = (m.fade_in.as_secs_f64(), m.fade_out.as_secs_f64());
+        let mut changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr!(ClipLevel));
+            let r = ui.add(
+                egui::Slider::new(&mut volume, 0.0..=100.0)
+                    .step_by(1.0)
+                    .suffix(" %"),
+            );
+            changed |= r.drag_stopped() || (r.changed() && !r.dragged());
+            changed |= ui.checkbox(&mut muted, tr!(Mute)).changed();
+            changed |= ui.checkbox(&mut clean, tr!(CleanAudio)).changed();
+        });
+        ui.horizontal_wrapped(|ui| {
+            for (label, v) in [
+                (tr!(FadeInSeconds), &mut fin),
+                (tr!(FadeOutSeconds), &mut fout),
+            ] {
+                ui.label(label);
+                let r = ui.add(
+                    egui::DragValue::new(v)
+                        .range(0.0..=60.0)
+                        .speed(0.05)
+                        .suffix(" s"),
+                );
+                changed |= r.drag_stopped() || (r.changed() && !r.dragged());
+            }
+        });
+        if changed {
+            cmds.push(Command::SetMusicEffects {
+                clip: m.id,
+                volume: volume.round() as u8,
+                muted,
+                fade_in: Micros::from_secs_f64(fin),
+                fade_out: Micros::from_secs_f64(fout),
+                clean_audio: clean,
+            });
+        }
+    }
 }

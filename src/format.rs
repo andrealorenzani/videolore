@@ -4,6 +4,7 @@
 //! Output format decisions: equality of source formats, choice of the lowest-quality format,
 //! and mapping codecs to encoders (with a safe H.264/AAC/MP4 fallback).
 
+use crate::hwenc::Codec;
 use crate::media::MediaFormat;
 use crate::time::Fps;
 use std::collections::BTreeSet;
@@ -141,6 +142,39 @@ pub fn encode_settings(format: &MediaFormat, encoders: &BTreeSet<String>) -> Enc
 pub enum PresetCodec {
     H264,
     Hevc,
+    Av1,
+    Vp9,
+}
+
+impl PresetCodec {
+    /// The same format as the hardware export names it.
+    pub fn codec(self) -> Codec {
+        match self {
+            PresetCodec::H264 => Codec::H264,
+            PresetCodec::Hevc => Codec::Hevc,
+            PresetCodec::Av1 => Codec::Av1,
+            PresetCodec::Vp9 => Codec::Vp9,
+        }
+    }
+}
+
+/// The container of a video preset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PresetContainer {
+    Mp4,
+    Mov,
+    Webm,
+}
+
+impl PresetContainer {
+    /// The file extension, without the dot (and the ffprobe container name for the format).
+    pub fn extension(self) -> &'static str {
+        match self {
+            PresetContainer::Mp4 => "mp4",
+            PresetContainer::Mov => "mov",
+            PresetContainer::Webm => "webm",
+        }
+    }
 }
 
 /// One entry of the video format list of the Export dialog (REQ-120): a size, a frame
@@ -151,74 +185,102 @@ pub struct VideoPreset {
     pub height: u32,
     pub fps: u32,
     pub codec: PresetCodec,
-    /// `true`: `.mov`, else `.mp4`.
-    pub mov: bool,
+    pub container: PresetContainer,
 }
 
-const fn preset(width: u32, height: u32, fps: u32, codec: PresetCodec, mov: bool) -> VideoPreset {
+const fn preset(
+    width: u32,
+    height: u32,
+    fps: u32,
+    codec: PresetCodec,
+    container: PresetContainer,
+) -> VideoPreset {
     VideoPreset {
         width,
         height,
         fps,
         codec,
-        mov,
+        container,
     }
 }
 
-/// The video presets (ADR-083). Always re-encoded; H.264 and HEVC, so the hardware export
-/// applies.
-pub const VIDEO_PRESETS: [VideoPreset; 12] = [
-    preset(1920, 1080, 25, PresetCodec::H264, false),
-    preset(1920, 1080, 30, PresetCodec::H264, false),
-    preset(1920, 1080, 60, PresetCodec::H264, false),
-    preset(1920, 1080, 25, PresetCodec::H264, true),
-    preset(1920, 1080, 25, PresetCodec::Hevc, false),
-    preset(1920, 1080, 30, PresetCodec::Hevc, false),
-    preset(1280, 720, 25, PresetCodec::H264, false),
-    preset(1280, 720, 30, PresetCodec::H264, false),
-    preset(1280, 720, 25, PresetCodec::Hevc, false),
-    preset(854, 480, 25, PresetCodec::H264, false),
-    preset(3840, 2160, 25, PresetCodec::Hevc, false),
-    preset(3840, 2160, 30, PresetCodec::Hevc, true),
+use PresetCodec::{Av1, H264, Hevc, Vp9};
+use PresetContainer::{Mov, Mp4, Webm};
+
+/// The video presets (ADR-083, AV1 and VP9 in 2.0.4: ADR-178). Always re-encoded; the
+/// formats of the video hardware export. New entries go at the end (an index is a choice).
+pub const VIDEO_PRESETS: [VideoPreset; 21] = [
+    preset(1920, 1080, 25, H264, Mp4),
+    preset(1920, 1080, 30, H264, Mp4),
+    preset(1920, 1080, 60, H264, Mp4),
+    preset(1920, 1080, 25, H264, Mov),
+    preset(1920, 1080, 25, Hevc, Mp4),
+    preset(1920, 1080, 30, Hevc, Mp4),
+    preset(1280, 720, 25, H264, Mp4),
+    preset(1280, 720, 30, H264, Mp4),
+    preset(1280, 720, 25, Hevc, Mp4),
+    preset(854, 480, 25, H264, Mp4),
+    preset(3840, 2160, 25, Hevc, Mp4),
+    preset(3840, 2160, 30, Hevc, Mov),
+    preset(1920, 1080, 25, Av1, Mp4),
+    preset(1920, 1080, 30, Av1, Mp4),
+    preset(1280, 720, 25, Av1, Mp4),
+    preset(3840, 2160, 25, Av1, Mp4),
+    preset(1920, 1080, 25, Vp9, Webm),
+    preset(1920, 1080, 30, Vp9, Webm),
+    preset(1280, 720, 25, Vp9, Webm),
+    preset(854, 480, 25, Vp9, Webm),
+    preset(854, 480, 25, Av1, Mp4),
 ];
 
 impl VideoPreset {
-    /// The encoder this preset needs.
-    pub fn encoder(&self) -> &'static str {
-        match self.codec {
-            PresetCodec::H264 => "libx264",
-            PresetCodec::Hevc => "libx265",
-        }
+    /// The encoder this preset uses with the encoders `encoders`: the first software
+    /// encoder of its codec that exists (`None`: this ffmpeg cannot make it).
+    pub fn encoder_in(&self, encoders: &BTreeSet<String>) -> Option<&'static str> {
+        self.codec
+            .codec()
+            .software_encoders()
+            .iter()
+            .copied()
+            .find(|e| encoders.contains(*e))
     }
 
     /// The file extension, without the dot.
     pub fn extension(&self) -> &'static str {
-        if self.mov { "mov" } else { "mp4" }
+        self.container.extension()
     }
 
-    /// How the dropdown shows it: `1920x1080 25fps, libx264, .mp4`.
+    /// How the dropdown shows it: `1920x1080 25fps, H.264, .mp4` (REQ-220: the plain codec
+    /// name; the encoder is in [`VideoPreset::tooltip`]).
     pub fn label(&self) -> String {
         format!(
             "{}x{} {}fps, {}, .{}",
             self.width,
             self.height,
             self.fps,
-            self.encoder(),
+            self.codec.codec().label(),
             self.extension()
         )
+    }
+
+    /// The tooltip of the entry: the encoder it is made with, for those who want to know.
+    pub fn tooltip(&self, encoders: &BTreeSet<String>) -> String {
+        match self.encoder_in(encoders) {
+            Some(e) => format!("Encoder: {e}"),
+            None => "This ffmpeg has no encoder for this format".to_string(),
+        }
     }
 
     /// The format the settings are made from.
     fn format(&self) -> MediaFormat {
         MediaFormat {
-            container: if self.mov { "mov" } else { "mp4" }.into(),
-            vcodec: Some(
-                match self.codec {
-                    PresetCodec::H264 => "h264",
-                    PresetCodec::Hevc => "hevc",
-                }
-                .into(),
-            ),
+            container: match self.container {
+                PresetContainer::Mp4 => "mp4",
+                PresetContainer::Mov => "mov",
+                PresetContainer::Webm => "webm",
+            }
+            .into(),
+            vcodec: Some(self.codec.codec().name().into()),
             width: self.width,
             height: self.height,
             fps: Fps::new(self.fps, 1),
@@ -229,24 +291,29 @@ impl VideoPreset {
 
 /// The presets the installed encoders can make, as indexes of [`VIDEO_PRESETS`].
 pub fn available_presets(encoders: &BTreeSet<String>) -> Vec<usize> {
-    VIDEO_PRESETS
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| encoders.contains(p.encoder()))
-        .map(|(i, _)| i)
+    (0..VIDEO_PRESETS.len())
+        .filter(|i| preset_settings(*i, encoders).is_some())
         .collect()
 }
 
-/// The encoder settings of preset `index`; `None` when the index is unknown or the encoder
-/// is missing.
+/// The encoder settings of preset `index`; `None` when the index is unknown or the encoders
+/// (video, or the audio of its container) are missing.
 pub fn preset_settings(index: usize, encoders: &BTreeSet<String>) -> Option<EncodeSettings> {
     let p = VIDEO_PRESETS.get(index)?;
-    encoders.contains(p.encoder()).then(|| {
-        let mut s = encode_settings(&p.format(), encoders);
-        s.video_bitrate = None;
-        s.audio_bitrate = None;
-        s
-    })
+    let encoder = p.encoder_in(encoders)?;
+    let mut s = encode_settings(&p.format(), encoders);
+    // a missing audio encoder gives the H.264 fallback: that is not this preset
+    if s.vencoder != encoder || s.muxer != p.container.extension() {
+        return None;
+    }
+    if s.vencoder == "libvpx-vp9" {
+        // constant quality (libvpx-vp9 needs -b:v 0 for it)
+        s.vextra
+            .extend(["-crf", "32", "-b:v", "0"].map(String::from));
+    }
+    s.video_bitrate = None;
+    s.audio_bitrate = None;
+    Some(s)
 }
 
 /// The audio format of an export (REQ-121).
@@ -283,12 +350,35 @@ impl AudioChoice {
     }
 }
 
-/// The format choices of the Export dialog that change the encoding (REQ-120, REQ-121).
+/// Where the subtitle lines go in a full video (REQ-182).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SubtitleMode {
+    /// Drawn into the picture (the default: every player shows them the same way).
+    #[default]
+    Burned,
+    /// A subtitle stream a player can switch off (not switched on by default).
+    Separate,
+}
+
+impl SubtitleMode {
+    pub const ALL: [SubtitleMode; 2] = [SubtitleMode::Burned, SubtitleMode::Separate];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SubtitleMode::Burned => "Burned into the picture",
+            SubtitleMode::Separate => "Separate switchable track",
+        }
+    }
+}
+
+/// The format choices of the Export dialog that change the encoding (REQ-120, REQ-121,
+/// REQ-182).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FormatChoice {
     /// A preset of [`VIDEO_PRESETS`]; `None`: same as source.
     pub video: Option<usize>,
     pub audio: AudioChoice,
+    pub subtitles: SubtitleMode,
 }
 
 impl FormatChoice {
@@ -380,9 +470,9 @@ mod tests {
     #[test]
     fn presets_read_like_the_example_and_make_their_settings() {
         let all = enc(&["libx264", "libx265", "aac", "libmp3lame"]);
-        assert_eq!(VIDEO_PRESETS.len(), 12);
+        assert_eq!(VIDEO_PRESETS.len(), 21);
         let p = VIDEO_PRESETS[6];
-        assert_eq!(p.label(), "1280x720 25fps, libx264, .mp4");
+        assert_eq!(p.label(), "1280x720 25fps, H.264, .mp4");
         let s = preset_settings(6, &all).unwrap();
         assert_eq!(
             (
@@ -404,11 +494,124 @@ mod tests {
         let labels: BTreeSet<String> = VIDEO_PRESETS.iter().map(VideoPreset::label).collect();
         assert_eq!(labels.len(), VIDEO_PRESETS.len());
         // presets whose encoder is missing are not offered
-        assert_eq!(available_presets(&all).len(), 12);
+        assert_eq!(available_presets(&all), (0..12).collect::<Vec<_>>());
         let no265 = enc(&["libx264", "aac"]);
         assert_eq!(available_presets(&no265).len(), 7);
         assert_eq!(preset_settings(11, &no265), None);
         assert_eq!(preset_settings(99, &all), None);
+    }
+
+    // covers: REQ-220
+    #[test]
+    fn entries_show_the_plain_codec_name_and_the_tooltip_the_encoder() {
+        let all = enc(&[
+            "libx264",
+            "libx265",
+            "libsvtav1",
+            "libvpx-vp9",
+            "libopus",
+            "aac",
+        ]);
+        for p in VIDEO_PRESETS {
+            let label = p.label();
+            assert!(
+                !label.contains("libx") && !label.contains("lib"),
+                "no encoder name in {label}"
+            );
+            assert!(p.tooltip(&all).starts_with("Encoder: lib"), "{label}");
+        }
+        assert_eq!(VIDEO_PRESETS[0].label(), "1920x1080 25fps, H.264, .mp4");
+        assert_eq!(VIDEO_PRESETS[0].tooltip(&all), "Encoder: libx264");
+        assert_eq!(VIDEO_PRESETS[4].label(), "1920x1080 25fps, HEVC, .mp4");
+        assert_eq!(VIDEO_PRESETS[4].tooltip(&all), "Encoder: libx265");
+        assert_eq!(VIDEO_PRESETS[12].label(), "1920x1080 25fps, AV1, .mp4");
+        assert_eq!(VIDEO_PRESETS[16].label(), "1920x1080 25fps, VP9, .webm");
+        // the first AV1 encoder that exists is the one named
+        assert_eq!(
+            VIDEO_PRESETS[12].tooltip(&enc(&["libaom-av1"])),
+            "Encoder: libaom-av1"
+        );
+        assert_eq!(
+            VIDEO_PRESETS[12].tooltip(&enc(&["libx264"])),
+            "This ffmpeg has no encoder for this format"
+        );
+        // the presets and their settings did not change: the first twelve keep their index
+        let s = preset_settings(10, &all).unwrap();
+        assert_eq!(
+            (s.vencoder.as_str(), s.width, s.fps.num),
+            ("libx265", 3840, 25)
+        );
+    }
+
+    // covers: REQ-212, REQ-213
+    #[test]
+    fn av1_and_vp9_presets_need_their_encoders() {
+        let all = enc(&[
+            "libx264",
+            "libx265",
+            "libsvtav1",
+            "libvpx-vp9",
+            "libopus",
+            "aac",
+        ]);
+        let av1: Vec<usize> = (0..VIDEO_PRESETS.len())
+            .filter(|i| VIDEO_PRESETS[*i].codec == PresetCodec::Av1)
+            .collect();
+        let vp9: Vec<usize> = (0..VIDEO_PRESETS.len())
+            .filter(|i| VIDEO_PRESETS[*i].codec == PresetCodec::Vp9)
+            .collect();
+        assert_eq!((av1.len(), vp9.len()), (5, 4));
+        let listed = available_presets(&all);
+        assert!(av1.iter().chain(&vp9).all(|i| listed.contains(i)));
+        let a = preset_settings(av1[0], &all).unwrap();
+        assert_eq!(
+            (a.vencoder.as_str(), a.muxer.as_str(), a.extension.as_str()),
+            ("libsvtav1", "mp4", "mp4")
+        );
+        assert_eq!(a.aencoder, "aac");
+        let v = preset_settings(vp9[0], &all).unwrap();
+        assert_eq!(
+            (v.vencoder.as_str(), v.muxer.as_str(), v.extension.as_str()),
+            ("libvpx-vp9", "webm", "webm")
+        );
+        assert_eq!(v.aencoder, "libopus");
+        // libvpx-vp9 needs -b:v 0 for constant quality
+        assert!(v.vextra.join(" ").ends_with("-crf 32 -b:v 0"));
+        // the same resolutions and frame rates as the H.264 and HEVC presets
+        for i in av1.iter().chain(&vp9) {
+            let p = VIDEO_PRESETS[*i];
+            assert!(
+                VIDEO_PRESETS.iter().any(|q| q.codec != p.codec
+                    && (q.width, q.height, q.fps) == (p.width, p.height, p.fps)),
+                "{}",
+                p.label()
+            );
+        }
+        // without the encoder (or, for WebM, without Opus) they are not offered
+        let no_av1 = enc(&["libx264", "libx265", "libvpx-vp9", "libopus", "aac"]);
+        assert!(av1.iter().all(|i| !available_presets(&no_av1).contains(i)));
+        assert!(vp9.iter().all(|i| available_presets(&no_av1).contains(i)));
+        let no_vp9 = enc(&["libx264", "libsvtav1", "libopus", "aac"]);
+        assert!(vp9.iter().all(|i| !available_presets(&no_vp9).contains(i)));
+        let no_opus = enc(&["libx264", "libvpx-vp9", "aac"]);
+        assert!(vp9.iter().all(|i| !available_presets(&no_opus).contains(i)));
+        assert_eq!(preset_settings(vp9[0], &no_opus), None);
+        // libaom is used when SVT-AV1 is missing
+        let aom = enc(&["libaom-av1", "aac"]);
+        assert_eq!(
+            preset_settings(av1[0], &aom).unwrap().vencoder,
+            "libaom-av1"
+        );
+        // a hardware export of a preset aims at a bitrate by the size of the picture
+        let fps = Fps::new(25, 1).unwrap();
+        let h264 = crate::hwenc::preset_bitrate(crate::hwenc::Codec::H264, 1920, 1080, fps);
+        assert_eq!(h264, 8_000_000);
+        let av1_bps = crate::hwenc::preset_bitrate(crate::hwenc::Codec::Av1, 1920, 1080, fps);
+        assert_eq!(av1_bps, 4_000_000);
+        assert_eq!(
+            crate::hwenc::preset_bitrate(crate::hwenc::Codec::H264, 16, 16, fps),
+            500_000
+        );
     }
 
     // covers: REQ-121

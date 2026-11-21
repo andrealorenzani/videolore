@@ -344,6 +344,10 @@ impl Process for Held {
         self.permit = None;
     }
 
+    fn cpu_ms(&mut self) -> Option<u64> {
+        self.inner.cpu_ms()
+    }
+
     fn wait(&mut self) -> io::Result<CmdOutput> {
         let r = self.inner.wait();
         self.permit = None;

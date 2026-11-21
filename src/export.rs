@@ -28,7 +28,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -261,7 +261,14 @@ pub fn hw_choice(job: &ExportJob, plan: &Plan) -> Option<(Candidate, Codec, u64)
     };
     let codec = Codec::of_software_encoder(&settings.vencoder)?;
     let cand = job.hw.as_ref()?.get(codec)?.clone();
-    let bps = settings.video_bitrate?;
+    // a preset has no bitrate of its own (the normal method uses constant quality): the
+    // hardware gets one by the size of the picture (REQ-212, REQ-213)
+    let bps = settings.video_bitrate.or_else(|| {
+        job.format
+            .video
+            .is_some()
+            .then(|| hwenc::preset_bitrate(codec, settings.width, settings.height, settings.fps))
+    })?;
     Some((cand, codec, bps))
 }
 
@@ -294,6 +301,9 @@ pub fn run(
     if let Some(doc) = plan.subtitles() {
         write_subtitles(work.path(), doc).map_err(io)?;
     }
+    if let Some(t) = plan.track() {
+        std::fs::write(work.path().join(t.file), &t.content).map_err(io)?;
+    }
     render::write_command_files(work.path(), plan.command_files()).map_err(io)?;
     let mut after = None;
     if let Some((cand, codec, bps)) = hw_choice(job, &plan) {
@@ -305,6 +315,7 @@ pub fn run(
             cancel,
             tx,
             stop: AtomicBool::new(false),
+            shown: AtomicU32::new(0),
         };
         match attempt.hardware(&output, &cand, codec, bps) {
             Ok(()) => return Ok((output, ExportMethod::Hardware(cand.vendor))),
@@ -341,7 +352,7 @@ pub fn run(
         (None, Plan::Reencode { .. }) => ExportMethod::Software,
     };
     match result {
-        Ok(()) => match mark_if_sphere(job, &partial)
+        Ok(()) => match finish_file(job, &plan, &partial)
             .and_then(|()| crate::base::private::publish(&partial))
             .and_then(|()| std::fs::rename(&partial, &output))
         {
@@ -401,11 +412,35 @@ fn run_audio(
 }
 
 /// A 360 video carries the spherical-video information (REQ-103): written into the
-/// finished file before it is published. Containers other than MP4/MOV are left as they
-/// are.
+/// finished file before it is published. Other containers are left as they are.
 fn mark_if_sphere(job: &ExportJob, file: &Path) -> std::io::Result<()> {
     if job.mode == render::ExportMode::Sphere360 {
-        crate::spherical::mark_equirectangular(file)?;
+        // MP4 and MOV by the movie box, Matroska and WebM by the track's Projection (REQ-261);
+        // each leaves the other kind of file alone
+        // the initial view of the source is written again (REQ-262)
+        let pose = job
+            .project
+            .media
+            .iter()
+            .find(|m| m.format.is_360())
+            .and_then(|m| m.format.pose);
+        crate::spherical::mark_equirectangular_with(file, pose)?;
+        crate::spherical::mark_matroska_with(file, pose)?;
+    }
+    Ok(())
+}
+
+/// A separate subtitle track in an MP4 or MOV file is switched off by default (REQ-182);
+/// the other containers keep their disposition.
+fn finish_file(job: &ExportJob, plan: &Plan, file: &Path) -> std::io::Result<()> {
+    mark_if_sphere(job, file)?;
+    if plan.track().is_some()
+        && matches!(
+            job.output.extension().and_then(|e| e.to_str()),
+            Some("mp4" | "mov" | "m4v")
+        )
+    {
+        crate::mp4tracks::disable_subtitle_tracks(file)?;
     }
     Ok(())
 }
@@ -445,6 +480,9 @@ struct Attempt<'a> {
     /// Stops the running process without cancelling the export (a constant-quality run
     /// that grows too big is restarted).
     stop: AtomicBool,
+    /// The highest progress shown by this run (bits of an `f32`): the bar never goes back
+    /// while a run goes on (ffmpeg's last time can be a little under an earlier one).
+    shown: AtomicU32,
 }
 
 /// Outcome of a watched process.
@@ -553,9 +591,16 @@ fn supervise(
 
 impl Attempt<'_> {
     fn progress(&self, f: f64) {
-        let _ = self
-            .tx
-            .send(ExportEvent::Progress(f.clamp(0.0, 1.0) as f32));
+        let v = f.clamp(0.0, 1.0) as f32;
+        // non-negative floats order like their bits
+        let before = f32::from_bits(self.shown.fetch_max(v.to_bits(), Ordering::SeqCst));
+        let _ = self.tx.send(ExportEvent::Progress(v.max(before)));
+    }
+
+    /// The bar starts again from the beginning (a constant-quality run is restarted).
+    fn restart_progress(&self) {
+        self.shown.store(0, Ordering::SeqCst);
+        self.progress(0.0);
     }
 
     fn cancelled(&self) -> bool {
@@ -622,7 +667,7 @@ impl Attempt<'_> {
                     retried = true;
                     target.qp = hwenc::cq_retry_qp(target.qp, ratio);
                     self.stop.store(false, Ordering::SeqCst);
-                    self.progress(0.0);
+                    self.restart_progress();
                 }
                 Err(Encoded::Problem(p)) => break Err(HwError::Problem(p)),
                 Ok(()) => {
@@ -634,7 +679,7 @@ impl Attempt<'_> {
             }
         };
         let r = r.and_then(|()| {
-            mark_if_sphere(self.job, &partial)
+            finish_file(self.job, self.plan, &partial)
                 .and_then(|()| crate::base::private::publish(&partial))
                 .and_then(|()| std::fs::rename(&partial, output))
                 .map_err(fatal)
@@ -756,13 +801,68 @@ impl Attempt<'_> {
                 got: decoded.unwrap_or(0),
             });
         }
-        // (c) the normal method's graph next to the file: frame count and samples
+        // (c) the normal method's graph next to the file. When the file has the frame count
+        // of the plan, only three short runs around the samples are compared (REQ-206); if
+        // a sample does not match that way (or the count differs: clips got a frame more
+        // from the rounding of the graph) the whole graph is rendered once, which is exact.
+        let samples = outcheck::sample_indices(packets);
+        let groups = outcheck::neighbours(packets, &samples);
+        let expected = render::expected_frames(&self.job.project, s.fps);
+        if outcheck::counts_match(packets, expected) {
+            let planned_us =
+                (expected as i128 * 1_000_000 * s.fps.den as i128 / s.fps.num as i128) as i64;
+            if self
+                .check_ranges(partial, s, &groups, planned_us, &measured)
+                .is_ok()
+            {
+                if let Some(bps) = size_of {
+                    let bytes = std::fs::metadata(partial)
+                        .map(|m| m.len())
+                        .unwrap_or(u64::MAX);
+                    outcheck::check_size(bytes, bps + self.audio_bps(), planned_us)?;
+                }
+                return Ok(());
+            }
+        }
+        self.check_whole(partial, s, packets, &measured, &groups, size_of)
+    }
+
+    /// The three short comparisons (REQ-206): the duration is the plan's and every sample
+    /// matches its range of the normal method.
+    fn check_ranges(
+        &self,
+        partial: &Path,
+        s: &crate::format::EncodeSettings,
+        groups: &[Vec<u64>; 3],
+        planned_us: i64,
+        measured: &outcheck::Measured,
+    ) -> Result<(), CheckFailure> {
+        outcheck::check_duration(measured, planned_us, s.fps)?;
+        let geometry = render::Geometry::of(s);
+        let ranges = outcheck::sample_ranges(groups, s.fps);
+        for (index, range) in ranges.iter().enumerate() {
+            let scores = self.compare(partial, s, &geometry, range, index)?;
+            self.progress(HW_SHARE + 0.05 + 0.1 * ((index + 1) as f64 / ranges.len() as f64));
+            outcheck::judge_sample(index, &scores)?;
+        }
+        Ok(())
+    }
+
+    /// The exact comparison: the whole graph once next to the file (frame count, duration
+    /// and samples).
+    fn check_whole(
+        &self,
+        partial: &Path,
+        s: &crate::format::EncodeSettings,
+        packets: u64,
+        measured: &outcheck::Measured,
+        groups: &[Vec<u64>; 3],
+        size_of: Option<u64>,
+    ) -> Result<(), CheckFailure> {
         let geometry = render::Geometry::of(s);
         let graph =
             render::check_graph(&self.job.project, &geometry).map_err(|_| CheckFailure::Decode)?;
-        let samples = outcheck::sample_indices(packets);
-        let groups = outcheck::neighbours(packets, &samples);
-        let indices = outcheck::extracted(&groups);
+        let indices = outcheck::extracted(groups);
         let inputs = match self.job.threads {
             Some(t) => render::threaded_inputs(render::input_args(&graph.inputs), t),
             None => render::input_args(&graph.inputs),
@@ -808,7 +908,7 @@ impl Attempt<'_> {
                 got: packets,
             });
         }
-        outcheck::check_duration(&measured, rendered_time, s.fps)?;
+        outcheck::check_duration(measured, rendered_time, s.fps)?;
         if let Some(bps) = size_of {
             let bytes = std::fs::metadata(partial)
                 .map(|m| m.len())
@@ -817,19 +917,75 @@ impl Attempt<'_> {
         }
         let log = std::fs::read_to_string(dir.join(outcheck::PSNR_LOG))
             .map_err(|_| CheckFailure::Decode)?;
-        outcheck::judge(&indices, &outcheck::parse_psnr_log(&log), &groups)
+        outcheck::judge(&indices, &outcheck::parse_psnr_log(&log), groups)
+    }
+
+    /// One comparison run (REQ-206): the normal method's graph from the start of `range`
+    /// (in its own working folder: its subtitles and camera files are cut to the range)
+    /// against the hardware file. Returns the PSNR of the compared frames.
+    fn compare(
+        &self,
+        partial: &Path,
+        s: &crate::format::EncodeSettings,
+        geometry: &render::Geometry,
+        range: &outcheck::SampleRange,
+        index: usize,
+    ) -> Result<Vec<[f64; 3]>, CheckFailure> {
+        let fail = |_: std::io::Error| CheckFailure::Decode;
+        let dir = self.work.path().join(format!("check-{index}"));
+        std::fs::create_dir_all(&dir).map_err(fail)?;
+        let graph = render::check_range_graph(
+            &self.job.project,
+            geometry,
+            range.from,
+            outcheck::RANGE_LEN,
+            self.plan.track().is_none(),
+        )
+        .map_err(|_| CheckFailure::Decode)?;
+        if let Some(doc) = &graph.subtitles {
+            write_subtitles(&dir, doc).map_err(fail)?;
+        }
+        render::write_command_files(&dir, &graph.graph.command_files).map_err(fail)?;
+        let inputs = match self.job.threads {
+            Some(t) => render::threaded_inputs(render::input_args(&graph.graph.inputs), t),
+            None => render::input_args(&graph.graph.inputs),
+        };
+        let args = outcheck::compare_range_args(
+            inputs,
+            graph.graph.inputs.len(),
+            &graph.graph.graph,
+            partial,
+            range,
+            s.width,
+            s.height,
+            self.job.version,
+            self.job.threads,
+            &dir.join("check-graph.txt"),
+        )
+        .map_err(fail)?;
+        let watched = self.watch(&args, Some(&dir), |_| {});
+        let ok = matches!(&watched, Ok(Watched::Done(out)) if out.success);
+        let log = std::fs::read_to_string(dir.join(outcheck::PSNR_LOG));
+        let _ = std::fs::remove_dir_all(&dir);
+        if !ok || self.cancelled() {
+            return Err(CheckFailure::Decode);
+        }
+        Ok(outcheck::parse_psnr_log(&log.map_err(fail)?))
     }
 }
 
-/// Writes `subs.ass` and `fonts/NotoSans-Bold.ttf` into `dir` (ffmpeg's working folder),
-/// with the files of the installed fonts the texts use (REQ-165).
+/// Writes `subs.ass` and the bundled faces (`fonts/NotoSans-Bold.ttf` and the Arabic and
+/// Devanagari ones, REQ-187) into `dir` (ffmpeg's working folder), with the files of the
+/// installed fonts the texts use (REQ-165).
 pub fn write_subtitles(dir: &Path, doc: &str) -> std::io::Result<()> {
     std::fs::write(dir.join(ass::ASS_FILE), doc)?;
     let fonts = dir.join(ass::FONTS_DIR);
     std::fs::create_dir_all(&fonts)?;
-    let font = fonts.join(ass::FONT_FILE);
-    if !font.is_file() {
-        std::fs::write(font, ass::FONT)?;
+    for (name, bytes) in ass::BUNDLED_FACES {
+        let font = fonts.join(name);
+        if !font.is_file() {
+            std::fs::write(font, bytes)?;
+        }
     }
     crate::fonts::copy_used(dir, doc)
 }

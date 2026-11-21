@@ -37,6 +37,8 @@ mod v15;
 mod v16;
 #[path = "ffmpeg_integration/v20.rs"]
 mod v20;
+#[path = "ffmpeg_integration/v204.rs"]
+mod v204;
 
 struct Env {
     info: FfmpegInfo,
@@ -830,6 +832,7 @@ fn proxy_is_generated_from_a_big_source() {
         format: m.format.clone(),
         duration: m.duration,
         cancel: Arc::new(AtomicBool::new(false)),
+        hwaccel: Vec::new(),
     };
     let (tx, _rx) = channel();
     let ev = worker.generate(&task, &tx).unwrap();

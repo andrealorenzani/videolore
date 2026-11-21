@@ -15,11 +15,13 @@
 
 use crate::export::write_subtitles;
 use crate::ffmpeg::{FfVersion, Process, Runner};
+use crate::hwdec::{self, Decoder};
+use crate::hwenc::Codec;
 use crate::jobs::Limited;
 use crate::project::Project;
 use crate::render::{self, FrameKey, Geometry, Source};
 use crate::time::Micros;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::PathBuf;
@@ -27,6 +29,24 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel, sync_channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
+
+/// The format of each video file a preview run of `project` reads, by the argument that
+/// names it (`file:<path>`). A preview copy is always H.264.
+fn input_codecs(project: &Project, src: Source) -> HashMap<OsString, Codec> {
+    project
+        .media
+        .iter()
+        .filter_map(|m| {
+            let path = src.path_of(m);
+            let codec = if path == m.path {
+                Codec::from_name(m.format.vcodec.as_deref()?)?
+            } else {
+                Codec::H264
+            };
+            Some((crate::ffmpeg::file_arg(&path), codec))
+        })
+        .collect()
+}
 
 /// Frames buffered between the decoder and the UI.
 pub const FRAME_BUFFER: usize = 8;
@@ -379,6 +399,10 @@ fn read_audio(mut out: Box<dyn Read + Send>, buffer: &AudioBuffer, stop: &Atomic
     buffer.finished.store(true, Ordering::SeqCst);
 }
 
+/// Sent on the error channel when a run that decodes with the video hardware ended badly
+/// (REQ-214): the preview goes on in software, without a message.
+const HW_DECODE_FAILED: &str = "\u{0}hardware decoding failed";
+
 /// Everything playback needs, moved into its worker thread.
 struct PlaybackJob {
     runner: Limited,
@@ -388,6 +412,8 @@ struct PlaybackJob {
     audio: Option<(Vec<OsString>, Arc<AudioBuffer>)>,
     geometry: Geometry,
     from: Micros,
+    /// The video process decodes with the video hardware.
+    hw: bool,
 }
 
 /// Starts a playback run: spawning waits for scheduler slots inside the thread.
@@ -437,6 +463,17 @@ fn start_playback(job: PlaybackJob, errors: Sender<String>) -> (Worker, Receiver
             read_frames(out, job.geometry, job.from, &stop, &tx);
         }
         drop(tx);
+        if job.hw && !stop.load(Ordering::SeqCst) {
+            // the video process is the last one started; its end tells whether the hardware
+            // decoder worked
+            let ended = processes
+                .lock()
+                .ok()
+                .and_then(|mut ps| ps.last_mut().map(|p| p.wait()));
+            if !ended.is_some_and(|r| r.is_ok_and(|o| o.success)) && !stop.load(Ordering::SeqCst) {
+                let _ = errors.send(HW_DECODE_FAILED.to_string());
+            }
+        }
         if let Some(t) = audio_reader {
             let _ = t.join();
         }
@@ -444,10 +481,31 @@ fn start_playback(job: PlaybackJob, errors: Sender<String>) -> (Worker, Receiver
     (worker, rx)
 }
 
+/// What the still thread has drawn so far.
+#[derive(Debug, Default)]
+struct StillCounters {
+    /// Pictures drawn (a whole still, or the picture over a kept background).
+    pictures: AtomicU64,
+    /// Blurred backgrounds drawn for the cache.
+    backgrounds: AtomicU64,
+}
+
+/// How a still keeps the blurred background of its frame (REQ-223).
+struct KeptBackground {
+    /// The file (in the still folder) that holds the background.
+    name: String,
+    /// The picture drawn over the kept background.
+    picture_args: Vec<OsString>,
+    /// Makes the background alone (the raw frame on stdout).
+    make_args: Vec<OsString>,
+}
+
 /// A still frame to render.
 struct StillRequest {
     generation: u64,
     args: Vec<OsString>,
+    /// With a blurred fill: the kept background and the way to use it.
+    background: Option<KeptBackground>,
     subtitles: Option<String>,
     command_files: Vec<(String, String)>,
     geometry: Geometry,
@@ -520,7 +578,7 @@ fn render_still(
     mailbox: &Mailbox,
     config: &PreviewConfig,
     cwd: &std::path::Path,
-    renders: &AtomicU64,
+    counters: &StillCounters,
     req: &StillRequest,
 ) -> Option<Frame> {
     let cancel = Arc::new(AtomicBool::new(false));
@@ -532,14 +590,85 @@ fn render_still(
     }
     render::write_command_files(cwd, &req.command_files).ok()?;
     let runner = config.runner.cancellable(Arc::clone(&cancel));
-    let mut p = runner.spawn_in(&config.ffmpeg, &req.args, Some(cwd)).ok()?;
-    renders.fetch_add(1, Ordering::SeqCst);
+    // a blurred background that did not change is not drawn again (REQ-223); a render that
+    // does not work out falls back to the whole picture
+    if let Some(kept) = &req.background
+        && let Some(frame) =
+            render_with_kept_background(mailbox, &runner, config, cwd, counters, req, kept, &cancel)
+    {
+        return Some(frame);
+    }
+    if cancel.load(Ordering::SeqCst) {
+        return None;
+    }
+    counters.pictures.fetch_add(1, Ordering::SeqCst);
+    run_still(mailbox, &runner, config, cwd, &req.args, req, &cancel)
+}
+
+/// The still drawn over the background kept in its file, making the background first when
+/// the file is not there.
+#[allow(clippy::too_many_arguments)]
+fn render_with_kept_background(
+    mailbox: &Mailbox,
+    runner: &dyn Runner,
+    config: &PreviewConfig,
+    cwd: &std::path::Path,
+    counters: &StillCounters,
+    req: &StillRequest,
+    kept: &KeptBackground,
+    cancel: &Arc<AtomicBool>,
+) -> Option<Frame> {
+    let file = cwd.join(&kept.name);
+    let bytes = req.geometry.width as u64 * req.geometry.height as u64 * 4;
+    let there = |f: &std::path::Path| std::fs::metadata(f).is_ok_and(|m| m.len() == bytes);
+    if !there(&file) {
+        counters.backgrounds.fetch_add(1, Ordering::SeqCst);
+        let bg = run_still(mailbox, runner, config, cwd, &kept.make_args, req, cancel)?;
+        // one background at a time: the older ones go
+        if let Ok(rd) = std::fs::read_dir(cwd) {
+            for e in rd.flatten() {
+                let n = e.file_name();
+                if n.to_string_lossy().starts_with("bg-") {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+        let partial = cwd.join(format!("{}.partial", kept.name));
+        std::fs::write(&partial, &bg.rgba).ok()?;
+        std::fs::rename(&partial, &file).ok()?;
+    }
+    if !there(&file) || cancel.load(Ordering::SeqCst) {
+        return None;
+    }
+    counters.pictures.fetch_add(1, Ordering::SeqCst);
+    run_still(
+        mailbox,
+        runner,
+        config,
+        cwd,
+        &kept.picture_args,
+        req,
+        cancel,
+    )
+}
+
+/// Runs one still render and reads its frame.
+fn run_still(
+    mailbox: &Mailbox,
+    runner: &dyn Runner,
+    config: &PreviewConfig,
+    cwd: &std::path::Path,
+    args: &[OsString],
+    req: &StillRequest,
+    cancel: &Arc<AtomicBool>,
+) -> Option<Frame> {
+    let mut p = runner.spawn_in(&config.ffmpeg, args, Some(cwd)).ok()?;
     let stdout = p.take_stdout();
     let p = Arc::new(Mutex::new(p));
     if let Ok(mut r) = mailbox.running.lock() {
         match r.as_mut() {
             // a newer request may have arrived meanwhile
-            Some((flag, slot)) if Arc::ptr_eq(flag, &cancel) => *slot = Some(Arc::clone(&p)),
+            Some((flag, slot)) if Arc::ptr_eq(flag, cancel) => *slot = Some(Arc::clone(&p)),
             _ => cancel.store(true, Ordering::SeqCst),
         }
     }
@@ -563,7 +692,7 @@ fn still_thread(
     mailbox: Arc<Mailbox>,
     config: PreviewConfig,
     cwd: PathBuf,
-    renders: Arc<AtomicU64>,
+    renders: Arc<StillCounters>,
     out: Sender<StillResult>,
 ) {
     while let Some(req) = mailbox.take() {
@@ -616,7 +745,7 @@ pub struct Preview {
     // still frames
     mailbox: Arc<Mailbox>,
     stills: Option<Receiver<StillResult>>,
-    renders: Arc<AtomicU64>,
+    renders: Arc<StillCounters>,
     /// The generation whose result may be shown (older results are stale and dropped).
     generation: u64,
     /// Last generation handed out (never reused, so a dropped request cannot be confused
@@ -629,10 +758,36 @@ pub struct Preview {
     scratch: Option<tempfile::TempDir>,
     /// Use proxies when ready.
     pub proxies: bool,
+    /// Pictures are made at half the size while the camera is being dragged (REQ-267).
+    draft: bool,
     pub error: Option<String>,
+    /// The video hardware decoder of each format (empty: the normal decoder; REQ-214).
+    decoders: HashMap<Codec, Decoder>,
+    /// A run with the hardware decoder failed: the app restarts at the playhead.
+    hw_fallback: bool,
+    /// Runs that fell back to the normal decoder.
+    pub hw_fallbacks: u32,
+}
+
+/// Half of each side, even, at least 2: the picture made while a 360 camera is dragged.
+pub fn draft_geometry(g: &render::Geometry) -> render::Geometry {
+    render::Geometry {
+        width: ((g.width / 2) & !1).max(2),
+        height: ((g.height / 2) & !1).max(2),
+        fps: g.fps,
+    }
 }
 
 impl Preview {
+    /// Pictures at half the size (REQ-267) while a camera is dragged, full size otherwise.
+    pub fn set_draft(&mut self, on: bool) {
+        self.draft = on;
+    }
+
+    pub fn is_draft(&self) -> bool {
+        self.draft
+    }
+
     pub fn new(config: Option<PreviewConfig>, sink: Box<dyn AudioSink>) -> Preview {
         // Private (0700): it holds the project's subtitle text.
         let scratch = tempfile::Builder::new()
@@ -641,7 +796,7 @@ impl Preview {
             .ok()
             .filter(|d| crate::base::private::private_dir(d.path()).is_ok());
         let mailbox = Arc::new(Mailbox::default());
-        let renders = Arc::new(AtomicU64::new(0));
+        let renders = Arc::new(StillCounters::default());
         let stills = match (&config, &scratch) {
             (Some(cfg), Some(dir)) => {
                 let cwd = dir.path().join("still");
@@ -674,8 +829,30 @@ impl Preview {
             posted: None,
             scratch,
             proxies: true,
+            draft: false,
             error: None,
+            decoders: HashMap::new(),
+            hw_fallback: false,
+            hw_fallbacks: 0,
         }
+    }
+
+    /// The hardware decoders playback uses (REQ-214): the app gives them with Export:
+    /// Faster and an empty map with Best quality, where no hardware decoding runs.
+    pub fn set_decoders(&mut self, decoders: HashMap<Codec, Decoder>) {
+        self.decoders = decoders;
+    }
+
+    /// True once after a run with a hardware decoder failed: the decoders are dropped and
+    /// the caller starts the playback again at the playhead (the last picture stays on
+    /// screen, REQ-144). No message is shown.
+    pub fn take_hw_fallback(&mut self) -> bool {
+        std::mem::take(&mut self.hw_fallback)
+    }
+
+    /// Whether a run would decode with hardware now.
+    pub fn uses_hw_decoding(&self) -> bool {
+        !self.decoders.is_empty()
     }
 
     pub fn state(&self) -> PlayState {
@@ -688,7 +865,13 @@ impl Preview {
 
     /// Still frames actually rendered so far (spawned ffmpeg runs).
     pub fn still_renders(&self) -> u64 {
-        self.renders.load(Ordering::SeqCst)
+        self.renders.pictures.load(Ordering::SeqCst)
+    }
+
+    /// Blurred backgrounds drawn for the cache so far (REQ-223): a change of Scale, Move or
+    /// keyframes draws the picture again but not the background.
+    pub fn background_renders(&self) -> u64 {
+        self.renders.backgrounds.load(Ordering::SeqCst)
     }
 
     /// True while something is about to change on screen (repaint soon).
@@ -760,14 +943,22 @@ impl Preview {
             self.sink.stop();
             None
         };
+        let hw = !self.decoders.is_empty();
+        let video = if hw {
+            let known = input_codecs(project, src);
+            hwdec::apply(v.args, &self.decoders, &|f| known.get(f).copied())
+        } else {
+            v.args
+        };
         let job = PlaybackJob {
             runner: cfg.runner,
             ffmpeg: cfg.ffmpeg,
             cwd,
-            video: v.args,
+            video,
             audio,
             geometry: eg.preview(),
             from,
+            hw,
         };
         self.playback = Some(start_playback(job, self.errors.0.clone()));
         Ok(())
@@ -832,6 +1023,7 @@ impl Preview {
             self.wanted = None;
             return Ok(());
         };
+        let eg = if self.draft { draft_geometry(&eg) } else { eg };
         let src = self.source();
         let Some(key) = render::frame_key(project, at, src, &eg) else {
             self.wanted = None;
@@ -862,6 +1054,7 @@ impl Preview {
                 return Err(e);
             }
         };
+        let background = self.kept_background(project, at, &eg, &cfg, src, &key);
         self.error = None;
         self.wanted = None;
         self.posted = None;
@@ -871,6 +1064,7 @@ impl Preview {
             request: StillRequest {
                 generation: self.generation,
                 args: r.args,
+                background,
                 subtitles: r.subtitles,
                 command_files: r.command_files,
                 geometry: eg.preview(),
@@ -880,6 +1074,41 @@ impl Preview {
             due: now + STILL_DEBOUNCE,
         });
         Ok(())
+    }
+
+    /// The way to keep the blurred background of the still at `at` (REQ-223): `None` when
+    /// the picture has no blurred fill that can be kept.
+    fn kept_background(
+        &self,
+        project: &Project,
+        at: Micros,
+        eg: &Geometry,
+        cfg: &PreviewConfig,
+        src: Source,
+        key: &FrameKey,
+    ) -> Option<KeptBackground> {
+        let name = key.background_name()?;
+        let dir = self.dir("still");
+        let raw = dir.join(&name);
+        let args = |bg, script: &str, raw: Option<&std::path::Path>| {
+            render::still_args_bg(
+                project,
+                at,
+                eg,
+                cfg.version,
+                &dir.join(script),
+                src,
+                bg,
+                raw,
+            )
+            .ok()
+            .map(|r| r.args)
+        };
+        Some(KeptBackground {
+            picture_args: args(render::Background::Cached(0), "gc.txt", Some(&raw))?,
+            make_args: args(render::Background::Only, "gb.txt", None)?,
+            name,
+        })
     }
 
     /// Forgets the shown picture (the next request renders even if the key is the same).
@@ -924,10 +1153,19 @@ impl Preview {
     /// the wall clock and detects the end of playback.
     pub fn poll(&mut self, now: Instant) -> Option<Frame> {
         if let Ok(e) = self.errors.1.try_recv() {
-            self.error = Some(e);
-            if self.is_playing() {
-                self.pause(now);
+            if e == HW_DECODE_FAILED {
+                self.decoders.clear();
+                self.hw_fallback = true;
+                self.hw_fallbacks += 1;
+            } else {
+                self.error = Some(e);
+                if self.is_playing() {
+                    self.pause(now);
+                }
             }
+        }
+        if self.hw_fallback {
+            return None;
         }
         if !self.is_playing() {
             return self.poll_stills(now);
@@ -1185,6 +1423,104 @@ mod tests {
         p.forget_frame();
         p.request_still(&proj, Micros(200_000), now).unwrap();
         assert!(p.busy());
+    }
+
+    // covers: REQ-223
+    #[test]
+    fn a_change_of_scale_draws_the_picture_again_but_not_the_blurred_background() {
+        use crate::frame::{Fill, Fit, FrameAspect, Scale, Shape};
+        use crate::timeline::FrameTarget;
+        let (cfg, fake) = config_with(fake(1));
+        let mut p = Preview::new(cfg, Box::new(NullSink));
+        let mut proj = project();
+        proj.timeline
+            .set_frame_aspect(Some(FrameAspect {
+                shape: Shape::Tall9x16,
+                fit: Fit::Height,
+                fill: Fill::Blur,
+                blur: Default::default(),
+            }))
+            .unwrap();
+        proj.timeline.add_scale(FrameTarget::Whole).unwrap();
+        let mut now = Instant::now();
+        let still = |p: &mut Preview, proj: &Project, at: i64, now: &mut Instant| {
+            p.request_still(proj, Micros(at), *now).unwrap();
+            *now += STILL_DEBOUNCE;
+            let f = poll_until(p, *now, |_, f| f.is_some()).unwrap();
+            *now += Duration::from_millis(1);
+            f
+        };
+        let scale = |proj: &mut Project, permille: u16| {
+            proj.timeline
+                .set_scale_key(
+                    FrameTarget::Whole,
+                    Micros::ZERO,
+                    Scale {
+                        permille,
+                        dx: 0,
+                        dy: 0,
+                    },
+                )
+                .unwrap();
+        };
+        scale(&mut proj, 500);
+        still(&mut p, &proj, 200_000, &mut now);
+        assert_eq!((p.background_renders(), p.still_renders()), (1, 1));
+        // ten changes of Scale at one playhead: the picture ten times, the background not
+        for k in 1..=10 {
+            scale(&mut proj, 500 + 50 * k as u16);
+            still(&mut p, &proj, 200_000, &mut now);
+        }
+        assert_eq!(p.background_renders(), 1, "the background was drawn once");
+        assert_eq!(p.still_renders(), 11, "the picture every time");
+        // the run that drew the picture read the kept background and had no blur of its own
+        let calls = fake.calls.lock().unwrap().clone();
+        let last = calls.last().unwrap().join(" ");
+        assert!(
+            last.contains("-f rawvideo -pixel_format rgba -video_size"),
+            "{last}"
+        );
+        assert!(last.contains("bg-") && !last.contains("boxblur"), "{last}");
+        // the run that made it drew the background alone: no picture, no overlay
+        let made = calls
+            .iter()
+            .find(|c| c.iter().any(|a| a.contains("boxblur")))
+            .unwrap()
+            .join(" ");
+        assert!(!made.contains("overlay"), "{made}");
+        // a move of the playhead to another source frame needs another background
+        still(&mut p, &proj, 600_000, &mut now);
+        assert_eq!(p.background_renders(), 2);
+        // and so does another shape of the frame
+        proj.timeline
+            .set_frame_aspect(Some(FrameAspect {
+                shape: Shape::Wide4x3,
+                fit: Fit::Height,
+                fill: Fill::Blur,
+                blur: Default::default(),
+            }))
+            .unwrap();
+        still(&mut p, &proj, 600_000, &mut now);
+        assert_eq!(p.background_renders(), 3);
+        // one file at a time in the still folder
+        let kept: Vec<_> = std::fs::read_dir(p.dir("still"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("bg-"))
+            .collect();
+        assert_eq!(kept.len(), 1);
+        // a plain colour fill keeps nothing: every still is one run
+        proj.timeline
+            .set_frame_aspect(Some(FrameAspect {
+                shape: Shape::Wide4x3,
+                fit: Fit::Height,
+                fill: Fill::Colour(crate::frame::Rgb(0, 0, 0)),
+                blur: Default::default(),
+            }))
+            .unwrap();
+        let before = p.background_renders();
+        still(&mut p, &proj, 900_000, &mut now);
+        assert_eq!(p.background_renders(), before);
     }
 
     /// The key of the picture at `at`, as the preview computes it.

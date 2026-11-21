@@ -39,6 +39,8 @@ pub struct Harness {
     pub cache: UiCache,
     pub size: Vec2,
     pub nodes: Vec<Node>,
+    /// How many shapes the last frame painted.
+    pub shapes: usize,
 }
 
 impl Harness {
@@ -51,6 +53,7 @@ impl Harness {
             cache: UiCache::default(),
             size: vec2(w, h),
             nodes: Vec::new(),
+            shapes: 0,
         };
         h.idle(3);
         h
@@ -90,6 +93,7 @@ impl Harness {
                     .collect()
             })
             .unwrap_or_default();
+        self.shapes = out.shapes.len();
         out.textures_delta.clear();
         out.drop_without_applying_deltas();
     }
@@ -227,7 +231,7 @@ impl Harness {
 }
 
 /// Two 5 s clips with a fade between them.
-fn loaded() -> (tempfile::TempDir, AppState) {
+pub(super) fn loaded() -> (tempfile::TempDir, AppState) {
     let dir = tempfile::tempdir().unwrap();
     let mut app = state(FakeDialogs::default());
     import(&mut app, files(dir.path()));
@@ -277,6 +281,17 @@ pub(super) fn open_menu(h: &mut Harness, title: &str) -> Vec<Node> {
     opened(&before, &h.nodes)
 }
 
+/// Opens the submenu `name` of the menu whose widgets are `menu`; returns its widgets.
+pub(super) fn open_submenu(h: &mut Harness, menu: &[Node], name: &str) -> Vec<Node> {
+    let sub = find_in(menu, name)
+        .unwrap_or_else(|| panic!("no submenu {name}"))
+        .clone();
+    let before = h.nodes.clone();
+    h.frame(vec![Event::PointerMoved(sub.rect.center())]);
+    h.click(sub.rect.center());
+    opened(&before, &h.nodes)
+}
+
 pub(super) fn close_menus(h: &mut Harness) {
     h.key(Key::Escape, Modifiers::NONE);
     h.idle(1);
@@ -310,6 +325,12 @@ fn menus_list_every_item_with_shortcut_and_availability() {
                 }
                 menu::Item::OpenRecent => {
                     assert!(find_in(&nodes, "Open recent").is_some());
+                }
+                menu::Item::Sections => assert!(find_in(&nodes, "Sections").is_some()),
+                menu::Item::Workspaces => assert!(find_in(&nodes, "Workspaces").is_some()),
+                menu::Item::ThemeMenu => assert!(find_in(&nodes, "Theme").is_some()),
+                menu::Item::ToolbarMenu => {
+                    assert!(find_in(&nodes, "Customise toolbar").is_some());
                 }
                 menu::Item::Submenu(name, ids) => {
                     // "Apply to selected clip ▸": its items, with their availability
@@ -345,9 +366,13 @@ fn menus_list_every_item_with_shortcut_and_availability() {
     }
     // the menu items name the undo step and run their command
     let nodes = open_menu(&mut h, "Edit");
-    assert!(find_in(&nodes, "Undo Add fade").is_some());
-    // (a menu taller than 400 px scrolls: the items below are reached with the wheel)
-    let n = find_in(&nodes, "Clip details…").unwrap().clone();
+    let history = open_submenu(&mut h, &nodes, "History");
+    assert!(find_in(&history, "Undo Add fade").is_some());
+    close_menus(&mut h);
+    close_menus(&mut h);
+    let nodes = open_menu(&mut h, "Edit");
+    let clip = open_submenu(&mut h, &nodes, "Clip");
+    let n = find_in(&clip, "Clip details…").unwrap().clone();
     h.click(n.rect.center());
     assert!(h.app.popups.is_open(Popup::ClipDetails));
     let nodes = open_menu(&mut h, "Help");
@@ -382,8 +407,8 @@ fn menus_list_every_item_with_shortcut_and_availability() {
 fn a_menu_taller_than_the_window_scrolls() {
     let (_d, app) = loaded();
     let mut h = Harness::new(app, 800.0, 220.0);
-    let nodes = open_menu(&mut h, "Edit");
-    let last = find_in(&nodes, "Settings…").unwrap();
+    let nodes = open_menu(&mut h, "View");
+    let last = find_in(&nodes, "Customise toolbar").unwrap();
     assert!(last.rect.max.y > h.size.y, "the menu is taller: {last:?}");
     let bad: Vec<_> = reachable(&h, false)
         .into_iter()
@@ -408,7 +433,7 @@ fn every_toolbar_command_can_be_triggered_at_800_pixels() {
     if visible.len() == 12 {
         assert!(!h.has("»"), "no overflow menu when everything fits");
         // narrower than any real window: the rest goes into the "»" menu
-        h.size = vec2(560.0, 500.0);
+        h.size = vec2(260.0, 500.0);
         h.idle(2);
         let v = visible_toolbar(&h);
         return overflow(h, v);
@@ -849,7 +874,7 @@ impl eframe::egui::DroppedFile for Dropped {
     }
 }
 
-// covers: REQ-081, REQ-028
+// covers: REQ-081, REQ-028, REQ-233
 #[test]
 fn dropping_a_project_asks_about_unsaved_changes_then_opens_it() {
     let (dir, mut app) = loaded();
@@ -948,7 +973,7 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
 
 /// Widgets that cannot be seen nor scrolled to: outside the window, or cut off by their
 /// section without a scroll area to reach them.
-fn reachable(h: &Harness, check_sections: bool) -> Vec<Node> {
+pub(super) fn reachable(h: &Harness, check_sections: bool) -> Vec<Node> {
     let screen = h.screen().expand(1.0);
     let cs = &h.cache.containers;
     fn via(r: Rect, screen: Rect, cs: &[Container], depth: u8) -> bool {

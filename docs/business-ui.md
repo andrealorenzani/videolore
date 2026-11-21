@@ -129,12 +129,6 @@ Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, st
 - Ctrl/Cmd+V pastes clips only when the system clipboard holds text; Paste in the Edit menu and the toolbar always works.
 
 ## Out of scope
-- Moving, docking, hiding, collapsing or detaching sections; saved layouts or workspaces; resizing the menu bar, toolbar or status bar.
-- A customisable toolbar; changing keyboard shortcuts.
-- New effect types (speed, colour other than Apply LUT, other transitions) and per-fade length (fade length stays fixed); fades on one side of a boundary only.
-- Effects on music clips (dropping an effect on the music track does nothing).
-- Dragging markers to re-time lines or move fades; dragging clip edges to trim.
+- Free movement or detaching of sections; resizing the menu bar, toolbar or status bar.
 - Ruler labels below one second.
-- A native macOS menu bar.
-- Themes or light mode, interface text size, translation.
-- Autosave and crash recovery.
+- Planned for 2.0.4 (not yet built): hiding, collapsing and docking sections, workspaces, a customisable toolbar, rebindable shortcuts, themes, interface text size, translation, screen-reader support, the macOS menu bar (see [Interface](business-interface.md) and [Platforms and installers](business-platforms.md)); dragging markers and clip edges, the keyboard marker keys, autosave (see [Editing gestures](business-editing-gestures.md)); effects on music clips (see [New effects](business-effects-frame.md)); new effect types, per-fade length and one-sided fades (see [New effects](business-effects-frame.md)).

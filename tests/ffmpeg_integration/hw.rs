@@ -54,6 +54,8 @@ struct SimulatedHw {
     runs: AtomicUsize,
     /// The rewritten commands, for inspection.
     commands: Mutex<Vec<Vec<String>>>,
+    /// The command lines of the output check's comparison runs.
+    compares: Mutex<Vec<String>>,
 }
 
 impl SimulatedHw {
@@ -62,8 +64,15 @@ impl SimulatedHw {
             mode,
             runs: AtomicUsize::new(0),
             commands: Mutex::new(Vec::new()),
+            compares: Mutex::new(Vec::new()),
         }
     }
+}
+
+/// The software encoder that stands in for the hardware one of `codec` (the bundled ffmpeg
+/// has all of them).
+fn sw_encoder(codec: Codec) -> &'static str {
+    codec.software_encoders()[0]
 }
 
 /// The hardware encoder of an argv: its position and format.
@@ -86,8 +95,11 @@ fn rewrite(args: &[String], codec: Codec, vendor: Vendor) -> Vec<String> {
     let mut i = 0;
     while i < args.len() {
         let a = &args[i];
+        // SVT-AV1 (the stand-in for AV1) refuses a maximum bitrate outside its CRF mode
+        let svt = codec == Codec::Av1 && (a == "-maxrate" || a == "-bufsize");
         let skip_pair = a == "-init_hw_device"
             || a == "-filter_hw_device"
+            || svt
             || vendor.options().contains(&a.as_str());
         if skip_pair {
             i += 2;
@@ -97,13 +109,7 @@ fn rewrite(args: &[String], codec: Codec, vendor: Vendor) -> Vec<String> {
         let next = args.get(i + 1).cloned();
         match (a.as_str(), next) {
             ("-c:v", Some(_)) => {
-                out.push(
-                    match codec {
-                        Codec::H264 => "libx264",
-                        Codec::Hevc => "libx265",
-                    }
-                    .into(),
-                );
+                out.push(sw_encoder(codec).into());
                 i += 1;
             }
             ("-pix_fmt", Some(p)) if p == "nv12" => {
@@ -157,15 +163,15 @@ fn corrupt(ffmpeg: &Path, args: &[String], mode: Mode, codec: Codec) {
     };
     let muxer = args[args.iter().rposition(|a| a == "-f").unwrap() + 1].clone();
     let tmp = out.with_extension("corrupt");
-    let (enc, profile) = match codec {
-        Codec::H264 => ("libx264", "high"),
-        Codec::Hevc => ("libx265", "main"),
-    };
+    let enc = sw_encoder(codec);
     let mut c = Command::new(ffmpeg);
     c.args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
         .arg(&out)
-        .args(["-map", "0", "-c:a", "copy", "-vf", filter, "-c:v", enc])
-        .args(["-profile:v", profile, "-pix_fmt", "yuv420p"]);
+        .args(["-map", "0", "-c:a", "copy", "-vf", filter, "-c:v", enc]);
+    if let Some(profile) = codec.profile() {
+        c.args(["-profile:v", profile]);
+    }
+    c.args(["-pix_fmt", "yuv420p"]);
     if codec == Codec::Hevc {
         c.args(["-x265-params", "log-level=error", "-tag:v", "hvc1"]);
     }
@@ -190,6 +196,9 @@ impl Runner for SimulatedHw {
             .map(|s| s.to_string_lossy().into_owned())
             .collect();
         let Some((codec, vendor)) = hw_encoder(&a) else {
+            if a.iter().any(|x| x.contains("psnr=stats_file")) {
+                self.compares.lock().unwrap().push(a.join(" "));
+            }
             return SystemRunner.spawn_in(program, args, cwd);
         };
         self.runs.fetch_add(1, Ordering::SeqCst);
@@ -225,17 +234,7 @@ fn cand(vendor: Vendor) -> Candidate {
 }
 
 fn offer(codec: Codec, vendor: Vendor) -> HwOffer {
-    let c = Some(cand(vendor));
-    match codec {
-        Codec::H264 => HwOffer {
-            h264: c,
-            hevc: None,
-        },
-        Codec::Hevc => HwOffer {
-            h264: None,
-            hevc: c,
-        },
-    }
+    HwOffer::one(codec, cand(vendor))
 }
 
 /// What must be equal between a Faster and a Best quality file.
@@ -338,6 +337,12 @@ impl Env {
                 self.clip("hw-b.mp4", 240, 180, 25, 2, true),
             ),
             Codec::Hevc => (self.hevc_clip("hw-ha.mp4"), self.hevc_clip("hw-hb.mp4")),
+            // AV1 and VP9 are presets (REQ-212, REQ-213): the sources are H.264
+            // (short: the software encoders of these formats are slow)
+            Codec::Av1 | Codec::Vp9 => (
+                self.clip("hw-sa.mp4", 320, 180, 25, 1, true),
+                self.clip("hw-sb.mp4", 240, 180, 25, 1, true),
+            ),
         };
         for f in [a, b] {
             let m = self.probe(&mut p, &f);
@@ -377,7 +382,7 @@ fn can_test_hevc(env: &Env) -> bool {
 
 /// Each vendor path, H.264 and HEVC: the file has the format, frame count, audio and
 /// (HEVC in MP4) the hvc1 tag of the Best quality file, and passes the output check.
-// covers: REQ-055, REQ-062, REQ-063
+// covers: REQ-055, REQ-062, REQ-063, REQ-206
 #[test]
 fn every_hardware_path_makes_the_same_format_as_best_quality() {
     let Some(env) = setup() else { return };
@@ -407,6 +412,14 @@ fn every_hardware_path_makes_the_same_format_as_best_quality() {
             assert_eq!(method, ExportMethod::Hardware(vendor), "{name}");
             assert_eq!(sim.runs.load(Ordering::SeqCst), 1);
             assert_eq!(env.format_of(&file), want, "{name}");
+            // the output check rendered three short ranges, not the whole video (REQ-206)
+            let compares = sim.compares.lock().unwrap();
+            assert_eq!(compares.len(), 3, "{name}: {compares:?}");
+            assert!(
+                compares
+                    .iter()
+                    .all(|c| c.contains("trim=duration=1.000000"))
+            );
             // progress only goes forward, and reaches the end
             let progress: Vec<f32> = ev
                 .iter()
@@ -443,8 +456,10 @@ fn stream_copy_is_byte_identical_with_either_choice() {
     let (best, m1, _) = env.export_with(&p, "copy-best.mp4", &SystemRunner, None);
     let sim = SimulatedHw::new(Mode::Ok);
     let both = HwOffer {
-        h264: Some(cand(Vendor::Nvenc)),
-        hevc: Some(cand(Vendor::Nvenc)),
+        found: [Codec::H264, Codec::Hevc]
+            .into_iter()
+            .map(|c| (c, cand(Vendor::Nvenc)))
+            .collect(),
     };
     let (fast, m2, _) = env.export_with(&p, "copy-fast.mp4", &sim, Some(both));
     assert_eq!(
@@ -581,6 +596,264 @@ fn the_check_accepts_correct_files_of_rich_projects() {
     }
 }
 
+impl Env {
+    /// Exports `p` as `job` says (the hardware `hw`, the preset `video`, the mode `mode`).
+    fn export_job(
+        &self,
+        p: &Project,
+        name: &str,
+        runner: &dyn Runner,
+        hw: Option<HwOffer>,
+        video: Option<usize>,
+        mode: render::ExportMode,
+    ) -> (PathBuf, ExportMethod) {
+        let out = self.dir.path().join(name);
+        let mut job = self.job(p, &out);
+        job.hw = hw;
+        job.format.video = video;
+        job.mode = mode;
+        let (tx, _rx) = channel();
+        export::run(&job, runner, &AtomicBool::new(false), &tx)
+            .unwrap_or_else(|e| panic!("{name}: {e}"))
+    }
+}
+
+/// The index of the smallest preset of `codec`.
+fn preset_of(codec: Codec) -> usize {
+    use videolore::format::VIDEO_PRESETS;
+    (0..VIDEO_PRESETS.len())
+        .filter(|i| VIDEO_PRESETS[*i].codec.codec() == codec)
+        .min_by_key(|i| VIDEO_PRESETS[*i].width)
+        .unwrap()
+}
+
+/// AV1 and VP9 presets: with the hardware found by the check (simulated) the file is made
+/// on it, passes the output check and has the format of the Best quality file.
+// covers: REQ-212, REQ-213
+#[test]
+fn av1_and_vp9_presets_use_the_hardware_and_match_best_quality() {
+    let Some(env) = setup() else { return };
+    for codec in [Codec::Av1, Codec::Vp9] {
+        let wanted = codec.software_encoders();
+        if !wanted.iter().any(|e| env.info.encoders.contains(*e))
+            || !env.info.encoders.contains("libopus")
+        {
+            assert!(
+                !required(),
+                "the CI ffmpeg must have {wanted:?} and libopus"
+            );
+            continue;
+        }
+        let preset = preset_of(codec);
+        let p = env.hw_project(codec);
+        let ext = videolore::format::VIDEO_PRESETS[preset].extension();
+        let (best, m) = env.export_job(
+            &p,
+            &format!("best-{}.{ext}", codec.name()),
+            &SystemRunner,
+            None,
+            Some(preset),
+            render::ExportMode::Automatic,
+        );
+        assert_eq!(m, ExportMethod::Software);
+        let want = env.format_of(&best);
+        assert_eq!(want.video("codec_name"), codec.name());
+        in_parallel([Vendor::Vaapi], |vendor| {
+            let sim = SimulatedHw::new(Mode::Ok);
+            let name = format!("fast-{}-{}.{ext}", codec.name(), vendor.suffix());
+            let (file, method) = env.export_job(
+                &p,
+                &name,
+                &sim,
+                Some(offer(codec, vendor)),
+                Some(preset),
+                render::ExportMode::Automatic,
+            );
+            assert_eq!(method, ExportMethod::Hardware(vendor), "{name}");
+            assert_eq!(sim.runs.load(Ordering::SeqCst), 1);
+            assert_eq!(env.format_of(&file), want, "{name}");
+            let cmd = sim.commands.lock().unwrap()[0].join(" ");
+            assert!(
+                !cmd.contains("-profile:v"),
+                "no profile for {codec:?}: {cmd}"
+            );
+        });
+        // a damaged file is caught and redone like any other
+        let sim = SimulatedHw::new(Mode::Green);
+        let (file, method) = env.export_job(
+            &p,
+            &format!("green-{}.{ext}", codec.name()),
+            &sim,
+            Some(offer(codec, Vendor::Nvenc)),
+            Some(preset),
+            render::ExportMode::Automatic,
+        );
+        assert!(
+            matches!(method, ExportMethod::SoftwareAfterProblem { .. }),
+            "{method:?}"
+        );
+        assert_eq!(env.format_of(&file), want);
+    }
+    only_outputs(env.dir.path());
+}
+
+/// Change aspect, Scale and Move under Faster: the output is checked (or redone) and has the
+/// frame size and count of the Best quality file.
+// covers: REQ-219
+#[test]
+fn frame_effects_under_faster_are_checked_and_match_best_quality() {
+    use videolore::base::pos::Pos;
+    use videolore::frame::{Fill, Fit, FrameAspect, Scale, Shape};
+    use videolore::timeline::FrameTarget;
+    let Some(env) = setup() else { return };
+    let mut p = env.hw_project(Codec::H264);
+    p.timeline
+        .set_frame_aspect(Some(FrameAspect {
+            shape: Shape::Tall9x16,
+            fit: Fit::Width,
+            fill: Fill::Blur,
+            blur: Default::default(),
+        }))
+        .unwrap();
+    p.timeline.add_scale(FrameTarget::Whole).unwrap();
+    p.timeline
+        .set_scale_key(
+            FrameTarget::Whole,
+            Micros::ZERO,
+            Scale {
+                permille: 600,
+                dx: 0,
+                dy: 0,
+            },
+        )
+        .unwrap();
+    p.timeline.add_move(FrameTarget::Whole).unwrap();
+    p.timeline
+        .set_move_key(FrameTarget::Whole, Micros::ZERO, Pos { x: 6000, y: 5000 })
+        .unwrap();
+    let (best, m) = env.export_job(
+        &p,
+        "fx-best.mp4",
+        &SystemRunner,
+        None,
+        None,
+        render::ExportMode::Automatic,
+    );
+    assert_eq!(m, ExportMethod::Software);
+    let want = env.format_of(&best);
+    assert_eq!(want.video("width"), "240");
+    let sim = SimulatedHw::new(Mode::Ok);
+    let (file, method) = env.export_job(
+        &p,
+        "fx-fast.mp4",
+        &sim,
+        Some(offer(Codec::H264, Vendor::Nvenc)),
+        None,
+        render::ExportMode::Automatic,
+    );
+    assert_eq!(method, ExportMethod::Hardware(Vendor::Nvenc));
+    assert_eq!(env.format_of(&file), want);
+    // the check rendered the picture with the effects: three short ranges
+    assert_eq!(sim.compares.lock().unwrap().len(), 3);
+    // a damaged hardware file is redone
+    let sim = SimulatedHw::new(Mode::Green);
+    let (file, method) = env.export_job(
+        &p,
+        "fx-green.mp4",
+        &sim,
+        Some(offer(Codec::H264, Vendor::Nvenc)),
+        None,
+        render::ExportMode::Automatic,
+    );
+    assert!(
+        matches!(method, ExportMethod::SoftwareAfterProblem { .. }),
+        "{method:?}"
+    );
+    assert_eq!(env.format_of(&file), want);
+}
+
+/// A 360 video with a text fixed to the sphere under Faster: checked (or redone) and equal to
+/// the Best quality file in size, count and format.
+// covers: REQ-218
+#[test]
+fn a_360_export_with_a_text_under_faster_is_checked_and_matches_best_quality() {
+    use videolore::base::pos::{Anchor360, Pos};
+    use videolore::text::{TextId, TextItem};
+    let Some(env) = setup() else { return };
+    if !env.info.has_subtitles() {
+        assert!(!required(), "the CI ffmpeg must have libass");
+        return;
+    }
+    let file = env.fixture(
+        "hw-sphere.mp4",
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=1024x512:r=10:d=2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+    );
+    let mut p = Project::default();
+    let m = env.probe(&mut p, &file);
+    p.media[0].format.spherical = Some(true);
+    p.media[0].format.bit_rate = Some(4_000_000);
+    p.timeline.append(&m).unwrap();
+    let id: TextId = p.texts.new_id();
+    let mut t = TextItem::new(id, "MM".into(), Micros::ZERO);
+    t.place = Pos { x: 5000, y: 5000 };
+    t.width = 1000;
+    t.colour = [255, 0, 0];
+    t.ttl = Micros(2_000_000);
+    t.anchor = Some(Anchor360 {
+        yaw_cd: 3000,
+        pitch_cd: 500,
+        height_cd: 600,
+        width_cd: 6000,
+    });
+    p.texts.add(t).unwrap();
+    let (best, m) = env.export_job(
+        &p,
+        "s-best.mp4",
+        &SystemRunner,
+        None,
+        None,
+        render::ExportMode::Sphere360,
+    );
+    assert_eq!(m, ExportMethod::Software);
+    let want = env.format_of(&best);
+    let sim = SimulatedHw::new(Mode::Ok);
+    let (fast, method) = env.export_job(
+        &p,
+        "s-fast.mp4",
+        &sim,
+        Some(offer(Codec::H264, Vendor::Nvenc)),
+        None,
+        render::ExportMode::Sphere360,
+    );
+    assert_eq!(method, ExportMethod::Hardware(Vendor::Nvenc));
+    assert_eq!(env.format_of(&fast), want);
+    let sim = SimulatedHw::new(Mode::MissingFrames);
+    let (fast, method) = env.export_job(
+        &p,
+        "s-bad.mp4",
+        &sim,
+        Some(offer(Codec::H264, Vendor::Nvenc)),
+        None,
+        render::ExportMode::Sphere360,
+    );
+    assert!(
+        matches!(method, ExportMethod::SoftwareAfterProblem { .. }),
+        "{method:?}"
+    );
+    assert_eq!(env.format_of(&fast), want);
+}
+
 /// The real check of this computer's video hardware finishes within its time budget,
 /// picks the same methods every time and, on CI (no graphics hardware), finds nothing.
 /// It runs next to the other tests, so the computer is busy: a candidate that does not
@@ -599,6 +872,7 @@ fn the_real_hardware_check_is_quick_and_stable() {
             &env.info.encoders,
             &platform,
             limits,
+            &Default::default(),
             &AtomicBool::new(false),
         );
         (s, t.elapsed())
@@ -620,8 +894,16 @@ fn the_real_hardware_check_is_quick_and_stable() {
     }
     let (took, took2) = *times.last().expect("one attempt at least");
     assert!(took < bound && took2 < bound, "{times:?}");
-    assert_eq!(first.h264, second.h264, "{first:?}\n{second:?}");
-    assert_eq!(first.hevc, second.hevc, "{first:?}\n{second:?}");
+    assert_eq!(
+        first.get(Codec::H264).cloned(),
+        second.get(Codec::H264).cloned(),
+        "{first:?}\n{second:?}"
+    );
+    assert_eq!(
+        first.get(Codec::Hevc).cloned(),
+        second.get(Codec::Hevc).cloned(),
+        "{first:?}\n{second:?}"
+    );
     if std::env::var("CI").as_deref() == Ok("true") && platform.render_nodes.is_empty() {
         assert!(first.none_found(), "{first:?}");
     }
@@ -642,6 +924,7 @@ fn real_hardware_exports_pass_the_check() {
         &env.info.encoders,
         &Platform::detect(),
         ProbeLimits::default(),
+        &Default::default(),
         &AtomicBool::new(false),
     );
     eprintln!("hardware: {status:?}");
@@ -651,10 +934,7 @@ fn real_hardware_exports_pass_the_check() {
             continue;
         }
         let p = env.hw_project(codec);
-        let hw = HwOffer {
-            h264: status.h264.clone(),
-            hevc: status.hevc.clone(),
-        };
+        let hw = HwOffer::automatic(&status);
         let name = format!("real-{}.mp4", codec.name());
         let (file, method, _) = env.export_with(&p, &name, &SystemRunner, Some(hw));
         assert_eq!(method, ExportMethod::Hardware(c.vendor), "{name}");
@@ -719,13 +999,11 @@ fn qg05_reference_render() {
         &env.info.encoders,
         &Platform::detect(),
         ProbeLimits::default(),
+        &Default::default(),
         &AtomicBool::new(false),
     );
     eprintln!("QG-05 hardware: {status:?}");
-    let hw = HwOffer {
-        h264: status.h264.clone(),
-        hevc: status.hevc.clone(),
-    };
+    let hw = HwOffer::automatic(&status);
     // VMAF needs libvmaf: the ffmpeg in use, or the one in VIDEOLORE_VMAF_FFMPEG (e.g. the
     // bundled build, when the system ffmpeg is the one that reaches the hardware)
     let vmaf_ffmpeg = std::env::var_os("VIDEOLORE_VMAF_FFMPEG")

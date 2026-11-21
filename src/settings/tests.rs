@@ -555,7 +555,7 @@ fn hardware_memory_is_validated_entry_by_entry() {
     file["hardware_off"] = serde_json::json!([
         off("h264", "nvenc", v),
         off("hevc", "vaapi", v),
-        off("av1", "nvenc", v),             // unknown format
+        off("mpeg4", "nvenc", v),           // unknown format
         off("h264", "quantum", v),          // unknown method
         off("h264", "qsv", &"9".repeat(40)), // version too long
         off("h264", "qsv", ""),             // no version

@@ -7,6 +7,7 @@
 //! details (ffmpeg, speech engine files, processor, cores) are in the collapsed
 //! "Advanced" section.
 
+use super::strings::tr;
 use crate::app::{AppState, BannerAction, Command, HwProbe};
 use crate::export::ExportMethod;
 use crate::hwenc::Codec;
@@ -92,7 +93,15 @@ fn main_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     ui.strong(EXPORT_TITLE);
     for e in ExportChoice::ALL {
         let on = app.settings.export == e;
-        let note = (e == ExportChoice::Faster && no_hardware(app)).then_some(NO_HARDWARE_NOTE);
+        let note = (e == ExportChoice::Faster)
+            .then(|| {
+                if no_hardware(app) {
+                    Some(NO_HARDWARE_NOTE)
+                } else {
+                    integrated_note(app)
+                }
+            })
+            .flatten();
         if choice(ui, "export", on, e.label(), e.explanation(), None) && !on {
             cmds.push(Command::SetExport(e));
         }
@@ -130,6 +139,27 @@ pub fn no_hardware(app: &AppState) -> bool {
     matches!(&app.hw.probe, HwProbe::Done(s) if s.none_found())
 }
 
+/// Added to the Faster explanation when the hardware the next export would use is the
+/// processor's own graphics (REQ-207).
+pub const INTEGRATED_NOTE: &str = "On this computer Faster may not be quicker than Best quality.";
+
+/// [`INTEGRATED_NOTE`] when the check found integrated graphics for a format (the device
+/// the export would use: Automatic, or the one chosen); never with dedicated graphics.
+pub fn integrated_note(app: &AppState) -> Option<&'static str> {
+    let HwProbe::Done(s) = &app.hw.probe else {
+        return None;
+    };
+    let device = app.settings.graphics_card.as_deref();
+    Codec::ALL
+        .into_iter()
+        .filter_map(|c| s.chosen(c, device))
+        .any(|c| c.graphics_here() == crate::hwenc::Graphics::Integrated)
+        .then_some(INTEGRATED_NOTE)
+}
+
+/// While the automatic repeat of an inconclusive check runs (REQ-211).
+pub const REPEATING: &str = "check inconclusive, repeating";
+
 /// "Turned off after a problem" line of the Advanced section.
 pub const HARDWARE_OFF_LINE: &str = "Video hardware turned off after a problem";
 /// Button of the Advanced section.
@@ -152,7 +182,13 @@ pub fn hardware_lines(app: &AppState) -> Vec<String> {
         };
         out.push(format!("Video hardware for {}: {state}", codec.label()));
     }
+    if app.hw_repeating() {
+        out.push(REPEATING.to_string());
+    }
     if let HwProbe::Done(s) = &app.hw.probe {
+        if let Some(n) = &s.libva_note {
+            out.push(n.clone());
+        }
         for (codec, vendor, reason) in &s.notes {
             out.push(format!(
                 "{} ({}): {}",
@@ -262,6 +298,46 @@ pub fn advanced_lines(app: &AppState) -> Vec<String> {
     out
 }
 
+/// Label of the Automatic choice of the graphics card (REQ-216).
+pub const AUTOMATIC_CARD: &str = "Automatic";
+/// Title of the list of video hardware devices.
+pub const GRAPHICS_CARD_TITLE: &str = "Video hardware to use";
+
+/// The working video hardware by device name, Automatic first (REQ-216): what the list
+/// shows, and what [`Command::SetGraphicsCard`] accepts.
+pub fn graphics_card_choices(app: &AppState) -> Vec<String> {
+    match &app.hw.probe {
+        HwProbe::Done(s) => s.devices(),
+        _ => Vec::new(),
+    }
+}
+
+/// The list of devices: Automatic (the preference order) and each working device.
+fn graphics_card_choice(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+    let devices = graphics_card_choices(app);
+    if devices.is_empty() {
+        return;
+    }
+    ui.label(GRAPHICS_CARD_TITLE);
+    let current = app.settings.graphics_card.as_deref();
+    if ui
+        .selectable_label(current.is_none(), AUTOMATIC_CARD)
+        .clicked()
+        && current.is_some()
+    {
+        cmds.push(Command::SetGraphicsCard(None));
+    }
+    for d in devices {
+        if ui
+            .selectable_label(current == Some(d.as_str()), &d)
+            .clicked()
+            && current != Some(d.as_str())
+        {
+            cmds.push(Command::SetGraphicsCard(Some(d)));
+        }
+    }
+}
+
 fn advanced_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     egui::CollapsingHeader::new(ADVANCED_TITLE)
         .default_open(false)
@@ -269,6 +345,7 @@ fn advanced_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             for l in advanced_lines(app) {
                 ui.label(l);
             }
+            graphics_card_choice(ui, app, cmds);
             if ui.button(TRY_HARDWARE_AGAIN).clicked() {
                 cmds.push(Command::TryHardwareAgain);
             }
@@ -287,10 +364,65 @@ fn advanced_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         });
 }
 
+/// The preview copies' size limits offered, in bytes (REQ-297).
+pub const CACHE_LIMITS: [u64; 5] = [
+    1_000_000_000,
+    2_000_000_000,
+    4_000_000_000,
+    8_000_000_000,
+    16_000_000_000,
+];
+
+/// Text size, start-up picture and the limit of the preview copies, in plain words
+/// (REQ-244, REQ-295, REQ-297).
+fn look_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+    use crate::settings::SplashOption;
+    use crate::settings::interface::TextSize;
+    ui.strong(tr!(TextSize));
+    ui.horizontal(|ui| {
+        for (t, text) in [
+            (TextSize::Normal, tr!(TextSizeNormal)),
+            (TextSize::Large, tr!(TextSizeLarge)),
+            (TextSize::Larger, tr!(TextSizeLarger)),
+        ] {
+            if ui
+                .radio(app.settings.interface.text_size == t, text)
+                .clicked()
+            {
+                cmds.push(Command::SetTextSize(t));
+            }
+        }
+    });
+    ui.strong(tr!(StartPicture));
+    ui.horizontal_wrapped(|ui| {
+        for (o, text) in [
+            (SplashOption::Always, tr!(AtEveryStart)),
+            (SplashOption::OncePerVersion, tr!(OnceForEachVersion)),
+            (SplashOption::Never, tr!(Never)),
+        ] {
+            if ui.radio(app.settings.show_splash == o, text).clicked() {
+                cmds.push(Command::SetSplashOption(o));
+            }
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label(tr!(PreviewCopiesUpTo));
+        for limit in CACHE_LIMITS {
+            let text = format!("{} GB", limit / 1_000_000_000);
+            if ui.radio(app.settings.cache_limit == limit, text).clicked() {
+                cmds.push(Command::SetCacheLimit(limit));
+            }
+        }
+    });
+}
+
 /// The content of the Settings window (a popup, see [`super::popups`]).
 pub fn settings_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     main_section(ui, app, cmds);
     ui.separator();
+    egui::CollapsingHeader::new(tr!(AppearanceAndStart))
+        .default_open(false)
+        .show(ui, |ui| look_section(ui, app, cmds));
     advanced_section(ui, app, cmds);
     ui.separator();
     if ui.button(CLOSE).clicked() {
@@ -315,7 +447,7 @@ pub fn banner(ctx: &Context, app: &AppState, cmds: &mut Vec<Command>) {
                         {
                             cmds.push(Command::BannerAction(BannerAction::UseRecommended));
                         }
-                        if ui.button("✕").clicked() {
+                        if ui.button(tr!(CloseMark)).clicked() {
                             cmds.push(Command::DismissBanner);
                         }
                     });

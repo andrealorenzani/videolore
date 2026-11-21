@@ -8,7 +8,7 @@ Part of [Code](code.md). Design: [architecture-360.md](architecture-360.md) and
 | Piece | Module | Notes |
 |---|---|---|
 | Camera maths | `src/camera.rs` | Pure. `Camera` (yaw, pitch, zoom in hundredths of a degree), `Pov`, `CameraPaths`, `at()` interpolation, drag and wheel mapping, `filter()` and `command_lines()` |
-| 360 in the render | `src/render.rs` | A 360 `Segment` has `sphere: Some(path)`; `build_graph` writes `fps, sendcmd, v360, setsar` instead of scale/pad; `Graph.command_files` are written next to the ASS file (`write_command_files`) |
+| 360 in the render | `src/render/` (`segments.rs`, `graph.rs`) | A 360 `Segment` has `sphere: Some(path)`; `build_graph` writes `fps, sendcmd, v360, setsar` instead of scale/pad; `Graph.command_files` are written next to the ASS file (`write_command_files`) |
 | Recognising 360 | `src/media.rs` | `MediaFormat.spherical` (from ffprobe's side data); `is_360()` reads only it (the 1.2.6 switch `treat_as_360` was removed in 1.4.0) |
 | Preview copies | `src/proxy.rs` | 360 rule: `SPHERE_COPY_ABOVE` (4096 wide), `SPHERE_COPY` (4096x2048), `sphere_too_large()` (over 16384x8192) |
 | App state and commands | `src/app/sphere.rs` | `AppState.live` (window state), `effective_camera`, Set POV and its edits, `Set360`, resize / align / reset |

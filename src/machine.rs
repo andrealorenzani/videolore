@@ -199,6 +199,15 @@ pub fn own_rss() -> u64 {
     sys.process(pid).map(|p| p.memory()).unwrap_or(0)
 }
 
+/// Processor time the process `pid` has used so far, in milliseconds (`None` when the
+/// system does not say). Used by the hardware check to tell a busy try from a hanging one.
+pub fn process_cpu_ms(pid: u32) -> Option<u64> {
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut sys = sysinfo::System::new().ok()?;
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+    sys.process(pid).map(|p| p.accumulated_cpu_time())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

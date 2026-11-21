@@ -39,14 +39,48 @@ pub struct MediaFormat {
     /// stereo (1.2.6). `None`: not checked yet (media imported before 1.2.6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spherical: Option<bool>,
+    /// The user marked this plain 2:1 video as 360° in Clip details (2.0.4, REQ-263). Only a
+    /// picture twice as wide as high can be marked; not written when off.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub marked_360: bool,
+    /// The initial view the file asks for (yaw, pitch, roll in hundredths of a degree), when
+    /// it is not straight ahead (REQ-269).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pose: Option<[i32; 3]>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl MediaFormat {
-    /// True when the source is shown through the 360 camera: only what the file says
-    /// (1.4.0 has no switch). Only video can be 360.
+    /// True when the source is shown through the 360 camera: the file says so, or the user
+    /// marked a 2:1 video (REQ-263). Only video can be 360.
     pub fn is_360(&self) -> bool {
-        self.vcodec.is_some() && self.spherical.unwrap_or(false)
+        self.vcodec.is_some()
+            && (self.spherical.unwrap_or(false) || self.can_be_marked() && self.marked_360)
     }
+
+    /// A picture twice as wide as it is high may be marked as 360°.
+    pub fn can_be_marked(&self) -> bool {
+        self.vcodec.is_some() && self.height > 0 && self.width == 2 * self.height
+    }
+}
+
+/// The initial view of a spherical video: the yaw, pitch and roll of its "Spherical Mapping"
+/// side data, each finite and within a full turn; `None` when straight ahead or damaged.
+pub fn spherical_pose(video: &Value) -> Option<[i32; 3]> {
+    let list = video.get("side_data_list")?.as_array()?;
+    let d = list
+        .iter()
+        .find(|d| d.get("side_data_type").and_then(Value::as_str) == Some("Spherical Mapping"))?;
+    let get = |k: &str| d.get(k).and_then(Value::as_f64).unwrap_or(0.0);
+    let v = [get("yaw"), get("pitch"), get("roll")];
+    if v.iter().any(|x| !x.is_finite() || x.abs() > 360.0) {
+        return None;
+    }
+    let cd = v.map(|x| (x * 100.0).round() as i32);
+    (cd != [0, 0, 0]).then_some(cd)
 }
 
 /// True when the video stream says equirectangular projection, with no cropped bounds
@@ -269,6 +303,33 @@ pub enum MediaKind {
     Audio,
 }
 
+/// Size and modification time of a source file when it was analysed (REQ-186).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileStat {
+    pub size: u64,
+    /// Milliseconds since the Unix epoch (negative before it).
+    pub modified_ms: i64,
+}
+
+impl FileStat {
+    /// The size and modification time of `path` now; `None` when they cannot be read.
+    pub fn of(path: &Path) -> Option<FileStat> {
+        let m = std::fs::metadata(path).ok()?;
+        if !m.is_file() {
+            return None;
+        }
+        let modified = m.modified().ok()?;
+        let ms = match modified.duration_since(std::time::UNIX_EPOCH) {
+            Ok(d) => i64::try_from(d.as_millis()).ok()?,
+            Err(e) => -i64::try_from(e.duration().as_millis()).ok()?,
+        };
+        Some(FileStat {
+            size: m.len(),
+            modified_ms: ms,
+        })
+    }
+}
+
 /// A file imported into the project. Never modified by the editor.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MediaItem {
@@ -278,6 +339,10 @@ pub struct MediaItem {
     pub name: String,
     pub duration: Micros,
     pub format: MediaFormat,
+    /// What the file looked like when it was analysed (`None`: not known, as in projects
+    /// saved before 2.0.4).
+    #[serde(default)]
+    pub stat: Option<FileStat>,
     /// Set when a reopened project cannot find the file.
     #[serde(skip)]
     pub missing: bool,
@@ -296,6 +361,7 @@ impl MediaItem {
             name: display_name(path),
             duration: Micros::ZERO,
             format: MediaFormat::default(),
+            stat: None,
             missing: false,
             status: MediaStatus::Analysing,
             proxy: ProxyState::None,
@@ -428,6 +494,13 @@ pub fn parse_ffprobe(json: &str, path: &Path) -> Result<(Micros, MediaFormat), M
         ..MediaFormat::default()
     };
     f.spherical = Some(video.is_some_and(spherical_of));
+    f.pose = video.and_then(spherical_pose);
+    if f.spherical == Some(true)
+        && f.pose.is_none()
+        && (f.container == "mp4" || f.container == "mov")
+    {
+        f.pose = crate::spherical::read_pose(path);
+    }
     if let Some(s) = video {
         f.width = s.get("width").and_then(num_u64).unwrap_or(0) as u32;
         f.height = s.get("height").and_then(num_u64).unwrap_or(0) as u32;
@@ -536,6 +609,7 @@ pub fn probe_within(
     let (duration, format) = parse_ffprobe(&String::from_utf8_lossy(&out.stdout), &abs)?;
     Ok(MediaItem {
         id,
+        stat: FileStat::of(&abs),
         path: abs,
         name,
         duration,
@@ -894,5 +968,35 @@ pub(crate) mod tests {
         // nothing stored when unset
         let json = serde_json::to_string(&MediaFormat::default()).unwrap();
         assert!(!json.contains("spherical") && !json.contains("treat_as_360"));
+    }
+
+    // covers: REQ-269
+    #[test]
+    fn the_initial_view_of_a_spherical_file_is_read_with_range_checks() {
+        let v = |yaw: &str| -> Value {
+            serde_json::from_str(&format!(
+                r#"{{"side_data_list":[{{"side_data_type":"Spherical Mapping",
+                "projection":"equirectangular","yaw":{yaw},"pitch":-10.5,"roll":0}}]}}"#
+            ))
+            .unwrap()
+        };
+        assert_eq!(spherical_pose(&v("90")), Some([9000, -1050, 0]));
+        assert_eq!(spherical_pose(&v("0.0")).map(|p| p[1]), Some(-1050));
+        assert_eq!(spherical_pose(&v("1e9")), None, "out of range");
+        assert_eq!(spherical_pose(&serde_json::json!({})), None);
+        let straight: Value = serde_json::from_str(
+            r#"{"side_data_list":[{"side_data_type":"Spherical Mapping","yaw":0,"pitch":0,"roll":0}]}"#,
+        )
+        .unwrap();
+        assert_eq!(spherical_pose(&straight), None, "straight ahead is no pose");
+        let f = MediaFormat {
+            pose: Some([9000, 0, 0]),
+            ..MediaFormat::default()
+        };
+        assert_eq!(crate::camera::start_camera(f.pose).yaw_cd, 9000);
+        assert_eq!(
+            crate::camera::start_camera(MediaFormat::default().pose),
+            crate::camera::Camera::FRONT
+        );
     }
 }

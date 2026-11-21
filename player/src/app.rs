@@ -9,7 +9,10 @@
 //! cache and private work folders.
 
 use crate::fullscreen::{EscapeResult, FullScreen};
+use crate::playlist::Playlist;
+use crate::settings::PlayerSettings;
 use crate::subs::{self, Source, Subs};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -88,6 +91,17 @@ pub enum Command {
     ShowAbout,
     CloseAbout,
     DismissNotice,
+    /// File > Add to playlist… (asks for a file), or this file.
+    AddToPlaylist,
+    AddToPlaylistPath(PathBuf),
+    /// File > Open folder… (asks for a folder), or this folder: its videos in name order.
+    OpenFolder,
+    OpenFolderPath(PathBuf),
+    /// The next and the previous video of the playlist.
+    Next,
+    Previous,
+    /// File > Open in editor: the video playing, in videolore.
+    OpenInEditor,
     Quit,
 }
 
@@ -95,6 +109,12 @@ pub enum Command {
 pub trait Dialogs {
     fn pick_video(&mut self) -> Option<PathBuf>;
     fn pick_srt(&mut self) -> Option<PathBuf>;
+    /// Asks for a folder (the dialogs of the player start in the last one used).
+    fn pick_folder(&mut self) -> Option<PathBuf> {
+        None
+    }
+    /// The folder the next dialog starts in.
+    fn start_in(&mut self, _folder: Option<PathBuf>) {}
 }
 
 type ProbeResult = Result<MediaItem, String>;
@@ -143,6 +163,22 @@ pub struct PlayerState {
     proxy_events: Option<Receiver<ProxyEvent>>,
     proxy_cancel: Option<Arc<AtomicBool>>,
     pub quit: bool,
+    /// What the player remembers between runs (REQ-252) and where it is kept.
+    pub settings: PlayerSettings,
+    settings_path: Option<PathBuf>,
+    /// The videos to play one after the other, for this session only (REQ-254).
+    pub playlist: Playlist,
+    /// Where lines were dragged, by video, for this session only (REQ-251).
+    placed_memory: HashMap<PathBuf, HashMap<(usize, usize), Pos>>,
+    /// The video was playing at the last tick (to see it end).
+    was_playing: bool,
+    /// Start playing as soon as the next video of the playlist is open.
+    pending_play: bool,
+}
+
+/// The key of a video in the session's memory: its place on disk when it can be told.
+fn memory_key(p: &Path) -> PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
 /// True for a project file, by its extension only (the file is never read).
@@ -203,6 +239,65 @@ impl PlayerState {
             proxy_events: None,
             proxy_cancel: None,
             quit: false,
+            settings: PlayerSettings::default(),
+            settings_path: None,
+            playlist: Playlist::default(),
+            placed_memory: HashMap::new(),
+            was_playing: false,
+            pending_play: false,
+        }
+    }
+
+    /// Uses these settings (volume, sound, full screen, last folder) and keeps them in
+    /// `path` (REQ-252).
+    pub fn with_settings(
+        mut self,
+        settings: PlayerSettings,
+        path: Option<PathBuf>,
+        now: Instant,
+    ) -> Self {
+        if settings.fullscreen && !self.fullscreen.on {
+            self.fullscreen.toggle(now);
+        }
+        self.settings = settings;
+        self.settings_path = path;
+        self
+    }
+
+    /// Writes the settings when the volume, the sound or full screen changed.
+    fn sync_settings(&mut self) {
+        let mut next = self.settings.clone();
+        next.volume = self.project.mix.video_volume;
+        next.muted = self.project.mix.video_muted;
+        next.fullscreen = self.fullscreen.on;
+        // a project without a video keeps what was remembered
+        if !self.has_video() {
+            next.volume = self.settings.volume;
+            next.muted = self.settings.muted;
+        }
+        if next != self.settings {
+            self.settings = next;
+            self.save_settings();
+        }
+    }
+
+    fn save_settings(&self) {
+        if let Some(p) = &self.settings_path {
+            let _ = self.settings.save(p);
+        }
+    }
+
+    /// The start picture at a start without a video (REQ-295): by the editor's choice, which
+    /// the player follows; the version that showed it is remembered here.
+    pub fn start_splash(&mut self, option: videolore::settings::SplashOption) {
+        let version = env!("CARGO_PKG_VERSION");
+        let last = self.settings.last_splash_version.clone();
+        if videolore::splash::should_show(option, last.as_deref(), version, false) {
+            self.show_splash();
+            if last.as_deref() != Some(version) {
+                self.settings.last_splash_version = Some(version.to_string());
+                self.save_settings();
+            }
         }
     }
 
@@ -294,6 +389,27 @@ impl PlayerState {
         {
             self.playhead = self.duration();
         }
+        // the video played to its end: the next one of the playlist starts, or it stops
+        // after the last (REQ-254)
+        let ended = self.was_playing
+            && !self.preview.is_playing()
+            && self.has_video()
+            && self.playhead >= self.duration();
+        self.was_playing = self.preview.is_playing();
+        if ended {
+            self.after_end(now);
+        }
+    }
+
+    /// The video played to its end: the next one of the playlist starts playing; after the
+    /// last one it stops (REQ-254). True when another video was started.
+    pub fn after_end(&mut self, now: Instant) -> bool {
+        let Some(next) = self.playlist.next().cloned() else {
+            return false;
+        };
+        let _ = self.open(next, now);
+        self.pending_play = true;
+        true
     }
 
     /// Something is going on that needs frequent repaints.
@@ -306,14 +422,47 @@ impl PlayerState {
         if let Err(e) = self.run(cmd, now) {
             self.status = e;
         }
+        self.sync_settings();
+    }
+
+    fn add_to_playlist(&mut self, p: PathBuf, now: Instant) -> Result<(), String> {
+        if crate::playlist::is_video(&p) && !is_project_file(&p) && self.playlist.add(p.clone()) {
+            self.status = format!("Added {} to the playlist", display_name(&p));
+            // with nothing playing, the first video added starts
+            if !self.has_video() && self.probe.is_none() {
+                return self.open(p, now);
+            }
+        }
+        Ok(())
+    }
+
+    fn open_folder(&mut self, dir: &Path, now: Instant) -> Result<(), String> {
+        if self.playlist.set_folder(dir) == 0 {
+            return Err("There are no videos in that folder".into());
+        }
+        self.remember_folder(dir);
+        let first = self.playlist.items[0].clone();
+        self.open(first, now)
+    }
+
+    fn remember_folder(&mut self, dir: &Path) {
+        if crate::settings::remember_folder(dir)
+            && self.settings.last_folder.as_deref() != Some(dir)
+        {
+            self.settings.last_folder = Some(dir.to_path_buf());
+            self.save_settings();
+        }
     }
 
     fn run(&mut self, cmd: Command, now: Instant) -> Result<(), String> {
         match cmd {
-            Command::PickOpen => match self.dialogs.pick_video() {
-                Some(p) => self.open(p, now),
-                None => Ok(()),
-            },
+            Command::PickOpen => {
+                self.dialogs.start_in(self.settings.last_folder.clone());
+                match self.dialogs.pick_video() {
+                    Some(p) => self.open(p, now),
+                    None => Ok(()),
+                }
+            }
             Command::Open(p) => self.open(p, now),
             Command::PlayPause => self.play_pause(now),
             Command::Seek(t) => self.seek(t, now),
@@ -389,6 +538,34 @@ impl PlayerState {
                 self.notice = None;
                 Ok(())
             }
+            Command::AddToPlaylist => {
+                self.dialogs.start_in(self.settings.last_folder.clone());
+                match self.dialogs.pick_video() {
+                    Some(p) => self.add_to_playlist(p, now),
+                    None => Ok(()),
+                }
+            }
+            Command::AddToPlaylistPath(p) => self.add_to_playlist(p, now),
+            Command::OpenFolder => {
+                self.dialogs.start_in(self.settings.last_folder.clone());
+                match self.dialogs.pick_folder() {
+                    Some(d) => self.open_folder(&d, now),
+                    None => Ok(()),
+                }
+            }
+            Command::OpenFolderPath(d) => self.open_folder(&d, now),
+            Command::Next => match self.playlist.next().cloned() {
+                Some(p) => self.open(p, now),
+                None => Err("This is the last video of the playlist".into()),
+            },
+            Command::Previous => match self.playlist.previous().cloned() {
+                Some(p) => self.open(p, now),
+                None => Err("This is the first video of the playlist".into()),
+            },
+            Command::OpenInEditor => match self.file.clone() {
+                Some(p) => videolore::siblings::launch(videolore::siblings::EDITOR, &p),
+                None => Err("Open a video first".into()),
+            },
             Command::Quit => {
                 self.quit = true;
                 Ok(())
@@ -445,6 +622,16 @@ impl PlayerState {
         }
         self.proxy_events = None;
         self.tracks = None;
+        // the places of dragged lines are kept for this session (REQ-251)
+        if let Some(f) = &self.file {
+            let placed = self.subs.take_placed();
+            self.placed_memory.insert(memory_key(f), placed);
+        }
+        // the volume and the sound stay what they were (REQ-252)
+        if self.has_video() {
+            self.settings.volume = self.project.mix.video_volume.min(100);
+            self.settings.muted = self.project.mix.video_muted;
+        }
         self.project = Project::default();
         self.file = None;
         self.subs = Subs::default();
@@ -478,8 +665,14 @@ impl PlayerState {
                 ));
                 self.status.clear();
             }
-            Ok(m) => self.loaded(m, path),
+            Ok(m) => {
+                self.loaded(m, path);
+                if std::mem::take(&mut self.pending_play) {
+                    let _ = self.play_pause(Instant::now());
+                }
+            }
         }
+        self.pending_play = false;
     }
 
     /// The video is probed: build the one-clip project and show its first picture.
@@ -494,7 +687,19 @@ impl PlayerState {
             return;
         }
         self.subs = Subs::for_tracks(m.format.subtitle_tracks.as_deref().unwrap_or(&[]));
+        // lines dragged earlier in this session are where they were left (REQ-251)
+        if let Some(placed) = self.placed_memory.get(&memory_key(&path)) {
+            self.subs.set_placed(placed.clone());
+        }
+        // the volume and the sound are the ones remembered (REQ-252)
+        p.mix.video_volume = self.settings.volume;
+        p.mix.video_muted = self.settings.muted;
         self.project = p;
+        self.playlist.play(&path);
+        if let Some(dir) = path.parent() {
+            let dir = dir.to_path_buf();
+            self.remember_folder(&dir);
+        }
         self.file = Some(path);
         self.status = format!("Opened {}", m.name);
         self.start_proxy(&m);
@@ -532,6 +737,7 @@ impl PlayerState {
             format: m.format.clone(),
             duration: m.duration,
             cancel: Arc::clone(&cancel),
+            hwaccel: Vec::new(),
         };
         let (tx, rx) = channel();
         std::thread::spawn(move || {
@@ -589,6 +795,7 @@ impl PlayerState {
                 Pov {
                     t: Micros::ZERO,
                     cam,
+                    ease: Default::default(),
                 },
             );
         }

@@ -16,6 +16,8 @@ Projects are JSON files (`.vlproj`) with a format version number.
 | 7 | 1.5.0 | Change aspect of the whole video; Scale and Move with their keyframes for the whole video and for each clip (clip keyframes in source time). Format 6 files open with no picture effects; 1.4.x refuses format 7. See [frame](architecture-frame.md#project-format). |
 | 8 | 1.6.0 | Apply LUT: the path of one `.cube` file for the whole video and one per clip (no copy of the file). Format 7 files open with no LUT; 1.5.x refuses format 8. Damaged paths are cleared with a note. See [LUT](architecture-lut.md#storage-and-project-format-8). |
 | 9 | 1.6.1 | Whole-video effects are stored on the clips: each clip has its own Scale and Move keyframes and LUT, and its own start and end fade. Change aspect stays one setting of the video. Format 8 files are converted when opened; 1.6.0 refuses format 9. See [effects](architecture-effects.md#whole-video-per-clip-161). |
+| 10 | 2.0.3 | Text readability (None, Outline or Box) and box height of each text item. See the format 10 section below. |
+| 11 | 2.0.4 | Media file size and date of analysis (stage 1); 360 marks, roll and easing (stage 10); fade lengths and sides, crop, Clean audio strength, speech enhancement, music clip effects, LUT copies and strength, blur level (stage 11). See the format 11 section below. |
 
 - 0.3.0, 0.4.0 and 1.1.0 did not change the format (1.1.0 timeline markers are computed from the existing data; the layout and recent projects are program settings, never stored in a project).
 - **Opening older files:** version 1 and 2 files are converted in memory when opened and give exactly the same picture, sound and export as before: fades only where they were, every clip at 100% volume, every subtitle line in its style's usual place. Automated tests compare the export commands of a 0.1 and a 1.1 project before and after the change.
@@ -29,6 +31,14 @@ Projects are JSON files (`.vlproj`) with a format version number.
 - Migration from format 9: texts read as readability None (their 2.0.2 outline is dropped) and box height 20% (the 2.0.2 box); their size is fitted again on opening, so it may change (see [text](architecture-text.md#203-planned-readable-text)). The status bar shows once the number of texts whose size changed and that the old outline was removed; the message appears only for a project with at least one text item and not again once the project is saved in format 10.
 - Format 10 is written from 2.0.3 on. Version 2.0.2 and older refuse such a file ("newer format") and never change it.
 - Projects of formats 1 to 9 otherwise open as before.
+
+## Format 11 (2.0.4)
+One format for the whole 2.0.4 development (decision D58). Format 10 files open unchanged; 2.0.3 and older refuse format 11 and never write it.
+- **Stage 1:** each media entry records the file size and modification time of its analysis; a changed file is analysed again on opening (the status line names it). Files of format 10 get the stats recorded without a new analysis.
+- **Stage 10:** a clip can be marked as a 360 video (explicit mark); a point of view stores its roll, and a segment can be eased. The camera paths are still kept per source; per-clip paths are not built yet.
+- **Stage 11:** fade lengths and sides per clip; crop of a video clip; easing per keyframe; Clean audio strength and speech enhancement; music clip volume, mute, fades and Clean audio; LUT strength; the blur level; a copy of each LUT file used, so a moved file does not break the project. Not built yet: clip speed, volume keyframes, the clip's own Change aspect, picture items.
+- The read limit rises from 16 MiB to 96 MiB in this format, because LUT copies (at most 20 MB each, 64 MiB per project) are stored in the file. Every other limit stays.
+- Values added after a stage are optional with defaults, so a format 11 file written by an earlier stage opens with the same result.
 
 ## Loading and validation
 - Only regular files are read (a pipe or device named like a project cannot block the program), at most 16 MiB, enforced while reading.

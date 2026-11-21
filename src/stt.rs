@@ -542,6 +542,9 @@ pub enum Mode {
     Align { track: u8 },
     /// The text of the file's subtitle track `track`, words spread evenly (no recognition).
     Spread { track: u8 },
+    /// The cues of an imported subtitle file (REQ-184): each line starts and ends at its
+    /// first and last recognised word, found within a second of the cue.
+    Retime { cues: Vec<crate::srt::Cue> },
 }
 
 /// One part of a source to make subtitles for.
@@ -589,7 +592,7 @@ impl SttJob {
     pub fn is_matching(&self) -> bool {
         self.ranges
             .iter()
-            .any(|r| matches!(r.mode, Mode::Align { .. }))
+            .any(|r| matches!(r.mode, Mode::Align { .. } | Mode::Retime { .. }))
     }
 }
 
@@ -672,16 +675,24 @@ pub fn read_track(
     }
     let bytes = crate::base::io::read_limited(&file, MAX_TRACK_BYTES).map_err(|_| failed())?;
     let _ = std::fs::remove_file(&file);
-    let mut cues = crate::srt::parse(&String::from_utf8_lossy(&bytes));
-    if let Some((from, to)) = range {
-        cues.retain(|c| c.end > from && c.start < to);
-        for c in &mut cues {
-            c.start = c.start.max(from);
-            c.end = c.end.min(to);
-        }
-        cues.retain(|c| c.end > c.start);
-    }
-    Ok(cues)
+    let cues = crate::srt::parse(&String::from_utf8_lossy(&bytes));
+    Ok(cues_in(&cues, range))
+}
+
+/// The cues that overlap `range`, kept inside it.
+pub fn cues_in(cues: &[crate::srt::Cue], range: Option<(Micros, Micros)>) -> Vec<crate::srt::Cue> {
+    let Some((from, to)) = range else {
+        return cues.to_vec();
+    };
+    cues.iter()
+        .filter(|c| c.end > from && c.start < to)
+        .map(|c| crate::srt::Cue {
+            start: c.start.max(from),
+            end: c.end.min(to),
+            text: c.text.clone(),
+        })
+        .filter(|c| c.end > c.start)
+        .collect()
 }
 
 /// Recognises the speech of one part of a source; word times are source times.
@@ -809,6 +820,30 @@ pub fn run(
                 let cues = read_track(&job.ffmpeg, runner, work.path(), &r.path, *track, r.range)?;
                 progress(1.0);
                 crate::align::spread(r.media, &cues)
+            }
+            Mode::Retime { cues } => {
+                let cues = cues_in(cues, r.range);
+                result.unmatched.1 += cues.len();
+                let mut language = job.language.clone();
+                let t = transcriber
+                    .as_deref_mut()
+                    .ok_or_else(|| why.cloned().unwrap_or(SttError::NotAvailable))?;
+                let words = recognise(
+                    job,
+                    runner,
+                    t,
+                    work.path(),
+                    r,
+                    &mut language,
+                    cancel,
+                    &mut progress,
+                )?;
+                if detected.is_none() {
+                    detected = language;
+                }
+                let a = crate::align::retime(r.media, &cues, &words);
+                result.unmatched.0 += a.unmatched;
+                a.lines
             }
             Mode::Align { track } => {
                 let cues = read_track(&job.ffmpeg, runner, work.path(), &r.path, *track, r.range)?;

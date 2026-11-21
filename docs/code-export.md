@@ -11,7 +11,7 @@ the design is in [architecture-export-dialog.md](architecture-export-dialog.md).
 | `export/choice.rs` | Pure. `ExportChoice` (mode, video preset, audio, 360 choice, folder, name), `Context` (what the project is), `file_name_ok`, `with_extension`, `target_path`, `clash`, `folder_problem`, `blocked` (the reason Export is greyed), `request` (what the app starts) |
 | `ui/export_dialog.rs` | The window: it shows the model and sends the changed choice back as `Command::SetExportChoice`; the overwrite question |
 | `format.rs` | `VIDEO_PRESETS` (12 entries), `AudioChoice`, `FormatChoice`, `preset_settings`, `audio_only_settings` |
-| `render.rs` | `plan_export_choice`, `plan_audio_only` + `audio_export_args`, `CLEAN_AUDIO`, `Segment.clean` |
+| `render/plan.rs` | `plan_export_choice`, `plan_audio_only` + `audio_export_args`, `CLEAN_AUDIO`, `Segment.clean` |
 | `export.rs` | `ExportJob.format` / `.audio_only`; `run_audio` (same partial file and rename rule) |
 | `app.rs`, `app/effects.rs`, `app/texts.rs` | `PickExport` opens the dialog; `StartExport`, `ConfirmOverwrite`, `SetCleanAudio`, `ResizeTextWidth`, `ResizeTextAnchorWidth` |
 
@@ -37,9 +37,14 @@ the design is in [architecture-export-dialog.md](architecture-export-dialog.md).
 
 - `VIDEO_PRESETS`: 1920x1080 at 25/30/60 (H.264 .mp4), 25 (H.264 .mov), 25/30 (HEVC .mp4);
   1280x720 at 25/30 (H.264), 25 (HEVC); 854x480 at 25 (H.264); 3840x2160 at 25 (HEVC .mp4), 30
-  (HEVC .mov). Labels read `1280x720 25fps, libx264, .mp4`. A preset is always re-encoded
-  (`plan_export_choice`), pictures keep letterboxing, only presets whose encoder is installed are
-  offered (`available_presets`). A 360 video ignores the preset (it keeps the sphere's size).
+  (HEVC .mov); since 2.0.4, at the end of the list, AV1 in .mp4 (1920x1080 at 25/30, 1280x720 at 25,
+  3840x2160 at 25, 854x480 at 25) and VP9 in .webm (1920x1080 at 25/30, 1280x720 at 25, 854x480 at
+  25). Labels read `1280x720 25fps, H.264, .mp4` (the plain codec name; the tooltip says `Encoder:
+  libx264`, REQ-220). A preset is always re-encoded (`plan_export_choice`), pictures keep
+  letterboxing, only presets the ffmpeg in use can make, with the audio encoder of their container
+  (libopus for WebM), are offered (`available_presets` = `preset_settings` is `Some`). A 360 video
+  ignores the preset (it keeps the sphere's size). When Change aspect makes a frame longer than
+  4096 px the dialog warns (`over_cap_warning`, REQ-221); the export uses the cap.
 - Audio: "Same as source" is the automatic choice (the encoder of the source's codec, AAC by
   default); `aac` and `mp3` (`libmp3lame`, only when the encoder list has it) always re-encode.
 - "Only audio" builds the audio graph of the whole timeline with the same `build_graph`

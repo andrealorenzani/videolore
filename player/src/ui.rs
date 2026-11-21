@@ -68,6 +68,10 @@ pub mod icon {
     pub const MUTED: &str = i::SPEAKER_SLASH;
     pub const SKIP_BACK: &str = i::SKIP_BACK;
     pub const OK: &str = i::CHECK;
+    pub const NEXT: &str = i::SKIP_FORWARD;
+    pub const PLAYLIST: &str = i::LIST;
+    pub const FOLDER: &str = i::FILM_STRIP;
+    pub const EDITOR: &str = i::MONITOR_PLAY;
 }
 
 fn label(icon: &str, text: &str) -> String {
@@ -195,6 +199,39 @@ fn menu_bar(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
                 cmds.push(Command::PickOpen);
                 ui.close();
             }
+            let has = app.has_video();
+            for (icon, text, tip, cmd, on) in [
+                (
+                    icon::PLAYLIST,
+                    "Add to playlist…",
+                    "Add a video to play after the others",
+                    Command::AddToPlaylist,
+                    true,
+                ),
+                (
+                    icon::FOLDER,
+                    "Open folder…",
+                    "Play the videos of a folder, in name order",
+                    Command::OpenFolder,
+                    true,
+                ),
+                (
+                    icon::EDITOR,
+                    "Open in editor",
+                    "Edit this video in videolore",
+                    Command::OpenInEditor,
+                    has,
+                ),
+            ] {
+                if ui
+                    .add_enabled(on, Button::new(label(icon, text)))
+                    .on_hover_text(tip)
+                    .clicked()
+                {
+                    cmds.push(cmd);
+                    ui.close();
+                }
+            }
             ui.separator();
             if ui.button(label(icon::QUIT, "Quit")).clicked() {
                 cmds.push(Command::Quit);
@@ -280,6 +317,29 @@ fn controls(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
             .clicked()
         {
             cmds.push(Command::Seek(Micros::ZERO));
+        }
+        // the playlist (REQ-254): shown when there is more than one video in it
+        if app.playlist.items.len() > 1 {
+            if ui
+                .add_enabled(
+                    app.playlist.previous().is_some(),
+                    Button::new(label(icon::SKIP_BACK, "Previous")),
+                )
+                .on_hover_text("The previous video of the playlist")
+                .clicked()
+            {
+                cmds.push(Command::Previous);
+            }
+            if ui
+                .add_enabled(
+                    app.playlist.next().is_some(),
+                    Button::new(label(icon::NEXT, "Next")),
+                )
+                .on_hover_text("The next video of the playlist")
+                .clicked()
+            {
+                cmds.push(Command::Next);
+            }
         }
         ui.monospace(format!(
             "{} / {}",

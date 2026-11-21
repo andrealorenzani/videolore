@@ -86,6 +86,16 @@ impl<T: Clone> History<T> {
     pub fn any(&self, f: impl Fn(&T) -> bool) -> bool {
         self.undo.iter().chain(self.redo.iter()).any(|(t, _)| f(t))
     }
+
+    /// Drops every snapshot (undo or redo) that satisfies `f` (REQ-196: the states that
+    /// refer to a removed file); the others stay, in their order. Snapshots are whole
+    /// states, so undoing past a dropped one restores the next older state that is kept.
+    pub fn forget(&mut self, f: impl Fn(&T) -> bool) -> usize {
+        let before = self.undo.len() + self.redo.len();
+        self.undo.retain(|(t, _)| !f(t));
+        self.redo.retain(|(t, _)| !f(t));
+        before - self.undo.len() - self.redo.len()
+    }
 }
 
 #[cfg(test)]
@@ -152,5 +162,29 @@ mod tests {
         h.redo(s).unwrap();
         assert_eq!(h.undo_label(), Some("Split"));
         assert_eq!(h.redo_label(), Some("Remove fade"));
+    }
+
+    // covers: REQ-196
+    #[test]
+    fn forgetting_states_keeps_the_others_in_order() {
+        let mut h = History::default();
+        let mut state = 0;
+        for i in 1..=10 {
+            h.record(state, "step");
+            state = i;
+        }
+        // states 3..=5 refer to a removed file
+        assert_eq!(h.forget(|s| (3..=5).contains(s)), 3);
+        assert_eq!(h.undo_len(), 7);
+        let mut seen = Vec::new();
+        while let Some(s) = h.undo(state) {
+            seen.push(s);
+            state = s;
+        }
+        assert_eq!(seen, [9, 8, 7, 6, 2, 1, 0], "the others, newest first");
+        // redo snapshots are checked too
+        assert_eq!(h.forget(|s| *s == 9), 1);
+        assert!(h.redo(state).is_some());
+        assert_eq!(h.forget(|_| false), 0);
     }
 }

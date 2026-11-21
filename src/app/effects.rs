@@ -200,6 +200,60 @@ impl AppState {
         })
     }
 
+    /// Normalise speech on the clip or the whole video (REQ-279): one undo step.
+    pub(super) fn set_speech_enhance(
+        &mut self,
+        target: Target,
+        on: bool,
+        now: Instant,
+    ) -> Result<(), String> {
+        let ids: Vec<ClipId> = match self.effect_clip(target)? {
+            Some(id) => vec![id],
+            None => self.project.timeline.clips.iter().map(|c| c.id).collect(),
+        };
+        let tl = &self.project.timeline;
+        if ids
+            .iter()
+            .all(|i| tl.get(*i).is_some_and(|c| c.speech_enhance == on))
+        {
+            return Ok(());
+        }
+        let label = if on {
+            "Normalise speech"
+        } else {
+            "Remove normalise speech"
+        };
+        self.edit(now, label, |e| {
+            e.timeline.set_speech_enhance(&ids, on).map_err(err)
+        })
+    }
+
+    /// How strong Clean audio is on the clip or the whole video (REQ-278): one undo step.
+    pub(super) fn set_clean_strength(
+        &mut self,
+        target: Target,
+        percent: u8,
+        now: Instant,
+    ) -> Result<(), String> {
+        if percent > 100 {
+            return Err("The strength is from 0 to 100 %".into());
+        }
+        let ids: Vec<ClipId> = match self.effect_clip(target)? {
+            Some(id) => vec![id],
+            None => self.project.timeline.clips.iter().map(|c| c.id).collect(),
+        };
+        let tl = &self.project.timeline;
+        if ids
+            .iter()
+            .all(|i| tl.get(*i).is_some_and(|c| c.clean_strength == percent))
+        {
+            return Ok(());
+        }
+        self.edit(now, "Clean audio strength", |e| {
+            e.timeline.set_clean_strength(&ids, percent).map_err(err)
+        })
+    }
+
     pub(super) fn set_edge_fade(
         &mut self,
         edge: Edge,
@@ -396,6 +450,7 @@ impl AppState {
                 crate::camera::Pov {
                     t: Micros::ZERO,
                     cam,
+                    ease: Default::default(),
                 },
             );
         }
@@ -422,15 +477,25 @@ impl AppState {
         format!("{stem}.srt")
     }
 
-    /// Writes the timeline's subtitles as SRT (atomically: no partial file is left).
+    /// Writes the timeline's subtitles as `.srt`, `.vtt` or `.ass` by the file's extension
+    /// (atomically: no partial file is left; REQ-180, REQ-181).
     pub(super) fn export_srt(&mut self, mut path: PathBuf) -> Result<(), String> {
+        use crate::srt::Format;
         if !self.has_shown_subtitles() {
             return Err(NO_SUBTITLES.into());
         }
         if path.extension().is_none() {
             path.set_extension("srt");
         }
-        let text = crate::srt::write(&self.project.subtitles.project(&self.project.timeline));
+        let lines = self.project.subtitles.project(&self.project.timeline);
+        let text = match Format::of_path(&path) {
+            Format::Srt => crate::srt::write(&lines),
+            Format::Vtt => crate::srt::write_vtt(&lines),
+            Format::Ass => {
+                let (w, h) = self.output_size().unwrap_or((1920, 1080));
+                crate::ass::export_file(&lines, self.project.subtitles.preset, w, h)
+            }
+        };
         project::write_atomic(&path, text.as_bytes()).map_err(|e| e.to_string())?;
         self.status = format!("Subtitles saved to {}", path.display());
         Ok(())

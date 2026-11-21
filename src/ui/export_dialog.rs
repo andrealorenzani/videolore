@@ -5,6 +5,7 @@
 //! shows the choice model of [`crate::export::choice`] and sends the changed choice back
 //! as a command; the rules (names, greyed fields, reasons) are there, pure and tested.
 
+use super::strings::tr;
 use crate::app::{AppState, Command};
 use crate::export::choice::{self, ExportChoice, Mode, Sphere};
 use crate::format::{AudioChoice, VIDEO_PRESETS, available_presets};
@@ -24,6 +25,19 @@ pub const EXPORT_BUTTON: &str = "Export";
 pub const CANCEL: &str = "Cancel";
 pub const REPLACE_TITLE: &str = "Replace the file?";
 pub const REPLACE: &str = "Replace";
+
+/// Shown before Export when the frame is larger than 4096 px on its longer side (REQ-221).
+pub const OVER_CAP_WARNING: &str =
+    "This frame is larger than 4096 px: it is scaled down and the export takes longer.";
+
+/// [`OVER_CAP_WARNING`] when it applies to the video `choice` makes (not for Only audio or
+/// Only subtitles, nor for a 360 video, which keeps its own size).
+pub fn over_cap_warning(app: &AppState, choice: &ExportChoice) -> Option<&'static str> {
+    let ctx = app.export_context();
+    let sphere = ctx.all_360 && choice.sphere == Sphere::Video360;
+    (choice.mode == Mode::Full && !sphere && app.frame_over_cap(choice.video))
+        .then_some(OVER_CAP_WARNING)
+}
 
 /// The label of the video format dropdown for `choice`.
 pub fn video_text(choice: &ExportChoice) -> String {
@@ -65,7 +79,7 @@ pub fn export_dialog(
                     }
                     if ui
                         .button(FOLDER_BUTTON)
-                        .on_hover_text("Choose the folder")
+                        .on_hover_text(tr!(ChooseTheFolder))
                         .clicked()
                     {
                         cmds.push(Command::PickExportFolder);
@@ -84,12 +98,17 @@ pub fn export_dialog(
                 ui.end_row();
 
                 if choice::shows_sphere_choice(&c, &ctx_info) {
-                    ui.label("360 video");
+                    ui.label(tr!(N360Video));
                     ui.horizontal(|ui| {
                         ui.selectable_value(&mut c.sphere, Sphere::Video360, EXPORT_360);
                         ui.selectable_value(&mut c.sphere, Sphere::Flat, EXPORT_FLAT);
                     });
                     ui.end_row();
+                    if let Some(note) = choice::sphere_frame_note(&c, &ctx_info) {
+                        ui.add_space(0.0);
+                        ui.add(egui::Label::new(egui::RichText::new(note).small()).wrap());
+                        ui.end_row();
+                    }
                 }
 
                 ui.label(VIDEO_LABEL);
@@ -105,12 +124,13 @@ pub fn export_dialog(
                                         &mut c.video,
                                         Some(i),
                                         VIDEO_PRESETS[i].label(),
-                                    );
+                                    )
+                                    .on_hover_text(VIDEO_PRESETS[i].tooltip(&ctx_info.encoders));
                                 }
                             });
                         if ui
                             .button(RESET)
-                            .on_hover_text("Back to \"Same as source\"")
+                            .on_hover_text(tr!(BackToSameAsSource))
                             .clicked()
                         {
                             c.video = None;
@@ -120,6 +140,12 @@ pub fn export_dialog(
                 .response
                 .on_disabled_hover_text(reason.unwrap_or_default());
                 ui.end_row();
+
+                if let Some(w) = over_cap_warning(app, &c) {
+                    ui.add_space(ui.spacing().interact_size.y);
+                    ui.label(egui::RichText::new(w).color(egui::Color32::from_rgb(230, 160, 40)));
+                    ui.end_row();
+                }
 
                 ui.label(AUDIO_LABEL);
                 let reason = choice::audio_field_reason(&c);
@@ -136,7 +162,7 @@ pub fn export_dialog(
                             });
                         if ui
                             .button(RESET)
-                            .on_hover_text("Back to \"Same as source\"")
+                            .on_hover_text(tr!(BackToSameAsSource))
                             .clicked()
                         {
                             c.audio = AudioChoice::Same;
@@ -146,7 +172,24 @@ pub fn export_dialog(
                 .response
                 .on_disabled_hover_text(reason.unwrap_or_default());
                 ui.end_row();
+
+                if choice::shows_subtitle_choice(&c, &ctx_info) {
+                    ui.label(SUBTITLES_LABEL);
+                    egui::ComboBox::from_id_salt("export-subtitles")
+                        .selected_text(c.subtitles.label())
+                        .show_ui(ui, |ui| {
+                            for m in crate::format::SubtitleMode::ALL {
+                                ui.selectable_value(&mut c.subtitles, m, m.label());
+                            }
+                        });
+                    ui.end_row();
+                }
             });
+        if choice::shows_subtitle_choice(&c, &ctx_info)
+            && let Some(note) = super::effects::subtitle_script_note(app)
+        {
+            ui.label(super::icons::label(super::icons::WARNING, &note));
+        }
         let target = choice::target_path(&c, &ctx_info);
         ui.add(
             egui::Label::new(egui::RichText::new(target.display().to_string()).weak()).truncate(),
@@ -172,6 +215,9 @@ pub fn export_dialog(
         cmds.push(Command::CloseModal);
     }
 }
+
+/// The label of the subtitle row of the Export dialog (REQ-182).
+pub const SUBTITLES_LABEL: &str = "Subtitles";
 
 fn audio_text(a: AudioChoice) -> &'static str {
     a.label()

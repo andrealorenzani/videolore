@@ -1,14 +1,86 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! SubRip (`.srt`): writing the timeline's subtitles (File > Export subtitles) and reading
-//! the text subtitle track of a video (converted to SRT by ffmpeg).
+//! SubRip (`.srt`) and WebVTT (`.vtt`): writing the timeline's subtitles (File > Export
+//! subtitles), reading the text subtitle track of a video (converted to SRT by ffmpeg) and
+//! reading a subtitle file the user imports (REQ-180, REQ-183).
 //!
 //! The reader takes untrusted input: it never panics, caps the number of cues and the text
 //! of each one, skips damaged blocks and refuses impossible times.
 
 use crate::subtitles::{MAX_TEXT, ShownLine, clean_text};
 use crate::time::Micros;
+use std::path::Path;
+
+/// Largest subtitle file that is read.
+pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The formats of File > Export subtitles and of the import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    Srt,
+    Vtt,
+    Ass,
+}
+
+impl Format {
+    pub const ALL: [Format; 3] = [Format::Srt, Format::Vtt, Format::Ass];
+
+    pub fn extension(self) -> &'static str {
+        match self {
+            Format::Srt => "srt",
+            Format::Vtt => "vtt",
+            Format::Ass => "ass",
+        }
+    }
+
+    /// The format a file name asks for: by its extension, `.srt` when it has none or an
+    /// unknown one.
+    pub fn of_path(path: &Path) -> Format {
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase());
+        Format::ALL
+            .into_iter()
+            .find(|f| ext.as_deref() == Some(f.extension()))
+            .unwrap_or(Format::Srt)
+    }
+}
+
+/// Why a subtitle file was not imported.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum FileError {
+    #[error("{0} cannot be read")]
+    Unreadable(String),
+    #[error("{0} is too large to be a subtitle file")]
+    TooLarge(String),
+    #[error("{0} is not UTF-8 text: save it as UTF-8 and import it again")]
+    NotUtf8(String),
+    #[error("{0} has no subtitles")]
+    Empty(String),
+}
+
+/// Reads a `.srt` or `.vtt` file: UTF-8 (a byte-order mark is accepted); any other
+/// encoding is refused, never guessed. The cues are in the file's times.
+pub fn read_file(path: &Path) -> Result<Vec<Cue>, FileError> {
+    let name = crate::media::display_name(path);
+    let bytes = crate::base::io::read_limited(path, MAX_FILE_BYTES).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::InvalidData {
+            FileError::TooLarge(name.clone())
+        } else {
+            FileError::Unreadable(name.clone())
+        }
+    })?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| FileError::NotUtf8(name.clone()))?;
+    let cues = match Format::of_path(path) {
+        Format::Vtt => parse_vtt(text),
+        _ => parse(text),
+    };
+    if cues.is_empty() {
+        return Err(FileError::Empty(name));
+    }
+    Ok(cues)
+}
 
 /// Most cues read from one track.
 pub const MAX_CUES: usize = 100_000;
@@ -39,21 +111,87 @@ pub fn srt_time(t: Micros) -> String {
 /// The SRT file of `lines` (timeline times): numbered from 1 in time order, one text line
 /// per cue, LF line ends, UTF-8 without BOM. Lines without text are skipped.
 pub fn write(lines: &[ShownLine]) -> String {
+    write_cues(lines, String::new(), srt_time, clean_text)
+}
+
+/// `HH:MM:SS.mmm` (WebVTT).
+pub fn vtt_time(t: Micros) -> String {
+    srt_time(t).replace(',', ".")
+}
+
+/// The WebVTT file of `lines` (REQ-180): the cues of [`write`] under a `WEBVTT` header,
+/// times with a point before the milliseconds, `&`, `<` and `>` written as entities, UTF-8
+/// without byte-order mark.
+pub fn write_vtt(lines: &[ShownLine]) -> String {
+    write_cues(lines, "WEBVTT\n\n".into(), vtt_time, |t| {
+        clean_text(t)
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    })
+}
+
+fn write_cues(
+    lines: &[ShownLine],
+    mut out: String,
+    time: fn(Micros) -> String,
+    text: impl Fn(&str) -> String,
+) -> String {
     let mut sorted: Vec<&ShownLine> = lines.iter().filter(|l| !l.text.trim().is_empty()).collect();
     sorted.sort_by_key(|l| (l.start, l.line));
-    let mut out = String::new();
     for (i, l) in sorted.iter().enumerate() {
         let start = Micros(l.start.0.max(0) / 1000 * 1000);
         let end = Micros(l.end.0 / 1000 * 1000).max(start + Micros(1000));
         out.push_str(&format!(
             "{}\n{} --> {}\n{}\n\n",
             i + 1,
-            srt_time(start),
-            srt_time(end),
-            clean_text(&l.text)
+            time(start),
+            time(end),
+            text(&l.text)
         ));
     }
     out
+}
+
+/// Parses a WebVTT document (REQ-183): the header, `NOTE`, `STYLE` and `REGION` blocks are
+/// skipped, cue settings (positions) are ignored, tags are removed as for SRT and the
+/// entities `&amp; &lt; &gt; &nbsp;` are decoded. Everything else is as for [`parse`].
+pub fn parse_vtt(text: &str) -> Vec<Cue> {
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
+    let mut kept = String::with_capacity(text.len());
+    let mut skipping = false;
+    let mut first = true;
+    for raw in text.lines() {
+        let line = raw.trim_end_matches('\r');
+        if line.trim().is_empty() {
+            skipping = false;
+            kept.push('\n');
+            continue;
+        }
+        let head = line.split_whitespace().next().unwrap_or("");
+        if (first && head.starts_with("WEBVTT"))
+            || (matches!(head, "NOTE" | "STYLE" | "REGION") && !line.contains("-->"))
+        {
+            skipping = true;
+        }
+        first = false;
+        if !skipping {
+            kept.push_str(line);
+            kept.push('\n');
+        }
+    }
+    let mut cues = parse(&kept);
+    for c in &mut cues {
+        c.text = clean_text(
+            &c.text
+                .replace("&nbsp;", " ")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&"),
+        );
+    }
+    cues.retain(|c| !c.text.is_empty());
+    cues
 }
 
 /// Removes ASS override blocks (`{...}`) and HTML-like tags (`<i>`, `</font>`), turns the
@@ -296,5 +434,120 @@ mod tests {
         );
         let c = parse(&long);
         assert!(c[0].text.chars().count() <= MAX_TEXT);
+    }
+
+    /// A reader of WebVTT that does not share code with ours: header, blank-line separated
+    /// blocks, the timing line of each cue (a line with `-->`), the lines after it.
+    fn reference_vtt(text: &str) -> Vec<(String, String, String)> {
+        let mut blocks = text.split("\n\n");
+        assert!(blocks.next().unwrap().starts_with("WEBVTT"), "header");
+        let mut cues = Vec::new();
+        for b in blocks {
+            let lines: Vec<&str> = b.lines().collect();
+            let Some(i) = lines.iter().position(|l| l.contains("-->")) else {
+                continue;
+            };
+            let (a, e) = lines[i].split_once(" --> ").unwrap();
+            cues.push((a.into(), e.into(), lines[i + 1..].join("\n")));
+        }
+        cues
+    }
+
+    // covers: REQ-180
+    #[test]
+    fn webvtt_has_the_same_cues_as_srt_with_a_header_points_and_no_bom() {
+        let lines = [
+            shown(1, 1_500_000, 3_250_000, "Hello & you"),
+            shown(2, 4_000_000, 5_000_000, "second"),
+            shown(3, 0, 1_000_000, "first"),
+        ];
+        let vtt = write_vtt(&lines);
+        assert!(vtt.starts_with("WEBVTT\n\n") && !vtt.starts_with('\u{FEFF}'));
+        let cues = reference_vtt(&vtt);
+        assert_eq!(cues.len(), 3, "3 lines, 3 cues");
+        assert_eq!(
+            cues[0],
+            ("00:00:00.000".into(), "00:00:01.000".into(), "first".into())
+        );
+        assert_eq!(cues[1].0, "00:00:01.500");
+        assert_eq!(cues[1].1, "00:00:03.250");
+        assert_eq!(cues[1].2, "Hello &amp; you");
+        assert!(write_vtt(&[shown(1, 0, 1_000_000, "a < b > c")]).contains("a &lt; b &gt; c"));
+        // the same times and text as the .srt of the same lines
+        let srt = parse(&write(&lines));
+        let back = parse_vtt(&vtt);
+        assert_eq!(back, srt, "{back:?}");
+        assert_eq!(vtt_time(Micros(3_661_001_000)), "01:01:01.001");
+    }
+
+    // covers: REQ-183
+    #[test]
+    fn webvtt_notes_styles_settings_and_entities_are_handled() {
+        let text = "\u{FEFF}WEBVTT - title\nKind: captions\n\nSTYLE\n::cue { color: red }\n\n\
+                    NOTE a\nb --> c\n\nREGION\nid:x\n\nid1\n00:01.000 --> 00:02.500 align:start size:50%\n\
+                    <v Roger>It&nbsp;is &lt;b&gt;\nsecond line</v>\n\n01:00:00.000 --> 01:00:01.000\n\n\
+                    00:03.000 --> 00:02.000\nbackwards\n\n00:04.000 --> 00:05.000\nok\n";
+        let cues = parse_vtt(text);
+        assert_eq!(
+            cues,
+            [
+                Cue {
+                    start: Micros(1_000_000),
+                    end: Micros(2_500_000),
+                    text: "It is <b> second line".into()
+                },
+                Cue {
+                    start: Micros(4_000_000),
+                    end: Micros(5_000_000),
+                    text: "ok".into()
+                },
+            ]
+        );
+        // damaged and huge input never panics
+        for junk in ["", "WEBVTT", "\0\0", "--> -->", &"NOTE\n".repeat(1000)] {
+            let _ = parse_vtt(junk);
+        }
+    }
+
+    // covers: REQ-180, REQ-183
+    #[test]
+    fn the_format_of_a_file_follows_its_extension_and_files_are_read_as_utf8_only() {
+        assert_eq!(Format::of_path(Path::new("a.VTT")), Format::Vtt);
+        assert_eq!(Format::of_path(Path::new("a.ass")), Format::Ass);
+        assert_eq!(Format::of_path(Path::new("a.srt")), Format::Srt);
+        assert_eq!(Format::of_path(Path::new("a")), Format::Srt);
+        assert_eq!(Format::of_path(Path::new("a.txt")), Format::Srt);
+        let d = tempfile::tempdir().unwrap();
+        let ok = d.path().join("ok.srt");
+        std::fs::write(&ok, "\u{FEFF}1\n00:00:01,000 --> 00:00:02,000\ncaf\u{e9}\n").unwrap();
+        assert_eq!(read_file(&ok).unwrap()[0].text, "caf\u{e9}");
+        let latin = d.path().join("latin.srt");
+        std::fs::write(&latin, b"1\n00:00:01,000 --> 00:00:02,000\ncaf\xe9\n").unwrap();
+        assert!(matches!(read_file(&latin), Err(FileError::NotUtf8(_))));
+        let utf16 = d.path().join("utf16.srt");
+        std::fs::write(&utf16, b"\xff\xfe1\x00").unwrap();
+        assert!(matches!(read_file(&utf16), Err(FileError::NotUtf8(_))));
+        let empty = d.path().join("empty.vtt");
+        std::fs::write(&empty, "WEBVTT\n").unwrap();
+        assert!(matches!(read_file(&empty), Err(FileError::Empty(_))));
+        assert!(matches!(
+            read_file(&d.path().join("none.srt")),
+            Err(FileError::Unreadable(_))
+        ));
+        let big = d.path().join("big.srt");
+        std::fs::File::create(&big)
+            .unwrap()
+            .set_len(MAX_FILE_BYTES + 1)
+            .unwrap();
+        assert!(matches!(read_file(&big), Err(FileError::TooLarge(_))));
+        for e in [
+            FileError::Unreadable("x".into()),
+            FileError::TooLarge("x".into()),
+            FileError::NotUtf8("x".into()),
+            FileError::Empty("x".into()),
+        ] {
+            assert!(e.to_string().contains('x'));
+        }
+        assert_eq!(Format::ALL.map(Format::extension), ["srt", "vtt", "ass"]);
     }
 }

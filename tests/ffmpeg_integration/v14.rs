@@ -215,6 +215,7 @@ fn the_chosen_audio_format_is_made() {
         job.format = FormatChoice {
             video: None,
             audio: choice,
+            ..Default::default()
         };
         let (tx, _rx) = channel();
         export::run(&job, &SystemRunner, &AtomicBool::new(false), &tx).unwrap();

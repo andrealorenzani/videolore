@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://github.com; style-src 'self' 'sha256-0ptmRb4f6NdGOPGLqTwet0pEyt8GCbQUUVtQ+ZQcw9E='; script-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>videolore — offline video editor and 360° video player</title>
 <meta name="description" content="videolore 1.6.3: a free, offline desktop video editor for short social media clips, with subtitles, 360° video and a video player, for Windows, macOS and Linux.">
@@ -14,12 +15,15 @@
 <meta property="og:title" content="videolore — offline video editor and 360° video player">
 <meta property="og:description" content="A free, offline desktop video editor for short clips made for social media, with subtitles made on your computer, 360° video and a separate video player.">
 <meta property="og:url" content="https://andrealorenzani.github.io/videolore/">
-<meta property="og:image" content="https://andrealorenzani.github.io/videolore/images/director-still.png">
-<meta property="og:image:alt" content="Illustration of a film director with a clapperboard and a megaphone">
+<meta property="og:image" content="https://andrealorenzani.github.io/videolore/images/og-card.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="videolore, an offline video editor and 360° video player, with a film director holding a clapperboard">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="videolore — offline video editor and 360° video player">
 <meta name="twitter:description" content="A free, offline desktop video editor for short social media clips, with subtitles, 360° video and a video player.">
-<meta name="twitter:image" content="https://andrealorenzani.github.io/videolore/images/director-still.png">
+<meta name="twitter:image" content="https://andrealorenzani.github.io/videolore/images/og-card.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232456c7'/%3E%3Cpath d='M6 4l6 4-6 4z' fill='%23fff'/%3E%3C/svg%3E">
 <script type="application/ld+json">
 {
@@ -147,6 +151,7 @@
 
   footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); font-size: 0.95rem; }
   footer p { margin: 0 0 8px; }
+.badge-img { vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -158,7 +163,7 @@
     <p class="links">
       <span>Latest release:</span> <a href="https://github.com/andrealorenzani/videolore/releases/tag/v1.6.3">videolore 1.6.3 — core effects and player</a> (20 November 2026)<br>
       <span>Source:</span> <a href="https://github.com/andrealorenzani/videolore">github.com/andrealorenzani/videolore</a><br>
-      <span>Latest build:</span> <a href="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml?query=branch%3Amain" aria-label="Latest build on main">build status <img src="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status of the latest build on main" style="vertical-align: middle"></a>
+      <span>Latest build:</span> <a href="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml?query=branch%3Amain" aria-label="Latest build on main">build status <img src="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status of the latest build on main" class="badge-img"></a>
     </p>
   </header>
 

@@ -27,11 +27,21 @@ mod v9;
 /// keyframes; 6 since 1.4.0: text widths; 5 since 1.3.0: text items and 360 anchors; 4 since 1.2.6: subtitle sizes, the 360° switch and
 /// the camera paths; 3 since 1.2.0: clip volumes, fades at the video's edges, subtitle
 /// positions, subtitle tracks of media).
-pub const SCHEMA_VERSION: u64 = 10;
+pub const SCHEMA_VERSION: u64 = 11;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
-pub const MAX_PROJECT_BYTES: u64 = 16 * 1024 * 1024;
+pub const MAX_PROJECT_BYTES: u64 = 96 * 1024 * 1024;
+/// Largest copy of one LUT kept in a project, and all copies together (REQ-293, ADR-191).
+pub const MAX_LUT_COPY: usize = 20 * 1024 * 1024;
+pub const MAX_LUT_COPIES: usize = 64 * 1024 * 1024;
 pub const EXTENSION: &str = "vlproj";
+
+/// True for a file with the project extension (by name only; the file is not read).
+pub fn is_project_path(p: &std::path::Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case(EXTENSION))
+}
 
 /// Everything an edit can change: what undo/redo snapshots.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -73,6 +83,15 @@ impl ProjectDoc {
     pub fn set_subtitle_tracks(&mut self, id: MediaId, tracks: Vec<crate::media::SubtitleTrack>) {
         if let Some(m) = self.media.iter_mut().find(|m| m.0 == id) {
             m.4.subtitle_tracks = Some(tracks);
+        }
+    }
+
+    /// Records the new analysis of a file that changed on disk (the project does not become
+    /// "unsaved" because of it).
+    pub fn set_media(&mut self, id: MediaId, duration: Micros, format: MediaFormat) {
+        if let Some(m) = self.media.iter_mut().find(|m| m.0 == id) {
+            m.3 = duration;
+            m.4 = format;
         }
     }
 
@@ -174,6 +193,12 @@ struct MediaEntry {
     name: String,
     duration: Micros,
     format: MediaFormat,
+    /// Size and modification time at the last analysis (schema 11, REQ-186); absent =
+    /// unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    file_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modified_ms: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -195,6 +220,17 @@ struct ProjectFile {
     // Added in schema 5; absent (= no text items) before.
     #[serde(default)]
     texts: Vec<TextItem>,
+    // Added in 2.0.4 (REQ-293): the LUT files used, so a project still works when they are gone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    lut_copies: Vec<LutCopy>,
+}
+
+/// A copy of a LUT file kept in the project: its path as used by the clips and its table
+/// as normalised `.cube` text.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LutCopy {
+    path: String,
+    cube: String,
 }
 
 /// Relative path from directory `from` to `to` (both absolute); `None` across roots.
@@ -236,6 +272,8 @@ pub fn to_json(project: &Project, path: &Path) -> Result<String, ProjectError> {
                 name: m.name.clone(),
                 duration: m.duration,
                 format: m.format.clone(),
+                file_size: m.stat.map(|s| s.size),
+                modified_ms: m.stat.map(|s| s.modified_ms),
             })
             .collect(),
         timeline: project.timeline.clone(),
@@ -244,8 +282,35 @@ pub fn to_json(project: &Project, path: &Path) -> Result<String, ProjectError> {
         subtitles: project.subtitles.clone(),
         camera: project.camera.clone(),
         texts: project.texts.items.clone(),
+        lut_copies: lut_copies(&project.timeline),
     };
     serde_json::to_string_pretty(&file).map_err(|e| ProjectError::Invalid(e.to_string()))
+}
+
+/// The LUT tables the clips use, to be kept in the project (REQ-293): each file once, when it
+/// can be read now (or is already embedded); copies over 20 MB or beyond 64 MB in all are left
+/// out, the path alone is kept for them.
+fn lut_copies(tl: &Timeline) -> Vec<LutCopy> {
+    let mut paths: Vec<&String> = tl.clip_luts.iter().map(|l| &l.path).collect();
+    paths.sort();
+    paths.dedup();
+    let mut total = 0;
+    let mut out = Vec::new();
+    for p in paths {
+        let Ok(lut) = crate::lut::cached(p) else {
+            continue;
+        };
+        let cube = lut.to_cube();
+        if cube.len() > MAX_LUT_COPY || total + cube.len() > MAX_LUT_COPIES {
+            continue;
+        }
+        total += cube.len();
+        out.push(LutCopy {
+            path: p.clone(),
+            cube,
+        });
+    }
+    out
 }
 
 /// Atomically writes `contents` to `path`: temp file in the same folder, fsync, rename.
@@ -381,6 +446,18 @@ pub fn from_json_noted(
     for (item, size) in file.texts.iter_mut().zip(legacy_sizes) {
         migrate_text(item, size);
     }
+    // the LUT copies of the project are checked and made known (REQ-293): a copy that is not a
+    // valid table is dropped, and the sizes are limited
+    let mut copied = 0;
+    for c in &file.lut_copies {
+        copied += c.cube.len();
+        if c.cube.len() > MAX_LUT_COPY || copied > MAX_LUT_COPIES || !crate::lut::path_ok(&c.path) {
+            continue;
+        }
+        if let Ok(lut) = crate::lut::parse(c.cube.as_bytes()) {
+            crate::lut::embed(&c.path, lut);
+        }
+    }
 
     let mut ids = BTreeSet::new();
     let mut missing = Vec::new();
@@ -426,6 +503,12 @@ pub fn from_json_noted(
             name,
             duration: e.duration,
             format,
+            stat: match (e.file_size, e.modified_ms) {
+                (Some(size), Some(modified_ms)) => {
+                    Some(crate::media::FileStat { size, modified_ms })
+                }
+                _ => None,
+            },
             missing: found.is_none(),
             status: Default::default(),
             proxy: Default::default(),
@@ -646,9 +729,22 @@ pub fn load(path: &Path) -> Result<(Project, Vec<String>), ProjectError> {
     load_noted(path).map(|(p, m, _)| (p, m))
 }
 
+/// [`load`] of the project text in `path`, with its relative media paths resolved against
+/// `dir` (an autosave copy lives in the cache but belongs to a project elsewhere).
+pub fn load_in(path: &Path, dir: &Path) -> Result<(Project, Vec<String>), ProjectError> {
+    load_from(path, dir).map(|(p, m, _)| (p, m))
+}
+
 /// [`load`] that also returns the note of REQ-167.
 pub fn load_noted(
     path: &Path,
+) -> Result<(Project, Vec<String>, Option<TextMigration>), ProjectError> {
+    load_from(path, &project_dir(path))
+}
+
+fn load_from(
+    path: &Path,
+    dir: &Path,
 ) -> Result<(Project, Vec<String>, Option<TextMigration>), ProjectError> {
     let bytes = read_limited(path, MAX_PROJECT_BYTES).map_err(|e| match e.kind() {
         std::io::ErrorKind::InvalidData => ProjectError::TooLarge,
@@ -656,7 +752,7 @@ pub fn load_noted(
         _ => io_err(e),
     })?;
     let text = String::from_utf8(bytes).map_err(|_| invalid("the file is not UTF-8 text"))?;
-    from_json_noted(&text, &project_dir(path))
+    from_json_noted(&text, dir)
 }
 
 #[cfg(test)]
@@ -953,14 +1049,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 10"));
+        assert!(text.contains("\"schema_version\": 11"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 11");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 12");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(11));
+        assert_eq!(e, ProjectError::TooNew(12));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -1139,8 +1235,8 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 10"));
-        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(10)));
+        assert!(text.contains("\"schema_version\": 11"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(11)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         assert_eq!(
             opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
@@ -1253,6 +1349,7 @@ pub(crate) mod tests {
                 crate::camera::Pov {
                     t: Micros(1_000_000),
                     cam: crate::camera::Camera::new(9000, 500, 7000),
+                    ease: Default::default(),
                 },
             )
             .unwrap();
@@ -1286,9 +1383,9 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 10"));
+        assert!(text.contains("\"schema_version\": 11"));
         assert!(text.contains("\"camera\"") && !text.contains("\"treat_as_360\""));
-        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(10)));
+        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(11)));
         assert_eq!(load(&file).unwrap().0, q);
         // a project without points of view writes no camera section
         let plain = dir.path().join("plain.vlproj");
@@ -1372,7 +1469,7 @@ pub(crate) mod tests {
         assert!(text.contains("\"texts\"") && text.contains("\"anchor\""));
         assert_eq!(load(&file).unwrap().0, q);
         // 1.2.6 refuses it, untouched
-        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(10)));
+        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(11)));
         // a project of 1.2.6 has no texts
         let old = text.replace("\"schema_version\": 6", "\"schema_version\": 4");
         let mut v: serde_json::Value = serde_json::from_str(&old).unwrap();
@@ -1422,10 +1519,10 @@ pub(crate) mod tests {
         v["subtitles"]["lines"][0]["anchor"]["pitch_cd"] = 99_999.into();
         assert!(from_json(&v.to_string(), dir.path()).is_err());
         // too new
-        let new = text.replace("\"schema_version\": 10", "\"schema_version\": 11");
+        let new = text.replace("\"schema_version\": 11", "\"schema_version\": 12");
         assert_eq!(
             from_json(&new, dir.path()).unwrap_err(),
-            ProjectError::TooNew(11)
+            ProjectError::TooNew(12)
         );
     }
 
@@ -1562,11 +1659,11 @@ pub(crate) mod tests {
         let file = dir.path().join("f.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 10"));
+        assert!(text.contains("\"schema_version\": 11"));
         assert!(text.contains("\"frame_aspect\""));
         assert_eq!(load(&file).unwrap().0, p);
         // 1.4.1 and earlier refuse it
-        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(10)));
+        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(11)));
     }
 
     // covers: REQ-132
@@ -1578,7 +1675,7 @@ pub(crate) mod tests {
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 10", "\"schema_version\": 6");
+            .replace("\"schema_version\": 11", "\"schema_version\": 6");
         assert!(!text.contains("frame_aspect") && !text.contains("clip_frames"));
         let (q, _) = from_json(&text, dir.path()).unwrap();
         assert!(!q.timeline.has_frame_effect());
@@ -1652,7 +1749,7 @@ pub(crate) mod tests {
 
         // an unknown shape reads as no effect
         let mut w = v.clone();
-        w["timeline"]["frame_aspect"]["shape"] = "3:1".into();
+        w["timeline"]["frame_aspect"]["shape"] = "5:1".into();
         assert!(tl(&w).frame_aspect.is_none());
         // garbage types are refused as damaged files, not crashes
         let mut w = v.clone();
@@ -1690,19 +1787,19 @@ pub(crate) mod tests {
         let file = dir.path().join("l.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 10"));
+        assert!(text.contains("\"schema_version\": 11"));
         let (q, notes) = load(&file).unwrap();
         assert_eq!(q, p);
         assert!(notes.is_empty());
         // 1.5.x refuses the file with its newer-version message and leaves it alone
-        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(10)));
+        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(11)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         // a project of 1.5 (no LUT keys) opens with no colour effect
         let plain = sample(dir.path());
         save(&plain, &file).unwrap();
         let old = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 10", "\"schema_version\": 7");
+            .replace("\"schema_version\": 11", "\"schema_version\": 7");
         assert!(!old.contains("whole_lut") && !old.contains("clip_luts"));
         let (r, _) = from_json(&old, dir.path()).unwrap();
         assert!(!r.timeline.any_lut());
@@ -1819,7 +1916,7 @@ pub(crate) mod tests {
         assert_eq!(old.texts.items[0].height, DEFAULT_HEIGHT);
         // a 2.0.2 reader refuses a format 10 file (nothing is silently changed)
         let text = std::fs::read_to_string(dir.path().join("f10.vlproj")).unwrap();
-        assert!(text.contains("\"schema_version\": 10"));
+        assert!(text.contains("\"schema_version\": 11"));
     }
 
     // covers: REQ-167

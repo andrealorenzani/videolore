@@ -9,7 +9,7 @@ Back to the [index](code.md). Requirements REQ-135, REQ-136, REQ-137.
 | `src/lut.rs` | `.cube` parser (`parse`, `read`), `Lut` (a normalised 3D cube + hash), `cached(path)`, `path_ok`, `display_name` |
 | `src/timeline.rs` | `clip_luts: Vec<ClipLut>` (since 1.6.1 there is no whole-video LUT: `FrameTarget::Whole` writes every clip's entry); `lut_of`, `set_lut`, `any_lut`; split/merge/remove rules; `DIFFERENT_LUTS` |
 | `src/project.rs` | schema 8; `validate_luts` (damaged entries removed with a note, missing files named) |
-| `src/render.rs` | `Segment.lut_whole` / `lut_clip`, `lut_for`, `lut_chain` (graph), `RenderError::Lut`, `FrameKey.luts`, the re-encode rule in `plan_export_choice` |
+| `src/render/` | `Segment.lut_whole` / `lut_clip`, `lut_for`, `lut_chain` (graph), `RenderError::Lut`, `FrameKey.luts`, the re-encode rule in `plan_export_choice` |
 | `src/app/lut.rs` | `PickLut`, `SetLut`, `RemoveLut` commands, `missing_luts` |
 | `src/app.rs`, `src/app/effects.rs` | `EffectKind::ApplyLut`, `Instance::Lut(FrameTarget)`, popup title, copy/cut/paste of a clip's LUT (`clipboard_lut`) |
 | `src/ui/lut_popup.rs` | the popup body (file name, tooltip with the path, **Choose file…**, **Remove effect**) |
@@ -77,7 +77,7 @@ is refused at packaging time; run the v16 integration tests against the 9.x buil
 ## Tests
 
 `src/lut.rs` (parser table, property test with random bytes, 1D to 3D, caps), `src/timeline.rs`, `src/project.rs`
-(v8 round trip, v7 unchanged, damaged and missing), `src/render.rs` (graph order, no user name in the graph,
+(v8 round trip, v7 unchanged, damaged and missing), `src/render/` (graph order, no user name in the graph,
 re-encode, preview ignores a missing file, frame key), `src/app/lut_tests.rs`, `src/ui/lut_ux_tests.rs`, and the real
 ffmpeg tests `tests/ffmpeg_integration/v16.rs` (clip 2 of 3 only, preview versus export within 4 levels, whole then
 clip, solid background untouched, missing file writes nothing, 360 export).

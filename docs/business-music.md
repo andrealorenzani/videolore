@@ -34,7 +34,7 @@ Back to the [index](business.md).
 
 ## Out of scope
 - Automatic lowering of music under speech (ducking).
-- (1.4.0) A strength or amount setting for Clean audio; cleaning the music track; voice isolation or speech enhancement beyond noise reduction.
-- Fades on individual music clips, volume curves over time, per-clip volume of music clips (effects apply only to video clips).
+- Planned for 2.0.4 (see [New effects](business-effects-frame.md)): the strength setting of Clean audio, cleaning the music track, speech enhancement, fades and a volume of each music clip, volume keyframes.
+- Out of scope for now: voice isolation beyond the speech enhancement switch.
 - Volume above 100% (boost).
 - More than one music track.

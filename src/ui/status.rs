@@ -5,6 +5,7 @@
 //! progress (and Cancel where it can be stopped) in the middle, the output format on the
 //! right.
 
+use super::strings::tr;
 use crate::app::{AppState, Command};
 use eframe::egui::{Align, Button, Label, Layout, ProgressBar, Ui};
 
@@ -45,6 +46,9 @@ pub fn outside_text(app: &AppState) -> Option<String> {
     }
 }
 
+/// The label of the button that gives a new clip the whole-video effects (REQ-201).
+pub const APPLY_TO_NEW: &str = "Apply to new clips";
+
 pub fn status_bar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let jobs = app.background_jobs();
     let output = output_text(app);
@@ -55,6 +59,17 @@ pub fn status_bar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             ui.set_max_width((w * 0.3).max(60.0));
             ui.add(Label::new(msg).truncate()).on_hover_text(msg);
         });
+        if let Some(offer) = app.new_clip_offer_text() {
+            ui.separator();
+            ui.add(Label::new(&offer).truncate()).on_hover_text(&offer);
+            if ui
+                .button(APPLY_TO_NEW)
+                .on_hover_text(tr!(GiveTheNewClipThe))
+                .clicked()
+            {
+                cmds.push(Command::ApplyWholeToNew);
+            }
+        }
         for note in [outside_text(app), selection_hint(app).map(String::from)]
             .into_iter()
             .flatten()
@@ -70,7 +85,7 @@ pub fn status_bar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             }
             if let Some(c) = &j.cancel
                 && ui
-                    .push_id(i, |ui| ui.add(Button::new("Cancel")))
+                    .push_id(i, |ui| ui.add(Button::new(tr!(Cancel))))
                     .inner
                     .on_hover_text(format!("Stop: {}", j.label))
                     .clicked()

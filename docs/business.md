@@ -26,11 +26,22 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [Frame](business-frame.md) — added in 1.5.0: Change aspect (4:3, 16:9, 9:16 with fit on width or height and an empty space filled with a colour or a blurred video), Scale and Move of a clip or of the whole video, with keyframes for Scale and Move (1.6.1: a whole-video Scale or Move keeps one copy of its keyframes for each clip).
 - [Apply LUT](business-lut.md) — added in 1.6.0: colour effect that applies a `.cube` LUT file chosen from the disk to a clip or to the whole video; the project keeps the file's path.
 - [Splash screen](business-splash.md) — added in 1.6.0: the splash at every start of the editor, with the picture, "Version X.Y" and a summary of the version's change. 1.6.2: fixed pictures (`splash.gif`, `splash-player.gif`) and a summary for the running version and per program (fixed file names from 1.6.3).
-- [Video player](business-player.md) — added in 1.6.0: the separate videolore player, with its own build: opens one video, 360 view by dragging, subtitles from the video or a `.srt` file (moved on screen), full screen. 1.6.2: a start screen like the editor's (REQ-150).
+- [Video player](business-player.md) — added in 1.6.0: the separate videolore player, with its own build: opens one video, 360 view by dragging, subtitles from the video or a `.srt` file (moved on screen), full screen. 1.6.2: a start screen like the editor's (REQ-150). 2.0.4: "Open with" entries, playlist, opening from the editor and back, remembered preferences, sound in large videos.
 - [Icons](business-icons.md) — added in 1.6.0: meaningful icons from a free, GPL-compatible set across the editor and the player.
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, third-party notices, first-launch steps.
 - [Settings, performance and safety](business-performance.md) — automatic setup at first start, the Settings window (preview quality, subtitle quality, how hard videolore works, export speed), more accurate speech models, older processors, responsiveness, safe handling of files and downloads, private temporary files, quality goals (including the real-hardware check of faster export).
-- [Release verification](business-verification.md) — added in 2.0.2: the checks of a release on real systems (player builds, older editor refusing newer projects, sound and 360 export by hand); a manual checklist, not a blocker.
+- [Release verification](business-verification.md) — added in 2.0.2: the checks of a release on real systems (player builds, older editor refusing newer projects, sound and 360 export by hand); a manual checklist, not a blocker. 2.0.4: the manual checks of the new parts.
+
+### 2.0.4 (one development, the batches of the roadmap tasks)
+- [Subtitle files and fonts](business-subtitle-files.md) — WebVTT and ASS export, a switchable subtitle track, importing .srt and .vtt, fonts for Arabic and Devanagari; CJK uses the system fonts.
+- [Editing gestures, autosave and safety](business-editing-gestures.md) — autosave and crash recovery, dragging clip edges and markers, keyboard marker keys, undo history on file removal, guides and safe areas.
+- [Whole-video and keyframe clarity](business-keyframes.md) — the whole-video keyframe copies shown apart, notice for clips added later, copying keyframes between clips.
+- [Faster hardware export and hardware reach](business-hardware-export.md) — a cheaper and clearer hardware check, AV1 and VP9 presets with hardware, hardware decoding for the preview, the graphics card choice.
+- [Platforms and installers](business-platforms.md) — CI checks, installer and toolchain pins, one window for double-clicked projects, the macOS menu bar, Linux archive launcher.
+- [Interface](business-interface.md) — remembered window and popups, hidden or docked sections, workspaces, customisable toolbar, rebindable shortcuts, themes, text size, accessibility.
+- [360 video](business-360-video.md) — 360 marker in MKV and WebM, camera roll, easing and keyboard control, speed-first 360 export. Not yet: subtitles anchored to the sphere, off-view arrows, per-clip camera paths, spatial sound.
+- [New effects, frame and LUT options](business-effects-frame.md) — fade length and one-sided fades, music effects, Clean audio strength and Normalise speech, keyframe easing and volume over time, crop, blur strength, custom aspect, LUT strength, `.3dl`/`.csp` LUTs, favourite LUTs. Not yet: speed, per-clip aspect, picture items.
+- [Continuous quality, cache and project page](business-quality.md) — preview cache limit, page image and policy, and the engineering quality goals.
 
 ## Constraints
 - **ffmpeg is bundled** in every installer (since 0.2.0; before, it had to be installed by the user). A user-chosen ffmpeg can still be configured instead.
@@ -65,6 +76,8 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (0.4.0) Export can use the computer's video hardware (NVIDIA, Intel, AMD, Apple) when the user chooses "Export: Faster" in Settings. Best quality stays the default. Every hardware result is checked, and on any problem the export is silently redone with the normal method, so the user always gets a correct file.
 - (2.0.2, Andrea's decisions, planned unless stated) The Export dialog keeps its fixed presets; hardware export always goes through ffmpeg; AV1, VP9 encoding and hardware decoding are in scope (not yet built); the 360 export always prioritises speed; whole-video keyframe copies are shown apart in the popup (not yet built). Details in [Export](business-export.md), [Boxes on the picture and 360 video](business-picture.md) and [Frame](business-frame.md).
 
+- (2.0.4, Andrea and the development) Hardware export always goes through ffmpeg; the Export presets stay fixed (AV1 and VP9 presets are added); the whole-video keyframe copies are shown apart; the 360 export prioritises speed; installers stay unsigned. Project format 11 (one change for the development) is refused by 2.0.3 and older. Details in each planned document.
+
 Topic-specific decisions are in each document.
 
 ## Known limitations (1.2.0, 1.3.0, 1.4.0, 1.5.0, 1.6.0)
@@ -85,15 +98,15 @@ Topic-specific decisions are in each document.
 - Subtitles in scripts other than Latin, Greek and Cyrillic are not fully supported (see [Subtitles](business-subtitles.md)).
 - x86-64 processors without AVX2 (from before about 2013) cannot generate subtitles automatically; videolore shows a clear message instead of crashing, and lines can still be added by hand (see [Settings, performance and safety](business-performance.md)).
 - Installers are unsigned, so each operating system shows a warning on first launch (see [Installation](business-install.md)).
-- On Windows and Linux, double-clicking a project while videolore is open opens a second window.
+- (2.0.4) On Windows and Linux, a double-clicked project opens in the running window (REQ-230); the new behaviour is not yet checked on real systems (see [Release verification](business-verification.md)).
 - Projects saved by 0.2.0 cannot be opened by 0.1.x versions, and projects saved by 1.2.0 cannot be opened by 1.1 or earlier.
 - When a video's own subtitles are reused, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the REQ-095 accuracy target (90% of words, within 0.3 s) is not met yet with the Fast level (measured 82%, 0.48 s average word-start error; see [Subtitles](business-subtitles.md)).
 - Matching a video's own subtitles to the speech works only as well as their text follows what is said; translated or paraphrased subtitles often get evenly spread words (see [Subtitles](business-subtitles.md)).
 - (1.2.6) Projects saved by 1.2.6 cannot be opened by 1.2.5 or earlier; exporting a moving 360 camera runs at about one third of real time; only equirectangular single-picture 360 video is supported and it is exported flat (see [Boxes on the picture and 360 video](business-picture.md)).
 - Subtitle lines moved to their own place can overlap when shown at the same time; overlapping lines are warned about, not moved (see [Subtitles](business-subtitles.md)).
-- On macOS the standard Hide and Minimize menu items are not available, and the menu bar is inside the window rather than at the top of the screen.
+- (2.0.4) On macOS the menu bar is at the top of the screen with the standard Hide and Minimize items (REQ-232); not yet checked on a real Mac (see [Release verification](business-verification.md)).
 - Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
-- Ctrl/Cmd+V pastes clips only when the system clipboard holds text.
+- (2.0.4) Copy and Cut put a marker text on the system clipboard, so other applications see that text when they paste (REQ-195).
 - Faster export needs NVIDIA graphics driver 610 or newer; on Fedora, AMD and Intel hardware export needs the RPM Fusion "freeworld" video drivers; on Linux, Intel and AMD hardware with the bundled ffmpeg needs system libva 2.21 or newer (Ubuntu 24.04 has 2.20, so it is skipped there); on integrated Intel graphics Faster was measured to be sometimes slower than Best quality; on computers with several graphics cards NVIDIA is always preferred; some combinations are not yet verified on real hardware. In every case a problem with the hardware leads to the normal method automatically, so the exported file is still correct (see [Export](business-export.md)).
 
 ## Out of scope
@@ -103,7 +116,7 @@ Topic-specific decisions are in each document.
 - Accounts, cloud storage, sync, collaboration, direct upload to social networks.
 - Mobile versions.
 - Technical export settings beyond the fixed presets of the Export dialog (1.4.0).
-- Autosave, crash recovery, automatic updates.
+- Automatic updates. (Autosave and crash recovery are in 2.0.4, REQ-189 and REQ-190.)
 - Code signing and notarisation (not planned, decided 2.0.2).
 - Telemetry, online services for detecting the computer, performance settings per project.
 

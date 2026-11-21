@@ -18,6 +18,7 @@ extern crate self as videolore;
 pub mod align;
 pub mod app;
 pub mod ass;
+pub mod autosave;
 pub mod base;
 pub mod camera;
 pub mod desktop;
@@ -28,13 +29,16 @@ pub mod fonts;
 pub mod format;
 pub mod frame;
 pub mod history;
+pub mod hwdec;
 pub mod hwenc;
+pub mod instance;
 pub mod jobs;
 pub mod keyframes;
 pub mod lut;
 pub mod machine;
 pub mod measure;
 pub mod media;
+pub mod mp4tracks;
 pub mod music;
 pub mod notices;
 pub mod outcheck;
@@ -47,6 +51,7 @@ pub mod render;
 pub mod scratch;
 pub mod selection;
 pub mod settings;
+pub mod siblings;
 pub mod spherical;
 pub mod splash;
 pub mod srt;
@@ -77,7 +82,7 @@ pub fn real_app(project: Option<PathBuf>) -> ui::VideoloreApp {
     match project {
         // a start that opens a file shows no splash (REQ-133)
         Some(p) => desktop::push_open_request(p),
-        None => state.show_splash(),
+        None => state.start_splash(),
     }
     ui::VideoloreApp {
         state,
@@ -98,17 +103,37 @@ pub fn app_icon() -> eframe::egui::IconData {
 /// On macOS the default menu is disabled so that Cmd+Q goes through the unsaved-changes
 /// prompt.
 pub fn native_options() -> eframe::NativeOptions {
+    native_options_for(saved_window())
+}
+
+/// The window the last run left (REQ-234): read leniently from the settings file.
+pub fn saved_window() -> Option<settings::interface::Window> {
+    let path = settings::Settings::default_path()?;
+    let settings::Loaded::Bytes(bytes) = settings::load_file(&path) else {
+        return None;
+    };
+    let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    settings::Interface::from_value(v.get("interface")?).window
+}
+
+/// The window options for the saved window `w`.
+pub fn native_options_for(w: Option<settings::interface::Window>) -> eframe::NativeOptions {
     let icon = app_icon();
+    let (size, pos, maximised) = ui::place::viewport_of(w);
     #[allow(unused_mut)]
     let mut options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("videolore")
             .with_app_id("videolore")
             .with_icon(Arc::new(icon))
-            .with_inner_size([1280.0, 800.0])
+            .with_inner_size(size)
+            .with_maximized(maximised)
             .with_min_inner_size([800.0, 500.0]),
         ..Default::default()
     };
+    if let Some(p) = pos {
+        options.viewport = options.viewport.with_position(p);
+    }
     #[cfg(target_os = "macos")]
     {
         options.event_loop_builder = Some(Box::new(|builder| {

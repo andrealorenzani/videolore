@@ -137,7 +137,11 @@ pub(super) fn merge_path<T: Lerp>(
                 Some(o) => combine(o, w),
                 None => w,
             };
-            Some(Key { t: src_in + t, v })
+            Some(Key {
+                t: src_in + t,
+                v,
+                ease: Default::default(),
+            })
         })
         .collect();
     Some(keys)
@@ -204,6 +208,7 @@ pub(super) fn apply(tl: &mut Timeline, mix: &mut Mix, mut old: Legacy, notes: &m
                 kept_lut += 1;
             } else {
                 tl.clip_luts.push(ClipLut {
+                    strength: 100,
                     clip: id,
                     path: p.clone(),
                 });
@@ -253,6 +258,7 @@ mod tests {
         Key {
             t: Micros(t),
             v: s(p),
+            ease: Default::default(),
         }
     }
 

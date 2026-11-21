@@ -10,6 +10,8 @@
 
 pub mod app;
 pub mod fullscreen;
+pub mod playlist;
+pub mod settings;
 pub mod subs;
 pub mod ui;
 
@@ -20,25 +22,55 @@ use videolore::ffmpeg::{self, SystemRunner};
 
 /// Native file dialogs.
 #[derive(Debug, Default)]
-pub struct NativeDialogs;
+pub struct NativeDialogs {
+    /// The folder the next dialog starts in.
+    start: Option<PathBuf>,
+}
 
-const VIDEO_EXT: &[&str] = &[
-    "mp4", "mov", "m4v", "mkv", "webm", "avi", "mts", "m2ts", "ts",
-];
+const VIDEO_EXT: &[&str] = playlist::VIDEO_EXT;
+
+impl NativeDialogs {
+    fn dialog(&self) -> rfd::FileDialog {
+        match &self.start {
+            Some(d) if d.is_dir() => rfd::FileDialog::new().set_directory(d),
+            _ => rfd::FileDialog::new(),
+        }
+    }
+}
 
 impl app::Dialogs for NativeDialogs {
     fn pick_video(&mut self) -> Option<PathBuf> {
-        rfd::FileDialog::new()
+        self.dialog()
             .add_filter("Video", VIDEO_EXT)
             .add_filter("All files", &["*"])
             .pick_file()
     }
 
     fn pick_srt(&mut self) -> Option<PathBuf> {
-        rfd::FileDialog::new()
-            .add_filter("Subtitles", &["srt"])
-            .pick_file()
+        self.dialog().add_filter("Subtitles", &["srt"]).pick_file()
     }
+
+    fn pick_folder(&mut self) -> Option<PathBuf> {
+        self.dialog().pick_folder()
+    }
+
+    fn start_in(&mut self, folder: Option<PathBuf>) {
+        self.start = folder;
+    }
+}
+
+/// When the start picture shows, as chosen in the editor's settings (the player follows it;
+/// the file is only read).
+fn editor_splash_option() -> videolore::settings::SplashOption {
+    videolore::settings::Settings::default_path()
+        .and_then(|p| match videolore::settings::load_file(&p) {
+            videolore::settings::Loaded::Bytes(b) => {
+                serde_json::from_slice::<videolore::settings::Settings>(&b).ok()
+            }
+            _ => None,
+        })
+        .map(|s| s.show_splash)
+        .unwrap_or_default()
 }
 
 /// The player with the real ffmpeg, dialogs and audio device. `file` is the video given on
@@ -49,10 +81,15 @@ pub fn real_app(file: Option<PathBuf>) -> ui::PlayerApp {
         .map_err(|e| e.to_string())
         .and_then(|l| ffmpeg::check_located(&*runner, &l).map_err(|e| e.to_string()));
     let now = Instant::now();
+    let settings_path = settings::PlayerSettings::default_path();
+    let remembered = settings_path
+        .as_deref()
+        .map(settings::PlayerSettings::load)
+        .unwrap_or_default();
     let mut state = app::PlayerState::new(
         ffmpeg,
         runner,
-        Box::new(NativeDialogs),
+        Box::new(NativeDialogs::default()),
         videolore::preview::default_sink(),
         videolore::machine::Machine::detect(),
         app::Folders {
@@ -60,11 +97,13 @@ pub fn real_app(file: Option<PathBuf>) -> ui::PlayerApp {
             work_root: videolore::scratch::default_root(),
         },
         now,
-    );
+    )
+    .with_settings(remembered, settings_path, now);
     match file {
         Some(p) => state.dispatch(app::Command::Open(p), now),
-        // a start without a video shows the start screen (REQ-150)
-        None => state.show_splash(),
+        // a start without a video shows the start screen (REQ-150) as the editor's
+        // choice says (REQ-295)
+        None => state.start_splash(editor_splash_option()),
     }
     ui::PlayerApp {
         state,

@@ -28,9 +28,44 @@ pub struct MusicClip {
     pub src_in: Micros,
     pub src_out: Micros,
     pub start: Micros,
+    /// The clip's own level, 0–100 % (REQ-276; absent = 100).
+    #[serde(default = "full_level", skip_serializing_if = "is_full_level")]
+    pub volume: u8,
+    /// The clip is muted (REQ-276).
+    #[serde(default, skip_serializing_if = "is_off")]
+    pub muted: bool,
+    /// Fades at the start and the end of the clip (REQ-276; 0 = none).
+    #[serde(default, skip_serializing_if = "is_zero_len")]
+    pub fade_in: Micros,
+    #[serde(default, skip_serializing_if = "is_zero_len")]
+    pub fade_out: Micros,
+    /// Clean audio on this clip (REQ-277) and its strength, 0–100 %.
+    #[serde(default, skip_serializing_if = "is_off")]
+    pub clean_audio: bool,
+}
+
+fn full_level() -> u8 {
+    100
+}
+
+fn is_full_level(v: &u8) -> bool {
+    *v == 100
+}
+
+fn is_off(b: &bool) -> bool {
+    !*b
+}
+
+fn is_zero_len(m: &Micros) -> bool {
+    *m == Micros::ZERO
 }
 
 impl MusicClip {
+    /// The clip's own gain (its level and mute, the curve of the sliders).
+    pub fn gain(&self) -> f64 {
+        gain(self.volume, self.muted)
+    }
+
     pub fn len(&self) -> Micros {
         self.src_out - self.src_in
     }
@@ -76,6 +111,31 @@ impl MusicTrack {
 
     pub fn is_empty(&self) -> bool {
         self.clips.is_empty()
+    }
+
+    /// Sets a music clip's own level, mute, fades and Clean audio (REQ-276, REQ-277). A fade
+    /// is at most half the clip.
+    pub fn set_effects(
+        &mut self,
+        id: MusicClipId,
+        volume: u8,
+        muted: bool,
+        fade_in: Micros,
+        fade_out: Micros,
+        clean_audio: bool,
+    ) -> Result<(), MusicError> {
+        let c = self
+            .clips
+            .iter_mut()
+            .find(|c| c.id == id)
+            .ok_or(MusicError::NoSuchClip)?;
+        let half = Micros(c.len().0 / 2);
+        c.volume = volume.min(100);
+        c.muted = muted;
+        c.fade_in = fade_in.clamp(Micros::ZERO, half);
+        c.fade_out = fade_out.clamp(Micros::ZERO, half);
+        c.clean_audio = clean_audio;
+        Ok(())
     }
 
     pub fn get(&self, id: MusicClipId) -> Option<&MusicClip> {
@@ -150,6 +210,11 @@ impl MusicTrack {
             src_in: Micros::ZERO,
             src_out: len,
             start: at,
+            volume: 100,
+            muted: false,
+            fade_in: Micros::ZERO,
+            fade_out: Micros::ZERO,
+            clean_audio: false,
         });
         self.sort();
         Ok(id)
@@ -221,6 +286,11 @@ impl MusicTrack {
             src_in: c.src_in + offset,
             src_out: c.src_out,
             start: at,
+            volume: c.volume,
+            muted: c.muted,
+            fade_in: Micros::ZERO,
+            fade_out: c.fade_out,
+            clean_audio: c.clean_audio,
         });
         self.sort();
         Ok(id)
@@ -377,6 +447,11 @@ pub(crate) mod tests {
             src_in: s(1),
             src_out: s(1),
             start: s(0),
+            volume: 100,
+            muted: false,
+            fade_in: Micros::ZERO,
+            fade_out: Micros::ZERO,
+            clean_audio: false,
         };
         assert!(tiny.is_empty());
     }

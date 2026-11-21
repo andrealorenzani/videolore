@@ -222,22 +222,16 @@ fn psnr_log_is_read() {
 // covers: REQ-063
 #[test]
 fn every_sample_needs_one_good_neighbour_on_every_plane() {
-    let groups = neighbours(300, &sample_indices(300));
-    let indices = extracted(&groups);
     let good = [38.0, 41.0, 40.0];
-    let mut scores = vec![good; 9];
-    assert_eq!(judge(&indices, &scores, &groups), Ok(()));
+    assert_eq!(judge_sample(0, &[good; 3]), Ok(()));
     // one bad neighbour is absorbed by the others (alignment off by one)
-    scores[3] = [12.0, 30.0, 30.0];
-    scores[4] = [12.0, 30.0, 30.0];
-    assert_eq!(judge(&indices, &scores, &groups), Ok(()));
-    // green frames: the chroma planes fail
-    let mut green = vec![good; 9];
-    for g in green.iter_mut().skip(6) {
-        *g = [31.0, 9.5, 8.0];
-    }
     assert_eq!(
-        judge(&indices, &green, &groups),
+        judge_sample(1, &[[12.0, 30.0, 30.0], good, [12.0, 30.0, 30.0]]),
+        Ok(())
+    );
+    // green frames: the chroma planes fail
+    assert_eq!(
+        judge_sample(2, &[[31.0, 9.5, 8.0], [31.0, 9.0, 8.0]]),
         Err(CheckFailure::Picture {
             index: 2,
             psnr: 8.0
@@ -245,14 +239,14 @@ fn every_sample_needs_one_good_neighbour_on_every_plane() {
     );
     // missing scores (a short file) fail
     assert_eq!(
-        judge(&indices, &scores[..3], &groups),
+        judge_sample(1, &[]),
         Err(CheckFailure::Picture {
             index: 1,
             psnr: 0.0
         })
     );
     // the threshold itself
-    assert_eq!(judge(&indices, &[[MIN_PSNR; 3]; 9], &groups), Ok(()));
+    assert_eq!(judge_sample(0, &[[MIN_PSNR; 3]]), Ok(()));
     assert!(
         CheckFailure::Picture {
             index: 0,
@@ -350,4 +344,79 @@ fn constant_quality_files_keep_the_usual_size() {
             .to_string()
             .contains("2.0 times")
     );
+}
+
+// covers: REQ-206
+#[test]
+fn the_check_renders_three_short_ranges_only() {
+    let fps = Fps::new(25, 1).unwrap();
+    let groups = neighbours(300, &sample_indices(300));
+    let ranges = sample_ranges(&groups, fps);
+    assert_eq!(ranges.len(), 3);
+    assert_eq!(ranges[0].first, 29);
+    assert_eq!(ranges[0].from, Micros(1_160_000));
+    assert_eq!(ranges[0].local, vec![0, 1, 2]);
+    assert_eq!(ranges[0].seek(), Micros(1_159_000));
+    // each range is one second long and holds its three frames
+    assert_eq!(RANGE_LEN, Micros::SECOND);
+    assert!(ranges.iter().all(|r| r.local.iter().all(|k| *k < 25)));
+    // a video of one frame: still inside, never more than three
+    let tiny = sample_ranges(&neighbours(1, &sample_indices(1)), fps);
+    assert!(tiny.len() <= 3 && tiny.iter().all(|r| r.local == vec![0]));
+    // the hardware file is read from the start of the video, not before it
+    assert_eq!(tiny[0].seek(), Micros::ZERO);
+    // NTSC rates round to the nearest microsecond
+    let ntsc = sample_ranges(
+        &[vec![30], vec![30], vec![30]],
+        Fps::new(30_000, 1001).unwrap(),
+    );
+    assert_eq!(ntsc[0].from, Micros(1_001_000));
+}
+
+// covers: REQ-206
+#[test]
+fn the_short_check_needs_the_frame_count_of_the_plan() {
+    assert!(counts_match(250, 250) && counts_match(251, 250) && counts_match(249, 250));
+    // a clip that gained a frame from the rounding shifts every later frame
+    assert!(!counts_match(300, 250) && !counts_match(243, 250));
+}
+
+// covers: REQ-206
+#[test]
+fn the_range_comparison_reads_one_second_of_each_side() {
+    let file = PathBuf::from("/w/.out.mp4.hw.videolore-partial");
+    let dir = tempfile::tempdir().unwrap();
+    let range = SampleRange {
+        first: 10,
+        from: Micros(400_000),
+        local: vec![1, 2],
+    };
+    let a = compare_range_args(
+        argv(["-i", "file:/a.mp4"]),
+        1,
+        "[0:v:0]null[outv]",
+        &file,
+        &range,
+        3840,
+        2160,
+        FfVersion::Release(6, 1, 0),
+        Some(4),
+        &dir.path().join("g.txt"),
+    )
+    .unwrap();
+    let a: Vec<String> = a.iter().map(|x| x.to_string_lossy().into_owned()).collect();
+    let line = a.join(" ");
+    assert!(line.starts_with(
+        "-hide_banner -nostdin -v error -filter_complex_threads 4 -i file:/a.mp4 -threads 4 \
+         -ss 0.399000 -t 2.000000 -protocol_whitelist file -i file:/w/.out.mp4.hw.videolore-partial"
+    ));
+    let g = &a[a.iter().position(|x| x == "-filter_complex").unwrap() + 1];
+    assert_eq!(
+        g,
+        "[0:v:0]null[outv];[outv]trim=duration=1.000000[r];\
+         [r]select='eq(n,1)+eq(n,2)',settb=1/1000000,setpts=N,format=yuv420p,scale=1920:1080:flags=area[rs];\
+         [1:v:0]select='eq(n,1)+eq(n,2)',settb=1/1000000,setpts=N,format=yuv420p,scale=1920:1080:flags=area[hs];\
+         [hs][rs]psnr=stats_file=psnr.log[cmp]"
+    );
+    assert!(line.contains("-map [cmp] -f null -") && !line.contains("[all]"));
 }

@@ -210,3 +210,79 @@ fn change_aspect_cannot_be_dropped_on_a_clip_and_has_its_own_tooltip() {
         crate::ui::effects::EFFECT_TOOLTIP
     );
 }
+
+// covers: REQ-294
+#[test]
+fn a_favourite_lut_is_listed_after_a_restart_applies_with_one_click_and_a_missing_one_is_marked() {
+    let (dir, app, lut) = setup();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    let now = Instant::now();
+    let clip = h.app.project.timeline.clips[1].id;
+    let target = FrameTarget::Clip(clip);
+    h.app
+        .dispatch(Command::OpenPopup(Popup::Instance), now)
+        .unwrap();
+    h.app.popups.instance = Some(Instance::Lut(target));
+    h.idle(3);
+    // choose a file, then keep it
+    h.app
+        .dispatch(
+            Command::SetLut {
+                target,
+                path: lut.clone().into(),
+            },
+            now,
+        )
+        .unwrap();
+    h.idle(3);
+    let keep = h.find("Add to favourites").expect("the button");
+    h.click(keep.rect.center());
+    assert_eq!(
+        h.app.settings.favourite_luts,
+        [std::path::PathBuf::from(&lut)]
+    );
+    // restart: the file is in the settings and listed; one click applies it to another clip
+    let json = serde_json::to_string(&h.app.settings).unwrap();
+    let other = h.app.project.timeline.clips[2].id;
+    h.app.settings = serde_json::from_str(&json).unwrap();
+    h.app.popups.instance = Some(Instance::Lut(FrameTarget::Clip(other)));
+    h.idle(3);
+    let entry = h.find("warm.cube").expect("listed");
+    assert!(!entry.disabled);
+    h.click(entry.rect.center());
+    assert_eq!(
+        h.app.project.timeline.lut_of(FrameTarget::Clip(other)),
+        Some(lut.as_str())
+    );
+    // a file that is gone is marked and cannot be applied
+    std::fs::remove_file(dir.path().join("warm.cube")).unwrap();
+    h.idle(3);
+    let gone = h.find("warm.cube (missing)").expect("marked");
+    assert!(gone.disabled);
+    // the list is capped and a bad name is refused
+    for i in 0..25 {
+        let p = std::path::PathBuf::from(format!("/luts/look{i}.cube"));
+        h.app
+            .dispatch(Command::SetFavouriteLut(p, true), now)
+            .unwrap();
+    }
+    assert_eq!(
+        h.app.settings.favourite_luts.len(),
+        crate::settings::MAX_FAVOURITES
+    );
+    assert!(
+        h.app
+            .dispatch(Command::SetFavouriteLut("relative.cube".into(), true), now)
+            .is_err()
+    );
+    h.app
+        .dispatch(
+            Command::SetFavouriteLut("/luts/look24.cube".into(), false),
+            now,
+        )
+        .unwrap();
+    assert_eq!(
+        h.app.settings.favourite_luts.len(),
+        crate::settings::MAX_FAVOURITES - 1
+    );
+}

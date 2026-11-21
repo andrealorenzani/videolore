@@ -35,7 +35,27 @@ impl AppState {
             self.project.media.iter().map(|m| m.path.clone()).collect();
         media_files.sort();
         media_files.dedup();
+        let tl = &self.project.timeline;
+        let mut frame_effects_360: Vec<&'static str> = Vec::new();
+        if tl.frame_aspect.is_some() {
+            frame_effects_360.push("Change aspect");
+        }
+        if tl
+            .clips
+            .iter()
+            .any(|c| !tl.scale_keys(FrameTarget::Clip(c.id)).is_empty())
+        {
+            frame_effects_360.push("Scale");
+        }
+        if tl
+            .clips
+            .iter()
+            .any(|c| !tl.move_keys(FrameTarget::Clip(c.id)).is_empty())
+        {
+            frame_effects_360.push("Move");
+        }
         export::choice::Context {
+            frame_effects_360,
             has_clips: !videos.is_empty(),
             has_subtitles: self.has_shown_subtitles(),
             all_360: !videos.is_empty() && videos.iter().all(|v| *v),
@@ -44,6 +64,24 @@ impl AppState {
             project_file: self.project_path.clone(),
             media_files,
         }
+    }
+
+    /// The frame of Change aspect is larger than 4096 px on its longer side before the cap
+    /// (REQ-221): the Export dialog warns that it is scaled down and takes longer. `preset`
+    /// is the video format chosen in the dialog (its size is the base of the frame).
+    pub fn frame_over_cap(&self, preset: Option<usize>) -> bool {
+        let aspect = self.project.timeline.frame_aspect.as_ref();
+        if aspect.is_none() {
+            return false;
+        }
+        let base = match preset.and_then(|i| crate::format::VIDEO_PRESETS.get(i)) {
+            Some(p) => (p.width, p.height),
+            None => match render::base_geometry(&self.project, &self.encoders()) {
+                Ok(g) => (g.width, g.height),
+                Err(_) => return false,
+            },
+        };
+        crate::frame::over_cap(base, aspect)
     }
 
     /// Opens the Export dialog with the choices of the session so far (REQ-118).
@@ -71,6 +109,10 @@ impl AppState {
         if let Some(why) = export::choice::blocked(&choice, &ctx) {
             return Err(why);
         }
+        if !self.missing_luts().is_empty() && !self.export_without_missing_luts {
+            self.modal = Some(Modal::MissingLut(Box::new(choice)));
+            return Ok(());
+        }
         if export::choice::target_path(&choice, &ctx).exists() {
             self.modal = Some(Modal::ConfirmOverwrite(Box::new(choice)));
             return Ok(());
@@ -94,7 +136,11 @@ impl AppState {
             export::choice::Request::Audio(audio) => self.start_export_with(
                 path,
                 render::ExportMode::Automatic,
-                crate::format::FormatChoice { video: None, audio },
+                crate::format::FormatChoice {
+                    video: None,
+                    audio,
+                    subtitles: Default::default(),
+                },
                 true,
             ),
             export::choice::Request::Video { mode, format } => {
@@ -126,8 +172,17 @@ impl AppState {
         if mode == render::ExportMode::Sphere360 && self.has_flat_clip() {
             return Err(render::RenderError::MixedSphere.to_string());
         }
+        let mut project = self.project.clone();
+        if std::mem::take(&mut self.export_without_missing_luts) {
+            // the LUT files that are not there are left out of this export only (REQ-292)
+            project
+                .timeline
+                .clip_luts
+                .retain(|l| Path::new(&l.path).exists());
+            self.status = "Exporting without the LUT that is missing…".into();
+        }
         let job = ExportJob {
-            project: self.project.clone(),
+            project,
             output: path,
             ffmpeg: info.ffmpeg.clone(),
             ffprobe: info.ffprobe.clone(),
@@ -150,7 +205,9 @@ impl AppState {
             progress: 0.0,
             stream_copy: None,
         };
-        self.status = "Exporting…".into();
+        if !self.status.starts_with("Exporting without") {
+            self.status = "Exporting…".into();
+        }
         Ok(())
     }
 }

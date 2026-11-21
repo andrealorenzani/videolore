@@ -77,6 +77,16 @@ impl Subs {
     }
 
     /// Remembers where line `line` (its number among the lines of the chosen source) is.
+    /// The places of the dragged lines, taken out (kept for the session by the player).
+    pub fn take_placed(&mut self) -> HashMap<(usize, usize), Pos> {
+        std::mem::take(&mut self.placed)
+    }
+
+    /// Puts back places taken out earlier.
+    pub fn set_placed(&mut self, placed: HashMap<(usize, usize), Pos>) {
+        self.placed = placed;
+    }
+
     pub fn place(&mut self, line: usize, pos: Pos) {
         if let Some(s) = self.selected {
             self.placed.insert((s, line), pos);

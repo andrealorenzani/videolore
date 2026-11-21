@@ -57,6 +57,7 @@ fn change_aspect_starts_16_9_fit_width_black_and_every_change_is_one_undo_step()
         shape: Shape::Tall9x16,
         fit: Fit::Height,
         fill: Fill::Blur,
+        blur: Default::default(),
     };
     app.dispatch(Command::SetAspect(b), now()).unwrap();
     assert_eq!(app.project.timeline.frame_aspect, Some(b));
@@ -385,4 +386,83 @@ fn effect_commands_are_disabled_without_clips() {
         target: FrameTarget::Clip(ClipId(9)),
         effect: FrameFx::Move
     }));
+}
+
+// covers: REQ-282
+#[test]
+fn the_easing_of_a_keyframe_segment_reaches_the_preview_value_and_the_export_expression() {
+    let (_d, mut app) = two();
+    let c = FrameTarget::Clip(clip(&app, 0));
+    let c0 = clip(&app, 0);
+    apply(&mut app, EffectKind::Scale, Target::Clip(c0)).unwrap();
+    app.dispatch(Command::Seek(s(4)), now()).unwrap();
+    app.dispatch(
+        Command::AddKey {
+            target: c,
+            effect: FrameFx::Scale,
+        },
+        now(),
+    )
+    .unwrap();
+    app.dispatch(
+        Command::SetPicture(FrameDrag {
+            target: c,
+            value: FrameValue::Scale(Scale {
+                permille: 2000,
+                dx: 0,
+                dy: 0,
+            }),
+        }),
+        now(),
+    )
+    .unwrap();
+    // select the first key (at 0 s) and ease the segment after it
+    app.dispatch(Command::SelectKey(Some(Micros::ZERO)), now())
+        .unwrap();
+    app.dispatch(Command::Seek(s(1)), now()).unwrap();
+    let straight = app.scale_at(c).unwrap().permille;
+    assert_eq!(straight, 1250);
+    let undo = app.history.undo_len();
+    app.dispatch(
+        Command::SetKeyEase {
+            target: c,
+            effect: FrameFx::Scale,
+            ease: crate::keyframes::Ease::EaseInOut,
+        },
+        now(),
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), undo + 1);
+    let eased = app.scale_at(c).unwrap().permille;
+    assert!(
+        eased < straight,
+        "a quarter of the time: behind the straight line, {eased}"
+    );
+    app.dispatch(Command::Seek(s(2)), now()).unwrap();
+    assert_eq!(
+        app.scale_at(c).unwrap().permille,
+        1500,
+        "the middle is the same"
+    );
+    // the export expression is the same curve
+    let stack = app.project.timeline.frame_stack(0);
+    assert!(
+        stack.scale_factor().contains("3-2*"),
+        "{}",
+        stack.scale_factor()
+    );
+    // the same choice again changes nothing; no key selected: refused
+    assert_eq!(app.history.undo_len(), undo + 1);
+    app.dispatch(Command::SelectKey(None), now()).unwrap();
+    assert!(
+        app.dispatch(
+            Command::SetKeyEase {
+                target: c,
+                effect: FrameFx::Scale,
+                ease: crate::keyframes::Ease::Straight
+            },
+            now()
+        )
+        .is_err()
+    );
 }

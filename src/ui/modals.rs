@@ -5,6 +5,7 @@
 //! consent, regenerate and remove confirmations, and About.
 
 use super::UiCache;
+use super::strings::tr;
 use crate::app::{
     AppState, Command, ConsentChoice, Modal, PendingAction, SourceChoice, UnsavedChoice,
 };
@@ -105,15 +106,15 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
             ));
             ui.label(e);
             ui.label(crate::ffmpeg::install_hint());
-            ui.label("You can also set VIDEOLORE_FFMPEG / VIDEOLORE_FFPROBE.");
+            ui.label(tr!(YouCanAlsoSetVIDEOLORE));
             ui.horizontal(|ui| {
-                if ui.button("Choose ffmpeg…").clicked() {
+                if ui.button(tr!(ChooseFfmpeg)).clicked() {
                     cmds.push(Command::PickFfmpeg);
                 }
-                if ui.button("Retry").clicked() {
+                if ui.button(tr!(Retry)).clicked() {
                     cmds.push(Command::RetryFfmpeg);
                 }
-                if ui.button("Quit").clicked() {
+                if ui.button(tr!(Quit)).clicked() {
                     cmds.push(Command::Quit);
                 }
             });
@@ -124,7 +125,7 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
         egui::Modal::new(egui::Id::unique("notice")).show(ctx, |ui| {
             ui.heading(super::icons::label(super::icons::INFO, "Notice"));
             ui.label(n);
-            if ui.button("OK").clicked() {
+            if ui.button(tr!(OK)).clicked() {
                 cmds.push(Command::DismissNotice);
             }
         });
@@ -184,10 +185,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                      will ask to download the files again.",
                 );
                 ui.horizontal(|ui| {
-                    if ui.button("Remove").clicked() {
+                    if ui.button(tr!(Remove)).clicked() {
                         cmds.push(Command::ConfirmRemoveSpeechFiles);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(tr!(Cancel)).clicked() {
                         cmds.push(Command::CloseModal);
                     }
                 });
@@ -206,7 +207,7 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                 ));
                 ui.label(SOURCE_QUESTION);
                 if labels.len() > 1 {
-                    ui.label("Subtitles to use:");
+                    ui.label(tr!(SubtitlesToUse));
                     // many tracks: the list scrolls, the buttons stay in view
                     let h = (ctx.content_rect().height() * 0.3).max(60.0);
                     let out = egui::ScrollArea::vertical()
@@ -241,10 +242,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                             cache.source_choice,
                         )));
                     }
-                    if ui.button("Recognise speech").clicked() {
+                    if ui.button(tr!(RecogniseSpeech)).clicked() {
                         cmds.push(Command::ChooseSubtitleSource(SourceChoice::Recognise));
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(tr!(Cancel)).clicked() {
                         cmds.push(Command::ChooseSubtitleSource(SourceChoice::Cancel));
                     }
                 });
@@ -264,16 +265,73 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                      replaces the lines it covers, including your changes (you can undo it).",
                 );
                 ui.horizontal(|ui| {
-                    if ui.button("Replace").clicked() {
+                    if ui.button(tr!(Replace)).clicked() {
                         cmds.push(Command::ConfirmRegenerate);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(tr!(Cancel)).clicked() {
                         cmds.push(Command::CloseModal);
                     }
                 });
             });
         }
+        Some(Modal::Recover) => {
+            egui::Modal::new(egui::Id::unique("recover")).show(ctx, |ui| {
+                ui.set_max_width(ctx.content_rect().width().min(520.0) - 40.0);
+                ui.heading(super::icons::label(
+                    super::icons::WARNING,
+                    "Recover unsaved work?",
+                ));
+                ui.label(app.recovery_text().unwrap_or_default());
+                ui.label(
+                    "Recover opens it as unsaved changes of the project; Discard deletes the \
+                     copy; Cancel keeps it for the next start.",
+                );
+                ui.horizontal(|ui| {
+                    if ui.button(tr!(Recover)).clicked() {
+                        cmds.push(Command::RecoverAutosave);
+                    }
+                    if ui.button(tr!(Discard)).clicked() {
+                        cmds.push(Command::DiscardAutosave);
+                    }
+                    if ui.button(tr!(Cancel)).clicked() {
+                        cmds.push(Command::CancelRecovery);
+                    }
+                });
+            });
+        }
+        Some(Modal::ImportSubtitles) => {
+            if let Some(d) = &app.pending_import {
+                import_dialog(ctx, d, cmds);
+            }
+        }
         Some(Modal::Export(c)) => super::export_dialog::export_dialog(ctx, app, c, cmds),
+        Some(Modal::MissingLut(_)) => {
+            let names = app.missing_luts().join(", ");
+            let modal = egui::Modal::new(egui::Id::unique("videolore-missing-lut")).show(
+                ctx,
+                |ui: &mut egui::Ui| {
+                    ui.heading(super::icons::label(
+                        super::icons::WARNING,
+                        tr!(LutFileMissing),
+                    ));
+                    ui.label(format!("{names}: {}", tr!(TheFileIsMissing)));
+                    ui.horizontal(|ui| {
+                        if ui.button(tr!(FindTheFile)).clicked() {
+                            cmds.push(Command::MissingLutFind);
+                        }
+                        if ui.button(tr!(ExportWithoutTheLut)).clicked() {
+                            cmds.push(Command::MissingLutExportWithout);
+                        }
+                        if ui.button(tr!(Cancel)).clicked() {
+                            cmds.push(Command::CloseModal);
+                        }
+                    });
+                },
+            );
+            if modal.should_close() {
+                cmds.push(Command::CloseModal);
+            }
+        }
         Some(Modal::ConfirmOverwrite(c)) => {
             super::export_dialog::overwrite_dialog(ctx, app, c, cmds)
         }
@@ -292,10 +350,10 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                 });
                 container = Some((out.inner_rect, out.state.clamped_offset(), out.content_size));
                 ui.horizontal(|ui| {
-                    if ui.button("Close").clicked() {
+                    if ui.button(tr!(Close)).clicked() {
                         cmds.push(Command::CloseModal);
                     }
-                    if app.desktop_integrated && ui.button("Remove from application menu").clicked()
+                    if app.desktop_integrated && ui.button(tr!(RemoveFromApplicationMenu)).clicked()
                     {
                         cmds.push(Command::RemoveDesktopIntegration);
                     }
@@ -307,3 +365,53 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
         }
     }
 }
+
+/// The question before a subtitle file is imported (REQ-183, REQ-184).
+fn import_dialog(
+    ctx: &egui::Context,
+    d: &crate::app::subs_import::ImportDraft,
+    cmds: &mut Vec<Command>,
+) {
+    egui::Modal::new(egui::Id::unique("import-subtitles")).show(ctx, |ui| {
+        ui.set_max_width(ctx.content_rect().width().min(520.0) - 40.0);
+        ui.heading(super::icons::label(
+            super::icons::SUBTITLES,
+            "Import subtitles",
+        ));
+        ui.add(egui::Label::new(format!("{} ({} lines)", d.name, d.cues.len())).truncate());
+        ui.label(if d.clip.is_some() {
+            "The lines fill the selected clip's part of the video."
+        } else {
+            "The lines fill every part of the video that uses this file."
+        });
+        if d.replaces_edits {
+            ui.label(
+                "You changed some subtitle lines there by hand: importing replaces them \
+                 (you can undo it).",
+            );
+        }
+        if d.can_retime {
+            let mut on = d.retime;
+            if ui
+                .checkbox(&mut on, RETIME_LABEL)
+                .on_hover_text(RETIME_HELP)
+                .changed()
+            {
+                cmds.push(Command::SetImportRetime(on));
+            }
+        }
+        ui.horizontal(|ui| {
+            if ui.button(tr!(Import)).clicked() {
+                cmds.push(Command::ConfirmImportSubtitles);
+            }
+            if ui.button(tr!(Cancel)).clicked() {
+                cmds.push(Command::CloseModal);
+            }
+        });
+    });
+}
+
+/// The checkbox of the import dialog (REQ-184).
+pub const RETIME_LABEL: &str = "Re-time from the speech";
+const RETIME_HELP: &str = "Each line starts and ends at its first and last recognised word. \
+     Needs the speech recognition file; lines that do not match keep the file's times.";

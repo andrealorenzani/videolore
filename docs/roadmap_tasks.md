@@ -4,7 +4,8 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 
 ## Version numbers
 - Each development gets one new version: the last number goes up by one (the release of 1.6.3 opened 2.0.0). Batch N ships as 2.0.(N+1): batch 1 is 2.0.2, batch 15 is 2.0.16, except batches 2 to 4. 2.0.1 was the module-cycles refactor and is delivered.
-- Batches 2, 3 and 4 (Readable text, Subtitle placement, Subtitle accuracy) are all built in 2.0.3 (one development). The version numbers of batches 5 to 15 are renumbered at the next release.
+- Batches 2, 3 and 4 (Readable text, Subtitle placement, Subtitle accuracy) are all built in 2.0.3 (one development).
+- **All remaining batches (5 to 15 and the continuous items) are built together as version 2.0.4** (one development, REQ-180 to REQ-299, planned in the business plan). The per-batch headings below keep their planned versions as the record of the batch split; the roadmap items stay open until their status is recorded.
 - Andrea can name a minor version (for example 2.1.0) for any batch.
 - A batch may need more than one development; a development should not mix batches unless the items share code.
 
@@ -46,6 +47,25 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 ## 2.0.3 — Subtitle accuracy (batch 4, delivered in 2.0.3 except the target)
 - **Status**: delivered in 2.0.3 except REQ-177, the accuracy target of reused subtitles, which is planned and open: see the [roadmap](roadmap.md), Priority 1 (decision point) and Priority 3.
 - **Still open in the roadmap**: the gated alignment test on CI's versions, the five-minute real-speech test, and the larger speech levels.
+
+## 2.0.5 — Finish 2.0.4 (not built in 2.0.4)
+- **Goal**: the items of 2.0.4 that were not built, and the engineering items that the new code needs first.
+- **Items, in this order**:
+  1. QG-14 test run and automatic build time; QG-15 test quality; QG-16 architecture debt (split the application module, the render module and the dispatch by area, one keyframe module for the 360 camera and the picture, before REQ-268 changes it); QG-17 splash and release items; QG-18 follow-ups of 2.0.2 and 2.0.3.
+  2. REQ-281 clip speed 50% to 200%.
+  3. REQ-286 per-clip Change aspect (reverses the project-wide rule; the project frame keeps one size).
+  4. REQ-287 PNG picture items (3 s by default).
+  5. REQ-288 drag Change aspect onto a clip (needs REQ-286 first).
+  6. REQ-258 automatic subtitle lines anchored at the view centre.
+  7. REQ-257 preset box and highlight on anchored lines.
+  8. REQ-259 Re-anchor (needs REQ-258; one undo restores the old anchor).
+  9. REQ-260 off-view arrows (needs anchors).
+  10. REQ-268 per-clip camera paths (largest camera change; regression risk in the export graph).
+  11. REQ-273 spatial sound (first-order ambisonic rotated to stereo; cut back if the real-time check fails).
+  12. REQ-253 picture-based subtitles in the player (needs a real DVB or PGS sample; cut-back candidate).
+  Also the manual checks of verification items 26, 29 and 30 (screen readers, Windows Open with, window places).
+- **Why together**: all are the open items of the 2.0.4 development; the small effects go first (quick value, low risk), dependencies first, the riskiest last so that a cut-back costs least.
+- **Depends on**: REQ-286 before REQ-288; REQ-258 before REQ-259 and REQ-260; QG-16 before REQ-268; real samples and Windows and macOS systems for REQ-253 and the manual checks.
 
 ## 2.0.6 — Subtitle files and fonts
 - **Goal**: subtitles can be imported and exported in more formats, and scripts other than Latin, Greek and Cyrillic look right.
@@ -128,7 +148,8 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 ## Dependencies between batches (short)
 - 2.0.2 (batch 1) before everything (the release checks and the test reliability).
 - 2.0.3 (batches 2 to 4) delivered: the text box and its width are used by the placement rules.
-- 2.0.5 (batch 4) before the subtitle import re-timing in 2.0.6 (batch 5).
+- Batch 4 (delivered in 2.0.3) before the subtitle import re-timing in 2.0.6 (batch 5).
+- 2.0.5 (the open 2.0.4 items) follows 2.0.4; its order is inside the section.
 - 2.0.9 (batch 8) before 2.0.10 (batch 9): the hardware reach uses the check.
 - 2.0.12 (batch 11) before 2.0.14 (batch 13): the file association needs the installers.
 - 2.0.15 (batch 14) and 2.0.16 (batch 15) share the camera and keyframe code: the camera items wait for the shared module.

@@ -742,7 +742,13 @@ fn events_with(
     let text = lay
         .lines
         .iter()
-        .map(|l| ass::escape(l))
+        .map(|l| {
+            if installed {
+                ass::escape(l)
+            } else {
+                ass::escape_scripts(l)
+            }
+        })
         .collect::<Vec<_>>()
         .join("\\N");
     let mut out = Vec::new();

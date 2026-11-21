@@ -11,7 +11,7 @@ REQ-132); the design is in [architecture-frame.md](architecture-frame.md).
 | `frame.rs` | Pure. `FrameAspect` (`Shape`, `Fit`, `Fill`, `Rgb`), `frame_size`, `preview_size`, `picture_size`, `camera_size`, `fit_filter`; `Scale`, `Stack`/`Track` (the keys that act on one clip), `Placement`; the ffmpeg expressions (`scale_factor`, `offset_x`, `offset_y`) |
 | `timeline.rs` | `frame_aspect`, `clip_frames` (since 1.6.1 a whole-video Scale or Move is a copy on each clip, see [code-effects.md](code-effects.md)) (`ClipFrames`), the edit methods (`add_scale`, `set_scale_key`, `remove_move_key`, ...), `frame_stack(index)`, `has_frame_effect`; split, remove and merge keep the keys consistent |
 | `project.rs` | Schema 7, `validate_frames` (damaged values) |
-| `render.rs` | `Segment.frame` (`SegFrame`), `compose_frame` (background, picture, overlay), frame size in `plan_export_choice` and `output_geometry`, `FrameKey.placement` |
+| `render/` (`segments.rs`, `graph.rs`, `plan.rs`, `args.rs`) | `Segment.frame` (`SegFrame`), `compose_frame` (background, picture, overlay), frame size in `plan_export_choice` and `output_geometry`, `FrameKey.placement` |
 | `app/frame.rs` | Commands of the effects, the keyframe popups' state, `picture_rect`, the value being dragged (`frame_drag`) |
 | `ui/frame_popups.rs` | The Change aspect popup and the Scale/Move popup; the pure `KeyBar` lays out the keyframe timeline |
 | `ui/frame_handles.rs` | Pure geometry of the corner handles and the target (`hit`, `scale_to`, `move_to`) |
@@ -51,7 +51,7 @@ picture on the kept side).
 A segment has `frame: Some(SegFrame)` when Change aspect is set or any Scale/Move acts on it;
 without it the graph is byte-identical to 1.4.1 (golden tests). `compose_frame` builds, per
 segment: the picture chain (`[pa]`), the background (`color` source, or the picture split and
-cut to a small blurred copy: 1/8 size, `boxblur` radius 3, scaled back), the optional
+cut to a small blurred copy: 1/8 size (measured against 1/4 in 2.0.4: 10 to 15 % faster, REQ-222), `boxblur` radius 3, scaled back), the optional
 `scale=...:eval=frame` with the combined factor, and `overlay=x=...:y=...:eval=frame:shortest=1`;
 fades and the concat come after, then subtitles and texts on the whole frame. Expressions are
 built from numbers only: nested `if(lt(t,T),a+(b-a)*max(0,t-t0)/span,...)`, time `t` of the
@@ -88,7 +88,7 @@ the 360 and stream copy rules; `app/frame_tests.rs` the commands and undo steps;
 
 ## Known limits
 
-- The blur has one fixed strength; the preview of a blurred fill is rendered as a still on every
+- The blur has one fixed strength; since 2.0.4 the preview keeps the blurred background of a still while the source frame, frame size, shape and fit and Apply LUT do not change (`render::Background`, `FrameKey::background_name`, REQ-223), so a change of Scale or Move draws only the picture; the preview of a blurred fill is rendered as a still on every
   change of the picture state.
 - On a 360 video export the effects are ignored.
 - Per-clip copies of whole-video keys are in source time and follow trims like the clip's own keys; text items and subtitles do not follow Scale or Move.

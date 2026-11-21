@@ -5,7 +5,8 @@
 //! scan runs on a worker thread so the window never waits for it; only family names are
 //! kept, and only those that are safe to write into an ASS file ([`crate::base::font::valid_font`]).
 
-use crate::base::font::{DEFAULT_FONT, valid_font};
+use crate::base::font::{DEFAULT_FONT, Script, scripts_in, valid_font};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -53,11 +54,150 @@ pub fn bundled() -> Arc<Face> {
 
 /// Adds the fonts of a database to the ones this computer is known to have.
 pub fn install(db: fontdb::Database) {
+    let covered = coverage_of(&db);
     if let Ok(mut d) = database().lock() {
         for f in db.faces() {
             d.push_face_info(f.clone());
         }
     }
+    if let Ok(mut c) = coverage().lock() {
+        c.get_or_insert_with(BTreeSet::new).extend(covered);
+    }
+}
+
+/// The scripts some installed font covers, known when the first scan has finished (`None`
+/// before: no note is shown then, REQ-187).
+fn coverage() -> &'static Mutex<Option<BTreeSet<Script>>> {
+    static C: OnceLock<Mutex<Option<BTreeSet<Script>>>> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(None))
+}
+
+/// Runs `f` with the covered scripts set to `covered` (tests of the note): the tests that
+/// do so run one after the other, and the real value is put back afterwards.
+#[cfg(test)]
+pub(crate) fn with_coverage<R>(covered: Option<BTreeSet<Script>>, f: impl FnOnce() -> R) -> R {
+    static LOCK: Mutex<()> = Mutex::new(());
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let before = std::mem::replace(&mut *coverage().lock().unwrap(), covered);
+    let r = f();
+    *coverage().lock().unwrap() = before;
+    r
+}
+
+/// True once a scan of the fonts has finished and the covered scripts are known.
+pub fn scan_finished() -> bool {
+    coverage().lock().is_ok_and(|c| c.is_some())
+}
+
+/// True when the face `index` of the font file `data` has a glyph for every one of `chars`.
+pub fn font_covers(data: &[u8], index: u32, chars: &[char]) -> bool {
+    let Ok(font) = skrifa::FontRef::from_index(data, index) else {
+        return false;
+    };
+    let map = skrifa::MetadataProvider::charmap(&font);
+    chars.iter().all(|c| map.map(*c).is_some())
+}
+
+/// The scripts that some face of `db` covers (a sample of each script's characters), read
+/// from the faces' character maps; a script is looked for until one face has it, and a
+/// file larger than [`MAX_FACE_BYTES`] is not read.
+pub fn coverage_of(db: &fontdb::Database) -> BTreeSet<Script> {
+    let mut found = BTreeSet::new();
+    for script in Script::ALL {
+        let has = db.faces().any(|f| {
+            let big = match &f.source {
+                fontdb::Source::File(p) | fontdb::Source::SharedFile(p, _) => {
+                    std::fs::metadata(p).is_ok_and(|m| m.len() > MAX_FACE_BYTES)
+                }
+                fontdb::Source::Binary(_) => false,
+            };
+            !big && db
+                .with_face_data(f.id, |d, i| font_covers(d, i, script.sample()))
+                .unwrap_or(false)
+        });
+        if has {
+            found.insert(script);
+        }
+    }
+    found
+}
+
+/// The scripts of `text` that no font covers: the bundled faces cover Arabic and
+/// Devanagari, `installed` says which scripts an installed font covers (`None`: not known
+/// yet, nothing is reported).
+pub fn uncovered(text: &str, installed: Option<&BTreeSet<Script>>) -> Vec<Script> {
+    let Some(installed) = installed else {
+        return Vec::new();
+    };
+    scripts_in(text)
+        .into_iter()
+        .filter(|s| !s.is_bundled() && !installed.contains(s))
+        .collect()
+}
+
+/// The note of REQ-187 for `scripts`, `None` when there are none.
+pub fn note_for(scripts: &[Script]) -> Option<String> {
+    if scripts.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = scripts.iter().map(|s| s.name()).collect();
+    Some(format!(
+        "No installed font shows {} text; install a font for it (some characters may show \
+         as empty boxes)",
+        names.join(", ")
+    ))
+}
+
+/// The note for the scripts of `text` that this computer has no font for.
+pub fn missing_note(text: &str) -> Option<String> {
+    missing_note_in(std::iter::once(text))
+}
+
+/// [`missing_note`] for several texts (one note naming every script that is missing).
+pub fn missing_note_in<'a>(texts: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    let c = coverage().lock().ok()?;
+    let mut scripts: Vec<Script> = Vec::new();
+    for t in texts {
+        for s in uncovered(t, c.as_ref()) {
+            if !scripts.contains(&s) {
+                scripts.push(s);
+            }
+        }
+    }
+    scripts.sort();
+    note_for(&scripts)
+}
+
+/// The first installed face that covers `script` (read from its file), for the interface
+/// to use as a fallback font; `None` when there is none.
+pub fn face_for(script: Script) -> Option<Arc<Face>> {
+    let (path, index) = {
+        let db = database().lock().ok()?;
+        let id = db.faces().find_map(|f| {
+            let small = match &f.source {
+                fontdb::Source::File(p) | fontdb::Source::SharedFile(p, _) => {
+                    std::fs::metadata(p).is_ok_and(|m| m.len() <= MAX_FACE_BYTES)
+                }
+                fontdb::Source::Binary(_) => false,
+            };
+            (small
+                && db
+                    .with_face_data(f.id, |d, i| font_covers(d, i, script.sample()))
+                    .unwrap_or(false))
+            .then_some(f.id)
+        })?;
+        let info = db.face(id)?;
+        match &info.source {
+            fontdb::Source::File(p) | fontdb::Source::SharedFile(p, _) => (p.clone(), info.index),
+            fontdb::Source::Binary(_) => return None,
+        }
+    };
+    let bytes = std::fs::read(&path).ok()?;
+    Some(Arc::new(Face {
+        bytes,
+        index,
+        file: Some(path),
+    }))
 }
 
 /// Adds the fonts found in a folder (tests; the scan does it for the system fonts).
@@ -444,5 +584,60 @@ mod tests {
         let l = crate::text::layout_in("Hello there", "Cutt Sans", 800.0, 100.0, 10.0, 80.0);
         let b = crate::text::layout_in("Hello there", "", 800.0, 100.0, 10.0, 80.0);
         assert_eq!(l.px, b.px);
+    }
+
+    // covers: REQ-187
+    #[test]
+    fn the_bundled_faces_cover_their_scripts_and_not_the_cjk_ones() {
+        use crate::ass::{FONT, FONT_ARABIC, FONT_DEVANAGARI};
+        for (bytes, script) in [
+            (FONT_ARABIC, Script::Arabic),
+            (FONT_DEVANAGARI, Script::Devanagari),
+        ] {
+            assert!(font_covers(bytes, 0, script.sample()), "{script:?}");
+        }
+        assert!(
+            font_covers(FONT, 0, &['a', 'Z', 'й', 'ω']),
+            "Latin, Greek, Cyrillic"
+        );
+        for script in [Script::Han, Script::Kana, Script::Hangul, Script::Arabic] {
+            assert!(!font_covers(FONT, 0, script.sample()), "{script:?}");
+        }
+        assert!(!font_covers(b"not a font", 0, &['a']));
+        assert!(!font_covers(FONT, 9, &['a']), "no such face");
+        // a folder with only the bundled faces covers Arabic and Devanagari, no CJK
+        let dir = tempfile::tempdir().unwrap();
+        for (name, bytes) in crate::ass::BUNDLED_FACES {
+            std::fs::write(dir.path().join(name), bytes).unwrap();
+        }
+        let mut db = fontdb::Database::new();
+        db.load_fonts_dir(dir.path());
+        let covered = coverage_of(&db);
+        assert_eq!(
+            covered.into_iter().collect::<Vec<_>>(),
+            [Script::Arabic, Script::Devanagari]
+        );
+    }
+
+    // covers: REQ-187, REQ-188
+    #[test]
+    fn a_note_names_the_scripts_no_installed_font_covers() {
+        let none: BTreeSet<Script> = BTreeSet::new();
+        let cjk: BTreeSet<Script> = [Script::Han, Script::Kana, Script::Hangul].into();
+        let text = "漢字 かな 한글 مرحبا नमस्ते hello";
+        // without an installed CJK font: the note names Chinese, Japanese and Korean
+        let missing = uncovered(text, Some(&none));
+        assert_eq!(missing, [Script::Han, Script::Kana, Script::Hangul]);
+        let note = note_for(&missing).unwrap();
+        assert!(note.starts_with("No installed font shows Chinese, Japanese, Korean text"));
+        assert!(note.contains("install a font for it"));
+        // with one: no note; bundled scripts never need one
+        assert!(uncovered(text, Some(&cjk)).is_empty());
+        assert!(uncovered("مرحبا नमस्ते", Some(&none)).is_empty());
+        assert!(note_for(&[]).is_none());
+        // before the scan has finished nothing is reported
+        assert!(uncovered(text, None).is_empty());
+        // one script at a time
+        assert_eq!(uncovered("かな", Some(&none)), [Script::Kana]);
     }
 }

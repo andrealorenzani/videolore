@@ -547,7 +547,7 @@ fn unsaved_changes_prompt_before_new_open_close_and_quit() {
     assert!(clean.modal.is_none() && clean.close_allowed && clean.quit_requested);
 }
 
-// covers: REQ-041, REQ-028
+// covers: REQ-041, REQ-028, REQ-230
 #[test]
 fn projects_opened_by_the_os_go_through_the_prompt() {
     fn requests() -> Vec<PathBuf> {
@@ -1220,10 +1220,14 @@ fn play_pause_and_tick() {
     // removing the clip's file is refused while it is on the timeline
     let id = app.project.media[0].id;
     assert!(app.dispatch(Command::RemoveMedia(id), t0).is_err());
-    // once off the timeline it can go; undo can no longer bring the clip back
+    // once off the timeline it can go; undo can no longer bring the clip back: the states
+    // that have it are dropped (REQ-196), the one before it was added stays
     app.dispatch(Command::Delete, t0).unwrap();
     app.clipboard = None;
     app.dispatch(Command::RemoveMedia(id), t0).unwrap();
+    assert_eq!(app.history.undo_len(), 1);
+    app.dispatch(Command::Undo, t0).unwrap();
+    assert!(app.project.timeline.clips.is_empty());
     assert!(!app.history.can_undo());
     assert!(app.project.media.is_empty());
 }

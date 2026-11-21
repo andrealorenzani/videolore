@@ -6,10 +6,12 @@
 //! ways when the tracks do not fit.
 
 use super::markers::{self, HIT_TOLERANCE, MarkerKind};
+use super::strings::tr;
 use super::{UiCache, ruler, scroll_body, zoom};
 use crate::app::{AppState, Axis, Command, Edge, EffectKind, Instance, Popup, Target};
+use crate::subtitles::LineEdge;
 use crate::time::Micros;
-use crate::timeline::Timeline;
+use crate::timeline::{ClipEdge, ClipId, Timeline};
 use eframe::egui::{
     self, Align2, Button, Color32, FontId, Id, Painter, Pos2, Rect, ScrollArea, Sense, Shape,
     Stroke, StrokeKind, Ui, pos2, text::LayoutJob, vec2,
@@ -25,6 +27,47 @@ const TEXT_COLOR: Color32 = Color32::from_rgb(170, 90, 140);
 /// Height of the Text lane and the width of the grab zones at the ends of a bar.
 pub const TEXT_H: f32 = 18.0;
 pub const BAR_GRAB: f32 = 6.0;
+/// Width (pixels) of the strip at each end of a clip that trims it when dragged (REQ-191).
+pub const EDGE_GRAB: f32 = 6.0;
+
+/// An edge of a clip being dragged: the time it moved so far.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EdgeDrag {
+    pub clip: ClipId,
+    pub edge: ClipEdge,
+    pub delta: Micros,
+}
+
+/// A marker being dragged on the timeline's marker lane.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MarkerDrag {
+    /// The start or the end of a subtitle line (timeline times), and where it is now.
+    Line {
+        line: crate::subtitles::LineId,
+        clip: ClipId,
+        edge: LineEdge,
+        start: Micros,
+        end: Micros,
+        to: Micros,
+    },
+    /// A fade between two clips, and the x position it is dragged to.
+    Fade { from: (ClipId, ClipId), x: f32 },
+}
+
+/// The new `(start, end)` of a line whose `edge` marker is dragged to time `to`: in steps
+/// of a tenth of a second, the start never past the end (REQ-192).
+pub fn line_drag_target(d: &MarkerDrag) -> Option<(Micros, Micros)> {
+    match *d {
+        MarkerDrag::Line {
+            edge,
+            start,
+            end,
+            to,
+            ..
+        } => Some(crate::subtitles::dragged_edge(start, end, edge, to)),
+        MarkerDrag::Fade { .. } => None,
+    }
+}
 const MUSIC_COLOR: Color32 = Color32::from_rgb(40, 130, 130);
 const LINE_COLOR: Color32 = Color32::from_rgb(230, 200, 90);
 /// Share of the track area used by the video track (the rest is music).
@@ -144,13 +187,13 @@ pub fn header(ui: &mut Ui, app: &AppState, range: (f32, f32), cmds: &mut Vec<Com
     ui.spacing_mut().slider_width = (ui.available_width() - 60.0).clamp(30.0, 160.0);
     if ui
         .add(egui::Slider::new(&mut s, 0.0..=1.0).show_value(false))
-        .on_hover_text("Zoom: from the whole project to single frames")
+        .on_hover_text(tr!(ZoomFromTheWholeProject))
         .changed()
     {
         cmds.push(Command::SetZoom(zoom::from_slider(s, range)));
     }
     let tip = super::action_tooltip(ui.ctx(), app, super::actions::ActionId::ZoomFit);
-    if ui.button("Fit").on_hover_text(tip).clicked() {
+    if ui.button(tr!(Fit)).on_hover_text(tip).clicked() {
         cmds.push(Command::ZoomFit);
     }
 }
@@ -370,6 +413,7 @@ fn tracks(
             r.width() - 8.0,
             11.0,
         );
+        edge_strips(ui, app, cache, &painter, c.id, r, z, cmds);
         if resp.clicked()
             && let Some(p) = resp.interact_pointer_pos()
         {
@@ -431,6 +475,84 @@ fn tracks(
         [pos2(xp, rect.min.y), pos2(xp, rect.max.y)],
         Stroke::new(2.0_f32, Color32::RED),
     );
+}
+
+/// The two strips at the ends of a clip: dragging one trims the clip in whole frames inside
+/// its source, shows the new in and out times meanwhile and makes one undo step on release
+/// (REQ-191).
+#[allow(clippy::too_many_arguments)]
+fn edge_strips(
+    ui: &mut Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    painter: &Painter,
+    clip: ClipId,
+    r: Rect,
+    z: f32,
+    cmds: &mut Vec<Command>,
+) {
+    let tl = &app.project.timeline;
+    let Some(c) = tl.get(clip) else { return };
+    for edge in [ClipEdge::Start, ClipEdge::End] {
+        let strip = match edge {
+            ClipEdge::Start => Rect::from_min_max(r.min, pos2(r.min.x + EDGE_GRAB, r.max.y)),
+            ClipEdge::End => Rect::from_min_max(pos2(r.max.x - EDGE_GRAB, r.min.y), r.max),
+        };
+        let id = Id::unique(("videolore-clip-edge", clip.0, edge as u8));
+        let resp = ui
+            .interact(strip, id, Sense::drag())
+            .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+            .on_hover_text(tr!(DragToTrimThisEnd));
+        let moved = resp.total_drag_delta().map(|d| {
+            let secs = f64::from(d.x / z);
+            Micros((secs * 1_000_000.0).round() as i64)
+        });
+        if resp.dragged()
+            && let Some(delta) = moved
+        {
+            let frame = app.frame_len();
+            let dur = app
+                .project
+                .media(c.media)
+                .map(|m| m.duration)
+                .unwrap_or(c.src_out);
+            if let Some((i, o)) = tl.trimmed_by_edge(clip, edge, delta, dur, frame) {
+                cache.edge_drag = Some(EdgeDrag { clip, edge, delta });
+                painter.rect_stroke(
+                    r,
+                    3.0,
+                    Stroke::new(2.0, Color32::LIGHT_BLUE),
+                    StrokeKind::Inside,
+                );
+                let label = format!(
+                    "in {}  out {}",
+                    crate::time::timecode(i),
+                    crate::time::timecode(o)
+                );
+                paint_name(
+                    painter,
+                    r.min + vec2(4.0, 20.0),
+                    &label,
+                    r.width().max(160.0),
+                    10.0,
+                );
+            }
+        }
+        if resp.drag_stopped() {
+            // the distance of the last frames of the drag (the release frame has none)
+            if let Some(d) = cache.edge_drag.take()
+                && d.clip == clip
+                && d.edge == edge
+            {
+                cmds.push(Command::SelectClip(Some(clip)));
+                cmds.push(Command::TrimEdge {
+                    clip,
+                    edge,
+                    delta: d.delta,
+                });
+            }
+        }
+    }
 }
 
 /// Right-click menu of video clip `i`; `at` is where the user clicked.
@@ -498,7 +620,7 @@ fn clip_menu(ui: &mut Ui, app: &AppState, i: usize, at: Micros, cmds: &mut Vec<C
         };
         entry(ui, true, label, cmds, vec![cmd]);
     }
-    ui.menu_button("Effects", |ui| {
+    ui.menu_button(tr!(Effects), |ui| {
         for effect in EffectKind::ALL
             .into_iter()
             .filter(|e| *e != EffectKind::ChangeAspect)
@@ -548,7 +670,7 @@ fn range_select(
     let t_at = |x: f32| Micros::from_secs_f64(f64::from(((x - x0) / z).max(0.0)));
     let resp = ui
         .interact(rect, Id::unique("videolore-range-select"), Sense::drag())
-        .on_hover_text("Shift+drag: select the subtitle lines starting here");
+        .on_hover_text(tr!(ShiftDragSelectTheSubtitle));
     if resp.drag_started()
         && let Some(o) = ui.input(|i| i.pointer.press_origin())
     {
@@ -732,7 +854,12 @@ fn marker_lane(
             Color32::WHITE,
         );
     }
-    let resp = ui.interact(lane, Id::unique("videolore-marker-lane"), Sense::click());
+    let resp = ui.interact(
+        lane,
+        Id::unique("videolore-marker-lane"),
+        Sense::click_and_drag(),
+    );
+    marker_drags(ui, app, cache, painter, &resp, &all, (x0, z, mid), cmds);
     let under = |x: f32| markers::hits(&all, x, HIT_TOLERANCE);
     let hover = resp.hover_pos().map(|p| under(p.x)).unwrap_or_default();
     let resp = if hover.is_empty() {
@@ -870,6 +997,167 @@ fn marker_lane(
             }
         }
     });
+}
+
+/// The marker a drag that starts at `x` takes hold of: the start or the end of a subtitle
+/// line, or a fade (REQ-192, REQ-193).
+fn pick_marker_drag(app: &AppState, all: &[markers::Marker], x: f32) -> Option<MarkerDrag> {
+    let shown = app.project.subtitles.project(&app.project.timeline);
+    let mut best: Option<(f32, MarkerDrag)> = None;
+    let mut offer = |dist: f32, d: MarkerDrag| {
+        if dist <= HIT_TOLERANCE && best.is_none_or(|(b, _)| dist < b) {
+            best = Some((dist, d));
+        }
+    };
+    for m in all {
+        match (m.kind, m.instance) {
+            (MarkerKind::Line, Instance::Line(line, clip)) => {
+                let Some(l) = shown.iter().find(|l| l.line == line && l.clip == clip) else {
+                    continue;
+                };
+                for (edge, at) in [(LineEdge::Start, m.x), (LineEdge::End, m.x_end)] {
+                    offer(
+                        (at - x).abs(),
+                        MarkerDrag::Line {
+                            line,
+                            clip,
+                            edge,
+                            start: l.start,
+                            end: l.end,
+                            to: if edge == LineEdge::Start {
+                                l.start
+                            } else {
+                                l.end
+                            },
+                        },
+                    );
+                }
+            }
+            (MarkerKind::Fade, Instance::Fade(a, b)) => {
+                offer(
+                    (m.x - x).abs(),
+                    MarkerDrag::Fade {
+                        from: (a, b),
+                        x: m.x,
+                    },
+                );
+            }
+            _ => {}
+        }
+    }
+    best.map(|(_, d)| d)
+}
+
+/// Drags on the marker lane: a subtitle line's start or end moves in tenths of a second, a
+/// fade moves to another boundary; nothing is stored until the release, which is one undo
+/// step (REQ-192, REQ-193).
+#[allow(clippy::too_many_arguments)]
+fn marker_drags(
+    ui: &Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    painter: &Painter,
+    resp: &egui::Response,
+    all: &[markers::Marker],
+    (x0, z, mid): (f32, f32, f32),
+    cmds: &mut Vec<Command>,
+) {
+    let time_at = |x: f32| Micros::from_secs_f64(f64::from(((x - x0) / z).max(0.0)));
+    if resp.drag_started()
+        && let Some(o) = ui.input(|i| i.pointer.press_origin())
+    {
+        cache.marker_drag = pick_marker_drag(app, all, o.x);
+    }
+    let Some(mut d) = cache.marker_drag else {
+        return;
+    };
+    let pointer = resp.interact_pointer_pos();
+    match &mut d {
+        MarkerDrag::Line { to, .. } => {
+            if let Some(p) = pointer {
+                *to = time_at(p.x);
+            }
+        }
+        MarkerDrag::Fade { x, .. } => {
+            if let Some(p) = pointer {
+                *x = p.x;
+            }
+        }
+    }
+    // the preview: the line's new edge with its time, or the fade following the pointer
+    match d {
+        MarkerDrag::Line { .. } => {
+            if let Some((s, e)) = line_drag_target(&d) {
+                let MarkerDrag::Line { edge, .. } = d else {
+                    return;
+                };
+                let at = if edge == LineEdge::Start { s } else { e };
+                let x = x0 + (at.as_secs_f64() * f64::from(z)) as f32;
+                painter.line_segment(
+                    [pos2(x, mid - 8.0), pos2(x, mid + 8.0)],
+                    Stroke::new(2.0, Color32::LIGHT_BLUE),
+                );
+                painter.text(
+                    pos2(x + 4.0, mid - 10.0),
+                    Align2::LEFT_BOTTOM,
+                    crate::time::timecode(at),
+                    FontId::proportional(10.0),
+                    Color32::LIGHT_BLUE,
+                );
+            }
+        }
+        MarkerDrag::Fade { x, .. } => {
+            let dd = 6.0;
+            painter.add(Shape::convex_polygon(
+                vec![
+                    pos2(x, mid - dd),
+                    pos2(x + dd, mid),
+                    pos2(x, mid + dd),
+                    pos2(x - dd, mid),
+                ],
+                Color32::from_black_alpha(120),
+                Stroke::new(2.0, Color32::LIGHT_BLUE),
+            ));
+        }
+    }
+    cache.marker_drag = Some(d);
+    if resp.drag_stopped() {
+        cache.marker_drag = None;
+        match d {
+            MarkerDrag::Line {
+                line,
+                clip,
+                start,
+                end,
+                ..
+            } => {
+                if let Some((s, e)) = line_drag_target(&d)
+                    && (s, e) != (start, end)
+                {
+                    cmds.push(Command::RetimeSubtitle {
+                        line,
+                        clip,
+                        start: s,
+                        end: e,
+                    });
+                }
+            }
+            MarkerDrag::Fade { from, x } => {
+                // only a boundary without a fade takes it; elsewhere nothing changes
+                let target = all.iter().find_map(|m| match (m.kind, m.instance) {
+                    (MarkerKind::AddFade, Instance::Fade(a, b))
+                        if (m.x - x).abs() <= HIT_TOLERANCE =>
+                    {
+                        Some((a, b))
+                    }
+                    _ => None,
+                });
+                if let Some(to) = target {
+                    cmds.push(Command::MoveFade { from, to });
+                }
+            }
+        }
+    }
 }
 
 /// Music clips at their own times: click to select, drag to move, double-click for

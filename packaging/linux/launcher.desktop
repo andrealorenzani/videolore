@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=@DISPLAY@
+Comment=Start @DISPLAY@ from this folder
+Exec=sh -c 'exec "$(dirname "$(readlink -f "$1")")/@NAME@.sh"' sh %k
+Icon=@NAME@
+Terminal=false
+Categories=AudioVideo;Video;

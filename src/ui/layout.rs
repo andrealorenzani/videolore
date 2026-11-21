@@ -127,6 +127,120 @@ pub fn sections(area: Rect, f: Fractions, m: Mins) -> SectionRects {
     }
 }
 
+/// How a side section (Media or Effects) is shown (REQ-237).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    #[default]
+    Shown,
+    /// Only the title header, in a narrow column.
+    Collapsed,
+    Hidden,
+}
+
+/// Width of a collapsed side section.
+pub const COLLAPSED_W: f32 = 120.0;
+
+/// What the user chose for the side sections (REQ-237, REQ-238).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Arrangement {
+    pub media: Mode,
+    pub effects: Mode,
+    /// Media docked right of the Preview.
+    pub media_right: bool,
+    /// Effects docked left of the Timeline.
+    pub effects_left: bool,
+}
+
+impl Arrangement {
+    /// The arrangement the interface settings describe.
+    pub fn of(i: &crate::settings::Interface) -> Arrangement {
+        use crate::settings::interface::Section;
+        let mode = |s| {
+            if i.is_hidden(s) {
+                Mode::Hidden
+            } else if i.is_collapsed(s) {
+                Mode::Collapsed
+            } else {
+                Mode::Shown
+            }
+        };
+        Arrangement {
+            media: mode(Section::Media),
+            effects: mode(Section::Effects),
+            media_right: i.is_flipped(Section::Media),
+            effects_left: i.is_flipped(Section::Effects),
+        }
+    }
+}
+
+fn mirror(r: Rect, x0: f32, x1: f32) -> Rect {
+    Rect::from_min_max(
+        pos2(x0 + x1 - r.max.x, r.min.y),
+        pos2(x0 + x1 - r.min.x, r.max.y),
+    )
+}
+
+/// One row with a side section and a main one, the side one at the left: (side, main,
+/// border).
+fn row(x0: f32, x1: f32, y: (f32, f32), side_w: f32, mode: Mode) -> (Rect, Rect, Rect) {
+    let rect = |a: f32, b: f32| Rect::from_min_max(pos2(a, y.0), pos2(b, y.1));
+    match mode {
+        Mode::Hidden => (rect(x0, x0), rect(x0, x1), rect(x0, x0)),
+        Mode::Collapsed => {
+            let w = COLLAPSED_W.min((x1 - x0 - GAP).max(0.0));
+            (
+                rect(x0, x0 + w),
+                rect(x0 + w + GAP, x1),
+                rect(x0 + w, x0 + w),
+            )
+        }
+        Mode::Shown => (
+            rect(x0, x0 + side_w),
+            rect((x0 + side_w + GAP).min(x1), x1),
+            rect(x0 + side_w, (x0 + side_w + GAP).min(x1)),
+        ),
+    }
+}
+
+/// The sections of `area` for the shares `f`, with Media and Effects shown, collapsed,
+/// hidden or docked on the other side. A hidden or collapsed section has no border to
+/// drag (its border rectangle is empty). The default arrangement equals [`sections`].
+pub fn arrange(area: Rect, f: Fractions, m: Mins, a: Arrangement) -> SectionRects {
+    let base = sections(area, f, m);
+    let (x0, x1) = (area.min.x, area.max.x);
+    let top = (base.media.min.y, base.media.max.y);
+    let bottom = (base.timeline.min.y, base.timeline.max.y);
+    let (media, preview, mp) = row(x0, x1, top, base.media.width(), a.media);
+    let (effects, timeline, te) = row(x0, x1, bottom, base.effects.width(), a.effects);
+    // the default has Effects at the right: mirrored unless the user docked it left
+    let (media, preview, mp) = if a.media_right {
+        (
+            mirror(media, x0, x1),
+            mirror(preview, x0, x1),
+            mirror(mp, x0, x1),
+        )
+    } else {
+        (media, preview, mp)
+    };
+    let (effects, timeline, te) = if a.effects_left {
+        (effects, timeline, te)
+    } else {
+        (
+            mirror(effects, x0, x1),
+            mirror(timeline, x0, x1),
+            mirror(te, x0, x1),
+        )
+    };
+    let mut r = base;
+    r.media = media;
+    r.preview = preview;
+    r.timeline = timeline;
+    r.effects = effects;
+    r.splitters[0].1 = mp;
+    r.splitters[1].1 = te;
+    r
+}
+
 /// The shares actually shown in `area` (minimums applied).
 pub fn effective(f: Fractions, area: Rect, m: Mins) -> Fractions {
     let share = |len: f32, total: f32| {
@@ -380,5 +494,68 @@ mod tests {
         assert_eq!(r.media.width(), 30.0);
         assert!(Splitter::MediaPreview.is_vertical() && !Splitter::Rows.is_vertical());
         assert!(Splitter::ALL.iter().all(|s| s.tooltip().contains("Drag")));
+    }
+
+    // covers: REQ-237, REQ-238
+    #[test]
+    fn side_sections_hide_collapse_and_dock() {
+        let a = area(1600.0, 900.0);
+        let base = sections(a, Fractions::DEFAULT, MINS);
+        assert_eq!(
+            arrange(a, Fractions::DEFAULT, MINS, Arrangement::default()),
+            base
+        );
+        // hide Media: the Preview takes the row
+        let hid = arrange(
+            a,
+            Fractions::DEFAULT,
+            MINS,
+            Arrangement {
+                media: Mode::Hidden,
+                ..Default::default()
+            },
+        );
+        assert_eq!(hid.preview.width(), a.width());
+        assert_eq!(hid.media.width(), 0.0);
+        // collapse Effects: a narrow column, the Timeline takes the rest
+        let col = arrange(
+            a,
+            Fractions::DEFAULT,
+            MINS,
+            Arrangement {
+                effects: Mode::Collapsed,
+                ..Default::default()
+            },
+        );
+        assert_eq!(col.effects.width(), COLLAPSED_W);
+        assert!(col.timeline.width() > base.timeline.width());
+        assert_eq!(col.effects.max.x, a.max.x);
+        // Media docked right: the same width, at the right edge, Preview left of it
+        let flip = arrange(
+            a,
+            Fractions::DEFAULT,
+            MINS,
+            Arrangement {
+                media_right: true,
+                effects_left: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(flip.media.max.x, a.max.x);
+        assert_eq!(flip.media.width(), base.media.width());
+        assert_eq!(flip.preview.min.x, a.min.x);
+        assert_eq!(flip.effects.min.x, a.min.x);
+        assert_eq!(flip.timeline.max.x, a.max.x);
+        // the minimum sizes still hold in a small window
+        let small = arrange(
+            area(800.0, 500.0),
+            Fractions::DEFAULT,
+            MINS,
+            Arrangement {
+                media_right: true,
+                ..Default::default()
+            },
+        );
+        assert!(small.media.width() >= MINS.media - 1.0 && small.preview.width() >= 1.0);
     }
 }

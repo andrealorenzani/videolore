@@ -7,6 +7,7 @@
 
 use super::actions::ActionId;
 use super::icons;
+use super::strings::tr;
 use super::{UiCache, keymap, scroll_body};
 use crate::app::{AppState, Command};
 use eframe::egui::{self, Button, ScrollArea, Ui};
@@ -17,6 +18,11 @@ pub enum Item {
     Action(ActionId),
     /// File > Open recent ▸
     OpenRecent,
+    /// View > Sections ▸, Workspaces ▸, Theme ▸, Customise toolbar ▸ (see [`super::view_menu`]).
+    Sections,
+    Workspaces,
+    ThemeMenu,
+    ToolbarMenu,
     /// A submenu of actions ("Apply to selected clip ▸").
     Submenu(&'static str, &'static [ActionId]),
     Separator,
@@ -44,10 +50,45 @@ pub const APPLY_TO_VIDEO: &[ActionId] = &[
     ActionId::ApplyWholeLut,
 ];
 
+/// Edit > Clipboard ▸
+pub const CLIPBOARD: &[ActionId] = &[
+    ActionId::Cut,
+    ActionId::Copy,
+    ActionId::Paste,
+    ActionId::Delete,
+];
+/// Edit > History ▸
+pub const HISTORY: &[ActionId] = &[ActionId::Undo, ActionId::Redo];
+/// Edit > Clip ▸
+pub const CLIP: &[ActionId] = &[
+    ActionId::Split,
+    ActionId::Merge,
+    ActionId::MoveLeft,
+    ActionId::MoveRight,
+    ActionId::AddToTimeline,
+    ActionId::AddMusic,
+    ActionId::ClipDetails,
+    ActionId::ToggleFadeAtPlayhead,
+];
+/// Edit > Subtitles ▸
+pub const SUBTITLES: &[ActionId] = &[
+    ActionId::GenerateSubtitles,
+    ActionId::AddSubtitleLine,
+    ActionId::ShiftLinesEarlier,
+    ActionId::ShiftLinesLater,
+    ActionId::AlignHorizontal,
+    ActionId::AlignVertical,
+    ActionId::MoveInside,
+    ActionId::ResetObjects,
+];
+
 /// The menus and their items, in order.
 pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
     use ActionId::*;
-    use Item::{Action as A, OpenRecent, Separator as S, Submenu};
+    use Item::{
+        Action as A, OpenRecent, Sections, Separator as S, Submenu, ThemeMenu, ToolbarMenu,
+        Workspaces,
+    };
     vec![
         (
             "File",
@@ -61,7 +102,9 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 S,
                 A(Import),
                 A(Export),
+                A(ImportSubtitles),
                 A(ExportSubtitles),
+                A(OpenInPlayer),
                 S,
                 A(Quit),
             ],
@@ -69,32 +112,10 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
         (
             "Edit",
             vec![
-                A(Undo),
-                A(Redo),
-                S,
-                A(Cut),
-                A(Copy),
-                A(Paste),
-                A(Delete),
-                S,
-                A(Split),
-                A(Merge),
-                A(MoveLeft),
-                A(MoveRight),
-                S,
-                A(AddToTimeline),
-                A(AddMusic),
-                A(ClipDetails),
-                S,
-                A(ToggleFadeAtPlayhead),
-                A(GenerateSubtitles),
-                A(AddSubtitleLine),
-                S,
-                A(AlignHorizontal),
-                A(AlignVertical),
-                A(MoveInside),
-                A(ResetObjects),
-                S,
+                Submenu("Clipboard", CLIPBOARD),
+                Submenu("History", HISTORY),
+                Submenu("Clip", CLIP),
+                Submenu("Subtitles", SUBTITLES),
                 A(Settings),
             ],
         ),
@@ -106,6 +127,8 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(GoEnd),
                 A(PrevFrame),
                 A(NextFrame),
+                A(PrevMarker),
+                A(NextMarker),
                 S,
                 A(SetPov),
             ],
@@ -135,7 +158,15 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(ZoomFit),
                 S,
                 A(ToggleBoxes),
+                A(ToggleSnap),
+                A(ToggleSafeAreas),
+                S,
+                Sections,
+                Workspaces,
                 A(ResetLayout),
+                S,
+                ThemeMenu,
+                ToolbarMenu,
             ],
         ),
         ("Help", vec![A(Shortcuts), A(About)]),
@@ -149,8 +180,13 @@ pub fn action_item(ui: &mut Ui, app: &AppState, id: ActionId, cmds: &mut Vec<Com
     let mut b = Button::new(icons::label(id.icon(), &id.label(app)));
     if let Some(s) = keymap::shortcut_text(ui.ctx(), id) {
         b = b.shortcut_text(s);
-    } else if id == ActionId::ToggleBoxes {
-        b = b.shortcut_text(if app.settings.show_boxes { "On" } else { "Off" });
+    } else if let Some(on) = match id {
+        ActionId::ToggleBoxes => Some(app.settings.show_boxes),
+        ActionId::ToggleSnap => Some(app.settings.snap_to_guides),
+        ActionId::ToggleSafeAreas => Some(app.settings.show_safe_areas),
+        _ => None,
+    } {
+        b = b.shortcut_text(if on { "On" } else { "Off" });
     }
     let r = ui
         .add_enabled(reason.is_none(), b)
@@ -169,7 +205,7 @@ pub fn recent_label(p: &std::path::Path) -> String {
 
 fn recent_menu(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     if app.settings.recent.is_empty() {
-        ui.add_enabled(false, Button::new("No recent projects"));
+        ui.add_enabled(false, Button::new(tr!(NoRecentProjects)));
     }
     for p in &app.settings.recent {
         let full = crate::media::sanitize_for_display(&p.to_string_lossy());
@@ -185,7 +221,7 @@ fn recent_menu(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     ui.separator();
     let clear = Command::ClearRecent;
     if ui
-        .add_enabled(app.is_enabled(&clear), Button::new("Clear list"))
+        .add_enabled(app.is_enabled(&clear), Button::new(tr!(ClearList)))
         .clicked()
     {
         cmds.push(clear);
@@ -207,8 +243,12 @@ pub fn menu_bar(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                         match item {
                             Item::Action(id) => action_item(ui, app, id, cmds),
                             Item::OpenRecent => {
-                                ui.menu_button("Open recent", |ui| recent_menu(ui, app, cmds));
+                                ui.menu_button(tr!(OpenRecent), |ui| recent_menu(ui, app, cmds));
                             }
+                            Item::Sections => super::view_menu::sections(ui, app, cmds),
+                            Item::Workspaces => super::view_menu::workspaces(ui, app, cmds),
+                            Item::ThemeMenu => super::view_menu::theme(ui, app, cmds),
+                            Item::ToolbarMenu => super::view_menu::toolbar(ui, app, cmds),
                             Item::Submenu(name, ids) => {
                                 ui.menu_button(name, |ui| {
                                     for id in ids {
@@ -273,12 +313,59 @@ mod tests {
             ResetObjects,
         ] {
             assert!(!effects.contains(&Item::Action(id)), "{id:?} in Effects");
-            assert!(
-                items_of("Edit").contains(&Item::Action(id)),
-                "{id:?} not in Edit"
-            );
+            assert!(edit_actions().contains(&id), "{id:?} not in Edit");
         }
         // the Export dialog is opened from File > Export…
         assert!(items_of("File").contains(&Item::Action(Export)));
+    }
+
+    /// Every action in the Edit menu, in its submenus too.
+    fn edit_actions() -> Vec<ActionId> {
+        items_of("Edit")
+            .into_iter()
+            .flat_map(|i| match i {
+                Item::Action(id) => vec![id],
+                Item::Submenu(_, ids) => ids.to_vec(),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    // covers: REQ-247
+    #[test]
+    fn the_edit_menu_is_grouped_in_at_most_six_entries_and_keeps_every_command() {
+        use ActionId::*;
+        let top = items_of("Edit");
+        assert!(top.len() <= 6, "{} entries", top.len());
+        for (name, ids) in [
+            ("Clipboard", CLIPBOARD),
+            ("History", HISTORY),
+            ("Clip", CLIP),
+            ("Subtitles", SUBTITLES),
+        ] {
+            assert!(top.contains(&Item::Submenu(name, ids)), "{name}");
+        }
+        assert!(top.contains(&Item::Action(Settings)));
+        for id in [
+            Undo,
+            Redo,
+            Cut,
+            Copy,
+            Paste,
+            Delete,
+            Split,
+            Merge,
+            MoveLeft,
+            MoveRight,
+            AddToTimeline,
+            AddMusic,
+            ClipDetails,
+            GenerateSubtitles,
+            AddSubtitleLine,
+        ] {
+            assert!(edit_actions().contains(&id), "{id:?}");
+        }
+        // the shortcuts are the table's, whatever the submenu
+        assert_eq!(crate::ui::actions::action(Split).shortcuts.len(), 1);
     }
 }

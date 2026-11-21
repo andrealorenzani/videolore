@@ -7,7 +7,7 @@
 //! turns it into an export. The file name is untrusted input (it is typed): see
 //! [`file_name_ok`].
 
-use crate::format::{AudioChoice, FormatChoice, VIDEO_PRESETS};
+use crate::format::{AudioChoice, FormatChoice, SubtitleMode, VIDEO_PRESETS};
 use crate::render::ExportMode;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -51,6 +51,8 @@ pub struct ExportChoice {
     /// A preset of [`VIDEO_PRESETS`]; `None`: same as source.
     pub video: Option<usize>,
     pub audio: AudioChoice,
+    /// Where the subtitle lines of a full video go (REQ-182).
+    pub subtitles: SubtitleMode,
     /// Used only when the project's video clips are all 360 clips.
     pub sphere: Sphere,
     pub folder: PathBuf,
@@ -72,6 +74,23 @@ pub struct Context {
     pub project_file: Option<PathBuf>,
     /// The files the clips and the music come from.
     pub media_files: Vec<PathBuf>,
+    /// The frame effects (Change aspect, Scale, Move) the project has while all its clips
+    /// are 360 clips: a 360 video is exported as the whole sphere without them (REQ-265).
+    pub frame_effects_360: Vec<&'static str>,
+}
+
+/// The note under the 360 choice when frame effects would not be applied (REQ-265).
+pub fn sphere_frame_note(choice: &ExportChoice, ctx: &Context) -> Option<String> {
+    let on = choice.mode == Mode::Full
+        && ctx.all_360
+        && choice.sphere == Sphere::Video360
+        && !ctx.frame_effects_360.is_empty();
+    on.then(|| {
+        format!(
+            "{} not applied to a 360° video: the picture is the whole sphere.",
+            ctx.frame_effects_360.join(", ")
+        )
+    })
 }
 
 /// What the app starts after the dialog (REQ-118).
@@ -111,6 +130,7 @@ pub fn defaults(
         mode: Mode::Full,
         video: None,
         audio: AudioChoice::Same,
+        subtitles: SubtitleMode::Burned,
         sphere: Sphere::Video360,
         folder,
         name,
@@ -241,11 +261,9 @@ pub fn blocked(choice: &ExportChoice, ctx: &Context) -> Option<String> {
         return Some("This ffmpeg cannot make that audio format".into());
     }
     if choice.mode == Mode::Full
-        && choice.video.is_some_and(|i| {
-            VIDEO_PRESETS
-                .get(i)
-                .is_none_or(|p| !ctx.encoders.contains(p.encoder()))
-        })
+        && choice
+            .video
+            .is_some_and(|i| crate::format::preset_settings(i, &ctx.encoders).is_none())
     {
         return Some("This ffmpeg cannot make that video format".into());
     }
@@ -267,6 +285,12 @@ pub fn video_field_reason(choice: &ExportChoice, ctx: &Context) -> Option<&'stat
 /// Why the audio format is greyed out, or `None` when it is active.
 pub fn audio_field_reason(choice: &ExportChoice) -> Option<&'static str> {
     (choice.mode == Mode::Srt).then_some("Only subtitles has no audio")
+}
+
+/// True when the Subtitles row is shown: a full video of a project with subtitle lines
+/// (REQ-182).
+pub fn shows_subtitle_choice(choice: &ExportChoice, ctx: &Context) -> bool {
+    choice.mode == Mode::Full && ctx.has_subtitles
 }
 
 /// True when the 360 choice is shown: Full video of a project whose video clips are all
@@ -293,6 +317,7 @@ pub fn request(choice: &ExportChoice, ctx: &Context) -> Request {
                 format: FormatChoice {
                     video: choice.video,
                     audio: choice.audio,
+                    subtitles: choice.subtitles,
                 },
             }
         }
@@ -305,6 +330,7 @@ mod tests {
 
     fn ctx() -> Context {
         Context {
+            frame_effects_360: Vec::new(),
             has_clips: true,
             has_subtitles: true,
             all_360: false,
@@ -519,5 +545,72 @@ mod tests {
         assert_eq!(video_field_reason(&c, &x), None);
         c.mode = Mode::AudioOnly;
         assert!(!shows_sphere_choice(&c, &x));
+    }
+
+    // covers: REQ-182
+    #[test]
+    fn the_subtitles_row_is_for_a_full_video_with_lines_and_burned_is_the_default() {
+        let d = tempfile::tempdir().unwrap();
+        let mut c = choice(d.path());
+        assert_eq!(c.subtitles, SubtitleMode::Burned);
+        assert!(shows_subtitle_choice(&c, &ctx()));
+        let mut none = ctx();
+        none.has_subtitles = false;
+        assert!(!shows_subtitle_choice(&c, &none));
+        c.mode = Mode::AudioOnly;
+        assert!(!shows_subtitle_choice(&c, &ctx()));
+        // the choice reaches the request
+        c.mode = Mode::Full;
+        c.subtitles = SubtitleMode::Separate;
+        let Request::Video { format, .. } = request(&c, &ctx()) else {
+            panic!("a video request")
+        };
+        assert_eq!(format.subtitles, SubtitleMode::Separate);
+        assert_eq!(
+            SubtitleMode::ALL.map(SubtitleMode::label),
+            ["Burned into the picture", "Separate switchable track"]
+        );
+    }
+
+    // covers: REQ-264
+    #[test]
+    fn the_360_choice_greys_the_presets_with_a_reason_and_the_flat_camera_offers_them() {
+        let mut x = ctx();
+        x.all_360 = true;
+        let mut c = choice(Path::new(".")).clone();
+        assert_eq!(c.sphere, Sphere::Video360);
+        assert_eq!(
+            video_field_reason(&c, &x),
+            Some("A 360 video keeps the picture of its sources")
+        );
+        c.sphere = Sphere::Flat;
+        assert_eq!(
+            video_field_reason(&c, &x),
+            None,
+            "the flat camera still offers the presets"
+        );
+        x.all_360 = false;
+        c.sphere = Sphere::Video360;
+        assert_eq!(video_field_reason(&c, &x), None);
+    }
+
+    // covers: REQ-265
+    #[test]
+    fn the_note_names_the_frame_effects_a_360_video_does_not_use() {
+        let mut x = ctx();
+        x.all_360 = true;
+        let mut c = choice(Path::new(".")).clone();
+        assert_eq!(sphere_frame_note(&c, &x), None, "no frame effect, no note");
+        x.frame_effects_360 = vec!["Change aspect", "Scale"];
+        let note = sphere_frame_note(&c, &x).unwrap();
+        assert!(
+            note.contains("Change aspect, Scale") && !note.contains("Move"),
+            "{note}"
+        );
+        c.sphere = Sphere::Flat;
+        assert_eq!(sphere_frame_note(&c, &x), None, "the flat camera uses them");
+        c.sphere = Sphere::Video360;
+        x.all_360 = false;
+        assert_eq!(sphere_frame_note(&c, &x), None);
     }
 }

@@ -71,6 +71,33 @@ impl Lut {
         }
     }
 
+    /// The table with only `percent` of its effect (REQ-289): every entry is blended with the
+    /// colour it was given for (the identity table). 100 is the table itself and 0 changes
+    /// nothing.
+    pub fn with_strength(&self, percent: u8) -> Lut {
+        if percent >= 100 {
+            return self.clone();
+        }
+        let k = f32::from(percent) / 100.0;
+        let n = self.size;
+        let last = (n - 1) as f32;
+        let mut data = Vec::with_capacity(self.data.len());
+        for b in 0..n {
+            for g in 0..n {
+                for r in 0..n {
+                    let id = [r as f32 / last, g as f32 / last, b as f32 / last];
+                    let v = self.at(r, g, b);
+                    data.push([
+                        id[0] + (v[0] - id[0]) * k,
+                        id[1] + (v[1] - id[1]) * k,
+                        id[2] + (v[2] - id[2]) * k,
+                    ]);
+                }
+            }
+        }
+        Lut::new(n, data)
+    }
+
     /// Edge length of the cube.
     pub fn size(&self) -> usize {
         self.size
@@ -102,6 +129,7 @@ pub fn parse(bytes: &[u8]) -> Result<Lut, LutError> {
     let mut size3: Option<usize> = None;
     let mut size1: Option<usize> = None;
     let mut rows: Vec<[f32; 3]> = Vec::new();
+    let mut domain = Domain::default();
     for (n, raw) in text.lines().enumerate() {
         let line = raw.split('#').next().unwrap_or("").trim();
         if line.is_empty() {
@@ -139,11 +167,19 @@ pub fn parse(bytes: &[u8]) -> Result<Lut, LutError> {
                     *slot = Some(v);
                 }
                 "DOMAIN_MIN" | "DOMAIN_MAX" => {
-                    let want = if first == "DOMAIN_MIN" { 0.0 } else { 1.0 };
                     let vals: Vec<f32> = rest.iter().filter_map(|t| t.parse().ok()).collect();
-                    if vals.len() != 3 || rest.len() != 3 || vals.iter().any(|v| *v != want) {
-                        return invalid("only the default domain 0 to 1 is supported");
+                    if vals.len() != 3
+                        || rest.len() != 3
+                        || vals.iter().any(|v| !v.is_finite() || v.abs() > MAX_DOMAIN)
+                    {
+                        return invalid(format!("line {}: bad domain", n + 1));
                     }
+                    let slot = if first == "DOMAIN_MIN" {
+                        &mut domain.min
+                    } else {
+                        &mut domain.max
+                    };
+                    *slot = [vals[0], vals[1], vals[2]];
                 }
                 other => {
                     return invalid(format!("line {}: unknown keyword {:?}", n + 1, clip(other)));
@@ -175,20 +211,295 @@ pub fn parse(bytes: &[u8]) -> Result<Lut, LutError> {
         }
         rows.push(v);
     }
+    domain.check()?;
     match (size3, size1) {
         (Some(s), None) => {
             if rows.len() != s * s * s {
                 return invalid(format!("{} entries, {} expected", rows.len(), s * s * s));
             }
-            Ok(Lut::new(s, rows))
+            Ok(Lut::new(s, domain.apply(s, rows)))
         }
         (None, Some(s)) => {
             if rows.len() != s {
                 return invalid(format!("{} entries, {s} expected", rows.len()));
             }
-            Ok(from_1d(&rows))
+            Ok(domain.apply_lut(from_1d(&rows)))
         }
         _ => invalid("no LUT_3D_SIZE or LUT_1D_SIZE line"),
+    }
+}
+
+/// Largest absolute DOMAIN_MIN or DOMAIN_MAX value accepted.
+pub const MAX_DOMAIN: f32 = 1000.0;
+
+/// The range of input values a `.cube` file covers (`DOMAIN_MIN` and `DOMAIN_MAX`, REQ-291).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Domain {
+    min: [f32; 3],
+    max: [f32; 3],
+}
+
+impl Default for Domain {
+    fn default() -> Self {
+        Domain {
+            min: [0.0; 3],
+            max: [1.0; 3],
+        }
+    }
+}
+
+impl Domain {
+    /// The minimum must be below the maximum in every channel.
+    fn check(&self) -> Result<(), LutError> {
+        if (0..3).any(|c| self.min[c] >= self.max[c]) {
+            return invalid("DOMAIN_MIN must be below DOMAIN_MAX");
+        }
+        Ok(())
+    }
+
+    fn is_default(&self) -> bool {
+        *self == Domain::default()
+    }
+
+    /// The table for pixel values 0..=1: a pixel value `x` is looked up at
+    /// `(x - min) / (max - min)` of the file's table.
+    fn apply(&self, size: usize, rows: Vec<[f32; 3]>) -> Vec<[f32; 3]> {
+        if self.is_default() {
+            return rows;
+        }
+        let at = |c: usize, i: usize| {
+            let x = i as f32 / (size - 1) as f32;
+            ((x - self.min[c]) / (self.max[c] - self.min[c])).clamp(0.0, 1.0)
+        };
+        let mut out = Vec::with_capacity(rows.len());
+        for b in 0..size {
+            for g in 0..size {
+                for r in 0..size {
+                    out.push(trilinear(&rows, size, [at(0, r), at(1, g), at(2, b)]));
+                }
+            }
+        }
+        out
+    }
+
+    fn apply_lut(&self, lut: Lut) -> Lut {
+        if self.is_default() {
+            return lut;
+        }
+        Lut::new(lut.size, self.apply(lut.size, lut.data))
+    }
+}
+
+/// Trilinear lookup of the table `rows` (red fastest, edge `size`) at `u` in 0..=1 per
+/// channel.
+fn trilinear(rows: &[[f32; 3]], size: usize, u: [f32; 3]) -> [f32; 3] {
+    let last = (size - 1) as f32;
+    let pos = u.map(|v| v.clamp(0.0, 1.0) * last);
+    let lo = pos.map(|p| (p.floor() as usize).min(size - 2));
+    let f = [
+        pos[0] - lo[0] as f32,
+        pos[1] - lo[1] as f32,
+        pos[2] - lo[2] as f32,
+    ];
+    let mut out = [0f32; 3];
+    for corner in 0..8usize {
+        let (dr, dg, db) = (corner & 1, (corner >> 1) & 1, (corner >> 2) & 1);
+        let w = (if dr == 1 { f[0] } else { 1.0 - f[0] })
+            * (if dg == 1 { f[1] } else { 1.0 - f[1] })
+            * (if db == 1 { f[2] } else { 1.0 - f[2] });
+        let v = rows[(lo[0] + dr) + (lo[1] + dg) * size + (lo[2] + db) * size * size];
+        for c in 0..3 {
+            out[c] += w * v[c];
+        }
+    }
+    out
+}
+
+/// Parses an Autodesk/Lustre `.3dl` file (REQ-290): an optional first line of input
+/// points (whose count is the edge of the cube), then one row of three integers per grid
+/// point, blue changing fastest. The output depth (8, 10, 12 or 16 bits) is the one that
+/// holds the largest value in the file.
+pub fn parse_3dl(bytes: &[u8]) -> Result<Lut, LutError> {
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err(LutError::TooLarge);
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| LutError::NotText)?;
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut lines: Vec<Vec<f32>> = Vec::new();
+    for (n, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty()
+            || line.starts_with('#')
+            || line.starts_with("3DMESH")
+            || line.starts_with("Mesh")
+            || line.starts_with("gamma")
+        {
+            continue;
+        }
+        let nums: Result<Vec<f32>, _> = line.split_whitespace().map(str::parse::<f32>).collect();
+        let nums = nums.map_err(|_| LutError::Invalid(format!("line {}: not a number", n + 1)))?;
+        if nums.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return invalid(format!("line {}: value is not valid", n + 1));
+        }
+        if lines.len() > MAX_3D * MAX_3D * MAX_3D {
+            return invalid("too many entries");
+        }
+        lines.push(nums);
+    }
+    // a first line of input points (strictly increasing, as many as the cube's edge) is not a row
+    let header = match lines.first() {
+        Some(first)
+            if first.len() >= 2
+                && first.windows(2).all(|w| w[0] < w[1])
+                && lines.len() - 1 == first.len().pow(3) =>
+        {
+            Some(first.len())
+        }
+        _ => None,
+    };
+    let body = &lines[usize::from(header.is_some())..];
+    let mut max = 0f32;
+    let mut rows: Vec<[f32; 3]> = Vec::with_capacity(body.len());
+    for (n, v) in body.iter().enumerate() {
+        if v.len() != 3 {
+            return invalid(format!("entry {}: expected three values", n + 1));
+        }
+        max = max.max(v[0]).max(v[1]).max(v[2]);
+        rows.push([v[0], v[1], v[2]]);
+    }
+    let size = (rows.len() as f64).cbrt().round() as usize;
+    if !(2..=MAX_3D).contains(&size) || size * size * size != rows.len() {
+        return invalid(format!("{} entries are not a cube", rows.len()));
+    }
+    let depth = [255f32, 1023.0, 4095.0, 65535.0]
+        .into_iter()
+        .find(|d| max <= *d)
+        .ok_or_else(|| LutError::Invalid("values larger than 16 bits".into()))?;
+    // the file has blue fastest; the cube here has red fastest
+    let mut data = vec![[0f32; 3]; rows.len()];
+    for (i, v) in rows.iter().enumerate() {
+        let (r, g, b) = (i / (size * size), (i / size) % size, i % size);
+        data[r + g * size + b * size * size] = v.map(|x| (x / depth).clamp(0.0, 1.0));
+    }
+    Ok(Lut::new(size, data))
+}
+
+/// Parses a Cinespace `.csp` file (REQ-290): the three input tables (applied before the
+/// cube, piecewise linear), then the cube, red changing fastest.
+pub fn parse_csp(bytes: &[u8]) -> Result<Lut, LutError> {
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err(LutError::TooLarge);
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| LutError::NotText)?;
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut lines = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .enumerate();
+    let bad = |n: usize, what: &str| LutError::Invalid(format!("line {}: {what}", n + 1));
+    match lines.next() {
+        Some((_, l)) if l.starts_with("CSPLUTV100") => {}
+        _ => return invalid("not a CSP file"),
+    }
+    match lines.next() {
+        Some((_, "3D")) => {}
+        _ => return invalid("only 3D CSP tables are supported"),
+    }
+    // optional metadata block
+    let mut rest: Vec<(usize, &str)> = Vec::new();
+    let mut in_meta = false;
+    for (n, l) in lines {
+        match l {
+            "BEGIN METADATA" => in_meta = true,
+            "END METADATA" => in_meta = false,
+            _ if in_meta => {}
+            _ => rest.push((n, l)),
+        }
+    }
+    let mut it = rest.into_iter();
+    let num =
+        |it: &mut std::vec::IntoIter<(usize, &str)>, count: usize| -> Result<Vec<f32>, LutError> {
+            let (n, l) = it
+                .next()
+                .ok_or_else(|| LutError::Invalid("the file ends too early".into()))?;
+            let v: Result<Vec<f32>, _> = l.split_whitespace().map(str::parse::<f32>).collect();
+            let v = v.map_err(|_| bad(n, "not a number"))?;
+            if v.len() != count || v.iter().any(|x| !x.is_finite()) {
+                return Err(bad(n, "unexpected values"));
+            }
+            Ok(v)
+        };
+    let mut shapers: Vec<(Vec<f32>, Vec<f32>)> = Vec::new();
+    for _ in 0..3 {
+        let count = num(&mut it, 1)?[0];
+        if !(2.0..=4096.0).contains(&count) || count.fract() != 0.0 {
+            return invalid("bad input table size");
+        }
+        let n = count as usize;
+        let xs = num(&mut it, n)?;
+        let ys = num(&mut it, n)?;
+        if xs.windows(2).any(|w| w[0] >= w[1]) {
+            return invalid("an input table is not increasing");
+        }
+        shapers.push((xs, ys));
+    }
+    let dims = num(&mut it, 3)?;
+    let size = dims[0] as usize;
+    if dims.iter().any(|d| *d as usize != size) || !(2..=MAX_3D).contains(&size) {
+        return invalid("only cubes with equal edges of 2 to 65 are supported");
+    }
+    let mut rows: Vec<[f32; 3]> = Vec::with_capacity(size * size * size);
+    for _ in 0..size * size * size {
+        let v = num(&mut it, 3)?;
+        rows.push([
+            v[0].clamp(0.0, 1.0),
+            v[1].clamp(0.0, 1.0),
+            v[2].clamp(0.0, 1.0),
+        ]);
+    }
+    if it.next().is_some() {
+        return invalid("more entries than the declared size");
+    }
+    // the input tables: a pixel value goes through its table, then into the cube
+    let through = |c: usize, x: f32| -> f32 {
+        let (xs, ys) = &shapers[c];
+        if x <= xs[0] {
+            return ys[0];
+        }
+        for i in 1..xs.len() {
+            if x <= xs[i] {
+                let f = (x - xs[i - 1]) / (xs[i] - xs[i - 1]);
+                return ys[i - 1] + f * (ys[i] - ys[i - 1]);
+            }
+        }
+        ys[ys.len() - 1]
+    };
+    let identity = shapers
+        .iter()
+        .all(|(xs, ys)| xs.len() == 2 && xs[0] == 0.0 && xs[1] == 1.0 && ys == xs);
+    if identity {
+        return Ok(Lut::new(size, rows));
+    }
+    let g = |i: usize| i as f32 / (size - 1) as f32;
+    let mut data = Vec::with_capacity(rows.len());
+    for b in 0..size {
+        for gg in 0..size {
+            for r in 0..size {
+                let u = [through(0, g(r)), through(1, g(gg)), through(2, g(b))];
+                data.push(trilinear(&rows, size, u));
+            }
+        }
+    }
+    Ok(Lut::new(size, data))
+}
+
+/// Parses LUT bytes by the file's extension: `.cube`, `.3dl` or `.csp` (REQ-290).
+pub fn parse_by_extension(ext: &str, bytes: &[u8]) -> Result<Lut, LutError> {
+    match ext.to_ascii_lowercase().as_str() {
+        "3dl" => parse_3dl(bytes),
+        "csp" => parse_csp(bytes),
+        _ => parse(bytes),
     }
 }
 
@@ -230,7 +541,8 @@ pub fn read(path: &Path) -> Result<Lut, LutError> {
         ErrorKind::InvalidInput => LutError::NotRegular,
         _ => LutError::Read(e.to_string()),
     })?;
-    parse(&bytes)
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("cube");
+    parse_by_extension(ext, &bytes)
 }
 
 type CacheEntry = (String, u64, Option<std::time::SystemTime>, Arc<Lut>);
@@ -239,9 +551,42 @@ type CacheEntry = (String, u64, Option<std::time::SystemTime>, Arc<Lut>);
 /// preview and the export do not parse a large cube again and again (at most 8 kept).
 static CACHE: Mutex<Vec<CacheEntry>> = Mutex::new(Vec::new());
 
+/// LUT tables kept in the projects opened in this run, by the path the clips use (REQ-293):
+/// used when the file itself is gone.
+static EMBEDDED: Mutex<Vec<(String, Arc<Lut>)>> = Mutex::new(Vec::new());
+
+/// Remembers the copy of a LUT that a project carries (at most 16 are kept).
+pub fn embed(path: &str, lut: Lut) {
+    let mut e = EMBEDDED.lock().unwrap_or_else(|e| e.into_inner());
+    e.retain(|x| x.0 != path);
+    if e.len() >= 16 {
+        e.remove(0);
+    }
+    e.push((path.to_string(), Arc::new(lut)));
+}
+
+/// True when a copy of the LUT at `path` is kept from an opened project.
+pub fn has_embedded(path: &str) -> bool {
+    EMBEDDED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|x| x.0 == path)
+}
+
 /// [`read`] through the cache. A changed file is read and validated again.
 pub fn cached(path: &str) -> Result<Arc<Lut>, LutError> {
-    let meta = std::fs::metadata(path).map_err(|e| LutError::Read(e.to_string()))?;
+    let meta = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(e) => {
+            // the file is gone: the copy kept in the project is used (REQ-293)
+            let embedded = EMBEDDED.lock().unwrap_or_else(|e| e.into_inner());
+            return match embedded.iter().find(|x| x.0 == path) {
+                Some(x) => Ok(x.1.clone()),
+                None => Err(LutError::Read(e.to_string())),
+            };
+        }
+    };
     let stamp = (meta.len(), meta.modified().ok());
     let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(e) = c.iter().find(|e| e.0 == path && (e.1, e.2) == stamp) {
@@ -334,8 +679,8 @@ pub(crate) mod tests {
             ("twice", "LUT_3D_SIZE 2\nLUT_3D_SIZE 2\n".into()),
             ("mixed", "LUT_3D_SIZE 2\nLUT_1D_SIZE 2\n".into()),
             ("mixed 1d first", "LUT_1D_SIZE 2\nLUT_3D_SIZE 2\n".into()),
-            ("domain", format!("DOMAIN_MAX 2 2 2\n{}", identity(2))),
-            ("domain min", format!("DOMAIN_MIN -1 0 0\n{}", identity(2))),
+            ("domain max 0", format!("DOMAIN_MAX 0 0 0\n{}", identity(2))),
+            ("domain min 2", format!("DOMAIN_MIN 2 0 0\n{}", identity(2))),
             ("domain short", format!("DOMAIN_MIN 0 0\n{}", identity(2))),
             ("keyword", "WHAT 1\nLUT_3D_SIZE 2\n".into()),
             ("too few", "LUT_3D_SIZE 2\n0 0 0\n".into()),
@@ -455,5 +800,151 @@ pub(crate) mod tests {
         assert!(!path_ok("a\0b"));
         assert!(!path_ok(&"x".repeat(MAX_PATH_CHARS + 1)));
         assert_eq!(display_name("/a/b/warm.cube"), "warm.cube");
+    }
+
+    fn fixture(name: &str) -> Vec<u8> {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/lut")
+            .join(name);
+        std::fs::read(p).unwrap()
+    }
+
+    /// The most two tables differ by at any grid point, in levels of 8 bits.
+    fn levels_apart(a: &Lut, b: &Lut) -> f32 {
+        assert_eq!(a.size(), b.size());
+        let n = a.size();
+        let mut worst = 0f32;
+        for r in 0..n {
+            for g in 0..n {
+                for bl in 0..n {
+                    let (x, y) = (a.at(r, g, bl), b.at(r, g, bl));
+                    for c in 0..3 {
+                        worst = worst.max((x[c] - y[c]).abs() * 255.0);
+                    }
+                }
+            }
+        }
+        worst
+    }
+
+    // covers: REQ-290
+    #[test]
+    fn a_3dl_and_a_csp_file_make_the_same_table_as_the_cube() {
+        let cube = parse(&fixture("look.cube")).unwrap();
+        for (name, ext) in [("look.3dl", "3dl"), ("look.csp", "CSP")] {
+            let lut = parse_by_extension(ext, &fixture(name)).unwrap();
+            assert!(levels_apart(&cube, &lut) <= 2.0, "{name}");
+        }
+        // through the file reader: the extension decides
+        let d = tempfile::tempdir().unwrap();
+        for name in ["look.3dl", "look.csp", "look.cube"] {
+            std::fs::write(d.path().join(name), fixture(name)).unwrap();
+            assert_eq!(read(&d.path().join(name)).unwrap().size(), 3, "{name}");
+        }
+    }
+
+    // covers: REQ-290
+    #[test]
+    fn broken_3dl_and_csp_files_are_refused_with_a_message() {
+        for (ext, name) in [("3dl", "broken.3dl"), ("csp", "broken.csp")] {
+            match parse_by_extension(ext, &fixture(name)) {
+                Err(LutError::Invalid(m)) => assert!(!m.is_empty()),
+                other => panic!("{name}: {other:?}"),
+            }
+        }
+        for (ext, bad) in [
+            ("3dl", "0 1 2\n9999999 0 0\n"),
+            ("3dl", "0 1\n1 2 3\n4 5 6\n"),
+            ("3dl", "x y z\n"),
+            ("csp", "not a csp"),
+            ("csp", "CSPLUTV100\n1D\n"),
+            ("csp", "CSPLUTV100\n3D\n2\n1 0\n0 1\n"),
+        ] {
+            assert!(
+                parse_by_extension(ext, bad.as_bytes()).is_err(),
+                "{ext} {bad:?}"
+            );
+        }
+        assert_eq!(
+            parse_by_extension("3dl", &[0xff, 0xfe]),
+            Err(LutError::NotText)
+        );
+        // a csp input table is applied: a table that doubles the input
+        let mut csp = String::from("CSPLUTV100\n3D\n");
+        for _ in 0..3 {
+            csp.push_str("2\n0.0 1.0\n0.0 0.5\n");
+        }
+        csp.push_str("2 2 2\n");
+        for b in 0..2 {
+            for g in 0..2 {
+                for r in 0..2 {
+                    csp.push_str(&format!("{r} {g} {b}\n"));
+                }
+            }
+        }
+        let lut = parse_csp(csp.as_bytes()).unwrap();
+        assert_eq!(lut.at(1, 1, 1), [0.5, 0.5, 0.5]);
+    }
+
+    // covers: REQ-291
+    #[test]
+    fn a_domain_scales_the_input_and_a_minimum_not_below_the_maximum_is_refused() {
+        // a ramp over the domain 0..2: a pixel of value 1 is half way through the table,
+        // so the output is 0.5 where the plain table would give 1
+        let lut = parse(&fixture("domain.cube")).unwrap();
+        assert_eq!(lut.size(), 5);
+        let n = lut.size() - 1;
+        for i in 0..=n {
+            let x = i as f32 / n as f32;
+            let want = x / 2.0;
+            let got = lut.at(i, i, i);
+            for c in got {
+                assert!((c - want).abs() < 0.005, "{i}: {c} vs {want}");
+            }
+        }
+        // the same table written without a domain and with the input scaled by hand
+        let plain = parse(identity(3).as_bytes()).unwrap();
+        assert_eq!(plain.at(2, 2, 2), [1.0, 1.0, 1.0]);
+        for bad in [
+            "DOMAIN_MIN 1 0 0\nDOMAIN_MAX 1 1 1\nLUT_3D_SIZE 2\n",
+            "DOMAIN_MIN 0 0 0\nDOMAIN_MAX 0 0 0\nLUT_3D_SIZE 2\n",
+            "DOMAIN_MIN 2 2 2\nDOMAIN_MAX 1 1 1\nLUT_3D_SIZE 2\n",
+            "DOMAIN_MIN 0 0\nDOMAIN_MAX 1 1 1\nLUT_3D_SIZE 2\n",
+            "DOMAIN_MIN 0 0 0\nDOMAIN_MAX 5000 1 1\nLUT_3D_SIZE 2\n",
+        ] {
+            let text = format!("{bad}{}", "0 0 0\n".repeat(8));
+            assert!(
+                matches!(parse(text.as_bytes()), Err(LutError::Invalid(_))),
+                "{bad}"
+            );
+        }
+    }
+
+    // covers: REQ-289
+    #[test]
+    fn the_strength_blends_the_table_with_no_change() {
+        let lut = parse(&fixture("look.cube")).unwrap();
+        let none = lut.with_strength(0);
+        let id = parse(identity(3).as_bytes()).unwrap();
+        assert!(levels_apart(&none, &id) <= 0.5, "0 % changes nothing");
+        assert_eq!(lut.with_strength(100), lut, "100 % is the table");
+        let half = lut.with_strength(50);
+        let n = lut.size();
+        for r in 0..n {
+            for g in 0..n {
+                for b in 0..n {
+                    let (a, c, h) = (id.at(r, g, b), lut.at(r, g, b), half.at(r, g, b));
+                    for k in 0..3 {
+                        let avg = (a[k] + c[k]) / 2.0;
+                        assert!((h[k] - avg).abs() * 255.0 <= 2.0, "{r}{g}{b}{k}");
+                    }
+                }
+            }
+        }
+        assert_ne!(
+            half.hash(),
+            lut.hash(),
+            "another table, another file for ffmpeg"
+        );
     }
 }

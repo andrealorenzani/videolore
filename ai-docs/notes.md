@@ -1,6 +1,6 @@
 # ai-notes: documenter notes
 
-Owner: documenter. Index refreshed in the 2.0.3 code part (README, roadmap and changelog) and in the 1.6.3 RELEASE-CLEAN (line ranges from `grep -n '^#'`; refresh after every change of a managed doc).
+Owner: documenter. Index refreshed in the 2.0.4 business part (changelog lines)  and before that in the 2.0.3 code part (README, roadmap and changelog) and in the 1.6.3 RELEASE-CLEAN (line ranges from `grep -n '^#'`; refresh after every change of a managed doc).
 
 ## Index of managed docs
 README.md, docs/roadmap.md, docs/changelog.md and docs/workflow.md (no sub-documents). Other docs/*.md belong to their owners.
@@ -21,22 +21,23 @@ README.md, docs/roadmap.md, docs/changelog.md and docs/workflow.md (no sub-docum
 - docs/roadmap.md § Roadmap — L1-4 (4 lines)
 - docs/roadmap.md § Priority 1 — Release checks — L5-15 (11 lines)
 - docs/roadmap.md § Priority 2 — Text and subtitles on the picture — L16-26 (11 lines)
-- docs/roadmap.md § Priority 3 — Subtitle accuracy and subtitle features — L27-44 (18 lines)
-- docs/roadmap.md § Priority 4 — Editing speed and safety — L45-62 (18 lines)
-- docs/roadmap.md § Priority 5 — Export speed and hardware — L63-87 (25 lines)
-- docs/roadmap.md § Priority 6 — Installation and platforms — L88-103 (16 lines)
-- docs/roadmap.md § Priority 7 — Interface — L104-119 (16 lines)
-- docs/roadmap.md § Priority 8 — Video player — L120-131 (12 lines)
-- docs/roadmap.md § Priority 9 — 360 video — L132-154 (23 lines)
-- docs/roadmap.md § Priority 10 — Effects and frame — L155-182 (28 lines)
-- docs/roadmap.md § Priority 11 — Quality, tests and measurements — L183-216 (34 lines)
-- docs/roadmap.md § Priority 12 — Splash, project page and release process — L217-233 (17 lines)
-- docs/roadmap.md § Not planned — L234-245 (12 lines)
+- docs/roadmap.md § Priority 3 — Subtitle accuracy and subtitle features — L27-40 (14 lines)
+- docs/roadmap.md § Priority 4 — Editing speed and safety — L41-45 (5 lines)
+- docs/roadmap.md § Priority 5 — Export speed and hardware — L46-60 (15 lines)
+- docs/roadmap.md § Priority 6 — Installation and platforms — L61-70 (10 lines)
+- docs/roadmap.md § Priority 7 — Interface — L71-75 (5 lines)
+- docs/roadmap.md § Priority 8 — Video player — L76-80 (5 lines)
+- docs/roadmap.md § Priority 9 — 360 video — L81-95 (15 lines)
+- docs/roadmap.md § Priority 10 — Effects and frame — L96-108 (13 lines)
+- docs/roadmap.md § Priority 11 — Quality, tests and measurements — L109-140 (32 lines)
+- docs/roadmap.md § Priority 12 — Splash, project page and release process — L141-155 (15 lines)
+- docs/roadmap.md § Not planned — L156-169 (14 lines)
 - docs/changelog.md § Changelog — L1-4 (4 lines)
-- docs/changelog.md § 2.0.3 — 2026-11-20 22:05 +0000 — L5-16 (12 lines)
-- docs/changelog.md § 2.0.2 — 2026-11-20 20:34 +0000 — L17-21 (5 lines)
-- docs/changelog.md § 2.0.1 — 2026-11-20 20:06 +0000 — L22-26 (5 lines)
-- docs/changelog.md § 2.0.0 — 2026-11-20 19:50 +0000 — L27-28 (2 lines)
+- docs/changelog.md § 2.0.4 — 2026-11-21 00:15 +0000 — L5-19 (15 lines)
+- docs/changelog.md § 2.0.3 — 2026-11-20 22:05 +0000 — L20-31 (12 lines)
+- docs/changelog.md § 2.0.2 — 2026-11-20 20:34 +0000 — L32-36 (5 lines)
+- docs/changelog.md § 2.0.1 — 2026-11-20 20:06 +0000 — L37-41 (5 lines)
+- docs/changelog.md § 2.0.0 — 2026-11-20 19:50 +0000 — L42-44 (3 lines)
 - docs/workflow.md § Agentic workflow — L1-3 (3 lines)
 - docs/workflow.md § Agents — L5-20 (16 lines)
 - docs/workflow.md § Commands — L22-30 (9 lines)
@@ -155,6 +156,11 @@ Player
 - 2.0.3 code (2026-11-20 23:55 +0000): version 2.0.3 unchanged; coverage badge 95.8 (line coverage; feature coverage 154/154); changelog 2.0.3 bullets (added readable text and placement warnings, code, REQ-177 status, fixed paused picture); README: badge, Latest changes 2.0.3, 2.0.2, 1.6.2, usage items 6, 11, 13 and known limitations updated (overlap warnings, text size and width, format 10); roadmap: delivered batch items removed (readable text, placement, accuracy), REQ-177 kept as the decision point, future work added (other UI frame gates, five-minute speech test, font scan repaint, text module split, line box rule); roadmap tasks: batches 2 to 4 marked delivered; docs-check ok.
 
 - 2.0.3 close (2026-11-20 23:58 +0000): version.sh check consistent (2.0.3); docs-check ok; README latest changes checked (2.0.3, 2.0.2, 1.6.2; 1.6.3 is workflow-only per its release notes), poem unchanged, no AI/agent terms (the Actions workflow URL in the build badge is kept); rust-version 1.100 matches badge; no file changed in this call.
+
+- 2.0.4 business (2026-11-21 00:15 +0000): version set to 2.0.4 (consistent, notices version line regenerated); changelog 2.0.4 entry (one development for all remaining batches, REQ-180..299 planned, REQ-177 untouched, Andrea's decisions, format 11 bump, manual checks 9-28); docs/roadmap_tasks.md notes that batches 5 to 15 and the continuous items are built together as 2.0.4; roadmap.md unchanged (items stay open until STATUS); README unchanged (no user-facing change delivered); index refreshed; docs-check ok.
+- 2.0.4 architecture (2026-11-21 00:40 +0000): version 2.0.4 unchanged; the architecture bullets, four roadmap items and the quality network-line fix were reverted at the coordinator's checkpoint (unbuilt work lives in ai-docs/roadmap-2_0-checkpoint.md, section Documenter); index refreshed.
+- 2.0.4 checkpoint (2026-11-21): ai-docs/roadmap-2_0-checkpoint.md created with the Documenter section; docs describe only what is built or planned as the product manager and architect wrote it.
+- 2.0.4 close (2026-11-21): version 2.0.4 consistent; changelog 2.0.4 entry rewritten to the built items per area (planned items removed); roadmap: delivered items removed, unbuilt items kept, 2.0.5 note in the intro, future items added (idle heartbeat, Quit in the macOS menu, cache limit on a worker, CSP hashes, playback of a blurred fill); README latest changes 2.0.4, 2.0.3, 2.0.2; badges coverage 95.0 (coverage.sh --badge), harfrust and skrifa badges added; splash summaries rewritten for 2.0.4 (editor and player); checkpoint file ai-docs/roadmap-2_0-checkpoint.md kept; docs-check ok, version check ok; poem unchanged.
 
 ## Open items (documenter, 2.0.3)
 - The known-limitations hand-off above is from 1.6.3; the next RELEASE-CLEAN rewrites it from the README.

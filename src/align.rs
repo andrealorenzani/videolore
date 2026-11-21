@@ -264,6 +264,34 @@ pub fn align(media: MediaId, cues: &[Cue], recognised: &[Word]) -> Alignment {
     out
 }
 
+/// [`align`] for an imported file (REQ-184): a cue that matched the speech starts at its
+/// first found word and ends at its last one (words before and after are held inside), so
+/// a cue written early or late follows what is said. A cue that did not match keeps the
+/// file's times and counts in `unmatched`.
+pub fn retime(media: MediaId, cues: &[Cue], recognised: &[Word]) -> Alignment {
+    let mut a = align(media, cues, recognised);
+    for (line, found) in a.lines.iter_mut().zip(&a.found) {
+        let first = found.iter().position(|f| *f);
+        let last = found.iter().rposition(|f| *f);
+        let (Some(first), Some(last)) = (first, last) else {
+            continue;
+        };
+        if line.words.len() != found.len() {
+            continue;
+        }
+        line.start = line.words[first].start;
+        line.end = line.words[last].end.max(line.start + MIN_WORD);
+        let (s, e) = (line.start, line.end);
+        let mut prev = s;
+        for w in &mut line.words {
+            w.start = w.start.clamp(prev, e);
+            w.end = w.end.clamp(w.start, e);
+            prev = w.start;
+        }
+    }
+    a
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,5 +501,42 @@ mod tests {
         assert_valid(&a);
         // the bound is generous for unoptimised test builds; release is far below 50 ms
         assert!(took < std::time::Duration::from_secs(2), "{took:?}");
+    }
+
+    // covers: REQ-184
+    #[test]
+    fn re_timing_moves_a_line_to_its_first_and_last_recognised_word() {
+        // written 0.6 s early; the second cue is not in the speech at all
+        let cues = [
+            cue(400, 2600, "one two three"),
+            cue(9000, 9500, "never said"),
+        ];
+        let words = rec(&[
+            (1000, 1300, "one"),
+            (1400, 1800, "two"),
+            (2000, 2300, "three"),
+        ]);
+        let a = retime(MediaId(1), &cues, &words);
+        assert_valid(&a);
+        assert_eq!((a.lines[0].start, a.lines[0].end), (ms(1000), ms(2300)));
+        assert_eq!(a.lines[0].words.len(), 3);
+        assert_eq!(a.lines[0].words[0].start, ms(1000));
+        assert_eq!(a.unmatched, 1);
+        assert_eq!(
+            (a.lines[1].start, a.lines[1].end),
+            (ms(9000), ms(9500)),
+            "no match: the file's times"
+        );
+        // only some words found: the line starts and ends at the found ones
+        let words = rec(&[(1500, 1900, "two")]);
+        let cues = [cue(400, 3000, "one two three four")];
+        let a = retime(MediaId(1), &cues, &words);
+        assert_valid(&a);
+        let l = &a.lines[0];
+        if !l.words.is_empty() {
+            assert_eq!((l.start, l.end), (ms(1500), ms(1900)));
+        } else {
+            assert_eq!((l.start, l.end), (ms(400), ms(3000)));
+        }
     }
 }

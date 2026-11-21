@@ -54,10 +54,10 @@ fn sphere_project(env: &Env, secs: u32) -> Project {
 }
 
 fn pov(secs: f64, yaw_deg: f64, fov_deg: f64) -> Pov {
-    Pov {
-        t: Micros::from_secs_f64(secs),
-        cam: Camera::new((yaw_deg * 100.0) as i64, 0, (fov_deg * 100.0) as i64),
-    }
+    Pov::new(
+        Micros::from_secs_f64(secs),
+        Camera::new((yaw_deg * 100.0) as i64, 0, (fov_deg * 100.0) as i64),
+    )
 }
 
 /// Direction (degrees right of the view's centre) of the white line in an RGB or RGBA
@@ -189,6 +189,7 @@ fn pitch_and_zoom_are_followed_in_the_export() {
             Pov {
                 t: Micros::ZERO,
                 cam: cam(0.0, 90.0),
+                ease: Default::default(),
             },
         )
         .unwrap();
@@ -198,6 +199,7 @@ fn pitch_and_zoom_are_followed_in_the_export() {
             Pov {
                 t: Micros::from_secs_f64(2.0),
                 cam: cam(40.0, 50.0),
+                ease: Default::default(),
             },
         )
         .unwrap();
@@ -407,8 +409,14 @@ fn big_spheres_get_a_4096_copy_and_camera_stills_are_quick_enough() {
     assert!(p.media[0].format.is_360());
     // the copy: 4096 x 2048, made with the proxy's own arguments
     let copy = env.dir.path().join("copy.mkv");
-    let args =
-        videolore::proxy::proxy_args(&big, &copy, &p.media[0].format, env.info.version, Some(2));
+    let args = videolore::proxy::proxy_args(
+        &big,
+        &copy,
+        &p.media[0].format,
+        env.info.version,
+        Some(2),
+        &[],
+    );
     let out = Command::new(&env.info.ffmpeg).args(&args).output().unwrap();
     assert!(
         out.status.success(),

@@ -38,7 +38,19 @@ Noto Sans Bold (subtitle font)
   Version:  2.015
   Licence:  SIL Open Font License 1.1 (OFL-1.1)
   Source:   https://github.com/notofonts/latin-greek-cyrillic
-  Covers Latin, Greek and Cyrillic. Other scripts use the fonts of the system.
+  Covers Latin, Greek and Cyrillic.
+
+Noto Sans Arabic Bold (subtitle font for Arabic)
+  Version:  hinted release of 2022 (as pinned in assets/fonts/SOURCE.txt)
+  Licence:  SIL Open Font License 1.1 (OFL-1.1)
+  Source:   https://github.com/notofonts/arabic
+
+Noto Sans Devanagari Bold (subtitle font for Hindi)
+  Version:  hinted release of 2022 (as pinned in assets/fonts/SOURCE.txt)
+  Licence:  SIL Open Font License 1.1 (OFL-1.1)
+  Source:   https://github.com/notofonts/devanagari
+
+  Chinese, Japanese, Korean and other scripts use the fonts installed on the computer.
 
 Phosphor Icons (the icons of the interface, bundled as a font)
   Version:  2.1.2 (Regular weight)

@@ -73,12 +73,24 @@ The real-hardware check of this feature is the quality goal QG-05, in [Settings,
 - The Export dialog remembers its choices for the session only; they are not stored in the project.
 - A 360 video ignores the video format presets: it keeps the sphere's own size.
 
+## Speed and format names (2.0.4)
+Batch 10 of the [roadmap tasks](roadmap_tasks.md). Hardware parts (AV1, VP9, preview decoding, graphics card choice) are in [Faster hardware export](business-hardware-export.md).
+- REQ-220 (implemented): The Export dialog's video entries use plain codec names, for example "1920x1080 25fps, H.264, .mp4"; the encoder name (for example libx264) is in the entry's tooltip. Amends the entry names of REQ-120. Acceptance: the entries show "H.264" and "HEVC" and no encoder names; the tooltip of an entry shows its encoder; the presets and their files are unchanged.
+- REQ-221 (implemented): When the output frame's longer side is above 4096 px (for example a Change aspect frame on a large source), the Export dialog shows a warning before Export: "This frame is larger than 4096 px: it is scaled down and the export takes longer." The export is still allowed and uses the cap of REQ-125. Acceptance: a 4K source in 9:16 shows the warning; 1920x1080 and 1600x2844 do not; the exported size is the capped one.
+- REQ-222 (implemented): The blurred background of Fit empty with blurred video (REQ-126) is computed at one eighth of the frame size (divisor 8; built instead of the quarter first planned: at 4K the eighth took 2.9 to 3.1 s, the quarter 3.3 to 3.7 s) and scaled up, so its cost does not grow with the frame. The sharp picture is unchanged. Acceptance: the blurred background is computed at the reduced size (checked in a test); the sharp picture matches REQ-125 within 1 px; the export time is measured in the quality goals.
+- REQ-223 (implemented): In the preview, the blurred background is kept while its inputs (the frame, its size and the blur) do not change; a change of Scale, Move or keyframes redraws only the picture. Amends the known limitation of 1.5.0. Acceptance: ten Scale changes at one playhead draw the background once and the picture ten times (counted in a test); the preview equals the export within 2% of the frame height.
+- REQ-224 (implemented): Import analysis, preview copy generation and subtitle preparation never delay the start of playback or of an export: they wait behind them in the queue of REQ-033. Acceptance: with ten imports queued, starting playback shows the first frame within 200 ms (test harness); an export started during imports begins before the imports finish.
+
+## Key decisions (2.0.4)
+- [MINOR] The warning of REQ-221 is shown, not enforced; the 4096 px cap stays an assumption to be measured (QG-11).
+- [MINOR] Codec names move to the tooltip (plain names for non-experts); the set of presets does not change apart from the AV1 and VP9 presets in [Faster hardware export](business-hardware-export.md).
+
 ## Out of scope
 - (1.4.0) Remembering export choices in the project or in Settings; custom resolutions, frame rates, bitrates, quality values or encoder options.
-- Separate subtitle files (SRT/VTT) or switchable subtitles; subtitles are always burned in.
 - Direct upload to social networks.
-- (0.4.0) Video hardware for preview copies, preview playback, effects or subtitles; preview copies stay on the normal method.
-- (0.4.0) Choosing a specific graphics card or vendor; per-vendor quality sliders; any technical export setting beyond the presets of the Export dialog.
+- (0.4.0) Video hardware for effects or subtitles; preview copies stay on the normal method for encoding (decoding follows REQ-214, planned).
+- (0.4.0) Per-vendor quality sliders; any technical export setting beyond the presets of the Export dialog.
+- Separate subtitle files and the switchable subtitle track: planned in 2.0.4 (REQ-180 to REQ-182, see [Subtitle files](business-subtitle-files.md)).
 - (0.4.0) AMD hardware through AMD's own interface on Linux (AMD on Linux goes through VA-API); Intel Macs; ARM Windows and Linux.
 - (0.4.0) Bundling or installing graphics drivers.
 - (0.4.0) A visible message when the fallback was used (shown only in Advanced).

@@ -10,6 +10,7 @@
 //! command; Esc is the caller's.
 
 use super::icons;
+use super::strings::tr;
 use crate::splash::{self, Program};
 use eframe::egui::{
     self, Align2, Color32, Context, FontId, Id, Order, Rect, TextureHandle, TextureOptions, pos2,
@@ -303,7 +304,7 @@ fn summary_panel(
     let button = Rect::from_min_size(inner.max - BUTTON, BUTTON);
     let clicked = ui
         .put(button, egui::Button::new(icons::label(icons::X, "Close")))
-        .on_hover_text("Close the splash screen (Esc)")
+        .on_hover_text(tr!(CloseTheSplashScreenEsc))
         .clicked();
     (used, top, clicked)
 }

@@ -85,8 +85,9 @@ Applies to subtitle lines and to text items ([Text](business-text.md)). The accu
 - (1.3.0) A subtitle line added on a 360 clip is drawn as plain white text in the preview and in the export: it has no preset box and no word-by-word highlight.
 
 ## Out of scope
-- WebVTT export, switchable subtitle tracks in the exported video, positions in the `.srt` file.
-- Importing separate subtitle files (`.srt`, `.vtt`); picture-based subtitle tracks (DVD, Blu-ray, DVB).
+- Positions in the `.srt` file (the `.ass` export has them).
+- Planned for 2.0.4 (see [Subtitle files](business-subtitle-files.md)): WebVTT and ASS export, switchable subtitle tracks, importing `.srt` and `.vtt` files, fonts for more scripts.
+- Picture-based subtitle tracks (DVD, Blu-ray, DVB): OCR not decided.
 - Changing the start and end of a reused line from the speech (only words are matched).
 - More than one language per project, translation.
 - Custom style editor, a style per line or per clip.

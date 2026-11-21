@@ -1189,3 +1189,94 @@ fn clean_audio_is_applied_to_a_clip_or_the_whole_video_in_one_undo_step() {
             .is_some()
     );
 }
+
+// covers: REQ-274, REQ-275
+#[test]
+fn the_fade_length_and_side_are_one_undo_step_each_and_reach_the_render() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = state(FakeDialogs::default());
+    three(&mut app, dir.path());
+    let now = Instant::now();
+    app.dispatch(Command::ToggleFade(0), now).unwrap();
+    let (l, r) = (
+        app.project.timeline.clips[0].id,
+        app.project.timeline.clips[1].id,
+    );
+    let seg_fades = |app: &AppState| {
+        let segs = render::segments(&app.project, Micros::ZERO, render::Source::Export).unwrap();
+        (segs[0].fade_out, segs[1].fade_in)
+    };
+    assert_eq!(seg_fades(&app), (Micros(500_000), Micros(500_000)));
+    let undo = app.history.undo_len();
+    app.dispatch(Command::SetFadeLength(Micros(1_500_000)), now)
+        .unwrap();
+    assert_eq!(app.history.undo_len(), undo + 1);
+    assert_eq!(seg_fades(&app), (Micros(1_500_000), Micros(1_500_000)));
+    assert!(
+        app.dispatch(Command::SetFadeLength(Micros(5)), now)
+            .is_err()
+    );
+    app.dispatch(
+        Command::SetFadeSide {
+            left: l,
+            right: r,
+            side: crate::timeline::FadeSide::OutOnly,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(seg_fades(&app), (Micros(1_500_000), Micros::ZERO));
+    assert_eq!(app.history.undo_len(), undo + 2);
+    app.dispatch(Command::Undo, now).unwrap();
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(seg_fades(&app), (Micros(500_000), Micros(500_000)));
+}
+
+// covers: REQ-276, REQ-277
+#[test]
+fn a_music_clips_sound_settings_are_one_undo_step_and_fades_stay_inside_the_clip() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = state(FakeDialogs::default());
+    three(&mut app, dir.path());
+    let now = Instant::now();
+    app.dispatch(Command::PlaceMusic(Some(app.project.media[2].id)), now)
+        .unwrap();
+    let id = app.project.music.clips[0].id;
+    let undo = app.history.undo_len();
+    app.dispatch(
+        Command::SetMusicEffects {
+            clip: id,
+            volume: 50,
+            muted: false,
+            fade_in: Micros(1_000_000),
+            fade_out: Micros(900_000_000),
+            clean_audio: true,
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), undo + 1);
+    let c = app.project.music.get(id).unwrap();
+    assert_eq!((c.volume, c.clean_audio), (50, true));
+    assert_eq!(
+        c.fade_out,
+        Micros(c.len().0 / 2),
+        "a fade is at most half the clip"
+    );
+    app.dispatch(Command::Undo, now).unwrap();
+    assert_eq!(app.project.music.get(id).unwrap().volume, 100);
+    assert!(
+        app.dispatch(
+            Command::SetMusicEffects {
+                clip: crate::music::MusicClipId(999),
+                volume: 1,
+                muted: false,
+                fade_in: Micros::ZERO,
+                fade_out: Micros::ZERO,
+                clean_audio: false
+            },
+            now
+        )
+        .is_err()
+    );
+}

@@ -35,12 +35,35 @@ fn bad(msg: &str) -> io::Error {
 
 /// The bytes of the box that marks a file as equirectangular.
 pub fn marker_box() -> Vec<u8> {
-    let len = 8 + UUID.len() + XML.len();
+    marker_box_with(None)
+}
+
+/// The initial view of a 360 source: yaw, pitch and roll in hundredths of a degree.
+pub type Pose = [i32; 3];
+
+/// The marker box with the initial view of the source when it had one (REQ-262).
+pub fn marker_box_with(pose: Option<Pose>) -> Vec<u8> {
+    let xml = match pose.filter(|p| *p != [0, 0, 0]) {
+        Some([y, p, r]) => XML.replace(
+            "</rdf:SphericalVideo>",
+            &format!(
+                "<GSpherical:InitialViewHeadingDegrees>{:.2}</GSpherical:InitialViewHeadingDegrees>\
+                 <GSpherical:InitialViewPitchDegrees>{:.2}</GSpherical:InitialViewPitchDegrees>\
+                 <GSpherical:InitialViewRollDegrees>{:.2}</GSpherical:InitialViewRollDegrees>\
+                 </rdf:SphericalVideo>",
+                f64::from(y) / 100.0,
+                f64::from(p) / 100.0,
+                f64::from(r) / 100.0
+            ),
+        ),
+        None => XML.to_string(),
+    };
+    let len = 8 + UUID.len() + xml.len();
     let mut b = Vec::with_capacity(len);
     b.extend_from_slice(&(len as u32).to_be_bytes());
     b.extend_from_slice(b"uuid");
     b.extend_from_slice(&UUID);
-    b.extend_from_slice(XML.as_bytes());
+    b.extend_from_slice(xml.as_bytes());
     b
 }
 
@@ -145,7 +168,7 @@ fn shift_offsets(moov: &mut [u8], n: u64) -> io::Result<()> {
 /// The movie box with the marker added to its video track, or `None` when it already has
 /// one or has no video track. `moov_first`: the media data comes after the movie box, so
 /// its chunk offsets grow by the size of the marker.
-fn marked_moov(moov: &[u8], moov_first: bool) -> io::Result<Option<Vec<u8>>> {
+fn marked_moov(moov: &[u8], moov_first: bool, pose: Option<Pose>) -> io::Result<Option<Vec<u8>>> {
     let top = Atom {
         kind: *b"moov",
         start: 0,
@@ -172,7 +195,7 @@ fn marked_moov(moov: &[u8], moov_first: bool) -> io::Result<Option<Vec<u8>>> {
     let Some(trak) = target else {
         return Ok(None);
     };
-    let marker = marker_box();
+    let marker = marker_box_with(pose);
     let n = marker.len();
     let mut out = Vec::with_capacity(moov.len() + n);
     out.extend_from_slice(&moov[..trak.end]);
@@ -198,6 +221,11 @@ fn marked_moov(moov: &[u8], moov_first: bool) -> io::Result<Option<Vec<u8>>> {
 /// a temporary file next to it. Returns whether the file was changed: not for a file that
 /// is not an MP4 (Matroska, WebM), has no video track or is marked already.
 pub fn mark_equirectangular(path: &Path) -> io::Result<bool> {
+    mark_equirectangular_with(path, None)
+}
+
+/// [`mark_equirectangular`] with the initial view of the source (REQ-262).
+pub fn mark_equirectangular_with(path: &Path, pose: Option<Pose>) -> io::Result<bool> {
     let mut f = File::open(path)?;
     let total = f.metadata()?.len();
     // the top-level boxes, read by their headers only
@@ -228,7 +256,7 @@ pub fn mark_equirectangular(path: &Path) -> io::Result<bool> {
     let mut moov = vec![0u8; moov_len as usize];
     f.seek(SeekFrom::Start(moov_at))?;
     f.read_exact(&mut moov)?;
-    let Some(new_moov) = marked_moov(&moov, moov_first)? else {
+    let Some(new_moov) = marked_moov(&moov, moov_first, pose)? else {
         return Ok(false);
     };
     let tmp = path.with_extension("spherical-partial");
@@ -249,6 +277,327 @@ pub fn mark_equirectangular(path: &Path) -> io::Result<bool> {
             Err(e)
         }
     }
+}
+
+/// The initial view written in the Spherical Video V1 XML of an MP4 or MOV file (REQ-269):
+/// ffprobe does not report it for this kind of file. Only the movie box is read, with the
+/// same limits as the writer; anything not understood is `None`.
+pub fn read_pose(path: &Path) -> Option<Pose> {
+    let mut f = File::open(path).ok()?;
+    let total = f.metadata().ok()?.len();
+    let mut at = 0u64;
+    for _ in 0..MAX_BOXES {
+        if total.saturating_sub(at) < 8 {
+            return None;
+        }
+        let mut h = [0u8; 8];
+        f.seek(SeekFrom::Start(at)).ok()?;
+        f.read_exact(&mut h).ok()?;
+        let size = u64::from(u32::from_be_bytes([h[0], h[1], h[2], h[3]]));
+        if size < 8 || size > total - at {
+            return None;
+        }
+        if &h[4..8] == b"moov" {
+            if size > MAX_MOOV {
+                return None;
+            }
+            let mut moov = vec![0u8; size as usize];
+            f.seek(SeekFrom::Start(at)).ok()?;
+            f.read_exact(&mut moov).ok()?;
+            let k = moov.windows(16).position(|w| w == UUID)?;
+            let end = (k + 16 + 4096).min(moov.len());
+            let xml = String::from_utf8_lossy(&moov[k + 16..end]).into_owned();
+            let tag = |name: &str| -> Option<f64> {
+                let open = format!("<GSpherical:{name}>");
+                let from = xml.find(&open)? + open.len();
+                let to = xml[from..].find('<')? + from;
+                let v: f64 = xml[from..to].trim().parse().ok()?;
+                (v.is_finite() && v.abs() <= 360.0).then_some(v)
+            };
+            let cd = |v: Option<f64>| (v.unwrap_or(0.0) * 100.0).round() as i32;
+            let pose = [
+                cd(tag("InitialViewHeadingDegrees")),
+                cd(tag("InitialViewPitchDegrees")),
+                cd(tag("InitialViewRollDegrees")),
+            ];
+            return (pose != [0, 0, 0]).then_some(pose);
+        }
+        at += size;
+    }
+    None
+}
+
+// ---- Matroska and WebM (REQ-261) ----
+//
+// ffmpeg writes a Void element (padding) between the SeekHead and the Info of a Matroska
+// file. The Projection of the video track is added by growing the Tracks element and
+// shrinking that Void by the same number of bytes: nothing after Tracks moves (clusters,
+// cues, tags keep their places), and only the SeekHead entries of the elements between the
+// Void and Tracks (which moved earlier) are changed, with the same number of bytes. The
+// file keeps its size and is rewritten in place at those few places. Only our own element
+// is written.
+
+const MKV_SEGMENT: [u8; 4] = [0x18, 0x53, 0x80, 0x67];
+const MKV_SEEKHEAD: [u8; 4] = [0x11, 0x4D, 0x9B, 0x74];
+const MKV_TRACKS: [u8; 4] = [0x16, 0x54, 0xAE, 0x6B];
+const MKV_VOID: [u8; 1] = [0xEC];
+const MKV_TRACK_ENTRY: [u8; 1] = [0xAE];
+const MKV_VIDEO: [u8; 1] = [0xE0];
+const MKV_PROJECTION: [u8; 2] = [0x76, 0x70];
+/// Largest start of a Matroska file looked at (the headers come first).
+const MKV_HEAD: u64 = 1 << 20;
+
+/// An element found in a buffer: its id bytes, and where its header and body are.
+#[derive(Debug, Clone)]
+struct Ebml {
+    id: Vec<u8>,
+    start: usize,
+    body: usize,
+    end: usize,
+}
+
+fn ebml_len(first: u8) -> Option<usize> {
+    let n = first.leading_zeros() as usize + 1;
+    (n <= 8 && first != 0).then_some(n)
+}
+
+/// Reads the element at `at` in `b`; `None` for a damaged or unknown-size element.
+fn ebml_at(b: &[u8], at: usize, limit: usize) -> Option<Ebml> {
+    let first = *b.get(at)?;
+    let il = ebml_len(first)?.min(4);
+    if ebml_len(first)? > 4 {
+        return None;
+    }
+    let sl_at = at + il;
+    let sf = *b.get(sl_at)?;
+    let sl = ebml_len(sf)?;
+    let mut size = u64::from(sf) & ((1u64 << (8 - sl)) - 1);
+    let mut all_ones = size == (1u64 << (8 - sl)) - 1;
+    for k in 1..sl {
+        let byte = *b.get(sl_at + k)?;
+        all_ones &= byte == 0xFF;
+        size = (size << 8) | u64::from(byte);
+    }
+    if all_ones {
+        return None;
+    }
+    let body = sl_at + sl;
+    let end = body.checked_add(usize::try_from(size).ok()?)?;
+    (end <= limit).then(|| Ebml {
+        id: b[at..at + il].to_vec(),
+        start: at,
+        body,
+        end,
+    })
+}
+
+fn ebml_children(b: &[u8], from: usize, to: usize) -> Option<Vec<Ebml>> {
+    let mut out = Vec::new();
+    let mut at = from;
+    while at < to {
+        if out.len() > 4096 {
+            return None;
+        }
+        let e = ebml_at(b, at, to)?;
+        at = e.end;
+        out.push(e);
+    }
+    Some(out)
+}
+
+/// The size field of `n` bytes of body in the fewest bytes.
+fn ebml_size(n: usize) -> Vec<u8> {
+    let mut len = 1;
+    while len < 8 && n as u64 >= (1u64 << (7 * len)) - 1 {
+        len += 1;
+    }
+    let mut v = vec![0u8; len];
+    let marked = (1u64 << (7 * len)) | n as u64;
+    for (i, byte) in v.iter_mut().enumerate() {
+        *byte = (marked >> (8 * (len - 1 - i))) as u8;
+    }
+    v
+}
+
+fn ebml_element(id: &[u8], body: &[u8]) -> Vec<u8> {
+    let mut v = id.to_vec();
+    v.extend(ebml_size(body.len()));
+    v.extend_from_slice(body);
+    v
+}
+
+/// The Tracks body with a Projection (equirectangular) in the first video track's Video
+/// element; `None` when there is no such track or it has a Projection already.
+fn tracks_with_projection(b: &[u8], tracks: &Ebml, pose: Option<Pose>) -> Option<Vec<u8>> {
+    let mut body = Vec::new();
+    let mut done = false;
+    for entry in ebml_children(b, tracks.body, tracks.end)? {
+        if done || entry.id != MKV_TRACK_ENTRY {
+            body.extend_from_slice(&b[entry.start..entry.end]);
+            continue;
+        }
+        let kids = ebml_children(b, entry.body, entry.end)?;
+        let is_video = kids
+            .iter()
+            .any(|k| k.id == [0x83] && b.get(k.body..k.end) == Some(&[1u8][..]));
+        let Some(video) = kids.iter().find(|k| k.id == MKV_VIDEO).filter(|_| is_video) else {
+            body.extend_from_slice(&b[entry.start..entry.end]);
+            continue;
+        };
+        if ebml_children(b, video.body, video.end)?
+            .iter()
+            .any(|k| k.id == MKV_PROJECTION)
+        {
+            return None;
+        }
+        // Projection { ProjectionType 1 = equirectangular }
+        let mut inner = vec![0x76, 0x71, 0x81, 0x01];
+        if let Some([y, p, r]) = pose.filter(|p| *p != [0, 0, 0]) {
+            // ProjectionPoseYaw, Pitch, Roll: 32-bit floats in degrees
+            for (id, v) in [(0x7673u16, y), (0x7674, p), (0x7675, r)] {
+                inner.extend(id.to_be_bytes());
+                inner.push(0x84);
+                inner.extend((f64::from(v) as f32 / 100.0).to_be_bytes());
+            }
+        }
+        let projection = ebml_element(&MKV_PROJECTION, &inner);
+        let mut new_video = b[video.body..video.end].to_vec();
+        new_video.extend(projection);
+        let mut new_entry = Vec::new();
+        for k in &kids {
+            if k.start == video.start {
+                new_entry.extend(ebml_element(&MKV_VIDEO, &new_video));
+            } else {
+                new_entry.extend_from_slice(&b[k.start..k.end]);
+            }
+        }
+        body.extend(ebml_element(&MKV_TRACK_ENTRY, &new_entry));
+        done = true;
+    }
+    done.then_some(body)
+}
+
+/// Marks the Matroska or WebM file at `path` as an equirectangular 360° video (REQ-261).
+/// Returns whether the file was changed: not for a file that is not Matroska, has no
+/// padding to use, has no video track or is marked already.
+pub fn mark_matroska(path: &Path) -> io::Result<bool> {
+    mark_matroska_with(path, None)
+}
+
+/// [`mark_matroska`] with the initial view of the source (REQ-262): yaw, pitch and roll
+/// elements of the Projection.
+pub fn mark_matroska_with(path: &Path, pose: Option<Pose>) -> io::Result<bool> {
+    use std::fs::OpenOptions;
+    let mut f = OpenOptions::new().read(true).write(true).open(path)?;
+    let total = f.metadata()?.len();
+    let want = total.min(MKV_HEAD) as usize;
+    let mut b = vec![0u8; want];
+    f.read_exact(&mut b)?;
+    // the EBML header, then the Segment
+    let Some(head) = ebml_at(&b, 0, want) else {
+        return Ok(false);
+    };
+    if head.id != [0x1A, 0x45, 0xDF, 0xA3] {
+        return Ok(false);
+    }
+    // a Segment of unknown or longer size than we read: only its start is needed
+    let seg_at = head.end;
+    let Some(first) = b.get(seg_at..seg_at + 4) else {
+        return Ok(false);
+    };
+    if first != MKV_SEGMENT {
+        return Ok(false);
+    }
+    let sl = match b.get(seg_at + 4).copied().and_then(ebml_len) {
+        Some(n) => n,
+        None => return Ok(false),
+    };
+    let seg_body = seg_at + 4 + sl;
+    // the top-level children until Tracks
+    let mut kids: Vec<Ebml> = Vec::new();
+    let mut at = seg_body;
+    let tracks = loop {
+        let Some(e) = ebml_at(&b, at, want) else {
+            return Ok(false);
+        };
+        at = e.end;
+        if e.id == MKV_TRACKS {
+            break e;
+        }
+        kids.push(e);
+        if kids.len() > 64 {
+            return Ok(false);
+        }
+    };
+    // the padding before Tracks, after the SeekHead
+    let Some(void) = kids.iter().rev().find(|k| k.id == MKV_VOID).cloned() else {
+        return Ok(false);
+    };
+    let Some(new_body) = tracks_with_projection(&b, &tracks, pose) else {
+        return Ok(false);
+    };
+    let new_tracks = ebml_element(&MKV_TRACKS, &new_body);
+    let grow = new_tracks.len() - (tracks.end - tracks.start);
+    let void_len = void.end - void.start;
+    // the padding shrinks by what Tracks grows: a Void of 0 bytes is not there, one of 1
+    // byte cannot be written
+    if grow > void_len || void_len - grow == 1 {
+        return Ok(false);
+    }
+    let left = void_len - grow;
+    let mut region = Vec::new();
+    if left >= 2 {
+        // a Void element of `left` bytes: id, size, zeros
+        let mut v = vec![0xEC];
+        let mut size_len = 1;
+        while size_len < 8 && ((left - 1 - size_len) as u64) >= (1u64 << (7 * size_len)) - 1 {
+            size_len += 1;
+        }
+        let data = left - 1 - size_len;
+        let marked = (1u64 << (7 * size_len)) | data as u64;
+        for i in 0..size_len {
+            v.push((marked >> (8 * (size_len - 1 - i))) as u8);
+        }
+        v.resize(left, 0);
+        region.extend(v);
+    }
+    let between = &b[void.end..tracks.start];
+    region.extend_from_slice(between);
+    region.extend(new_tracks);
+    debug_assert_eq!(region.len(), tracks.end - void.start);
+    // the SeekHead entries of the elements that moved earlier: from the end of the padding
+    // up to the start of Tracks (positions are counted from the start of the Segment body)
+    let moved = (void.end - seg_body) as u64..=(tracks.start - seg_body) as u64;
+    let mut patches: Vec<(usize, Vec<u8>)> = Vec::new();
+    for sh in kids.iter().filter(|k| k.id == MKV_SEEKHEAD) {
+        for seek in ebml_children(&b, sh.body, sh.end).unwrap_or_default() {
+            for item in ebml_children(&b, seek.body, seek.end).unwrap_or_default() {
+                // SeekPosition
+                if item.id != [0x53, 0xAC] || item.end - item.body == 0 || item.end - item.body > 8
+                {
+                    continue;
+                }
+                let mut v = 0u64;
+                for byte in &b[item.body..item.end] {
+                    v = (v << 8) | u64::from(*byte);
+                }
+                if moved.contains(&v) {
+                    let n = v - grow as u64;
+                    let width = item.end - item.body;
+                    let bytes = n.to_be_bytes();
+                    patches.push((item.body, bytes[8 - width..].to_vec()));
+                }
+            }
+        }
+    }
+    f.seek(SeekFrom::Start(void.start as u64))?;
+    f.write_all(&region)?;
+    for (at, bytes) in patches {
+        f.seek(SeekFrom::Start(at as u64))?;
+        f.write_all(&bytes)?;
+    }
+    f.sync_all()?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -416,5 +765,24 @@ mod tests {
         std::fs::write(&p, &h).unwrap();
         assert!(mark_equirectangular(&p).is_err());
         assert!(mark_equirectangular(&d.path().join("missing.mp4")).is_err());
+    }
+
+    // covers: REQ-261
+    #[test]
+    fn files_that_are_not_matroska_or_have_no_padding_are_left_alone() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("x.mkv");
+        for bytes in [
+            &b""[..],
+            b"not a file at all",
+            &[0x1A, 0x45, 0xDF, 0xA3, 0x80][..],
+        ] {
+            std::fs::write(&p, bytes).unwrap();
+            assert!(!mark_matroska(&p).unwrap());
+            assert_eq!(std::fs::read(&p).unwrap(), bytes);
+        }
+        assert_eq!(ebml_size(5), vec![0x85]);
+        assert_eq!(ebml_size(126), vec![0xFE]);
+        assert_eq!(ebml_size(127), vec![0x40, 0x7F]);
     }
 }

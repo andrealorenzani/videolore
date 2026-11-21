@@ -6,9 +6,10 @@
 //! do not fit go into a "»" menu at the right end, the effect group first and as a whole.
 
 use super::actions::ActionId;
+use super::strings::tr;
 use super::{action_tooltip, menu};
 use crate::app::{AppState, Command};
-use eframe::egui::{Button, TextStyle, TextWrapMode, Ui, WidgetText};
+use eframe::egui::{self, Button, TextStyle, TextWrapMode, Ui, WidgetText};
 
 /// The toolbar's actions, left to right, before the Context Menu group.
 pub const TOOLBAR: [ActionId; 12] = [
@@ -26,8 +27,16 @@ pub const TOOLBAR: [ActionId; 12] = [
     ActionId::Export,
 ];
 
-/// Index of the first button of the Context Menu group (drawn after a separator).
-pub const EFFECT_GROUP: usize = TOOLBAR.len();
+/// The toolbar's own commands now: the user's list (REQ-240) or the default 12.
+pub fn fixed(app: &AppState) -> Vec<ActionId> {
+    match &app.settings.interface.toolbar {
+        Some(names) => names
+            .iter()
+            .filter_map(|n| ActionId::from_name(n))
+            .collect(),
+        None => TOOLBAR.to_vec(),
+    }
+}
 
 /// The Context Menu (REQ-106): the commands that act on what is selected or under the
 /// playhead. Empty (so the group is not drawn at all) when there is nothing to act on:
@@ -61,7 +70,7 @@ pub fn context_group_of(line_selected: bool, on_360: bool) -> Vec<ActionId> {
 
 /// Every button of the toolbar now: the fixed ones, then the Context Menu group.
 pub fn actions(app: &AppState) -> Vec<ActionId> {
-    let mut v = TOOLBAR.to_vec();
+    let mut v = fixed(app);
     v.extend(context_group(app));
     v
 }
@@ -94,7 +103,11 @@ pub fn icon(app: &AppState, id: ActionId) -> &'static str {
 
 /// What a toolbar button shows: its icon and its label.
 pub fn text(app: &AppState, id: ActionId) -> String {
-    super::icons::label(icon(app, id), &label(app, id))
+    if app.settings.interface.toolbar_labels {
+        super::icons::label(icon(app, id), &label(app, id))
+    } else {
+        icon(app, id).to_string()
+    }
 }
 
 /// How many buttons (of widths `widths`, in order) fit in `avail` pixels, keeping room for
@@ -127,10 +140,14 @@ fn button_width(ui: &Ui, text: &str) -> f32 {
 fn tool_button(ui: &mut Ui, app: &AppState, id: ActionId, cmds: &mut Vec<Command>) {
     let cmd = id.command(app);
     let reason = app.disabled_reason(&cmd);
+    let name = label(app, id);
     let r = ui
         .add_enabled(reason.is_none(), Button::new(text(app, id)))
         .on_hover_text(action_tooltip(ui.ctx(), app, id))
         .on_disabled_hover_text(reason.unwrap_or_default());
+    // an icon-only button still has its command's name for screen readers (REQ-246)
+    let enabled = reason.is_none();
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, name.clone()));
     if r.clicked() {
         cmds.push(cmd);
     }
@@ -138,9 +155,9 @@ fn tool_button(ui: &mut Ui, app: &AppState, id: ActionId, cmds: &mut Vec<Command
 
 /// The Context Menu group moves to the "»" menu as a whole: part of it is never left in
 /// the row.
-pub fn visible(fitting: usize, total: usize) -> usize {
-    if fitting > EFFECT_GROUP && fitting < total {
-        EFFECT_GROUP
+pub fn visible(fitting: usize, fixed: usize, total: usize) -> usize {
+    if fitting > fixed && fitting < total {
+        fixed
     } else {
         fitting
     }
@@ -152,25 +169,27 @@ pub fn toolbar(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         .iter()
         .map(|id| button_width(ui, &text(app, *id)))
         .collect();
+    let fixed = fixed(app).len();
     let n = visible(
         fit(&widths, ui.available_width(), button_width(ui, "»")),
+        fixed,
         all.len(),
     );
     ui.horizontal(|ui| {
         for (i, id) in all[..n].iter().enumerate() {
-            if i == EFFECT_GROUP {
+            if i == fixed {
                 ui.separator();
             }
             tool_button(ui, app, *id, cmds);
         }
         if n < all.len() {
-            ui.menu_button("»", |ui| {
+            ui.menu_button(tr!(MoreArrow), |ui| {
                 for id in &all[n..] {
                     menu::action_item(ui, app, *id, cmds);
                 }
             })
             .response
-            .on_hover_text("More commands");
+            .on_hover_text(tr!(MoreCommands));
         }
     });
 }
@@ -189,12 +208,12 @@ mod tests {
         assert_eq!(fit(&w, 10.0, 20.0), 0);
         assert_eq!(fit(&[], 10.0, 20.0), 0);
         // the effect group is kept together
-        assert_eq!(visible(15, 15), 15);
-        assert_eq!(visible(14, 15), EFFECT_GROUP);
-        assert_eq!(visible(13, 15), EFFECT_GROUP);
-        assert_eq!(visible(12, 15), 12);
-        assert_eq!(visible(5, 15), 5);
-        assert_eq!(visible(12, 12), 12);
+        assert_eq!(visible(15, 12, 15), 15);
+        assert_eq!(visible(14, 12, 15), 12);
+        assert_eq!(visible(13, 12, 15), 12);
+        assert_eq!(visible(12, 12, 15), 12);
+        assert_eq!(visible(5, 12, 15), 5);
+        assert_eq!(visible(12, 12, 12), 12);
     }
 
     // covers: REQ-106

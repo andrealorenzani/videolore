@@ -76,8 +76,20 @@ Windows and macOS, on every push and pull request, and checks the files of the A
   `~/.local/share/applications/videolore.desktop`, the 256 px icon and the `*.vlproj` MIME type,
   and refreshes them when the file was moved; source builds do nothing. "Remove from application
   menu" in the About screen deletes them.
-- On Windows and Linux a project double-clicked while videolore runs opens in a second window;
-  on macOS it reaches the running window and asks about unsaved changes.
+- Since 2.0.4 a project double-clicked while videolore runs opens in the running window on Windows
+  and Linux too (`instance`: lock file, heartbeat and inbox in `<cache>/instance`), after the
+  unsaved-changes prompt; with no reachable window a new one opens as before. On macOS it reaches
+  the running window by itself. The Linux tar.gz has `videolore.sh` (a launcher) and
+  `videolore.desktop` (an entry that starts the launcher from its own folder, `%k`) for file
+  managers that do not start an extracted program on double-click.
+- macOS: the menu bar has Hide, Hide Others, Show All, Minimize and Zoom (`desktop::macos_menu`,
+  built with `objc2-app-kit` when the application is about to finish launching); Cmd+Q is not
+  a menu key: it reaches the program and its unsaved-changes prompt.
+- CI and packaging checks of 2.0.4: `installer-config.yml` (also on pull requests that touch the
+  packaging; the executables and installers wait for it), `advisories.yml` (weekly `cargo deny
+  check advisories`), the named `cpu_message` test step, `packaging/tools.lock` `[nsis]` (the
+  Windows installer checks the NSIS zip's SHA-256 first) and the Windows licence file written
+  with a UTF-8 byte-order mark.
 
 ## Manual checklist per OS (before publishing a release)
 

@@ -6,3 +6,21 @@ Downloaded from:
 SHA-256: 1df075a380fc7cb898acf64c1f7b3b4dd780de3caa860178bf929de35817a913
 Font sources: https://github.com/notofonts/latin-greek-cyrillic
 Coverage: Latin, Greek and Cyrillic only.
+
+NotoSansArabic-Bold.ttf — Noto Sans Arabic Bold (2.0.4)
+Licence: SIL Open Font License 1.1 (see OFL.txt)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
+Downloaded from:
+  https://raw.githubusercontent.com/notofonts/notofonts.github.io/28b15b4b43b7bed62b5cf6e6b0b5ff5846270535/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Bold.ttf
+SHA-256: cabdc065d2d3d30562cf1d3e753dc7062bc420beb14942e0c28a211020e2b8d1
+Coverage: Arabic (and Latin digits and punctuation).
+
+NotoSansDevanagari-Bold.ttf — Noto Sans Devanagari Bold (2.0.4)
+Licence: SIL Open Font License 1.1 (see OFL.txt)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/devanagari)
+Downloaded from:
+  https://raw.githubusercontent.com/notofonts/notofonts.github.io/28b15b4b43b7bed62b5cf6e6b0b5ff5846270535/fonts/NotoSansDevanagari/hinted/ttf/NotoSansDevanagari-Bold.ttf
+SHA-256: 3ad8362a06271814869838dcc3d161b13c9fb97681b627af1f7f283ea9387d56
+Coverage: Devanagari (Hindi) (and Latin digits and punctuation).
+
+No CJK font is bundled: Chinese, Japanese and Korean use the fonts installed on the computer.

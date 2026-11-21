@@ -83,6 +83,11 @@ pub trait Process: Send {
     fn kill(&mut self);
     /// Waits for the end; returns success flag and the stderr tail.
     fn wait(&mut self) -> io::Result<CmdOutput>;
+    /// Processor time the process has used so far, in milliseconds (`None` when it cannot
+    /// be read: the hardware check then cannot tell a busy try from a hanging one).
+    fn cpu_ms(&mut self) -> Option<u64> {
+        None
+    }
 }
 
 /// Starts external programs. The real implementation is [`SystemRunner`]; the rest of the
@@ -275,6 +280,10 @@ impl Process for ChildProcess {
 
     fn kill(&mut self) {
         let _ = self.child.kill();
+    }
+
+    fn cpu_ms(&mut self) -> Option<u64> {
+        crate::machine::process_cpu_ms(self.child.id())
     }
 
     fn wait(&mut self) -> io::Result<CmdOutput> {
