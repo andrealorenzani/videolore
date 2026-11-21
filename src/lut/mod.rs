@@ -3,32 +3,47 @@
 
 //! LUT files (`.cube`) for the Apply LUT effect (REQ-135, REQ-136).
 //!
-//! A LUT file is untrusted input. It is parsed here into a normalised 3D cube; the
-//! normalised text ([`Lut::to_cube`]) is what is written into the private Work folder and
-//! read by ffmpeg, so a user's file name or content never reaches a filter string.
+//! A LUT file is untrusted input. It is parsed here (a streamed pass, [`parse`]) into a
+//! normalised 3D cube kept as 16-bit values; the normalised text ([`Lut::write_cube`]) is
+//! what is written into the private Work folder and read by ffmpeg, so a user's file name or
+//! content never reaches a filter string. A cube may have up to 256 points per edge (2.1.0,
+//! REQ-300): the table of a 256-point cube is about 100 MB and its text about 450 MB, so
+//! nothing here keeps the text of a file in memory.
 
+use std::io::Write;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 use sha2::{Digest, Sha256};
 
-/// Largest `.cube` file read (16 MiB).
-pub const MAX_BYTES: u64 = 16 * 1024 * 1024;
-/// Largest 3D cube edge.
-pub const MAX_3D: usize = 65;
+pub mod parse;
+pub mod store;
+
+pub use parse::{parse, parse_reader};
+pub use store::{Load, LoadMsg, cached, cached_with, embed, has_embedded, peek, read, read_with};
+
+/// Largest `.cube` file read (512 MiB; a 256-point cube is about 450 MB).
+pub const MAX_BYTES: u64 = 512 * 1024 * 1024;
+/// Largest `.3dl` or `.csp` file (read whole into memory).
+pub const MAX_WHOLE: u64 = 64 * 1024 * 1024;
+/// Longest line of a `.cube` file (bytes).
+pub const MAX_LINE: usize = 256;
+/// Largest 3D cube edge (ffmpeg's own limit is 256).
+pub const MAX_3D: usize = 256;
 /// Largest 1D table.
 pub const MAX_1D: usize = 4096;
 /// Edge of the 3D cube a 1D LUT is converted to.
 pub const CUBE_FROM_1D: usize = 33;
 /// A stored LUT path is cleared when longer than this (characters).
 pub const MAX_PATH_CHARS: usize = 4096;
+/// Bytes of one entry in the normalised text (`0.xxxxxx 0.xxxxxx 0.xxxxxx\n`).
+pub const ENTRY_TEXT: usize = 27;
 
 /// Why a LUT file was refused. The text is shown to the user.
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum LutError {
     #[error("the file could not be read: {0}")]
     Read(String),
-    #[error("the LUT file is larger than 16 MiB")]
+    #[error("the LUT file is larger than 512 MiB")]
     TooLarge,
     #[error("the LUT file is not a regular file")]
     NotRegular,
@@ -36,39 +51,58 @@ pub enum LutError {
     NotText,
     #[error("not a valid .cube LUT: {0}")]
     Invalid(String),
+    #[error("the LUT file changed while it was read")]
+    Changed,
+    #[error("the LUT file was not read to the end")]
+    Cancelled,
 }
 
 fn invalid<T>(s: impl Into<String>) -> Result<T, LutError> {
     Err(LutError::Invalid(s.into()))
 }
 
-/// A 3D LUT, red index fastest (the `.cube` order), values in 0..=1.
+/// A 16-bit channel value of `x` in 0..=1 (the quantisation error is below one 8-bit level).
+fn q16(x: f32) -> u16 {
+    (x.clamp(0.0, 1.0) * 65535.0).round() as u16
+}
+
+/// A 3D LUT, red index fastest (the `.cube` order), values in 0..=1 as 16-bit integers
+/// (6 bytes an entry: a 256-point cube is 100 MB, a 144-point cube 18 MB).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lut {
     size: usize,
-    data: Vec<[f32; 3]>,
-    /// The normalised `.cube` text, made once (a graph is built for every preview picture).
-    cube: String,
+    data: Vec<[u16; 3]>,
     hash: String,
 }
 
 impl Lut {
     fn new(size: usize, data: Vec<[f32; 3]>) -> Lut {
-        let mut cube = format!("LUT_3D_SIZE {size}\n");
+        Lut::from_u16(size, data.iter().map(|v| v.map(q16)).collect())
+    }
+
+    fn from_u16(size: usize, data: Vec<[u16; 3]>) -> Lut {
+        let mut h = Sha256::new();
+        h.update((size as u64).to_le_bytes());
         for v in &data {
-            cube.push_str(&format!("{:.6} {:.6} {:.6}\n", v[0], v[1], v[2]));
+            for c in v {
+                h.update(c.to_le_bytes());
+            }
         }
-        let hash = Sha256::digest(cube.as_bytes())
+        let hash = h
+            .finalize()
             .iter()
             .take(16)
             .map(|b| format!("{b:02x}"))
             .collect();
-        Lut {
-            size,
-            data,
-            cube,
-            hash,
-        }
+        Lut { size, data, hash }
+    }
+
+    /// The table as `f32` rows (small tables, strength, domain).
+    fn rows(&self) -> Vec<[f32; 3]> {
+        self.data
+            .iter()
+            .map(|v| v.map(|c| f32::from(c) / 65535.0))
+            .collect()
     }
 
     /// The table with only `percent` of its effect (REQ-289): every entry is blended with the
@@ -103,9 +137,55 @@ impl Lut {
         self.size
     }
 
-    /// The normalised 3D cube as `.cube` text (what ffmpeg reads).
+    /// Bytes the table takes in memory (the cache budget counts these).
+    pub fn bytes(&self) -> usize {
+        self.data.len() * 6
+    }
+
+    /// Length of the normalised text ([`Lut::write_cube`]): every entry takes the same room.
+    pub fn cube_len(&self) -> usize {
+        self.header().len() + self.data.len() * ENTRY_TEXT
+    }
+
+    fn header(&self) -> String {
+        format!("LUT_3D_SIZE {}\n", self.size)
+    }
+
+    /// Writes the normalised 3D cube as `.cube` text (what ffmpeg reads), streamed: the text
+    /// is never held whole. `progress` is called with the entries written so far every
+    /// 65536 entries and stops the writing when it returns `false`.
+    pub fn write_cube(
+        &self,
+        w: &mut impl Write,
+        progress: &mut dyn FnMut(usize) -> bool,
+    ) -> std::io::Result<()> {
+        w.write_all(self.header().as_bytes())?;
+        let mut buf = Vec::with_capacity(ENTRY_TEXT * 4096);
+        for (i, chunk) in self.data.chunks(4096).enumerate() {
+            buf.clear();
+            for v in chunk {
+                for (k, c) in v.iter().enumerate() {
+                    push_decimal(&mut buf, *c);
+                    buf.push(if k == 2 { b'\n' } else { b' ' });
+                }
+            }
+            w.write_all(&buf)?;
+            if i % 16 == 15 && !progress((i + 1) * 4096) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "cancelled",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The normalised 3D cube as text (small tables; a large one is written with
+    /// [`Lut::write_cube`]).
     pub fn to_cube(&self) -> String {
-        self.cube.clone()
+        let mut out = Vec::with_capacity(self.cube_len());
+        let _ = self.write_cube(&mut out, &mut |_| true);
+        String::from_utf8(out).unwrap_or_default()
     }
 
     /// Fingerprint of the normalised content (changes when the file's meaning changes).
@@ -115,118 +195,24 @@ impl Lut {
 
     /// Output colour for the input at grid point `(r, g, b)` (tests and sampling).
     pub fn at(&self, r: usize, g: usize, b: usize) -> [f32; 3] {
-        self.data[r + g * self.size + b * self.size * self.size]
+        self.data[r + g * self.size + b * self.size * self.size].map(|c| f32::from(c) / 65535.0)
     }
 }
 
-/// Parses `.cube` bytes (a 3D or a 1D LUT) into a 3D cube.
-pub fn parse(bytes: &[u8]) -> Result<Lut, LutError> {
-    if bytes.len() as u64 > MAX_BYTES {
-        return Err(LutError::TooLarge);
+/// `v / 65535` with six decimals (`0.xxxxxx` or `1.000000`), as eight bytes.
+fn push_decimal(buf: &mut Vec<u8>, v: u16) {
+    let x = (u64::from(v) * 1_000_000 + 32767) / 65535;
+    let int = x / 1_000_000;
+    let frac = x % 1_000_000;
+    buf.push(b'0' + int as u8);
+    buf.push(b'.');
+    let mut d = [b'0'; 6];
+    let mut f = frac;
+    for k in (0..6).rev() {
+        d[k] = b'0' + (f % 10) as u8;
+        f /= 10;
     }
-    let text = std::str::from_utf8(bytes).map_err(|_| LutError::NotText)?;
-    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let mut size3: Option<usize> = None;
-    let mut size1: Option<usize> = None;
-    let mut rows: Vec<[f32; 3]> = Vec::new();
-    let mut domain = Domain::default();
-    for (n, raw) in text.lines().enumerate() {
-        let line = raw.split('#').next().unwrap_or("").trim();
-        if line.is_empty() {
-            continue;
-        }
-        let mut it = line.split_whitespace();
-        let first = it.next().unwrap_or("");
-        let numeric = first
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | '.'));
-        if !numeric {
-            let rest: Vec<&str> = it.collect();
-            match first {
-                "TITLE" => {}
-                "LUT_3D_SIZE" | "LUT_1D_SIZE" => {
-                    let v = rest.first().and_then(|t| t.parse::<usize>().ok());
-                    let Some(v) = v.filter(|_| rest.len() == 1) else {
-                        return invalid(format!("line {}: bad size", n + 1));
-                    };
-                    let (slot, other, lo, hi) = if first == "LUT_3D_SIZE" {
-                        (&mut size3, size1, 2, MAX_3D)
-                    } else {
-                        (&mut size1, size3, 2, MAX_1D)
-                    };
-                    if other.is_some() {
-                        return invalid("a file cannot hold both a 1D and a 3D table");
-                    }
-                    if slot.is_some() {
-                        return invalid(format!("line {}: size given twice", n + 1));
-                    }
-                    if v < lo || v > hi {
-                        return invalid(format!("size {v} is outside {lo}..={hi}"));
-                    }
-                    *slot = Some(v);
-                }
-                "DOMAIN_MIN" | "DOMAIN_MAX" => {
-                    let vals: Vec<f32> = rest.iter().filter_map(|t| t.parse().ok()).collect();
-                    if vals.len() != 3
-                        || rest.len() != 3
-                        || vals.iter().any(|v| !v.is_finite() || v.abs() > MAX_DOMAIN)
-                    {
-                        return invalid(format!("line {}: bad domain", n + 1));
-                    }
-                    let slot = if first == "DOMAIN_MIN" {
-                        &mut domain.min
-                    } else {
-                        &mut domain.max
-                    };
-                    *slot = [vals[0], vals[1], vals[2]];
-                }
-                other => {
-                    return invalid(format!("line {}: unknown keyword {:?}", n + 1, clip(other)));
-                }
-            }
-            continue;
-        }
-        let mut v = [0f32; 3];
-        let mut count = 0;
-        for tok in std::iter::once(first).chain(it) {
-            if count == 3 {
-                return invalid(format!("line {}: more than three values", n + 1));
-            }
-            let x: f32 = tok
-                .parse()
-                .map_err(|_| LutError::Invalid(format!("line {}: not a number", n + 1)))?;
-            if !x.is_finite() {
-                return invalid(format!("line {}: value is not finite", n + 1));
-            }
-            v[count] = x.clamp(0.0, 1.0);
-            count += 1;
-        }
-        if count != 3 {
-            return invalid(format!("line {}: expected three values", n + 1));
-        }
-        let want = size3.map(|s| s * s * s).or(size1).unwrap_or(0);
-        if rows.len() >= want {
-            return invalid("more entries than the declared size");
-        }
-        rows.push(v);
-    }
-    domain.check()?;
-    match (size3, size1) {
-        (Some(s), None) => {
-            if rows.len() != s * s * s {
-                return invalid(format!("{} entries, {} expected", rows.len(), s * s * s));
-            }
-            Ok(Lut::new(s, domain.apply(s, rows)))
-        }
-        (None, Some(s)) => {
-            if rows.len() != s {
-                return invalid(format!("{} entries, {s} expected", rows.len()));
-            }
-            Ok(domain.apply_lut(from_1d(&rows)))
-        }
-        _ => invalid("no LUT_3D_SIZE or LUT_1D_SIZE line"),
-    }
+    buf.extend_from_slice(&d);
 }
 
 /// Largest absolute DOMAIN_MIN or DOMAIN_MAX value accepted.
@@ -286,7 +272,7 @@ impl Domain {
         if self.is_default() {
             return lut;
         }
-        Lut::new(lut.size, self.apply(lut.size, lut.data))
+        Lut::new(lut.size, self.apply(lut.size, lut.rows()))
     }
 }
 
@@ -320,8 +306,8 @@ fn trilinear(rows: &[[f32; 3]], size: usize, u: [f32; 3]) -> [f32; 3] {
 /// point, blue changing fastest. The output depth (8, 10, 12 or 16 bits) is the one that
 /// holds the largest value in the file.
 pub fn parse_3dl(bytes: &[u8]) -> Result<Lut, LutError> {
-    if bytes.len() as u64 > MAX_BYTES {
-        return Err(LutError::TooLarge);
+    if bytes.len() as u64 > MAX_WHOLE {
+        return invalid("a .3dl or .csp file larger than 64 MiB is not supported");
     }
     let text = std::str::from_utf8(bytes).map_err(|_| LutError::NotText)?;
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
@@ -387,8 +373,8 @@ pub fn parse_3dl(bytes: &[u8]) -> Result<Lut, LutError> {
 /// Parses a Cinespace `.csp` file (REQ-290): the three input tables (applied before the
 /// cube, piecewise linear), then the cube, red changing fastest.
 pub fn parse_csp(bytes: &[u8]) -> Result<Lut, LutError> {
-    if bytes.len() as u64 > MAX_BYTES {
-        return Err(LutError::TooLarge);
+    if bytes.len() as u64 > MAX_WHOLE {
+        return invalid("a .3dl or .csp file larger than 64 MiB is not supported");
     }
     let text = std::str::from_utf8(bytes).map_err(|_| LutError::NotText)?;
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
@@ -533,74 +519,6 @@ fn from_1d(rows: &[[f32; 3]]) -> Lut {
     Lut::new(n, data)
 }
 
-/// Reads and parses a LUT file (regular file, at most 16 MiB).
-pub fn read(path: &Path) -> Result<Lut, LutError> {
-    use std::io::ErrorKind;
-    let bytes = crate::base::io::read_limited(path, MAX_BYTES).map_err(|e| match e.kind() {
-        ErrorKind::InvalidData => LutError::TooLarge,
-        ErrorKind::InvalidInput => LutError::NotRegular,
-        _ => LutError::Read(e.to_string()),
-    })?;
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("cube");
-    parse_by_extension(ext, &bytes)
-}
-
-type CacheEntry = (String, u64, Option<std::time::SystemTime>, Arc<Lut>);
-
-/// Parsed LUTs by path, re-read when the file's size or modification time changes, so the
-/// preview and the export do not parse a large cube again and again (at most 8 kept).
-static CACHE: Mutex<Vec<CacheEntry>> = Mutex::new(Vec::new());
-
-/// LUT tables kept in the projects opened in this run, by the path the clips use (REQ-293):
-/// used when the file itself is gone.
-static EMBEDDED: Mutex<Vec<(String, Arc<Lut>)>> = Mutex::new(Vec::new());
-
-/// Remembers the copy of a LUT that a project carries (at most 16 are kept).
-pub fn embed(path: &str, lut: Lut) {
-    let mut e = EMBEDDED.lock().unwrap_or_else(|e| e.into_inner());
-    e.retain(|x| x.0 != path);
-    if e.len() >= 16 {
-        e.remove(0);
-    }
-    e.push((path.to_string(), Arc::new(lut)));
-}
-
-/// True when a copy of the LUT at `path` is kept from an opened project.
-pub fn has_embedded(path: &str) -> bool {
-    EMBEDDED
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .any(|x| x.0 == path)
-}
-
-/// [`read`] through the cache. A changed file is read and validated again.
-pub fn cached(path: &str) -> Result<Arc<Lut>, LutError> {
-    let meta = match std::fs::metadata(path) {
-        Ok(m) => m,
-        Err(e) => {
-            // the file is gone: the copy kept in the project is used (REQ-293)
-            let embedded = EMBEDDED.lock().unwrap_or_else(|e| e.into_inner());
-            return match embedded.iter().find(|x| x.0 == path) {
-                Some(x) => Ok(x.1.clone()),
-                None => Err(LutError::Read(e.to_string())),
-            };
-        }
-    };
-    let stamp = (meta.len(), meta.modified().ok());
-    let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(e) = c.iter().find(|e| e.0 == path && (e.1, e.2) == stamp) {
-        return Ok(e.3.clone());
-    }
-    let lut = Arc::new(read(Path::new(path))?);
-    c.retain(|e| e.0 != path);
-    if c.len() >= 8 {
-        c.remove(0);
-    }
-    c.push((path.to_string(), stamp.0, stamp.1, lut.clone()));
-    Ok(lut)
-}
-
 /// A stored LUT path is acceptable: not empty, at most 4096 characters, no NUL.
 pub fn path_ok(p: &str) -> bool {
     !p.is_empty() && p.chars().count() <= MAX_PATH_CHARS && !p.contains('\0')
@@ -632,6 +550,11 @@ pub(crate) mod tests {
         s
     }
 
+    /// Equal within the 16-bit step of the table (one 65535th).
+    fn near(a: [f32; 3], b: [f32; 3]) -> bool {
+        (0..3).all(|c| (a[c] - b[c]).abs() <= 1.0 / 65535.0)
+    }
+
     // covers: REQ-136
     #[test]
     fn valid_3d_identity_and_channel_order() {
@@ -656,7 +579,7 @@ pub(crate) mod tests {
         assert_eq!(l.size(), CUBE_FROM_1D);
         let last = CUBE_FROM_1D - 1;
         assert_eq!(l.at(0, 0, 0), [0.0, 0.0, 1.0]);
-        assert_eq!(l.at(last, last, last), [1.0, 0.5, 0.0]);
+        assert!(near(l.at(last, last, last), [1.0, 0.5, 0.0]));
         let mid = l.at(16, 16, 16);
         assert!((mid[0] - 0.5).abs() < 0.02 && (mid[1] - 0.25).abs() < 0.02);
         // each channel depends on its own input only
@@ -698,8 +621,10 @@ pub(crate) mod tests {
             assert!(!r.unwrap_err().to_string().is_empty());
         }
         assert_eq!(parse(&[0xff, 0xfe, 0x00]), Err(LutError::NotText));
-        let big = vec![b'#'; MAX_BYTES as usize + 1];
-        assert_eq!(parse(&big), Err(LutError::TooLarge));
+        // a line over 256 bytes is refused, with its number
+        let long = format!("LUT_3D_SIZE 2\n# {}\n", "x".repeat(300));
+        let e = parse(long.as_bytes()).unwrap_err().to_string();
+        assert!(e.contains("line 2") && e.contains("256"), "{e}");
     }
 
     // covers: REQ-136
@@ -710,7 +635,7 @@ pub(crate) mod tests {
                 .replace("LUT_3D_SIZE 2\n", "")
                 .replace("1 0 0", "5 -3 0.5");
         let l = parse(t.as_bytes()).unwrap();
-        assert_eq!(l.at(1, 0, 0), [1.0, 0.0, 0.5]);
+        assert!(near(l.at(1, 0, 0), [1.0, 0.0, 0.5]));
         let l2 =
             parse(b"DOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\nLUT_1D_SIZE 2\n0 0 0\n1 1 1\n").unwrap();
         assert_eq!(l2.size(), CUBE_FROM_1D);
@@ -778,19 +703,12 @@ pub(crate) mod tests {
         std::fs::write(&p, identity(2)).unwrap();
         let path = p.to_string_lossy().to_string();
         let a = cached(&path).unwrap();
-        assert!(Arc::ptr_eq(&a, &cached(&path).unwrap()));
+        assert!(std::sync::Arc::ptr_eq(&a, &cached(&path).unwrap()));
         std::fs::write(&p, identity(3)).unwrap();
         assert_eq!(cached(&path).unwrap().size(), 3);
         std::fs::write(&p, "broken").unwrap();
         assert!(matches!(cached(&path), Err(LutError::Invalid(_))));
         assert!(matches!(cached("/no/such.cube"), Err(LutError::Read(_))));
-        // the cache keeps at most 8 files
-        for i in 0..10 {
-            let q = d.path().join(format!("{i}.cube"));
-            std::fs::write(&q, identity(2)).unwrap();
-            cached(&q.to_string_lossy()).unwrap();
-        }
-        assert!(CACHE.lock().unwrap().len() <= 8);
     }
 
     #[test]
@@ -883,7 +801,7 @@ pub(crate) mod tests {
             }
         }
         let lut = parse_csp(csp.as_bytes()).unwrap();
-        assert_eq!(lut.at(1, 1, 1), [0.5, 0.5, 0.5]);
+        assert!(near(lut.at(1, 1, 1), [0.5, 0.5, 0.5]));
     }
 
     // covers: REQ-291

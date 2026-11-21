@@ -9,7 +9,8 @@
 //! only this module emits `{\k..}` tags.
 
 use crate::base::pos::{POS_MAX, Pos};
-use crate::subtitles::{Preset, ShownLine, Word};
+use crate::base::shadow::Shadow;
+use crate::subtitles::{Preset, ShownLine, StyleSettings, Word};
 use crate::time::Micros;
 
 /// File name of the subtitles inside the ffmpeg working folder.
@@ -127,7 +128,7 @@ pub fn margin_v(preset: Preset, height: u32) -> f64 {
     match preset {
         Preset::Classic => (h * 0.06).round(),
         Preset::Boxed => (h * 0.25).round(),
-        Preset::WordHighlight => (h * 0.18).round(),
+        Preset::WordHighlight | Preset::EnlargeWord | Preset::Typewriter => (h * 0.18).round(),
     }
 }
 
@@ -176,41 +177,73 @@ pub fn line_tag(l: &ShownLine, width: u32, height: u32) -> String {
     }
 }
 
-fn style(preset: Preset, width: u32, height: u32) -> String {
+/// `&H00BBGGRR` of an opaque colour.
+/// `px` pixels at a picture height of 1080, scaled to `height` (at least one).
+pub fn scaled_px(px: u8, height: u32) -> u32 {
+    ((f64::from(px) * f64::from(height) / 1080.0).round() as u32).max(1)
+}
+
+fn abgr(c: [u8; 3]) -> String {
+    format!("&H00{:02X}{:02X}{:02X}", c[2], c[1], c[0])
+}
+
+/// The shadow distance in pixels on a picture `height` pixels high (REQ-306): the distance
+/// at 1080 pixels, scaled with the height.
+pub fn shadow_px(px: u8, height: u32) -> f64 {
+    (f64::from(px) * f64::from(height) / 1080.0 * 100.0).round() / 100.0
+}
+
+fn style(preset: Preset, st: &StyleSettings, width: u32, height: u32) -> String {
     let size = font_size(width, height);
     let outline = outline(size);
     let h = f64::from(height);
     let margin_lr = margin_lr(width);
     // Colours are &HAABBGGRR (alpha 00 = opaque).
-    let (primary, secondary, outline_c, back, border, margin_v) = match preset {
+    let (primary, secondary, outline_c, mut back, border, margin_v) = match preset {
         Preset::Classic => (
-            "&H00FFFFFF",
-            "&H00FFFFFF",
-            "&H00000000",
-            "&H00000000",
+            "&H00FFFFFF".to_string(),
+            "&H00FFFFFF".to_string(),
+            "&H00000000".to_string(),
+            "&H00000000".to_string(),
             1,
             (h * 0.06).round(),
         ),
         Preset::Boxed => (
-            "&H00FFFFFF",
-            "&H00FFFFFF",
-            "&H80000000",
-            "&H80000000",
+            "&H00FFFFFF".to_string(),
+            "&H00FFFFFF".to_string(),
+            "&H80000000".to_string(),
+            "&H80000000".to_string(),
             3,
             (h * 0.25).round(),
         ),
-        Preset::WordHighlight => (
-            "&H0000FFFF",
-            "&H00FFFFFF",
-            "&H00000000",
-            "&H00000000",
+        Preset::WordHighlight | Preset::Typewriter => (
+            abgr(st.highlighted),
+            abgr(st.not_yet),
+            "&H00000000".to_string(),
+            "&H00000000".to_string(),
+            1,
+            (h * 0.18).round(),
+        ),
+        Preset::EnlargeWord => (
+            abgr(st.not_yet),
+            abgr(st.not_yet),
+            "&H00000000".to_string(),
+            "&H00000000".to_string(),
             1,
             (h * 0.18).round(),
         ),
     };
+    // the shadow is the style's Shadow and its BackColour (REQ-307); libass draws the box of
+    // BorderStyle 3 from the outline colour, so the box keeps its own colour (spike S0d)
+    let shadow = if st.shadow.px > 0 {
+        back = abgr(st.shadow.colour);
+        shadow_px(st.shadow.px, height)
+    } else {
+        0.0
+    };
     format!(
         "Style: Default,Noto Sans,{size},{primary},{secondary},{outline_c},{back},-1,0,0,0,\
-         100,100,0,0,{border},{outline},0,2,{margin_lr},{margin_lr},{margin_v},1"
+         100,100,0,0,{border},{outline},{shadow},2,{margin_lr},{margin_lr},{margin_v},1"
     )
 }
 
@@ -284,17 +317,48 @@ pub fn document(
     document_with_texts(lines, preset, width, height, shift, &[])
 }
 
+/// [`document_with_texts`] with the default style settings (2.0.4 output).
+pub fn document_with_texts(
+    lines: &[ShownLine],
+    preset: Preset,
+    width: u32,
+    height: u32,
+    shift: Micros,
+    texts: &[AssEvent],
+) -> String {
+    document_styled(
+        lines,
+        preset,
+        &StyleSettings::default(),
+        width,
+        height,
+        shift,
+        texts,
+    )
+}
+
 /// The `.ass` file of File > Export subtitles (REQ-181): every line with the project's
 /// style, its own place (`\an5\pos`) and size (`\fs`), on a frame of `width` x `height`
 /// (the project's), at timeline times.
 pub fn export_file(lines: &[ShownLine], preset: Preset, width: u32, height: u32) -> String {
+    export_file_styled(lines, preset, &StyleSettings::default(), width, height)
+}
+
+/// [`export_file`] with the project's style settings (shadow and colours in the styles).
+pub fn export_file_styled(
+    lines: &[ShownLine],
+    preset: Preset,
+    st: &StyleSettings,
+    width: u32,
+    height: u32,
+) -> String {
     let mut sorted: Vec<ShownLine> = lines
         .iter()
         .filter(|l| !l.text.trim().is_empty())
         .cloned()
         .collect();
     sorted.sort_by_key(|l| (l.start, l.line));
-    document(&sorted, preset, width, height, Micros::ZERO)
+    document_styled(&sorted, preset, st, width, height, Micros::ZERO, &[])
 }
 
 /// Text height at 100%: 5% of the picture height (assumption of REQ-111).
@@ -312,6 +376,26 @@ pub struct AssEvent {
     pub margins: Option<(u32, u32)>,
     /// Drawn with the background-box style (REQ-158).
     pub boxed: bool,
+    /// The shadow of the letters or of the box (REQ-306).
+    pub shadow: Shadow,
+}
+
+impl AssEvent {
+    /// The name of the style the event is written in: `Text` or `TextBox`, and with a
+    /// shadow `Text_<px>_<RRGGBB>` or `TextBox_<px>_<RRGGBB>` (one style per combination).
+    pub fn style_name(&self) -> String {
+        style_name(self.boxed, self.shadow)
+    }
+}
+
+fn style_name(boxed: bool, shadow: Shadow) -> String {
+    let base = if boxed { TEXT_BOX_STYLE } else { TEXT_STYLE };
+    if shadow.px == 0 {
+        base.to_string()
+    } else {
+        let c = shadow.colour;
+        format!("{base}_{}_{:02X}{:02X}{:02X}", shadow.px, c[0], c[1], c[2])
+    }
 }
 
 /// Font size in pixels of an item on a picture `height` pixels high.
@@ -325,19 +409,40 @@ pub fn font_px(height: u32, size: u16) -> u32 {
 /// own; the outline or box width, the font and the size come from the tags of each event.
 /// `Text` has a black outline; `TextBox` has a box behind the lines, black and 60% opaque
 /// (libass draws the box in the outline colour), with the box width as its padding.
-fn text_styles(width: u32, height: u32, boxed: bool) -> String {
+fn text_styles(width: u32, height: u32, texts: &[AssEvent]) -> String {
     let size = font_px(height, crate::subtitles::SIZE_NORMAL);
     let ml = margin_lr(width);
-    let row = |name: &str, outline_c: &str, border: u8| {
+    let row = |name: &str, outline_c: &str, border: u8, shadow: Shadow| {
+        // the shadow is the style's Shadow and BackColour (REQ-307); the box keeps its colour
+        // in the outline colour (libass draws it from there: spike S0d)
+        let (back, dist) = if shadow.px > 0 {
+            (abgr(shadow.colour), shadow_px(shadow.px, height))
+        } else {
+            ("&HFF000000".to_string(), 0.0)
+        };
         format!(
-            "Style: {name},Noto Sans,{size},&H00FFFFFF,&H00FFFFFF,{outline_c},&HFF000000,0,0,0,0,\
-             100,100,0,0,{border},{},0,5,{ml},{ml},0,1\n",
+            "Style: {name},Noto Sans,{size},&H00FFFFFF,&H00FFFFFF,{outline_c},{back},0,0,0,0,\
+             100,100,0,0,{border},{},{dist},5,{ml},{ml},0,1\n",
             outline(size)
         )
     };
-    let mut s = row(TEXT_STYLE, "&H00000000", 1);
-    if boxed {
-        s.push_str(&row(TEXT_BOX_STYLE, "&H66000000", 3));
+    let mut s = row(TEXT_STYLE, "&H00000000", 1, Shadow::default());
+    if texts.iter().any(|e| e.boxed) {
+        s.push_str(&row(TEXT_BOX_STYLE, "&H66000000", 3, Shadow::default()));
+    }
+    let mut seen: Vec<String> = Vec::new();
+    for e in texts.iter().filter(|e| e.shadow.px > 0) {
+        let name = e.style_name();
+        if seen.contains(&name) {
+            continue;
+        }
+        let (outline_c, border) = if e.boxed {
+            ("&H66000000", 3)
+        } else {
+            ("&H00000000", 1)
+        };
+        s.push_str(&row(&name, outline_c, border, e.shadow));
+        seen.push(name);
     }
     s
 }
@@ -346,10 +451,12 @@ fn text_styles(width: u32, height: u32, boxed: bool) -> String {
 pub const TEXT_STYLE: &str = "Text";
 pub const TEXT_BOX_STYLE: &str = "TextBox";
 
-/// [`document`] plus the events of text items (timeline times, like the lines).
-pub fn document_with_texts(
+/// [`document`] plus the events of text items (timeline times, like the lines), with the
+/// project's style settings (shadow, word colours, Enlarge word size: 2.1.0).
+pub fn document_styled(
     lines: &[ShownLine],
     preset: Preset,
+    st: &StyleSettings,
     width: u32,
     height: u32,
     shift: Micros,
@@ -362,20 +469,52 @@ pub fn document_with_texts(
          BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, \
          BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n{}\n{}\n\
          [Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n",
-        style(preset, width, height),
+        style(preset, st, width, height),
         if texts.is_empty() {
             String::new()
         } else {
-            text_styles(width, height, texts.iter().any(|e| e.boxed))
+            text_styles(width, height, texts)
         }
     );
     let at = |t: Micros| (t - shift).max(Micros::ZERO);
     for l in lines.iter().filter(|l| l.end > shift) {
         // only this module writes tags: the position comes from validated numbers
         let tag = line_tag(l, width, height);
-        if preset != Preset::WordHighlight {
+        if !preset.follows_words() {
             let text = format!("{tag}{}", escape_scripts(&l.text));
             s.push_str(&dialogue(at(l.start), at(l.end), &text));
+            continue;
+        }
+        if preset != Preset::WordHighlight {
+            let words: Vec<crate::word_styles::Timed> = words_of(l)
+                .into_iter()
+                .map(|w| crate::word_styles::Timed {
+                    start: w.start,
+                    end: w.end,
+                    text: w.text,
+                })
+                .collect();
+            let span = (l.start, l.end);
+            let events = if preset == Preset::Typewriter {
+                crate::word_styles::typewriter(
+                    &words,
+                    span,
+                    &tag,
+                    (st.highlighted, st.not_yet),
+                    shift,
+                    &escape_scripts,
+                )
+            } else {
+                let base = l.size.map_or_else(
+                    || font_size(width, height),
+                    |z| sized_font(width, height, z),
+                );
+                let big = base + scaled_px(st.enlarge, height);
+                crate::word_styles::enlarge(&words, span, &tag, big, &escape_scripts)
+            };
+            for e in events.iter().filter(|e| e.end > shift) {
+                s.push_str(&dialogue(at(e.start), at(e.end), &e.text));
+            }
             continue;
         }
         let words = words_of(l);
@@ -408,13 +547,16 @@ pub fn document_with_texts(
             "Dialogue: 1,{},{},{},,{ml},{mr},0,,{{{}}}{}\n",
             ass_time(at(e.start)),
             ass_time(at(e.end)),
-            if e.boxed { TEXT_BOX_STYLE } else { TEXT_STYLE },
+            e.style_name(),
             e.tags,
             e.text
         ));
     }
     s
 }
+
+#[cfg(test)]
+mod style_tests;
 
 #[cfg(test)]
 mod tests {
@@ -449,7 +591,7 @@ mod tests {
             .iter()
             .map(|p| document(&lines, *p, 1080, 1920, Micros::ZERO))
             .collect();
-        assert_eq!(docs.len(), 3);
+        assert_eq!(docs.len(), 5);
         assert!(
             docs.iter()
                 .all(|d| d.contains("PlayResX: 1080\nPlayResY: 1920"))

@@ -9,6 +9,7 @@
 //! Floating windows (Settings, effect popups, clip details, shortcuts) are in [`popups`].
 
 pub mod actions;
+pub mod applied_effects;
 pub mod boxes;
 pub mod effects;
 pub mod export_dialog;
@@ -595,7 +596,10 @@ fn controls_height(ui: &Ui) -> f32 {
 /// first; the picture shrinks (to nothing when the section is very small).
 fn preview_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
     let controls_h = controls_height(ui);
-    let picture_h = (ui.available_height() - controls_h).max(0.0);
+    // the Applied effects take a share of the section; the picture shrinks first (REQ-302)
+    let applied_h = applied_effects::height(ui.available_height());
+    let gap = ui.spacing().item_spacing.y;
+    let picture_h = (ui.available_height() - controls_h - applied_h - gap).max(0.0);
     let area = ScrollArea::vertical()
         .id_salt("preview-scroll")
         .auto_shrink(false);
@@ -669,6 +673,7 @@ fn preview_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
         if r.changed() {
             cmds.push(Command::Seek(Micros::from_secs_f64(secs)));
         }
+        applied_effects::show(ui, app, cache, cmds, applied_h);
     });
 }
 
@@ -710,6 +715,8 @@ pub fn action_tooltip(ctx: &Context, app: &AppState, id: actions::ActionId) -> S
     }
 }
 
+#[cfg(test)]
+mod applied_ux_tests;
 #[cfg(test)]
 mod clarity_ux_tests;
 #[cfg(test)]

@@ -167,6 +167,15 @@ pub enum Key {
     AspectOff,
     SpeedPercent,
     ClickToTurnTheView,
+    ShadowLabel,
+    EnlargeBy,
+    AppliedEffects,
+    SelectAClipToSeeItsEffects,
+    MoveUp,
+    MoveDown,
+    WholeVideoMark,
+    AppliedRowHint,
+    AppliedEffectLabel,
 }
 
 /// The English table, in the order of [`Key`].
@@ -397,6 +406,21 @@ pub const ENGLISH: &[(Key, &str)] = &[
         Key::ClickToTurnTheView,
         "Click to turn the view to this item",
     ),
+    (Key::ShadowLabel, "Shadow"),
+    (Key::EnlargeBy, "Enlarge by"),
+    (Key::AppliedEffects, "Applied effects"),
+    (
+        Key::SelectAClipToSeeItsEffects,
+        "Select a clip to see its effects",
+    ),
+    (Key::MoveUp, "Move up"),
+    (Key::MoveDown, "Move down"),
+    (Key::WholeVideoMark, "whole video"),
+    (
+        Key::AppliedRowHint,
+        "Click to open its settings. Drag, or Alt+Up and Alt+Down, to move it: a row higher up is drawn over the rows below it",
+    ),
+    (Key::AppliedEffectLabel, "Applied effect:"),
 ];
 
 /// The text of `key`.

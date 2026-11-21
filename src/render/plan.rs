@@ -94,6 +94,14 @@ impl Plan {
         }
     }
 
+    /// The LUT tables the export needs in its working folder.
+    pub fn lut_files(&self) -> &[std::sync::Arc<crate::lut::Lut>] {
+        match self {
+            Plan::Reencode { graph, .. } => &graph.lut_files,
+            Plan::StreamCopy { .. } => &[],
+        }
+    }
+
     /// The camera command files the export needs in its working folder.
     pub fn command_files(&self) -> &[(String, String)] {
         match self {
@@ -153,19 +161,38 @@ pub fn subtitles_doc_with(
     from: Micros,
     burn_lines: bool,
 ) -> Option<String> {
+    subtitles_doc_ordered(project, g, from, burn_lines, true)
+}
+
+/// [`subtitles_doc_with`]; with `ordered` false the order of the effects is ignored and
+/// everything is in the one document (a 360 video keeps its sphere: no overlay stage).
+pub fn subtitles_doc_ordered(
+    project: &Project,
+    g: &Geometry,
+    from: Micros,
+    burn_lines: bool,
+    ordered: bool,
+) -> Option<String> {
     let mut lines = project.subtitles.project(&project.timeline);
     // a line fixed to the sphere on a 360 clip is burned on the equirectangular picture
     lines.retain(|l| !(l.anchor.is_some() && line_on_sphere(project, l)));
     if !burn_lines {
         lines.clear();
     }
+    // the clips whose order the user changed have their own texts and lines (overlay stage)
+    let keep = overlay::legacy_windows(project).filter(|_| ordered);
+    if keep.is_some() {
+        let changed = overlay::changed_ids(project);
+        lines.retain(|l| !changed.contains(&l.clip));
+    }
     let windows = flat_windows(project);
-    let texts = crate::text::project_events(
+    let texts = crate::text::project_events_in(
         &project.texts,
         g.width,
         g.height,
         project.timeline.duration(),
         windows.as_deref(),
+        keep.as_deref(),
     );
     // texts fixed to the sphere need libass (and the fonts folder) too
     let anchored = windows.is_some()
@@ -178,9 +205,10 @@ pub fn subtitles_doc_with(
     if !lines.iter().any(|l| l.end > from) && !texts.iter().any(|e| e.end > from) && !anchored {
         return None;
     }
-    Some(ass::document_with_texts(
+    Some(ass::document_styled(
         &lines,
         project.subtitles.preset,
+        &project.subtitles.style,
         g.width,
         g.height,
         from,
@@ -198,6 +226,7 @@ pub fn picture_overlays(
     src: Source,
 ) -> Result<Vec<PicOverlay>, RenderError> {
     let video_end = project.timeline.duration();
+    let keep = overlay::legacy_windows(project);
     let mut out = Vec::new();
     for t in &project.texts.items {
         let Some(pic) = &t.picture else { continue };
@@ -205,6 +234,25 @@ pub fn picture_overlays(
         if end <= from.max(t.start) {
             continue;
         }
+        // the parts of the item that the overlay stage does not draw, as render times
+        let pieces: Vec<(Micros, Micros)> = match &keep {
+            None => Vec::new(),
+            Some(ws) => {
+                let own = [(t.start.max(from), end)];
+                let parts = crate::text::intersect(&own, ws);
+                if parts.is_empty() {
+                    continue;
+                }
+                if parts == own {
+                    Vec::new()
+                } else {
+                    parts
+                        .into_iter()
+                        .map(|(a, b)| (a - from, b - from))
+                        .collect()
+                }
+            }
+        };
         let path = PathBuf::from(&pic.path);
         if !path.is_file() {
             if matches!(src, Source::Preview { .. }) {
@@ -221,6 +269,7 @@ pub fn picture_overlays(
             h,
             start: (t.start - from).max(Micros::ZERO),
             end: end - from,
+            pieces,
         });
     }
     Ok(out)
@@ -328,8 +377,20 @@ pub fn plan_export_choice(
         })
         .flatten()
         .map(Box::new);
-    let subtitles = subtitles_doc_with(project, &geometry, Micros::ZERO, track.is_none());
+    let subtitles =
+        subtitles_doc_ordered(project, &geometry, Micros::ZERO, track.is_none(), !sphere);
     let bed = music_bed(project, Micros::ZERO)?;
+    if !sphere {
+        overlay::attach(
+            project,
+            &mut segs,
+            &geometry,
+            Micros::ZERO,
+            Source::Export,
+            track.is_none(),
+            true,
+        )?;
+    }
     // a 360 video keeps the whole sphere: a flat picture does not belong on it
     let pics = if sphere {
         Vec::new()
@@ -347,6 +408,7 @@ pub fn plan_export_choice(
         && !project.timeline.any_volume_keys()
         && !project.timeline.any_speed()
         && pics.is_empty()
+        && segs.iter().all(|s| s.overlay.is_empty())
         && bed.is_none()
         && subtitles.is_none()
         && track.is_none()

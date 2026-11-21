@@ -197,6 +197,8 @@ pub struct PreviewRender {
     pub subtitles: Option<String>,
     /// Camera command files of 360 clips, for the working folder.
     pub command_files: Vec<(String, String)>,
+    /// LUT tables for the working folder.
+    pub lut_files: Vec<std::sync::Arc<crate::lut::Lut>>,
 }
 
 pub(super) fn video_render(
@@ -232,8 +234,22 @@ fn video_render_bg(
     bg: Background,
     raw: Option<&Path>,
 ) -> Result<PreviewRender, String> {
-    let subtitles = subtitles_doc(project, export, from);
     let g = export.preview();
+    let src = Source::Preview { proxies: false };
+    // a clip whose effects were put in another order is drawn by the overlay stage; the
+    // background alone has none of it
+    let mut segs = segs.to_vec();
+    overlay::attach(
+        project,
+        &mut segs,
+        &g,
+        from,
+        src,
+        true,
+        bg != Background::Only,
+    )
+    .map_err(|e| e.to_string())?;
+    let subtitles = subtitles_doc(project, export, from);
     // the background alone has no pictures on it either
     let pics = if bg == Background::Only {
         Vec::new()
@@ -242,7 +258,7 @@ fn video_render_bg(
             .map_err(|e| e.to_string())?
     };
     let graph = build_graph_pics(
-        segs,
+        &segs,
         None,
         &GraphSpec {
             video: true,
@@ -282,6 +298,7 @@ fn video_render_bg(
         args: a,
         subtitles,
         command_files: graph.command_files,
+        lut_files: graph.lut_files,
     })
 }
 
@@ -366,7 +383,16 @@ pub struct CheckGraph {
 /// audio or music (the output check renders it next to a hardware file). Output `[outv]`;
 /// burned-in subtitles read `subs.ass` from the working folder, as in the export.
 pub fn check_graph(project: &Project, geometry: &Geometry) -> Result<Graph, RenderError> {
-    let segs = segments(project, Micros::ZERO, Source::Export)?;
+    let mut segs = segments(project, Micros::ZERO, Source::Export)?;
+    overlay::attach(
+        project,
+        &mut segs,
+        geometry,
+        Micros::ZERO,
+        Source::Export,
+        true,
+        true,
+    )?;
     let subtitles = subtitles_doc(project, geometry, Micros::ZERO).is_some();
     let pics = picture_overlays(project, geometry, Micros::ZERO, Source::Export)?;
     Ok(build_graph_with(
@@ -407,6 +433,15 @@ pub fn check_range_graph(
         })
         .unwrap_or(segs.len());
     segs.truncate(keep.max(1));
+    overlay::attach(
+        project,
+        &mut segs,
+        geometry,
+        from,
+        Source::Export,
+        burn_lines,
+        true,
+    )?;
     let subtitles = subtitles_doc_with(project, geometry, from, burn_lines);
     let pics = picture_overlays(project, geometry, from, Source::Export)?;
     let graph = build_graph_with(
@@ -561,6 +596,8 @@ pub struct FrameKey {
     pub luts: Option<String>,
     /// The crop of the clip (REQ-283).
     pub crop: crate::timeline::Crop,
+    /// The order of the clip's movable effects when the user changed it (REQ-304), top first.
+    pub order: Vec<crate::effect_order::Row>,
 }
 
 impl FrameKey {
@@ -612,9 +649,7 @@ pub fn frame_key(
         .shown_at(tl, at)
         .into_iter()
         .map(|l| {
-            let w = (preset == Preset::WordHighlight)
-                .then(|| l.word_at(at))
-                .flatten();
+            let w = preset.follows_words().then(|| l.word_at(at)).flatten();
             (l.text, w, l.position, l.size)
         })
         .collect();
@@ -637,8 +672,15 @@ pub fn frame_key(
             .map(|l| l.hash().to_string())
     };
     let luts = hash(crate::timeline::FrameTarget::Clip(c.id));
+    let order = project
+        .changed_orders()
+        .into_iter()
+        .find(|(r, _)| r.clip == c.id)
+        .map(|(_, o)| o)
+        .unwrap_or_default();
     Some(FrameKey {
         luts,
+        order,
         crop: c.crop,
         placement,
         path: src.path_of(m),

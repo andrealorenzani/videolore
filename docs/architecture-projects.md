@@ -41,6 +41,12 @@ One format for the whole 2.0.4 development (decision D58). Format 10 files open 
 - The read limit rises from 16 MiB to 96 MiB in this format, because LUT copies (at most 20 MB each, 64 MiB per project) are stored in the file. Every other limit stays.
 - Values added after a stage are optional with defaults, so a format 11 file written by an earlier stage opens with the same result.
 
+## Format 12 (2.1.0, planned)
+- Adds the applied-effects order per clip (`clip_order`, the movable rows top first; see [applied effects](architecture-applied-effects.md)), the shadow of each text item, the subtitle style's shadow, highlight colours and enlarge size, and the presets Enlarge word and Typewriter (see [subtitle styles](architecture-subtitle-styles.md)).
+- Every new field has a default that gives the 2.0.4 look; a project without an order uses the legacy stacking.
+- Format 12 is always written by 2.1.0; 2.0.4 and older refuse it with their newer-version message and leave the file untouched.
+- Repair on load: an unknown order id is dropped; shadow and enlarge values out of range are set to their defaults; both add a line to the repair notice.
+
 ## Loading and validation
 - Only regular files are read (a pipe or device named like a project cannot block the program), at most 16 MiB, enforced while reading.
 - After loading, everything is validated: clip ranges, music clips use audio-only files and do not overlap, subtitle lines refer to existing media, have start before end and at most 1000 characters, at most 200,000 words. Deeply nested data is rejected.

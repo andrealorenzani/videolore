@@ -3,6 +3,7 @@
 Sub-document of [business index](business.md). Requirement texts live in the human docs (`docs/business*.md`); this file is the map and the short meaning of the early requirements.
 
 ## Status and map
+- 2.1.0 STATUS done (2026-11-21, version 2.1.0): REQ-300..311 `(implemented)`, each with a `// covers:` test (grep-checked, no test run by the PM); amended to the built behaviour (300, 301, 303, 304, 305, 306-310, 311). REQ-301 answered: option C, D62. Next free ID REQ-312.
 - REQ-001..REQ-176 and REQ-178..179 are `(implemented)` (2.0.3). REQ-177 stays `(planned)` (accuracy target not met; open decision for Andrea). 2.0.4 STATUS done: all REQ-180..299 are `(implemented)` (120 requirements; each has a `// covers:` test, grep-checked); REQ-177 is the only 2.0.4 item left planned. Next free ID: REQ-300. QG-01..QG-05 implemented; QG-06 (CI time) open, to read from the first CI run; QG-07..QG-10 delivered 2.0.2; QG-11..QG-13 measured in 2.0.4 (no covers); QG-14..QG-18 built in 2.0.4 (no covers; egui_kittest not adopted).
 - REQ -> human doc (grep the ID in `docs/business*.md`):
   - editing: 001-004, 005-013, 026-029, 032-035, 038, 039, 083, 094, 105, 113, 123, 144, 149, 155; 2.0.4 gestures and autosave 189-199 (editing-gestures)
@@ -18,7 +19,8 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
   - picture: 096-099, 100-106, 112, 117, 146
   - 360 (2.0.4): 257-273 implemented (360-video)
   - frame: 124-132, 145, 148
-  - lut: 135-137
+  - lut: 135-137; 2.1.0 import and large LUTs 300-301 (implemented, business-lut)
+  - 2.1.0 (implemented): applied effects 302-305 and project format 311 (applied-effects); shadow, highlight colours, Enlarge word, Typewriter 306-310 (subtitle-styles)
   - player: 138-141, 150; 2.0.4 opening, prefs, playlist 248-256 implemented (player)
   - splash: 133, 134, 154; 2.0.4 show option 295 (splash)
   - icons: 142, 143

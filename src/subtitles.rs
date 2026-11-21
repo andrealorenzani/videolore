@@ -66,16 +66,93 @@ pub enum Preset {
     Boxed,
     /// Bold white text; the word being spoken turns yellow; a few words at a time.
     WordHighlight,
+    /// The word being spoken is drawn larger than the others (2.1.0, REQ-309).
+    EnlargeWord,
+    /// The word being spoken appears letter by letter (2.1.0, REQ-310).
+    Typewriter,
 }
 
 impl Preset {
-    pub const ALL: [Preset; 3] = [Preset::Classic, Preset::Boxed, Preset::WordHighlight];
+    pub const ALL: [Preset; 5] = [
+        Preset::Classic,
+        Preset::Boxed,
+        Preset::WordHighlight,
+        Preset::EnlargeWord,
+        Preset::Typewriter,
+    ];
+
+    /// The styles that follow the spoken words one at a time.
+    pub fn follows_words(self) -> bool {
+        matches!(
+            self,
+            Preset::WordHighlight | Preset::EnlargeWord | Preset::Typewriter
+        )
+    }
 
     pub fn name(self) -> &'static str {
         match self {
             Preset::Classic => "Classic",
             Preset::Boxed => "Box",
             Preset::WordHighlight => "Word highlight",
+            Preset::EnlargeWord => "Enlarge word",
+            Preset::Typewriter => "Typewriter",
+        }
+    }
+}
+
+/// Largest and smallest growth of the Enlarge word style, pixels at a picture height of 1080.
+pub const ENLARGE_MIN: u8 = 1;
+pub const ENLARGE_MAX: u8 = 40;
+
+/// The settings of the project's one subtitle style that the presets do not fix (2.1.0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StyleSettings {
+    /// Shadow distance and colour (REQ-307); 0 px is no shadow.
+    #[serde(default)]
+    pub shadow: crate::base::shadow::Shadow,
+    /// The colour of the word being spoken (REQ-308); the 2.0.4 yellow by default.
+    #[serde(default = "default_highlighted")]
+    pub highlighted: [u8; 3],
+    /// The colour of the other words (REQ-308); white by default.
+    #[serde(default = "default_not_yet")]
+    pub not_yet: [u8; 3],
+    /// How much larger the spoken word is for Enlarge word (REQ-309).
+    #[serde(default = "default_enlarge")]
+    pub enlarge: u8,
+}
+
+fn default_highlighted() -> [u8; 3] {
+    [255, 255, 0]
+}
+fn default_not_yet() -> [u8; 3] {
+    [255, 255, 255]
+}
+fn default_enlarge() -> u8 {
+    12
+}
+
+impl Default for StyleSettings {
+    fn default() -> Self {
+        StyleSettings {
+            shadow: crate::base::shadow::Shadow::default(),
+            highlighted: default_highlighted(),
+            not_yet: default_not_yet(),
+            enlarge: default_enlarge(),
+        }
+    }
+}
+
+impl StyleSettings {
+    pub fn is_default(&self) -> bool {
+        *self == StyleSettings::default()
+    }
+
+    /// The settings with every value inside its range.
+    pub fn clamped(self) -> StyleSettings {
+        StyleSettings {
+            shadow: self.shadow.clamped(),
+            enlarge: self.enlarge.clamp(ENLARGE_MIN, ENLARGE_MAX),
+            ..self
         }
     }
 }
@@ -191,6 +268,9 @@ pub struct Subtitles {
     pub language_overridden: bool,
     #[serde(default)]
     pub preset: Preset,
+    /// Shadow, word colours and the Enlarge word size (2.1.0, REQ-306 to REQ-310).
+    #[serde(default, skip_serializing_if = "StyleSettings::is_default")]
+    pub style: StyleSettings,
     #[serde(default)]
     pub lines: Vec<Line>,
     #[serde(default)]
@@ -709,7 +789,7 @@ pub(crate) mod tests {
         };
         assert_eq!(empty.word_at(ms(6100)), None);
         assert_eq!(clean_text(&"x".repeat(MAX_TEXT + 5)).len(), MAX_TEXT);
-        assert_eq!(Preset::ALL.len(), 3);
+        assert_eq!(Preset::ALL.len(), 5);
         assert_eq!(Preset::WordHighlight.name(), "Word highlight");
         assert_eq!(Preset::default(), Preset::Classic);
     }

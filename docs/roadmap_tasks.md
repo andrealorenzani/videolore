@@ -6,6 +6,8 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 - Each development gets one new version: the last number goes up by one (the release of 1.6.3 opened 2.0.0). Batch N ships as 2.0.(N+1): batch 1 is 2.0.2, batch 15 is 2.0.16, except batches 2 to 4. 2.0.1 was the module-cycles refactor and is delivered.
 - Batches 2, 3 and 4 (Readable text, Subtitle placement, Subtitle accuracy) are all built in 2.0.3 (one development).
 - **All remaining batches (5 to 15 and the continuous items) are built together as version 2.0.4** (one development, REQ-180 to REQ-299, planned in the business plan). The per-batch headings below keep their planned versions as the record of the batch split; the roadmap items stay open until their status is recorded.
+- **The next development is 2.1.0** (built, awaiting release): large LUT import, Applied effects and their order, shadows, word highlight colours, Enlarge word and Typewriter. It is a development of its own, not a batch; see its section below.
+- What is left from 2.0.4 (manual checks and follow-up items) is not a version and not a batch: see "Finish 2.0.4" below. The number 2.0.5 is not used for it.
 - Andrea can name a minor version (for example 2.1.0) for any batch.
 - A batch may need more than one development; a development should not mix batches unless the items share code.
 
@@ -18,18 +20,43 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 | 2.0.3 | 2. Readable text (built in 2.0.3) | Text stays readable on any picture and fits its box predictably |
 | 2.0.3 | 3. Subtitle placement (built in 2.0.3) | Moved subtitle lines and text items stay inside the picture and are easy to find |
 | 2.0.3 | 4. Subtitle accuracy (built in 2.0.3) | Reused and generated subtitles reach the accuracy target (the target decision REQ-177 is open) |
-| 2.0.6 | 5. Subtitle files and fonts | Import and more export formats for subtitles; subtitle fonts for more scripts |
-| 2.0.7 | 6. Editing gestures and safety | Autosave, timeline gestures and keyboard use |
-| 2.0.8 | 7. Whole-video and keyframe clarity | Whole-video copies and keyframes are clear and easy to edit |
-| 2.0.9 | 8. Faster hardware export | Faster really faster, and fewer wasted checks on busy computers |
-| 2.0.10 | 9. Hardware reach | Hardware export verified on more systems and for more cases |
-| 2.0.11 | 10. Export and preview speed | Measured speed of large frames, 4K, blurred fill and preview |
-| 2.0.12 | 11. Platforms and installers | One window, file managers, Wayland, menu bar, installer checks |
-| 2.0.13 | 12. Interface | Remembered windows, toolbar and shortcuts choice, accessibility |
-| 2.0.14 | 13. Video player | Opening from the file manager, session positions, preferences |
-| 2.0.15 | 14. 360 video | Anchored subtitles, 360 export details and camera |
-| 2.0.16 | 15. Effects and frame | New effects and LUT options, each with its own requirements |
+| 2.0.4 | 5. Subtitle files and fonts (built in 2.0.4) | Import and more export formats for subtitles; subtitle fonts for more scripts |
+| 2.0.4 | 6. Editing gestures and safety (built in 2.0.4) | Autosave, timeline gestures and keyboard use |
+| 2.0.4 | 7. Whole-video and keyframe clarity (built in 2.0.4) | Whole-video copies and keyframes are clear and easy to edit |
+| 2.0.4 | 8. Faster hardware export (built in 2.0.4) | Faster really faster, and fewer wasted checks on busy computers |
+| 2.0.4 | 9. Hardware reach (built in 2.0.4) | Hardware export verified on more systems and for more cases |
+| 2.0.4 | 10. Export and preview speed (built in 2.0.4) | Measured speed of large frames, 4K, blurred fill and preview |
+| 2.0.4 | 11. Platforms and installers (built in 2.0.4) | One window, file managers, Wayland, menu bar, installer checks |
+| 2.0.4 | 12. Interface (built in 2.0.4) | Remembered windows, toolbar and shortcuts choice, accessibility |
+| 2.0.4 | 13. Video player (built in 2.0.4) | Opening from the file manager, session positions, preferences |
+| 2.0.4 | 14. 360 video (built in 2.0.4) | Anchored subtitles, 360 export details and camera |
+| 2.0.4 | 15. Effects and frame (built in 2.0.4) | New effects and LUT options, each with its own requirements |
+| 2.1.0 | Next development (built, awaiting release) | Large LUT import, Applied effects and their order, shadows, word highlight colours, Enlarge word and Typewriter |
+| not a version | Finish 2.0.4 | Manual checks and future work left from 2.0.4 |
 | continuous | Quality and measurements | Measurements and architecture debt, done alongside any batch |
+
+## 2.1.0 — Applied effects, subtitle styles and LUT import (next development, built)
+- **Goal**: the maintainer's three 144-point LUT files can be chosen; the effects of a clip are listed in the Applied effects widget and their order can be chosen; texts get a shadow; subtitles get two highlight colours and two word styles (Enlarge word, Typewriter).
+- **Status**: built in 2.1.0; REQ-300 to REQ-311 are implemented, each with a test. The release follows the development (STATUS done in the business documents).
+- **Manual checks** (by hand, see [release verification](business-verification.md)): the three maintainer LUTs chosen on a clip on a real computer, with the preview and export compared by eye (REQ-300); the preview start with a 256-point LUT on a real computer (roadmap, "Binary input for 256-point LUTs").
+- **Depends on**: nothing open. It is the next version after 2.0.4 and is not a batch of the roadmap.
+- **Postponed to later versions** (no order yet, see the [roadmap](roadmap.md)): binary input and a smaller preview table for 256-point LUTs; the 360 sphere-fixed items in the order; keyframes for the text shadow; a user order for the fixed effects; a separate place for each subtitle line in the widget; Enlarge word and Typewriter in the subtitle files; the Typewriter caret and typing sound.
+
+## Finish 2.0.4 (manual checks and future work; not a version, not a batch)
+- **Goal**: the checks that need real systems, hardware and ears, and the follow-up items of the 2.0.4 build. Every 2.0.4 requirement is built except REQ-177 (open decision, see the list); no implementation batch is left from 2.0.4.
+- **Manual checks** (by hand, see [release verification](business-verification.md)): items 26, 29 and 30 (screen readers, Windows "Open with", window places); items 31 to 35 (clip speed, picture items, off-view arrows, per-clip camera paths, picture subtitles in the player).
+- **Future work from the 2.0.4 build** (no order yet):
+  1. Asynchronous pre-pass for the spatial sound (REQ-273): the preview and the export prepare the turned sound synchronously now.
+  2. Earlier display of picture subtitles: one already on screen when a run starts appears at its next change (REQ-253).
+  3. Picture subtitles on 360 clips and on paused stills (REQ-253).
+  4. Camera roll in the ambisonic rotation (REQ-273; the roll is not applied now).
+  5. Measure the CI times (QG-06) from the first CI run after the QG-14 change.
+  6. REQ-177: decide the accuracy target (see the [subtitle accuracy](business-subtitle-accuracy.md) document).
+  7. REQ-206: skeleton render of the hardware check.
+  8. Blurred fill in playback.
+  9. macOS Quit item in the application menu (Cmd+Q stays with the prompt).
+  10. Not built, no batch yet (from QG-16 and QG-17): one keyframe module for the 360 camera and the picture; smaller project page images; the player's package list (only if it is published).
+- **Depends on**: items 1 to 9 are independent; the manual checks need real Windows, macOS and Linux systems, a 360 player, a Blu-ray rip and a DVD rip, and ears.
 
 ## 2.0.1 — Module cycles (delivered)
 - **Status**: delivered in 2.0.1. The shared helpers are in `src/base/`, the top-level modules form no cycle, and `tests/module_cycles.rs` fails `cargo test` when a cycle is added. Not a batch; see the [changelog](changelog.md).
@@ -47,22 +74,6 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 ## 2.0.3 — Subtitle accuracy (batch 4, delivered in 2.0.3 except the target)
 - **Status**: delivered in 2.0.3 except REQ-177, the accuracy target of reused subtitles, which is planned and open: see the [roadmap](roadmap.md), Priority 1 (decision point) and Priority 3.
 - **Still open in the roadmap**: the gated alignment test on CI's versions, the five-minute real-speech test, and the larger speech levels.
-
-## 2.0.5 — Finish 2.0.4 (what is left after 2.0.4)
-- **Goal**: the checks that need real systems, hardware and ears, and the follow-up items of the 2.0.4 build. Every 2.0.4 requirement is built except REQ-177 (open decision, see the list); no implementation batch is left from 2.0.4.
-- **Manual checks** (by hand, see [release verification](business-verification.md)): items 26, 29 and 30 (screen readers, Windows "Open with", window places); items 31 to 35 (clip speed, picture items, off-view arrows, per-clip camera paths, picture subtitles in the player).
-- **Future work from the 2.0.4 build** (no order yet):
-  1. Asynchronous pre-pass for the spatial sound (REQ-273): the preview and the export prepare the turned sound synchronously now.
-  2. Earlier display of picture subtitles: one already on screen when a run starts appears at its next change (REQ-253).
-  3. Picture subtitles on 360 clips and on paused stills (REQ-253).
-  4. Camera roll in the ambisonic rotation (REQ-273; the roll is not applied now).
-  5. Measure the CI times (QG-06) from the first CI run after the QG-14 change.
-  6. REQ-177: decide the accuracy target (see the [subtitle accuracy](business-subtitle-accuracy.md) document).
-  7. REQ-206: skeleton render of the hardware check.
-  8. Blurred fill in playback.
-  9. macOS Quit item in the application menu (Cmd+Q stays with the prompt).
-  10. Not built, no batch yet (from QG-16 and QG-17): one keyframe module for the 360 camera and the picture; smaller project page images; the player's package list (only if it is published).
-- **Depends on**: items 1 to 9 are independent; the manual checks need real Windows, macOS and Linux systems, a 360 player, a Blu-ray rip and a DVD rip, and ears.
 
 ## 2.0.6 — Subtitle files and fonts
 - **Goal**: subtitles can be imported and exported in more formats, and scripts other than Latin, Greek and Cyrillic look right.
@@ -146,7 +157,8 @@ The [roadmap](roadmap.md) split into suggested versions and batches, in the orde
 - 2.0.2 (batch 1) before everything (the release checks and the test reliability).
 - 2.0.3 (batches 2 to 4) delivered: the text box and its width are used by the placement rules.
 - Batch 4 (delivered in 2.0.3) before the subtitle import re-timing in 2.0.6 (batch 5).
-- 2.0.5 (what is left after 2.0.4: manual checks and follow-ups) follows 2.0.4; its items are independent.
+- 2.1.0 follows 2.0.4 and is built; it depends on nothing open.
+- The finish-2.0.4 items (manual checks and follow-ups) are not a batch; they are independent of 2.1.0.
 - 2.0.9 (batch 8) before 2.0.10 (batch 9): the hardware reach uses the check.
 - 2.0.12 (batch 11) before 2.0.14 (batch 13): the file association needs the installers.
 - 2.0.15 (batch 14) and 2.0.16 (batch 15) share the camera and keyframe code: the camera items wait for the shared module.

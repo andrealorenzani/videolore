@@ -26,6 +26,12 @@ pub fn read_capped(mut r: impl Read, limit: u64) -> io::Result<Vec<u8>> {
 /// device) is refused without blocking; a file that grows while being read is refused too.
 /// Errors of kind `InvalidData` mean "too large", `InvalidInput` "not a regular file".
 pub fn read_limited(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
+    read_capped(open_regular(path)?, limit)
+}
+
+/// Opens a regular file for reading without ever blocking on a pipe swapped in after the
+/// check (`InvalidInput` when the path is not a regular file).
+pub fn open_regular(path: &Path) -> io::Result<std::fs::File> {
     use io::{Error, ErrorKind};
     let not_regular = || Error::new(ErrorKind::InvalidInput, "not a regular file");
     if !std::fs::metadata(path)?.is_file() {
@@ -48,7 +54,7 @@ pub fn read_limited(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
     if !f.metadata()?.is_file() {
         return Err(not_regular());
     }
-    read_capped(f, limit)
+    Ok(f)
 }
 
 /// Atomically writes `contents` to `path`: temp file in the same folder, fsync, rename.

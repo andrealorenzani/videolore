@@ -68,5 +68,9 @@ Part of [Architecture](architecture.md). Built in 1.3.0 (requirements REQ-108..1
 - `text.rs` keeps the text item types and `Texts`; the code moved to `text/timing.rs` (times and time to live), `text/layout.rs` (the measured layout and fit) and `text/events.rs` (the ASS events, cut per segment). No behaviour change.
 - **One box rule:** `placement::padded_line_rect` gives the box of a line with its padding. The measured box (`placement::line_rect`) and the preview's hit boxes (`ui/placement.rs` `line_box`) both use it, with the same `line_font` and `line_wrap`, so the box you drag is the box that is exported.
 
+## Shadow (2.1.0, planned)
+- Each text item has a shadow (0 to 20 px at 1080 px height, default 0, colour default black). Without a box the shadow is the ASS style's shadow; with a box it is a copy of the text drawn before it, in a shadow style, shifted by the distance. Details and tests: [subtitle styles](architecture-subtitle-styles.md#shadows-texts-and-subtitles).
+- The stacking of flat texts stays as in 2.0.4 (later items on top); from 2.1.0 the Applied effects order can move a text below the LUT: [applied effects](architecture-applied-effects.md).
+
 ## Deviations (1.3.0)
 - **Time to live:** the plan refused a time to live longer than the video on load. As built, on load a text item is refused as damaged only outside 0.1 s to 24 hours. A longer-than-video value is accepted and the text is cut at the end of the video; when the item is added, edited or moved, its time to live is clamped to the video length.

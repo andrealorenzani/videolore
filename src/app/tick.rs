@@ -9,6 +9,7 @@ impl AppState {
     /// Per-frame housekeeping: background results, preview frames, playhead, export.
     pub fn tick(&mut self, now: Instant) {
         self.tick_camera(now);
+        self.tick_lut_load(now);
         self.tick_autosave(now);
         // a window that changed is saved once it stays so for a moment (REQ-234)
         if let Some(t) = self.window_dirty

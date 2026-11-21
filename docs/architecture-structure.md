@@ -74,3 +74,8 @@ No change to the rules. Capped reads, regular-file checks and atomic writes now 
 - New modules: `spatial`, `picture`, `autosave`, `instance`, `hwdec`, `siblings`, `ui/strings`, `ui/theme`, and the player's `settings` and `playlist`. The root `build.rs` checks the splash summaries. The list is in [components](architecture-components.md).
 - The cycle check (`tests/module_cycles.rs`, seven tests) passes after each stage; `base` still imports no module of videolore. The large files of 2.0.1 were reduced: `render.rs` keeps 92 lines with its submodules, and `app.rs` keeps the state and the core of the dispatch (about 2,100 lines) with its arms in `app/`.
 - No module `ui/keyframe_timeline.rs` exists: the keyframe widget is in the existing UI modules (ADR-176).
+
+## 2.1.0 planned changes to the structure
+- `lut.rs` becomes `lut/` (`mod` for the public API, `parse` for the streamed pure reader, `store` for the cache, the job and the Work copy). The parser imports only the standard library and `thiserror`; the store imports `base`, the job module and `parse`.
+- New pure modules `effect_order` (movable rows and order) and `word_styles` (word plans); `word_styles` does not import `ass`, so `ass` may use it.
+- New `render/overlay` (per-clip stage) and `ui/applied_effects` (widget). No module may import `render`, `app` or `ui` from a pure module; `tests/module_cycles.rs` keeps checking the production code.

@@ -77,6 +77,7 @@ pub enum RenderError {
 mod args;
 mod graph;
 mod inputs;
+pub mod overlay;
 mod plan;
 mod segments;
 
@@ -88,5 +89,7 @@ pub use self::segments::*;
 
 #[cfg(test)]
 pub(crate) mod golden_tests;
+#[cfg(test)]
+mod overlay_tests;
 #[cfg(test)]
 pub(crate) mod tests;

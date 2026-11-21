@@ -23,6 +23,7 @@ pub mod base;
 pub mod camera;
 pub mod desktop;
 pub mod dialogs;
+pub mod effect_order;
 pub mod export;
 pub mod ffmpeg;
 pub mod fonts;
@@ -62,6 +63,7 @@ pub mod subtitles;
 pub mod text;
 pub mod time;
 pub mod timeline;
+pub mod word_styles;
 
 pub mod ui;
 

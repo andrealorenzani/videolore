@@ -174,6 +174,9 @@ pub struct TextItem {
     /// Outline or background box (2.0.3, REQ-158); a project saved before has none.
     #[serde(default)]
     pub readability: Readability,
+    /// The shadow of the letters or of the box (2.1.0, REQ-306); a project saved before has none.
+    #[serde(default, skip_serializing_if = "crate::base::shadow::Shadow::is_none")]
+    pub shadow: crate::base::shadow::Shadow,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<Anchor360>,
     /// A picture item (2.0.4, REQ-287): the image is drawn in the box instead of text; the
@@ -220,6 +223,7 @@ impl TextItem {
             width: DEFAULT_WIDTH,
             height: DEFAULT_HEIGHT,
             readability: Readability::Outline,
+            shadow: crate::base::shadow::Shadow::default(),
             anchor: None,
             picture: None,
             karaoke: Vec::new(),

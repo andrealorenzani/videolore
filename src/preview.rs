@@ -508,6 +508,7 @@ struct StillRequest {
     background: Option<KeptBackground>,
     subtitles: Option<String>,
     command_files: Vec<(String, String)>,
+    lut_files: Vec<Arc<crate::lut::Lut>>,
     geometry: Geometry,
     at: Micros,
     key: FrameKey,
@@ -588,7 +589,7 @@ fn render_still(
     if let Some(doc) = &req.subtitles {
         write_subtitles(cwd, doc).ok()?;
     }
-    render::write_command_files(cwd, &req.command_files).ok()?;
+    render::write_command_files(cwd, &req.command_files, &req.lut_files).ok()?;
     let runner = config.runner.cancellable(Arc::clone(&cancel));
     // a blurred background that did not change is not drawn again (REQ-223); a render that
     // does not work out falls back to the whole picture
@@ -962,7 +963,8 @@ impl Preview {
         if let Some(doc) = &v.subtitles {
             write_subtitles(&cwd, doc).map_err(|e| e.to_string())?;
         }
-        render::write_command_files(&cwd, &v.command_files).map_err(|e| e.to_string())?;
+        render::write_command_files(&cwd, &v.command_files, &v.lut_files)
+            .map_err(|e| e.to_string())?;
         self.prepare_spatial(&cfg, &cwd, project, from, src)?;
         let (rate, ch) = self.sink.format();
         let aargs = render::preview_audio_args(
@@ -1108,6 +1110,7 @@ impl Preview {
                 background,
                 subtitles: r.subtitles,
                 command_files: r.command_files,
+                lut_files: r.lut_files,
                 geometry: eg.preview(),
                 at,
                 key,

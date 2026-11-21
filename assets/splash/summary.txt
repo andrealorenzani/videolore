@@ -1,6 +1,6 @@
 New in this version
-Subtitles can be exported as WebVTT or ASS, imported from .srt and .vtt files, and kept as a separate track in the full video export.
-Autosave every 2 minutes with crash recovery; drag clip edges and markers on the timeline; the [ and ] keys jump between markers.
-Clips can run from 50% to 200% speed; PNG pictures can be placed on the picture; a clip can have its own frame shape.
-360 lines keep their box and highlight, can be re-anchored, and show arrows when out of view; spatial sound follows the camera.
-Faster export with AV1 and VP9; workspaces, themes and a customisable toolbar; Crop, volume keyframes and LUT strength.
+LUT files up to 256 points and 512 MiB now open; large ones load in the background with progress.
+Applied effects widget: move a LUT, text, picture or the subtitles up or down in the order they are applied.
+Shadows for texts and subtitles; two word highlight colours; Enlarge word and Typewriter subtitle styles.
+Projects are saved in format 12: 2.0.4 and older refuse them, and older projects open as before.
+A new LUT or picture goes on top of the effects order.

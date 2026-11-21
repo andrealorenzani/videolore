@@ -80,6 +80,9 @@ pub enum Command {
     },
     SelectLine(Option<LineId>),
     SetPreset(Preset),
+    /// Sets the shadow, the word colours and the Enlarge word size of the subtitle style
+    /// (2.1.0, REQ-306 to REQ-309); values are brought inside their ranges.
+    SetSubtitleStyle(crate::subtitles::StyleSettings),
     /// A language code, or `None` to detect it.
     SetLanguage(Option<String>),
     OpenSettings,
@@ -252,6 +255,12 @@ pub enum Command {
     },
     /// Opens the popup of a picture effect of the whole video (a click on its row).
     OpenFrameEffect(EffectKind),
+    /// Moves a movable row of the Applied effects of a clip (REQ-304).
+    MoveRow {
+        clip: ClipId,
+        row: crate::effect_order::Row,
+        mv: RowMove,
+    },
     /// Asks for a LUT file and applies it to a clip or the whole video (REQ-135).
     PickLut(FrameTarget),
     /// Applies the LUT file at `path` (the file chosen in the dialog).
@@ -595,7 +604,7 @@ impl Command {
             Command::DeleteSubtitle(_) => "Delete subtitle line",
             Command::SetSubtitleText(..) => "Edit subtitle text",
             Command::RetimeSubtitle { .. } => "Change subtitle timing",
-            Command::SetPreset(_) => "Subtitle style",
+            Command::SetPreset(_) | Command::SetSubtitleStyle(_) => "Subtitle style",
             Command::SetLanguage(_) => "Subtitle language",
             Command::ApplyEffect {
                 effect: EffectKind::Fade,
@@ -622,6 +631,7 @@ impl Command {
                 effect: EffectKind::Move,
                 ..
             } => "Move",
+            Command::MoveRow { row, mv, .. } => super::applied::move_label(*row, *mv),
             Command::SetLut { .. } => "Apply LUT",
             Command::RemoveLut(_) => "Remove LUT",
             Command::RemoveAspect | Command::RemoveFrameEffect { .. } => "Remove effect",

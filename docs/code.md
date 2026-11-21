@@ -23,6 +23,7 @@ This page covers building and running; the details are in the sub-documents:
 | [code-2.0.4-batches-12-15.md](code-2.0.4-batches-12-15.md) | 2.0.4, stages 8 to 12: interface settings (window, sections, workspaces, toolbar, shortcuts, theme, text size, text table, accessibility), the player (settings, playlist, open in editor), roll and easing of the camera, LUT readers, custom aspect, blur level, splash option, cache limit, page image and policy |
 | [code-export.md](code-export.md) | The Export dialog (names, formats, presets, only audio, session memory), Clean audio, text boxes with best-fit size, project format 6 (all since 1.4.0) |
 | [code-frame.md](code-frame.md) | Change aspect, Scale and Move with keyframes: frame size, expressions and graph, popups and handles, project format 7 (all since 1.5.0) |
+| [code-2.1.0.md](code-2.1.0.md) | 2.1.0: large LUTs (256 points, streamed, background load, Work copies), the Applied effects widget and the order of the effects (the overlay stage), shadows, word colours, Enlarge word, Typewriter, project format 12, spike results and what is left |
 | [code-lut.md](code-lut.md) | Apply LUT: the `.cube` parser, the filter graph, missing files, project format 8 (1.6.0) |
 | [code-splash-icons.md](code-splash-icons.md) | The splash screen (editor and player) and the icons (Phosphor), with the list of controls and their icons (1.6.0, 1.6.2) |
 | [code-player.md](code-player.md) | The Cargo workspace, videolore player (open rules, playback, 360, subtitles, full screen) and its packaging (1.6.0) |

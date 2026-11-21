@@ -7,6 +7,7 @@
 use super::*;
 use crate::base::pos::POS_MAX;
 use crate::camera::Camera;
+use crate::effect_order::Row;
 use crate::text::{self, TextId, TextItem};
 
 /// Disabled reason of adding a text outside the video.
@@ -87,6 +88,8 @@ impl AppState {
             Ok(())
         })?;
         if let Some(id) = added {
+            // a new picture goes on top of the clip's other effects (REQ-304)
+            self.project.put_on_top(Row::Picture(id.0), None);
             self.selection.select_only(ObjRef::Text(id));
         }
         Ok(())

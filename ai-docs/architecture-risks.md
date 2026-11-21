@@ -118,3 +118,14 @@ Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 ti
 - Autosave: disk time for large projects every 2 minutes (stage 2); copy on the UI thread costs O(clips).
 - Fonts raise every installer by the Arabic and Devanagari faces only (stage 1); the UI font parse happens on the first open of the subtitle list (measured). CJK depends on system fonts (D61).
 - Stage 0 split: large diff with no behaviour change; the PE checks golden tests and the cycle test before any feature (ADR-168).
+
+## 2.1.0 PLAN (open at the plan; plan § 11, § 12)
+- Decided by Andrea 2026-11-21: Q-1 = B (edge 256, 512 MiB file cap, background load with progress); Q-2 = A (whole frame graded); Q-3 = A (sphere-fixed items are fixed rows); REQ-307 kept as written (plan § 12).
+- 256-point LUT: about 450 MB Work copy and 450 MB of text parsed by each ffmpeg process at start; ffmpeg float table about 201 MB per process (S0a measures; a preview-start limit would need a binary input or a smaller preview table, decided with Andrea).
+- Enlarge word centre depends on libass layout versus the in-house measure (spike S0b); fallback is decided with Andrea if it misses 2 px.
+- Typewriter depends on the \k reveal and the hidden-letter alpha of libass (spike S0c).
+- Work copy disk: about 450 MB per distinct 256^3 LUT per Work folder (80 MB at 144^3); preview start may write it (time on weak disks unmeasured).
+- LUT after fades in new projects: a LUT that lifts black shows on a faded frame (ASSUMPTION; new projects only).
+- Golden argv of projects with LUTs changes (file name `lut-<hash16>.cube`); the PE updates only the fixtures that use a LUT and says so.
+- Boxed shadows (REQ-307 as written): design A needs libass to draw the box fill from OutlineColour (spike S0d); design B draws the box as a vector event, which must match the 2.0.4 box geometry at 1080 px. Event caps (2000/20000) re-checked on a long subtitle file.
+- The 2.0.4 stacking of overlapping texts is assumed (later items on top) and confirmed by reading; a test pins it before the overlay stage (S6).

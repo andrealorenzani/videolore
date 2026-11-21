@@ -156,7 +156,7 @@ fn a_corner_handle_scales_around_the_opposite_corner_in_one_undo_step() {
     apply(&mut app, EffectKind::Scale, Target::WholeVideo);
     // the keyframe at the start is the selected one
     app.popups.key = Some(Micros::ZERO);
-    let mut h = Harness::new(app, 1280.0, 800.0);
+    let mut h = Harness::new(app, 1280.0, 1000.0);
     let pic = picture(&h);
     let n = h.app.history.undo_len();
     // the bottom right corner to the middle of the picture: half size

@@ -90,7 +90,6 @@ Batch 10 of the [roadmap tasks](roadmap_tasks.md). Hardware parts (AV1, VP9, pre
 - Direct upload to social networks.
 - (0.4.0) Video hardware for effects or subtitles; preview copies stay on the normal method for encoding (decoding follows REQ-214, planned).
 - (0.4.0) Per-vendor quality sliders; any technical export setting beyond the presets of the Export dialog.
-- Separate subtitle files and the switchable subtitle track: planned in 2.0.4 (REQ-180 to REQ-182, see [Subtitle files](business-subtitle-files.md)).
 - (0.4.0) AMD hardware through AMD's own interface on Linux (AMD on Linux goes through VA-API); Intel Macs; ARM Windows and Linux.
 - (0.4.0) Bundling or installing graphics drivers.
 - (0.4.0) A visible message when the fallback was used (shown only in Advanced).

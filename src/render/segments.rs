@@ -37,6 +37,8 @@ impl Source {
 /// One clip as seen by the renderer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Segment {
+    /// The timeline clip this part is made from.
+    pub clip: crate::timeline::ClipId,
     pub media: MediaId,
     pub path: PathBuf,
     pub has_audio: bool,
@@ -85,6 +87,10 @@ pub struct Segment {
     /// The ordinal of the picture-based subtitle track drawn over this clip (REQ-253, the
     /// player): the file's own subtitle stream is overlaid on the picture. Not on a 360 clip.
     pub picture_sub: Option<u8>,
+    /// What the overlay stage draws over this clip, bottom to top (REQ-304); empty for a clip
+    /// with the order of the older versions, which keeps its LUT in its own chain and has its
+    /// texts, lines and pictures drawn after the concat. See [`overlay`].
+    pub overlay: Vec<overlay::OverlayStep>,
 }
 
 /// The LUT of `target` for a render: `None` without one; a file that cannot be used is an
@@ -218,6 +224,8 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
             let (fade_in, fade_out) = tl.fades_of(i);
             let lut_clip = lut_for(tl, crate::timeline::FrameTarget::Clip(c.id), src)?;
             out.push(Segment {
+                clip: c.id,
+                overlay: Vec::new(),
                 lut_clip,
                 media: m.id,
                 path: src.path_of(m),
@@ -300,10 +308,17 @@ pub(super) fn anchored_doc(
         events.extend(crate::text::equirect_events(t, w, h, end_all, Some(&win)));
     }
     let shift = start.max(from);
-    events
-        .iter()
-        .any(|e| e.end > shift)
-        .then(|| ass::document_with_texts(&[], project.subtitles.preset, w, h, shift, &events))
+    events.iter().any(|e| e.end > shift).then(|| {
+        ass::document_styled(
+            &[],
+            project.subtitles.preset,
+            &project.subtitles.style,
+            w,
+            h,
+            shift,
+            &events,
+        )
+    })
 }
 
 /// True when the clip a line is shown in is a 360 clip.

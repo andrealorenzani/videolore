@@ -6,7 +6,7 @@ Back to the [index](code.md). Requirements REQ-135, REQ-136, REQ-137.
 
 | Where | What |
 |---|---|
-| `src/lut.rs` | `.cube` parser (`parse`, `read`), `Lut` (a normalised 3D cube + hash), `cached(path)`, `path_ok`, `display_name` |
+| `src/lut/mod.rs`, `lut/parse.rs`, `lut/store.rs` | the `Lut` table (16-bit values + hash), the streamed `.cube` parser (`parse`, `parse_reader`), `.3dl`/`.csp`, the cache, `Load`, Work copies (2.1.0, [code-2.1.0.md](code-2.1.0.md)) |
 | `src/timeline.rs` | `clip_luts: Vec<ClipLut>` (since 1.6.1 there is no whole-video LUT: `FrameTarget::Whole` writes every clip's entry); `lut_of`, `set_lut`, `any_lut`; split/merge/remove rules; `DIFFERENT_LUTS` |
 | `src/project.rs` | schema 8; `validate_luts` (damaged entries removed with a note, missing files named) |
 | `src/render/` | `Segment.lut_whole` / `lut_clip`, `lut_for`, `lut_chain` (graph), `RenderError::Lut`, `FrameKey.luts`, the re-encode rule in `plan_export_choice` |
@@ -18,21 +18,22 @@ Back to the [index](code.md). Requirements REQ-135, REQ-136, REQ-137.
 
 ## The LUT file
 
-`lut::parse` takes untrusted bytes and never panics: at most 16 MiB (`MAX_BYTES`), UTF-8 (a BOM is
-accepted), `#` comments, the keywords `TITLE`, `LUT_3D_SIZE` (2..=65), `LUT_1D_SIZE` (2..=4096),
-`DOMAIN_MIN`/`DOMAIN_MAX` (only the default 0..1; anything else is refused with a message), an exact
-number of entries, finite numbers clamped to 0..1, no mixing of 1D and 3D. A 1D table becomes a 33^3
-cube by per-channel linear sampling, so the graph has one code path. `Lut::to_cube()` writes the
-normalised text and `Lut::hash()` fingerprints it (16 bytes of SHA-256, hex). `lut::cached` keeps
-at most 8 parsed files, re-reading a file when its size or modification time changes.
-`lut::read` uses `base::io::read_limited` (regular files only).
+`lut::parse` / `lut::parse_reader` take untrusted bytes and never panic: a `.cube` file of at most 512 MiB
+(`MAX_BYTES`), read as a stream with lines of at most 256 bytes (`MAX_LINE`), UTF-8 (a BOM is accepted), `#`
+comments, the keywords `TITLE`, `LUT_3D_SIZE` (2..=256 since 2.1.0), `LUT_1D_SIZE` (2..=4096),
+`DOMAIN_MIN`/`DOMAIN_MAX`, an exact number of entries, finite numbers clamped to 0..1, no mixing of 1D and
+3D. A 1D table becomes a 33^3 cube by per-channel linear sampling, so the graph has one code path. The table
+keeps 16 bits a channel (`Lut::at` gives `f32`; the error is under one 8-bit level). `Lut::write_cube` writes the
+normalised text (27 bytes an entry) and `Lut::hash()` fingerprints the table (16 bytes of SHA-256, hex).
+`lut::cached` keeps parsed files by bytes (192 MB, least recently used first), re-reading a file when its
+size or modification time changes. `.3dl` and `.csp` files are read whole (at most 64 MiB).
 
 ## In the filter graph (ADR-110)
 
 `lut_chain` returns, with a leading comma, `format=gbrp,lut3d=file=<name>:interp=tetrahedral[,lut3d=...],format=<pix_fmt>`
 (empty without a LUT, so projects without a LUT give the byte-identical 1.5.0 argv: the golden tests
 are unchanged). The whole video's table comes first, then the clip's. The cube text goes into the
-private Work folder as `lut-whole.cube` / `lut-clip-<segment>.cube` through `Graph::command_files`
+private Work folder as `lut-<hash16>.cube` (one per distinct table, 2.1.0) through `Graph::lut_files` and `write_command_files`
 (the same path as the camera command files), so no file name or text of the user is in a filter.
 Where the filter sits:
 

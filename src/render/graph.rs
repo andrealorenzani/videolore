@@ -3,6 +3,7 @@
 
 //! The single `filter_complex` graph of a render.
 
+use super::overlay::OverlayStep;
 use super::*;
 
 /// What a graph must produce.
@@ -28,13 +29,23 @@ pub struct Graph {
     /// Files the graph reads from the working folder: `(name, content)`, the camera
     /// commands of the 360 clips (written by [`write_command_files`]).
     pub command_files: Vec<(String, String)>,
+    /// The LUT tables the graph reads, each as `lut-<hash>.cube` in the working folder
+    /// (written once per content by [`write_command_files`], ADR-206).
+    pub lut_files: Vec<std::sync::Arc<crate::lut::Lut>>,
     /// The ambisonic sound turned by the camera that the graph reads as inputs (REQ-273): run
     /// [`crate::spatial::prepare`] for each into the working folder before ffmpeg starts.
     pub spatial: Vec<crate::spatial::SpatialJob>,
 }
 
 /// Writes the command files of a graph into the working folder `dir`.
-pub fn write_command_files(dir: &Path, files: &[(String, String)]) -> io::Result<()> {
+pub fn write_command_files(
+    dir: &Path,
+    files: &[(String, String)],
+    luts: &[std::sync::Arc<crate::lut::Lut>],
+) -> io::Result<()> {
+    for l in luts {
+        crate::lut::store::write_copy(dir, l)?;
+    }
     for (name, content) in files {
         std::fs::write(dir.join(name), content)?;
         if name.ends_with(".ass") {
@@ -82,19 +93,16 @@ pub(super) fn fades(c: &mut String, filter: &str, s: &Segment, early: Micros) {
 /// The picture goes through planar RGB for the table and back to `pix_fmt`.
 pub(super) fn lut_chain(
     s: &Segment,
-    i: usize,
     pix_fmt: &str,
-    files: &mut Vec<(String, String)>,
+    luts: &mut Vec<std::sync::Arc<crate::lut::Lut>>,
 ) -> String {
     let mut c = String::new();
-    let mut add = |name: String, l: &crate::lut::Lut| {
-        c.push_str(&format!(",lut3d=file={name}:interp=tetrahedral"));
-        if !files.iter().any(|f| f.0 == name) {
-            files.push((name, l.to_cube()));
-        }
-    };
     if let Some(l) = &s.lut_clip {
-        add(format!("lut-clip-{i}.cube"), l);
+        let name = crate::lut::store::copy_name(l);
+        c.push_str(&format!(",lut3d=file={name}:interp=tetrahedral"));
+        if !luts.iter().any(|x| x.hash() == l.hash()) {
+            luts.push(l.clone());
+        }
     }
     if c.is_empty() {
         return c;
@@ -241,6 +249,25 @@ pub struct PicOverlay {
     pub h: u32,
     pub start: Micros,
     pub end: Micros,
+    /// The parts of `start..end` the picture shows when some of it is drawn by the overlay
+    /// stage instead (REQ-304); empty: the whole of it.
+    pub pieces: Vec<(Micros, Micros)>,
+}
+
+impl PicOverlay {
+    /// The `enable` expression: the picture shows while it is true.
+    fn enable(&self) -> String {
+        let between = |a: Micros, b: Micros| format!("between(t,{},{})", a.ff(), b.ff());
+        if self.pieces.is_empty() {
+            between(self.start, self.end)
+        } else {
+            self.pieces
+                .iter()
+                .map(|(a, b)| between(*a, *b))
+                .collect::<Vec<_>>()
+                .join("+")
+        }
+    }
 }
 
 /// The single filter graph for `segs` (and the music `bed`).
@@ -306,6 +333,21 @@ pub fn build_graph_pics(
         len: video_end,
         still: true,
     }));
+    // the picture items of the overlay stage, one input each, after the others' pictures
+    let mut seg_pics: Vec<Vec<usize>> = vec![Vec::new(); segs.len()];
+    for (i, s) in segs.iter().enumerate() {
+        for step in &s.overlay {
+            if let (true, OverlayStep::Pic(p)) = (spec.video, step) {
+                seg_pics[i].push(inputs.len());
+                inputs.push(Input {
+                    path: p.path.clone(),
+                    start: Micros::ZERO,
+                    len: s.rendered() + Micros(1_000_000),
+                    still: true,
+                });
+            }
+        }
+    }
     // the ambisonic sound turned by the camera (REQ-273): one input per clip, after the
     // pictures; the clip's own sound is not read
     let spatial_on = |s: &Segment| spec.audio && s.has_audio && s.spatial.is_some();
@@ -389,6 +431,7 @@ pub fn build_graph_pics(
     );
     let g = &spec.geometry;
     let mut command_files: Vec<(String, String)> = Vec::new();
+    let mut lut_files: Vec<std::sync::Arc<crate::lut::Lut>> = Vec::new();
     let mut concat_in = String::new();
     for (i, s) in segs.iter().enumerate() {
         let k = idx[i];
@@ -445,7 +488,7 @@ pub fn build_graph_pics(
                 Some(f) => frame::camera_size((w, h), f.aspect.as_ref()),
                 None => (w, h),
             };
-            let lut = lut_chain(s, i, spec.pix_fmt, &mut command_files);
+            let lut = lut_chain(s, spec.pix_fmt, &mut lut_files);
             let mut c = if let Some(path) = &s.sphere {
                 // the camera view fills the output picture: no scale, no bars
                 let from = s.src_from();
@@ -552,8 +595,16 @@ pub fn build_graph_pics(
             } else {
                 String::new()
             };
-            c.push_str(&format!(",setpts=PTS-STARTPTS{cut}[v{i}]"));
-            parts.push(c);
+            c.push_str(&format!(",setpts=PTS-STARTPTS{cut}"));
+            let c = overlay_chain(
+                &mut parts,
+                (c, i),
+                s,
+                spec.pix_fmt,
+                &seg_pics[i],
+                (&mut lut_files, &mut command_files),
+            );
+            parts.push(format!("{c}[v{i}]"));
             concat_in.push_str(&format!("[v{i}]"));
         }
         if spec.audio {
@@ -639,14 +690,13 @@ pub fn build_graph_pics(
         };
         parts.push(format!(
             "[{n}:v:0]format=rgba,scale={w}:{h}[pi{j}];\
-             [pv{j}][pi{j}]overlay=x={x}:y={y}:enable='between(t,{a},{b})':shortest=1,format={pf}{next}",
+             [pv{j}][pi{j}]overlay=x={x}:y={y}:enable='{en}':shortest=1,format={pf}{next}",
             n = pic_base + j,
             w = p.w,
             h = p.h,
             x = p.x,
             y = p.y,
-            a = p.start.ff(),
-            b = p.end.ff(),
+            en = p.enable(),
             pf = spec.pix_fmt,
         ));
     }
@@ -745,8 +795,69 @@ pub fn build_graph_pics(
         inputs,
         graph: parts.join(";"),
         command_files,
+        lut_files,
         spatial: spatial_jobs,
     }
+}
+
+/// Appends the overlay steps of a clip (REQ-304) to its chain `c` (of clip `i`): the LUT and
+/// the texts and lines are filters of the chain, a picture closes it and overlays the picture
+/// file. Returns the chain with its last filter (without the output label: a chain that ends
+/// with a label gets a `null` filter from the caller's label).
+fn overlay_chain(
+    parts: &mut Vec<String>,
+    (mut c, i): (String, usize),
+    s: &Segment,
+    pix_fmt: &str,
+    pics: &[usize],
+    (luts, files): (
+        &mut Vec<std::sync::Arc<crate::lut::Lut>>,
+        &mut Vec<(String, String)>,
+    ),
+) -> String {
+    let mut pic = pics.iter();
+    for (n, step) in s.overlay.iter().enumerate() {
+        let f = match step {
+            OverlayStep::Lut(l) => {
+                if !luts.iter().any(|x| x.hash() == l.hash()) {
+                    luts.push(l.clone());
+                }
+                format!(
+                    ",format=gbrp,lut3d=file={}:interp=tetrahedral,format={pix_fmt}",
+                    crate::lut::store::copy_name(l)
+                )
+            }
+            OverlayStep::Ass { name, doc } => {
+                files.push((name.clone(), doc.clone()));
+                format!(",subtitles=f={name}:fontsdir={}", ass::FONTS_DIR)
+            }
+            OverlayStep::Pic(p) => {
+                let Some(input) = pic.next() else { continue };
+                parts.push(format!("{c}[o{i}x{n}]"));
+                parts.push(format!(
+                    "[{input}:v:0]format=rgba,scale={w}:{h}[pi{i}x{n}];\
+                     [o{i}x{n}][pi{i}x{n}]overlay=x={x}:y={y}:enable='{en}':shortest=1,\
+                     format={pix_fmt}[q{i}x{n}]",
+                    w = p.w,
+                    h = p.h,
+                    x = p.x,
+                    y = p.y,
+                    en = p.enable(),
+                ));
+                c = format!("[q{i}x{n}]");
+                continue;
+            }
+        };
+        if c.ends_with(']') {
+            c.push_str(&f[1..]);
+        } else {
+            c.push_str(&f);
+        }
+    }
+    if c.ends_with(']') {
+        c.push_str("null");
+    }
+    c
 }
 
 /// The filter that cuts away the part of the picture chosen in Crop (REQ-283), written for

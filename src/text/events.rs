@@ -194,6 +194,7 @@ fn events_with(
                 text: text.clone(),
                 margins,
                 boxed: item.readability == Readability::Box,
+                shadow: item.shadow,
             });
         }
     }
@@ -346,15 +347,29 @@ pub fn project_events(
     video_end: Micros,
     flat_windows: Option<&[Window]>,
 ) -> Vec<AssEvent> {
+    project_events_in(texts, width, height, video_end, flat_windows, None)
+}
+
+/// [`project_events`] with the items also limited to `keep` (the parts of the timeline that
+/// are not drawn by the overlay stage, REQ-304); `None`: everywhere.
+pub fn project_events_in(
+    texts: &Texts,
+    width: u32,
+    height: u32,
+    video_end: Micros,
+    flat_windows: Option<&[Window]>,
+    keep: Option<&[Window]>,
+) -> Vec<AssEvent> {
     texts
         .items
         .iter()
         .filter(|i| i.picture.is_none())
         .flat_map(|i| {
-            let ws = if i.anchor.is_some() {
-                flat_windows
-            } else {
-                None
+            let ws: Option<Vec<Window>> = match (i.anchor.is_some(), flat_windows, keep) {
+                (true, Some(f), Some(k)) => Some(intersect(f, k)),
+                (true, Some(f), None) => Some(f.to_vec()),
+                (_, _, Some(k)) => Some(k.to_vec()),
+                _ => None,
             };
             flat_events_in(
                 i,
@@ -362,8 +377,40 @@ pub fn project_events(
                 height,
                 estimate_box(i, width, height),
                 video_end,
-                ws,
+                ws.as_deref(),
             )
         })
         .collect()
+}
+
+/// The events of one item on the flat picture, limited to `windows` (`None`: everywhere).
+pub fn item_events(
+    item: &TextItem,
+    width: u32,
+    height: u32,
+    video_end: Micros,
+    windows: Option<&[Window]>,
+) -> Vec<AssEvent> {
+    flat_events_in(
+        item,
+        width,
+        height,
+        estimate_box(item, width, height),
+        video_end,
+        windows,
+    )
+}
+
+/// The parts that two lists of windows have in common.
+pub fn intersect(a: &[Window], b: &[Window]) -> Vec<Window> {
+    let mut out = Vec::new();
+    for (s1, e1) in a {
+        for (s2, e2) in b {
+            let (s, e) = ((*s1).max(*s2), (*e1).min(*e2));
+            if s < e {
+                out.push((s, e));
+            }
+        }
+    }
+    out
 }

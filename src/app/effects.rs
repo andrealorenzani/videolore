@@ -493,7 +493,13 @@ impl AppState {
             Format::Vtt => crate::srt::write_vtt(&lines),
             Format::Ass => {
                 let (w, h) = self.output_size().unwrap_or((1920, 1080));
-                crate::ass::export_file(&lines, self.project.subtitles.preset, w, h)
+                crate::ass::export_file_styled(
+                    &lines,
+                    self.project.subtitles.preset,
+                    &self.project.subtitles.style,
+                    w,
+                    h,
+                )
             }
         };
         project::write_atomic(&path, text.as_bytes()).map_err(|e| e.to_string())?;

@@ -114,3 +114,13 @@ Gates are marked GATE; everything else is an estimate or target. Grouped by area
 - Settings file cap 64 KiB unchanged (worst case ~35 KB, ADR-195); project read cap 16 MiB → 96 MiB in format 11 (ADR-191; `MAX_PROJECT_BYTES`).
 - Platforms: Linux x86_64 (glibc 2.39 max, unchanged), macOS aarch64 and Windows x86_64 (unchanged; Intel Mac, ARM Windows and ARM Linux out of scope, REQ-040 targets unchanged); the one-window channel is file based on Windows and Linux (ADR-182).
 - Accessibility: AccessKit adapters on all three OS (D61, Q-4 closed); the UI frame gate is measured with the tree on.
+
+## 2.1.0 PLAN (REQ-300..311; plan ai-docs/architecture-plan-2.1.0.md § 2, § 9)
+- LUT load (GATE QG-19 part, measured in S0a and S2): parse 144^3 <= 2 s and 256^3 <= 6 s wall on the development machine (ESTIMATES); best of 5 with base::testing at 144^3; the UI frame <= 200 ms while a LUT loads (GATE: worker job with progress and cancel, ADR-205).
+- LUT memory: table u16 6 bytes per entry (256^3 = 100.7 MB, 144^3 = 17.9 MB, 160^3 = 30.7 MB); cache by bytes 192 MB (ADR-205, one 256 table plus a 144 table); load peak extra <= table + 2 MiB (no whole-file or whole-text buffer, ADR-203/206). Each ffmpeg process with a 256 LUT holds a float table of about 201 MB (ffmpeg, not measured yet: S0a).
+- LUT Work copy (ADR-206): one file per distinct content, about 450 MB at 256^3 and about 80 MB at 144^3 (on disk, not in memory); written <= 3 s at 256^3 (ESTIMATE, S4); progress shown; removed with the Work folder.
+- Preview with a 256^3 LUT: each preview start parses the text in ffmpeg; the start-up time is measured in S0a (risk, plan section 11). Playback rate within 20% of the same clip without a LUT (ESTIMATE from the 1.6.0 target, measured S4); export with a LUT <= 1.5x the re-encode without (existing assumption, measured S4).
+- Overlay stage (ADR-208): only for clips with a changed order; graph size grows by one filter step per movable row; argv of other projects byte-identical (GATE QG-21).
+- Event caps: ASS 2000 events per document and 20000 per file (ADR-067) kept; Typewriter and Enlarge use about two events per word; shadow copies only for boxed items.
+- Limits (Q-1 = B): LUT edge 2..=256, file 512 MiB, line 256 bytes; shadow 0..=20 px at 1080; enlarge 1..=40 px at 1080; project format 12 read cap 96 MiB unchanged.
+- Platforms: unchanged (Linux, macOS, Windows); no new platform code.

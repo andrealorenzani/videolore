@@ -211,6 +211,16 @@ impl AppState {
                         Ok(())
                     })
                 }
+                Command::SetSubtitleStyle(st) => {
+                    let st = st.clamped();
+                    if st == self.project.subtitles.style {
+                        return Ok(());
+                    }
+                    self.edit(now, label, |e| {
+                        e.subtitles.style = st;
+                        Ok(())
+                    })
+                }
                 Command::SetLanguage(lang) => {
                     if let Some(l) = &lang
                         && !(2..=3).contains(&l.len())

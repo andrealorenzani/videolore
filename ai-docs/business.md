@@ -8,10 +8,11 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business.md § Users — L10-15 (6 lines)
 - docs/business.md § Documents — L16-34 (19 lines; verification L33)
 - docs/business.md § 2.0.4 — L35-46 (12 lines; links to all 2.0.4 sub-docs; REQ-177 not built note)
-- docs/business.md § Constraints — L47-51 (5 lines)
-- docs/business.md § Key decisions (general) — L52-83 (32 lines; 2.0.4 bullet near L80)
-- docs/business.md § Known limitations (1.2.0 to 1.6.0) — L84-112 (29 lines; 1.3.0 360 items marked fixed in 2.0.4)
-- docs/business.md § Out of scope — L113-124 (12 lines; automatic updates only)
+- docs/business.md § 2.1.0 — L47-51 (5 lines; links to applied-effects, subtitle-styles, lut section)
+- docs/business.md § Constraints — L52-56 (5 lines)
+- docs/business.md § Key decisions (general) — L57-89 (33 lines; 2.0.4 bullet near L80; 2.1.0 bullet near L86)
+- docs/business.md § Known limitations (1.2.0 to 1.6.0) — L90-118 (29 lines; 1.3.0 360 items marked fixed in 2.0.4)
+- docs/business.md § Out of scope — L119-130 (12 lines; automatic updates only)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
@@ -141,9 +142,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-lut.md § Requirements / Apply LUT (REQ-135) — L13-17 (5 lines)
 - docs/business-lut.md § LUT files and export (REQ-136) — L18-20 (3 lines)
 - docs/business-lut.md § Project file (REQ-137) — L21-23 (3 lines)
-- docs/business-lut.md § Key decisions — L24-28 (5 lines)
-- docs/business-lut.md § Known limitations — L29-34 (6 lines)
-- docs/business-lut.md § Out of scope — L35-38 (4 lines; 2.0.4 pointer)
+- docs/business-lut.md § Importing the user's LUT files (2.1.0; REQ-300, 301) — L24-28 (5 lines)
+- docs/business-lut.md § Key decisions — L29-34 (6 lines; 2.1.0 REQ-301 option C bullet)
+- docs/business-lut.md § Known limitations — L35-40 (6 lines)
+- docs/business-lut.md § Out of scope — L41-44 (4 lines; 2.0.4 pointer)
 - docs/business-player.md § intro — L1-6 (6 lines)
 - docs/business-player.md § Features — L7-14 (8 lines)
 - docs/business-player.md § Requirements / The program (REQ-138) — L15-19 (5 lines) [heading ### The program L17-19]
@@ -218,6 +220,26 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-quality.md § Quality goals and engineering items (QG-11..13 measured 2.0.4; QG-14..18 built 2.0.4; no covers) — L13-22 (10 lines)
 - docs/business-quality.md § Key decisions (2.0.4) — L23-26 (4 lines)
 - docs/business-quality.md § Out of scope (2.0.4) — L27-28 (2 lines)
+- docs/business-applied-effects.md § intro — L1-6 (6 lines; built 2.1.0)
+- docs/business-applied-effects.md § Features — L7-12 (6 lines)
+- docs/business-applied-effects.md § Requirements (intro) — L13-14 (2 lines)
+- docs/business-applied-effects.md § Applied effects widget (REQ-302, 303) — L15-19 (5 lines)
+- docs/business-applied-effects.md § Order and reorder (REQ-304, 305) — L20-24 (5 lines)
+- docs/business-applied-effects.md § Project file (REQ-311) — L25-27 (3 lines)
+- docs/business-applied-effects.md § Edge cases and rules for the builders — L28-37 (10 lines)
+- docs/business-applied-effects.md § Key decisions (2.1.0) — L38-43 (6 lines)
+- docs/business-applied-effects.md § Known limitations — L44-50 (7 lines)
+- docs/business-applied-effects.md § Out of scope (2.1.0) — L51-54 (4 lines)
+- docs/business-subtitle-styles.md § intro — L1-6 (6 lines; built 2.1.0)
+- docs/business-subtitle-styles.md § Features — L7-12 (6 lines)
+- docs/business-subtitle-styles.md § Requirements (intro) — L13-14 (2 lines)
+- docs/business-subtitle-styles.md § Shadow (REQ-306, 307) — L15-19 (5 lines)
+- docs/business-subtitle-styles.md § Word highlight colours (REQ-308) — L20-22 (3 lines)
+- docs/business-subtitle-styles.md § Enlarge word and Typewriter (REQ-309, 310) — L23-27 (5 lines)
+- docs/business-subtitle-styles.md § Edge cases and rules for the builders — L28-36 (9 lines)
+- docs/business-subtitle-styles.md § Key decisions (2.1.0) — L37-41 (5 lines)
+- docs/business-subtitle-styles.md § Known limitations — L42-46 (5 lines)
+- docs/business-subtitle-styles.md § Out of scope (2.1.0) — L47-51 (5 lines)
 
 Line range convention: heading to the line before the next heading. Re-check after any edit.
 
@@ -232,6 +254,15 @@ Line range convention: heading to the line before the next heading. Re-check aft
   - § Rejected or considered — L49-67 (19 lines)
   - § Product risks (current, 2.0.4) — L68-80 (13 lines)
   - § Open questions (deviations, REQ-177) — L81-92 (12 lines)
+
+## Checkpoint 2.1.0 (PLAN 2026-11-21; STATUS done 2026-11-21, version 2.1.0)
+- STATUS 2.1.0 done: REQ-300..311 `(implemented)`, each with a `// covers:` test (grep-checked by the PM; no test run). Amended to the built behaviour from the PE's deviations (docs/code-2.1.0.md, ai-docs/roadmap-2_0-checkpoint.md § Principal Engineer 2.1.0). Human docs: business-lut (300, 301), business-applied-effects (302-305, 311), business-subtitle-styles (306-310); roadmap tasks: 2.1.0 is the next development, Finish 2.0.4 is not a version.
+- Amendments as built: 300 (edge 256, 512 MiB, background load above 1 MiB, .3dl/.csp whole up to 64 MiB, 16-bit); 301 (20 MB measured as the copy text); 303 (whole-video mark inferred: two or more clips with the same effect, Change aspect, first Fade IN, last Fade OUT; Speed added); 304 (new LUT or picture on top; Move up/down, Alt+Up/Down, drag); 305 (later text on top, assumption kept); 306-307 (out-of-range values clamped on load); 309 (Enlarge = two events per word, line centred, sphere-fixed lines plain); 310 (letter reveal, sphere-fixed plain); 311 (format 12, repair line "A damaged effect order was repaired").
+- Known limits recorded in the human docs: a 360 sphere export ignores the order (the flat camera view keeps it); sphere-fixed texts and lines are not movable (Q-3).
+- Requests were: LUT import of the maintainer's 144^3 files; Applied effects widget and order; shadows; two highlight colours; Enlarge word; Typewriter. Next free ID REQ-312. 2.0.4 documents unchanged except the 2.1.0 pointers.
+- REQ-301 large LUT copies: CLOSED, Andrea chose option C (path only above 20 MB, REQ-292 choices); D62 in business-decisions.md § Open questions. REQ-301 text updated (REQ-300 "any size"; 64 MB total counts copies only; REQ-293 amended note). No open SEVERE question.
+- MINOR defaults: business-decisions.md § Open questions (2.1.0 lines). Project format 12 assumed.
+- Impacts: REQ-135 (colours of texts stay unless the order says otherwise), REQ-131 (stacking), REQ-293 (limits, amended by REQ-301), REQ-068 (widget in the small layout), REQ-181 (ASS shadow and colours), REQ-257 (360 anchored lines get the same styles), REQ-162 (blink hides shadow).
 
 ## Checkpoint 2.0.4 (STATUS done, all 2.0.4 REQs implemented except REQ-177; 2026-11-21, version 2.0.4)
 - Process state: `ai-docs/roadmap-2_0-checkpoint.md` § Product Manager.

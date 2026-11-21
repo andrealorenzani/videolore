@@ -12,5 +12,6 @@ pub mod language;
 pub mod names;
 pub mod pos;
 pub mod private;
+pub mod shadow;
 #[cfg(test)]
 pub mod testing;

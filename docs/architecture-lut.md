@@ -7,8 +7,8 @@ Apply LUT is a colour effect, one per clip and one for the whole video. The user
 
 ## Reading the file (`src/lut.rs`, pure)
 - Format: `.cube` only, UTF-8 text. Keywords `LUT_3D_SIZE` or `LUT_1D_SIZE`, `TITLE`, `DOMAIN_MIN`, `DOMAIN_MAX`; `#` starts a comment.
-- Read as a regular file, at most 16 MiB (same limit as other small input files).
-- 3D: size 2 to 65, exactly size^3 entries. 1D: size 2 to 4096, exactly size entries.
+- Read as a regular file. Up to 2.0.4: at most 16 MiB and 3D size 2 to 65. From 2.1.0 (planned): streamed up to 512 MiB, 3D size 2 to 256, see [large LUTs](#large-luts-210-planned).
+- 3D: exactly size^3 entries. 1D: size 2 to 4096, exactly size entries.
 - Every value must be a finite number; values outside 0 to 1 are clamped.
 - `DOMAIN_MIN`/`DOMAIN_MAX` other than 0 and 1 are refused with a message (support is later work).
 - A file with both kinds, unknown numbers or bad counts is refused. The message names the problem; nothing changes in the project.
@@ -47,6 +47,17 @@ The cube is written by the program into the private work folder with a fixed nam
 - **Missing file at export (REQ-292):** a three-button modal replaces the refusal of 1.6.0: cancel, or export without the LUT for that export only. The project keeps the LUT.
 - **Copies in the project (REQ-293, ADR-191):** the project stores a copy of each LUT file it uses, as the normalised cube text (a JSON string in `lut_copies`, keyed by SHA-256). A copy is at most 20 MB, and at most 64 MiB per project; a copy over the limit keeps only the path. The project read cap is 96 MiB (see [projects](architecture-projects.md#format-11-204)).
 - **Favourites (REQ-294):** up to 20 LUT files in the popup, kept in the program settings (never in a project).
+
+## Large LUTs (2.1.0, planned)
+- **Why 2.0.4 refused a 144-point `.cube` (about 80 MB):** the size limit was 65 points and the read limit 16 MiB. ffmpeg accepts 256 points, so the limit was in the program.
+- **Reading:** one streamed pass over the file (a 1 MiB buffer), with no whole-file or whole-text copy in memory. Lines are at most 256 bytes; the number of entries must be exactly size^3 and no numeric line may follow. Edge 2 to 256; file at most 512 MiB (a 256-point cube is about 450 MB).
+- **Memory:** a table takes 6 bytes per point, 16-bit per channel (100.7 MB at 256 points, 17.9 MB at 144). The cache keeps at most 192 MB of tables, least recently used first.
+- **Loading:** on a background job; the window does not wait. The status line shows the percentage read ("Reading the LUT file... N %"). Choosing another file or closing the project cancels the job and removes its partial copy. While a LUT loads, the preview shows the picture without it; the picture is redrawn when the table is ready. A file that changes while it is read is refused.
+- **Work copy:** the normalised cube is written once per distinct content as `lut-<hash>.cube` in the private Work folder (streamed, atomic, with progress; about 450 MB at 256 points) and shared by all clips, the preview and the export. The filter names the fixed file; the user's path is never in the filter.
+- **Project:** a LUT above 20 MB is not copied into the project; the project keeps its path (REQ-301). The copy rule of REQ-293 is unchanged below the limit.
+- **Missing file:** the REQ-292 choices apply (Find the LUT file, Export without the LUT, Cancel).
+- **Order:** from 2.1.0 the LUT is a movable row of the Applied effects widget; see [applied effects](architecture-applied-effects.md).
+- **Targets (estimates, measured in the build):** parse of 144 points at most 2 s and of 256 points at most 6 s; Work copy of 256 points at most 3 s; the window frame at most 200 ms while loading. The start-up of each preview process with a 256-point LUT is measured first.
 
 ## Non-functional targets (1.6.0)
 - A 1080p preview with a 33-point LUT keeps the playback rate of the same clip without a LUT within 20% (assumption, measured by hand).

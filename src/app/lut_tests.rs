@@ -414,3 +414,105 @@ fn the_project_keeps_a_copy_of_its_lut_so_it_works_when_the_file_is_gone() {
     let _ = crate::project::load(&huge);
     assert!(!crate::lut::has_embedded("/gone/huge.cube"));
 }
+
+/// Ticks until the LUT file being read in the background is done (at most 60 s).
+fn wait_for_lut(app: &mut AppState) {
+    let start = Instant::now();
+    while app.lut_load.is_some() {
+        app.tick(Instant::now());
+        assert!(start.elapsed().as_secs() < 60, "the LUT read did not end");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+/// A generated cube of `n` points an edge in `dir`.
+fn generated(dir: &Path, name: &str, n: usize) -> PathBuf {
+    let p = dir.join(name);
+    let mut f = std::io::BufWriter::new(std::fs::File::create(&p).unwrap());
+    std::io::copy(&mut crate::lut::parse::tests::Gen::new(n), &mut f).unwrap();
+    std::io::Write::flush(&mut f).unwrap();
+    p
+}
+
+// covers: REQ-300
+#[test]
+fn a_large_lut_is_read_in_the_background_and_applied_in_one_undo_step() {
+    let (dir, mut app, _) = three();
+    let big = generated(dir.path(), "big.cube", 40);
+    assert!(std::fs::metadata(&big).unwrap().len() > super::lut::SYNC_LUT_BYTES);
+    let c = clip(&app, 0);
+    app.dispatch(
+        Command::SetLut {
+            target: FrameTarget::Clip(c),
+            path: big.clone(),
+        },
+        now(),
+    )
+    .unwrap();
+    // the choice returns at once: the file is still being read
+    assert!(app.lut_load.is_some() && app.status.starts_with("Reading big.cube"));
+    assert!(app.project.timeline.lut_of(FrameTarget::Clip(c)).is_none());
+    wait_for_lut(&mut app);
+    assert_eq!(
+        app.project.timeline.lut_of(FrameTarget::Clip(c)),
+        Some(text(&big))
+    );
+    assert!(app.status.starts_with("Apply LUT"), "{}", app.status);
+    app.dispatch(Command::Undo, now()).unwrap();
+    assert!(app.project.timeline.lut_of(FrameTarget::Clip(c)).is_none());
+    // a file that is not a LUT is refused with its name when the read ends
+    let bad = dir.path().join("bad.cube");
+    std::fs::write(&bad, "x".repeat(2_000_000)).unwrap();
+    app.dispatch(
+        Command::SetLut {
+            target: FrameTarget::Clip(c),
+            path: bad,
+        },
+        now(),
+    )
+    .unwrap();
+    wait_for_lut(&mut app);
+    assert!(
+        app.status.starts_with("bad.cube: not a valid .cube LUT"),
+        "{}",
+        app.status
+    );
+    assert!(app.project.timeline.lut_of(FrameTarget::Clip(c)).is_none());
+}
+
+// covers: REQ-300
+// covers: REQ-301
+#[test]
+fn an_80_mb_lut_is_used_but_only_its_path_is_kept_in_the_project() {
+    let (dir, mut app, _) = three();
+    let big = generated(dir.path(), "huge.cube", 144);
+    assert!(std::fs::metadata(&big).unwrap().len() > 80_000_000);
+    let c = clip(&app, 0);
+    app.dispatch(
+        Command::SetLut {
+            target: FrameTarget::Clip(c),
+            path: big.clone(),
+        },
+        now(),
+    )
+    .unwrap();
+    wait_for_lut(&mut app);
+    assert_eq!(
+        app.project.timeline.lut_of(FrameTarget::Clip(c)),
+        Some(text(&big))
+    );
+    // used in the export: one Work file named by content, the table is the whole cube
+    let segs = render::segments(&app.project, Micros::ZERO, render::Source::Export).unwrap();
+    let lut = segs[0].lut_clip.clone().unwrap();
+    assert_eq!(lut.size(), 144);
+    let json = crate::project::to_json(&app.project, &dir.path().join("p.vlproj")).unwrap();
+    // the project does not grow by its size (REQ-301): the path only
+    assert!(json.len() < 200_000, "{} bytes", json.len());
+    assert!(json.contains("huge.cube") && !json.contains("0.003922"));
+    assert!(!json.contains("\"cube\""));
+    // the file is gone: it is listed as missing (REQ-292 choices apply)
+    std::fs::rename(&big, dir.path().join("moved.cube")).unwrap();
+    assert_eq!(app.missing_luts(), ["huge.cube"]);
+    // the project of this text carries no copy to fall back on
+    assert!(!crate::lut::has_embedded(text(&big)));
+}

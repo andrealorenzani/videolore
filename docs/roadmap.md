@@ -1,10 +1,10 @@
 # Roadmap
 
-Known limitations and improvements, in priority order: the most valuable and most urgent first. Each band says why it is there; inside a band the items are grouped by area. Each item says where it came from. Delivered items are removed and mentioned in the [changelog](changelog.md). The items are grouped into suggested versions and batches in [roadmap tasks](roadmap_tasks.md). The open items of 2.0.4 are the next version, 2.0.5 "Finish 2.0.4" (see roadmap tasks).
+Known limitations and improvements, in priority order: the most valuable and most urgent first. Each band says why it is there; inside a band the items are grouped by area. Each item says where it came from. Delivered items are removed and mentioned in the [changelog](changelog.md). The items are grouped into suggested versions and batches in [roadmap tasks](roadmap_tasks.md). The next development is 2.1.0 (built, awaiting release); the manual checks and future work left from 2.0.4 are listed in roadmap tasks.
 
 ## Priority 1 — Release checks
 Why first: the items are checks that need a real computer, player or ear, or a run on other systems, and one measurement not yet repeated on the bundled ffmpeg 9.0.2. The manual checks are in [release verification](business-verification.md); they stay here until the maintainer records their results there.
-- **Manual checks of 2.0.4** — items 26, 29, 30 and 31 to 35 of the [release verification](business-verification.md): screen readers (NVDA, VoiceOver, Orca); the player under "Open with" on Windows, whose installer template has not been run on Windows yet; window and popup places on two screens; clip speed by ear and eye; picture items on a real video; off-view arrows on 360 clips; per-clip camera paths; picture subtitles in the player. They are not a release blocker. (source: 2.0.4 manual checks, 2.0.5 batch)
+- **Manual checks of 2.0.4** — items 26, 29, 30 and 31 to 35 of the [release verification](business-verification.md): screen readers (NVDA, VoiceOver, Orca); the player under "Open with" on Windows, whose installer template has not been run on Windows yet; window and popup places on two screens; clip speed by ear and eye; picture items on a real video; off-view arrows on 360 clips; per-clip camera paths; picture subtitles in the player. They are not a release blocker. (source: 2.0.4 manual checks)
 - **Maintainer measurements for 2.0.3** — on the reference clip, measure the Balanced and Most accurate levels (time, words matched, start error); measure the cost of a 20 MB installed font; check the font names by hand on Linux, macOS and Windows (REQ-165). Record the results in [release verification](business-verification.md). (source: 2.0.3 business plan, maintainer measurement)
 - **Subtitle accuracy decision point (REQ-177)** — the Fast speech model mishears 5 of 28 words on the reference clip, so the target of 90% of words within 0.3 s is not met. DTW timestamps, a one-sided onset snap and a speech-region method were measured and not shipped. Andrea chooses between a larger speech model (its own download size, consent and checksum rules; the recommendation thresholds may change) and keeping the target with its known limitation; the default is to keep REQ-177 planned and ship with the limitation. See [subtitle accuracy](business-subtitle-accuracy.md). (source: 2.0.3 architecture plan, decision needed)
 - **Player builds on real systems** — the player's Windows and macOS builds were only checked with clippy, and its installers only with the configuration check; build and run them. (source: 1.6.0, check before release)
@@ -12,6 +12,7 @@ Why first: the items are checks that need a real computer, player or ear, or a r
 - **Clean audio and MP3 output by ear** — the `afftdn` filter and the `libmp3lame` encoder on the bundled ffmpeg 9.x are checked by the CI smoke test only; listen to the speech and the noise after a Clean audio export, and play an MP3 Only audio file. (source: 1.4.0, check to do)
 - **Windows and macOS test runs with the pinned ffmpeg 9.0.2** — the integration tests run only on Linux in CI; run them on Windows and macOS with the same pinned build. Each is a long CI job. (source: 2.0.2, check to do)
 - **Moving-camera export cost on 9.0.2** — the moving-camera export was not measured again on the bundled ffmpeg 9.0.2 (the static camera timing was); measure it with the 360 camera numbers in the developer documentation. (source: 2.0.2, measurement to do)
+- **Decisions to confirm for 2.1.0** — three points for Andrea: (a) REQ-305, a project saved before 2.1.0 keeps the stacking of its texts; the architect confirmed this from the code, and it needs Andrea's acceptance; (b) REQ-303, the whole-video mark is inferred (two or more clips with the same settings, the edge fades and Change aspect), not stored; confirm the rule; (c) REQ-300, the wording of `.3dl` and `.csp` (read whole, up to 64 MiB) is to confirm or change. (source: 2.1.0 business and architecture plans, open points for the user)
 - **Check the reworked release flow** — run a release once and review the consolidation: the sizes after compaction, the roadmap priorities and `docs/roadmap_tasks.md`, the code index and the mermaid diagrams, the regenerated page and its download links. (source: 1.6.3, workflow)
 
 ## Priority 2 — Text and subtitles on the picture
@@ -38,10 +39,15 @@ Why: automatic subtitles are a core promise of the program, and the accuracy tar
 - **Custom style editor** — change the colours, fonts and placement of the three styles. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **Translation and more than one language per project** — one language per project today. (source: 1.2.0, out of scope of the 1.2.0 request)
 - **Other speech models** — only the three quality levels are offered. (source: 1.2.0, out of scope of the 1.2.0 request)
+- **Enlarge word and Typewriter in subtitle files** — the two word styles of 2.1.0 are video effects only; the .srt, .vtt and .ass files keep plain text and times. Decide whether a subtitle format can carry them. (source: 2.1.0 business plan, postponed on purpose)
+- **Typewriter caret and typing sound** — the typing effect has no caret and no key sound in 2.1.0; add them if users ask for them (REQ-310 leaves the sound out of scope). (source: 2.1.0 business plan, postponed on purpose)
+- **Enlarge word vertical shift** — the Enlarge word style moves the line vertically by a few pixels; keep the line still. (source: 2.1.0, Principal Engineer future work)
+- **Preview cache key for Typewriter** — the preview's cache key follows the spoken word, not each letter; measure the letter steps and cache them one by one only if the preview needs it. (source: 2.1.0, Principal Engineer future work)
 
 ## Priority 4 — Editing speed and safety
 Why: keyframe editing and the timeline save time on every edit. The delivered items of 2.0.4 are removed.
 - **Double-click on a clip that already has the LUT** — a double-click gives the clip the chosen LUT again and replaces the one it has; decide whether it should keep the clip's settings or ask first. (source: 1.6.1, decision: replace by default, minor)
+- **Cache the Applied effects rows** — the widget's rows are recomputed on every frame; keep them and rebuild only when the order or the effects change. (source: 2.1.0, Principal Engineer future work)
 - **Keyframe popup usability** — in the small Scale and Move popup keyframes are harder to pick and edit; check the popup in real use and rework it if users struggle. (source: 1.5.0, product risk)
 
 ## Priority 5 — Export speed and hardware
@@ -90,6 +96,8 @@ Why: a niche of users with 360 footage; the gaps are known and bounded. The deli
 - **GPU or SIMD path for 360 reprojection** — if the 8K look-around target of REQ-104 is not met, move the 360 reprojection to the graphics card or to SIMD code. (source: 1.2.6, product risk)
 - **Instant look-around** — a camera still is estimated at 150–700 ms (targets 400 ms for 4K and 700 ms for 8K); if that feels slow while dragging, add a quick view computed inside the program. (source: 1.2.6, measurement to do)
 - **Stereo 3D, cube maps and 180° video** — side-by-side or top-and-bottom stereo, cube-map layouts, partial 180° pictures and cropped equirectangular pictures are not recognised; only one full equirectangular picture is supported, and cropped ones are shown as flat video. (source: 1.2.6, postponed from the 1.2.6 request)
+- **360 movable order and export** — the sphere-fixed items of a 360 clip (anchored text, subtitle lines) keep fixed rows in the Applied effects order, and the 360 video export ignores the order; let them move and let the export follow it. (source: 2.1.0 architecture plan, postponed with Q-3 = A; 2.1.0 Principal Engineer future work)
+- **Enlarge word and Typewriter on 360 clips** — anchored subtitle lines of a 360 clip draw these two styles as plain text; draw them on the sphere's projection too. (source: 2.1.0, Principal Engineer future work)
 
 ## Priority 10 — Effects and frame
 Why: each new effect is new scope with its own requirements, so these wait for the items above. The delivered items of 2.0.4 are removed.
@@ -99,8 +107,15 @@ Why: each new effect is new scope with its own requirements, so these wait for t
 - **Other stickers or shapes on the picture** — PNG pictures are built (REQ-287); other stickers and shapes are not. (source: 1.2.6, postponed from the 1.2.6 request)
 - **Picture item limits** — the plan's limits (20 items, 8 MiB per file, 16 megapixels) are not in the code: only the PNG header is read. Decide whether to add them or to keep the header read. (source: 2.0.4 architecture decision, open)
 - **Colour management for LUTs** — apply a LUT in the colour space its author made it for, so a LUT made for another workflow looks as intended. (source: 1.6.0, known limitation)
+- **Binary input for 256-point LUTs** — a 256-point LUT is parsed as text by each ffmpeg start, about 450 MB of text, and the preview restart takes about 12 s (measured in 2.1.0, against the 2 s step of the plan); pass ffmpeg a binary table (.m3d) if the bundled ffmpeg reads it (not tried yet). (source: 2.1.0 architecture plan, measured in 2.1.0)
+- **Smaller preview table for LUTs** — if a binary input is not enough for a quick preview start, the preview could use a smaller table while the export keeps the full one. (source: 2.1.0 architecture plan, next step after the 12 s measurement)
+- **Read the Find LUT file in the background** — the choice of **Find the LUT file…** reads the chosen file on the interface thread; read it in the background like the LUT load. (source: 2.1.0, Principal Engineer future work)
+- **LUT still loading when a project closes** — a project closed while its LUT is being read still gets the LUT applied to a missing target, with an error line only; make closing a project cancel the read. (source: 2.1.0, Principal Engineer future work)
 - **LUT order with the frame effect** — the LUT is applied to the fitted picture before the frame effect, so the blurred or coloured fill of Change aspect is not graded; decide whether the LUT should cover the fill too. (source: 1.6.0, accepted deviation)
 - **Exact conversion of combined Scale and Move** — a 1.6.0 clip that had its own Scale or Move and the whole video's one is converted to one combined path, exact only at the key times; if a user reports a changed old project, store the exact result instead. (source: 1.6.1, design option not taken)
+- **Keyframes for the text shadow** — the shadow of 2.1.0 is one fixed distance and colour; let it change over time with keyframes. (source: 2.1.0 business plan, postponed on purpose)
+- **Reordering of fixed effects** — Crop, Scale, Move, Change aspect, Fade IN/OUT, Volume, Clean audio and Speed keep their place in 2.1.0; a user order for them would change many outputs, so it is postponed. (source: 2.1.0 business plan, postponed on purpose)
+- **Per-line order in the Applied effects widget** — the order of 2.1.0 covers the subtitle lines of a clip as one row; let each subtitle line have its own place. (source: 2.1.0 business plan, postponed on purpose)
 
 ## Priority 11 — Quality, tests and measurements
 Why: keeps the code and the tests healthy and replaces assumed numbers with measured ones; no direct user value, so it follows the user-facing work.

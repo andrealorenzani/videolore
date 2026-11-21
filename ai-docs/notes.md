@@ -1,43 +1,44 @@
 # ai-notes: documenter notes
 
-Owner: documenter. Index refreshed in the 2.0.4 close (README, roadmap and changelog line ranges from `grep -n '^#'`; refresh after every change of a managed doc).
+Owner: documenter. Index refreshed in the 2.1.0 close (README, roadmap and changelog line ranges from `grep -n '^#'`; refresh after every change of a managed doc).
 
 ## Index of managed docs
 README.md, docs/roadmap.md, docs/changelog.md and docs/workflow.md (no sub-documents). Other docs/*.md belong to their owners.
 
 - README.md § videolore — L1-25 (25 lines)
-- README.md § What it is — L26-27 (2 lines)
-- README.md § System requirements — L29-33 (5 lines)
-- README.md § Installation — L35-40 (6 lines)
-- README.md § Windows (x86_64) — L42-46 (5 lines)
-- README.md § macOS (Apple Silicon) — L48-52 (5 lines)
-- README.md § Linux (x86_64, Ubuntu LTS and Fedora) — L54-59 (6 lines)
-- README.md § From source — L61-68 (8 lines)
-- README.md § Usage — L70-110 (41 lines)
-- README.md § Known limitations — L112-165 (54 lines)
-- README.md § Latest changes — L166-171 (6 lines)
-- README.md § License — L172-176 (5 lines)
-- README.md § Ode to the creator — L178-189 (12 lines)
+- README.md § What it is — L26-28 (3 lines)
+- README.md § System requirements — L29-34 (6 lines)
+- README.md § Installation — L35-41 (7 lines)
+- README.md § Windows (x86_64) — L42-47 (6 lines)
+- README.md § macOS (Apple Silicon) — L48-53 (6 lines)
+- README.md § Linux (x86_64, Ubuntu LTS and Fedora) — L54-60 (7 lines)
+- README.md § From source — L61-69 (9 lines)
+- README.md § Usage — L70-112 (43 lines)
+- README.md § Known limitations — L113-174 (62 lines)
+- README.md § Latest changes — L175-180 (6 lines)
+- README.md § License — L181-186 (6 lines)
+- README.md § Ode to the creator — L187-198 (12 lines)
 - docs/roadmap.md § Roadmap — L1-4 (4 lines)
-- docs/roadmap.md § Priority 1 — Release checks — L5-16 (12 lines)
-- docs/roadmap.md § Priority 2 — Text and subtitles on the picture — L17-27 (11 lines)
-- docs/roadmap.md § Priority 3 — Subtitle accuracy and subtitle features — L28-41 (14 lines)
-- docs/roadmap.md § Priority 4 — Editing speed and safety — L42-46 (5 lines)
-- docs/roadmap.md § Priority 5 — Export speed and hardware — L47-61 (15 lines)
-- docs/roadmap.md § Priority 6 — Installation and platforms — L62-71 (10 lines)
-- docs/roadmap.md § Priority 7 — Interface — L72-76 (5 lines)
-- docs/roadmap.md § Priority 8 — Video player — L77-82 (6 lines)
-- docs/roadmap.md § Priority 9 — 360 video — L83-93 (11 lines)
-- docs/roadmap.md § Priority 10 — Effects and frame — L94-104 (11 lines)
-- docs/roadmap.md § Priority 11 — Quality, tests and measurements — L105-127 (23 lines)
-- docs/roadmap.md § Priority 12 — Splash, project page and release process — L128-142 (15 lines)
-- docs/roadmap.md § Not planned — L143-156 (14 lines)
+- docs/roadmap.md § Priority 1 — Release checks — L5-17 (13 lines)
+- docs/roadmap.md § Priority 2 — Text and subtitles on the picture — L18-28 (11 lines)
+- docs/roadmap.md § Priority 3 — Subtitle accuracy and subtitle features — L29-46 (18 lines)
+- docs/roadmap.md § Priority 4 — Editing speed and safety — L47-52 (6 lines)
+- docs/roadmap.md § Priority 5 — Export speed and hardware — L53-67 (15 lines)
+- docs/roadmap.md § Priority 6 — Installation and platforms — L68-77 (10 lines)
+- docs/roadmap.md § Priority 7 — Interface — L78-82 (5 lines)
+- docs/roadmap.md § Priority 8 — Video player — L83-88 (6 lines)
+- docs/roadmap.md § Priority 9 — 360 video — L89-101 (13 lines)
+- docs/roadmap.md § Priority 10 — Effects and frame — L102-119 (18 lines)
+- docs/roadmap.md § Priority 11 — Quality, tests and measurements — L120-142 (23 lines)
+- docs/roadmap.md § Priority 12 — Splash, project page and release process — L143-157 (15 lines)
+- docs/roadmap.md § Not planned — L158-171 (14 lines)
 - docs/changelog.md § Changelog — L1-4 (4 lines)
-- docs/changelog.md § 2.0.4 — 2026-11-21 00:15 +0000 — L5-23 (19 lines)
-- docs/changelog.md § 2.0.3 — 2026-11-20 22:05 +0000 — L24-35 (12 lines)
-- docs/changelog.md § 2.0.2 — 2026-11-20 20:34 +0000 — L36-40 (5 lines)
-- docs/changelog.md § 2.0.1 — 2026-11-20 20:06 +0000 — L41-45 (5 lines)
-- docs/changelog.md § 2.0.0 — 2026-11-20 19:50 +0000 — L46-47 (2 lines)
+- docs/changelog.md § 2.1.0 — 2026-11-21 19:43 +0000 — L5-12 (8 lines)
+- docs/changelog.md § 2.0.4 — 2026-11-21 00:15 +0000 — L13-31 (19 lines)
+- docs/changelog.md § 2.0.3 — 2026-11-20 22:05 +0000 — L32-43 (12 lines)
+- docs/changelog.md § 2.0.2 — 2026-11-20 20:34 +0000 — L44-48 (5 lines)
+- docs/changelog.md § 2.0.1 — 2026-11-20 20:06 +0000 — L49-53 (5 lines)
+- docs/changelog.md § 2.0.0 — 2026-11-20 19:50 +0000 — L54-55 (2 lines)
 - docs/workflow.md § Agentic workflow — L1-3 (3 lines)
 - docs/workflow.md § Agents — L5-20 (16 lines)
 - docs/workflow.md § Commands — L22-30 (9 lines)
@@ -130,6 +131,10 @@ Player
 - Roadmap item "Gated alignment test on CI's versions" is kept: not checked whether the real-speech test runs on CI with the pinned speech fixture.
 - Picture item limits (ADR-192) and REQ-177 are open decisions; the roadmap keeps them.
 - Other docs/*.md not compacted in 2.0.4 (owners clean their own docs at release).
+- Roadmap items "Binary input for 256-point LUTs" and "Smaller preview table for LUTs" are kept: the 2.1.0 measurement is 12 s for a preview restart with a 256-point LUT (S0a, principal engineer 2.1.0).
+- 2.1.0 open points for Andrea are the first roadmap item of Priority 1 (REQ-305 stacking, REQ-303 whole-video rule, REQ-300 `.3dl`/`.csp` wording).
+- Inconsistency left: README Usage item 14 says "(3D or 1D LUT)", while REQ-300 says 3D `.cube` LUTs; to check at the next release.
+- Verification of the 2.1.0 splash summary fit (heading plus five lines) is by the fit test, which was not run by the documenter.
 
 ## Development log
 - 1.0.0 to 1.6.2: one line per development in the changelog and in the earlier notes (compacted in 1.6.3; the detailed per-part checks of those versions are not kept here).
@@ -139,4 +144,7 @@ Player
 - 2.0.0 POEM: new README poem written after 1.6.3 release (opening of 2.0.0), docs-check ok, version 2.0.0 consistent.
 - 2.0.1 to 2.0.3: one line per part in the changelog (business, architecture, code); the detailed checks are not kept here.
 - 2.0.4 business, architecture, checkpoint: version set to 2.0.4; changelog entry; the 2.0.4 architecture bullets were kept in the checkpoint file until built (ai-docs/roadmap-2_0-checkpoint.md, section Documenter); docs-check ok.
+- 2.1.0 business (2026-11-21 19:43 +0000): version set to 2.1.0 (notices regenerated: rust-crates.txt, rust-crates-player.txt); changelog 2.1.0 entry (business plan bullet); roadmap: postponed 2.1.0 items added (Enlarge word and Typewriter in subtitle files, Typewriter caret and sound, keyframes for the text shadow, reordering of fixed effects, per-line order in the widget); README unchanged (no delivered change); docs/business.md index already links the 2.1.0 documents; docs-check ok, version check ok.
 - 2.0.4 close (2026-11-21 19:27 +0000, final pass): version 2.0.4 consistent; coverage badge 94.9 (`scripts/coverage.sh --badge 94.9`); changelog 2.0.4 bullets for speed, picture items, per-clip aspect, 360 text and paths, spatial sound, player picture subtitles and quality items; README Latest changes 2.0.4 updated, Usage and Known limitations corrected to the built state, poem unchanged; roadmap: 2.0.4 items removed and the 2.0.5 items added (manual checks, roll, pre-pass, picture subtitle limits, picture item limits, CI QG-06 items already present); splash summaries (editor and player) rewritten within five lines; docs/architecture-2.0.4-overview.md forbidden ai-docs reference removed; docs-check ok, version check ok. The checkpoint file ai-docs/roadmap-2_0-checkpoint.md is kept (not deleted).
+- 2.1.0 close (2026-11-21, after the principal engineer's build): version 2.1.0 consistent (no change); changelog 2.1.0 entry replaced by the delivered bullets (Added, Fixed, Changed); README: badge 95.0 via the coverage script, Usage items 6, 13, 14 and new 16 (Applied effects), known limitations for 2.1.0, Latest changes 2.1.0, 2.0.4, 2.0.3; roadmap: source tag of the manual checks fixed, 2.1.0 open points and principal engineer future work added, Typewriter sound items merged, binary LUT items updated with the 12 s measurement; docs/business-export.md stale "planned in 2.0.4" line removed; splash summary.txt rewritten for 2.1.0 (player summary unchanged: no player change); poem unchanged; docs-check and version check run.
+- 2.1.0 architecture (PLAN, 2026-11-21): version 2.1.0 consistent (no change); changelog 2.1.0 architecture bullet with links to the 2.1.0 overview, applied effects, subtitle styles, LUT and security pages; roadmap: 360 movable order (Priority 9), binary input and smaller preview table for 256-point LUTs and typing sound (Priority 10) added, the LUT colour management item kept once; docs/architecture.md index already links the 2.1.0 pages; docs-check ok, version check ok.

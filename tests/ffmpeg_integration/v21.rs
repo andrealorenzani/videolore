@@ -346,3 +346,350 @@ fn a_second_line_of_a_subtitle_keeps_the_centre_of_its_box_in_the_export() {
     );
     assert!((cx - old.cx).abs() <= 0.03 * W as f64, "{cx} {}", old.cx);
 }
+
+/// Bounding box (x0, x1, y0, y1) and count of the red pixels of an RGB frame.
+fn red_ink(frame: &[u8], w: usize) -> Option<(usize, usize, usize, usize)> {
+    let (mut x0, mut x1, mut y0, mut y1, mut n) = (usize::MAX, 0, usize::MAX, 0, 0);
+    for (i, p) in frame.chunks(3).enumerate() {
+        if p[0] > 150 && p[1] < 90 && p[2] < 90 {
+            let (x, y) = (i % w, i / w);
+            (x0, x1, y0, y1) = (x0.min(x), x1.max(x), y0.min(y), y1.max(y));
+            n += 1;
+        }
+    }
+    (n > 5).then_some((x0, x1, y0, y1))
+}
+
+// covers: REQ-306
+#[test]
+fn a_red_shadow_is_drawn_down_and_right_of_the_letters_in_the_export_and_zero_draws_none() {
+    let Some(env) = setup() else { return };
+    if !can_burn(&env) {
+        return;
+    }
+    let shadowed = |px: u8, name: &str| {
+        let mut p = project_of(&env, "black");
+        add_text(&mut p, |t| {
+            t.colour = [255, 255, 255];
+            t.readability = Readability::None;
+            t.shadow = videolore::base::shadow::Shadow {
+                px,
+                colour: [255, 0, 0],
+            };
+        });
+        export_frame(&env, &p, name, 1.0)
+    };
+    let plain = shadowed(0, "sh0.mp4");
+    assert!(red_ink(&plain, W).is_none(), "no shadow, no red");
+    // 8 px at 1080 is 2.7 px on this 360 picture
+    let f = shadowed(8, "sh8.mp4");
+    let white = ink(&f, W).expect("the letters");
+    let red = red_ink(&f, W).expect("the shadow");
+    let (dx, dy) = (red.1 as i32 - white.1 as i32, red.3 as i32 - white.3 as i32);
+    // within 2% of the frame (7 px) of the distance, and on the right and below
+    assert!(
+        (1..=6).contains(&dx),
+        "shadow edge {dx} px right of the letters"
+    );
+    assert!(
+        (1..=6).contains(&dy),
+        "shadow edge {dy} px below the letters"
+    );
+}
+
+/// A project with one subtitle line of `text` whose words come one per second.
+fn spoken_project(env: &Env, text: &str, preset: videolore::subtitles::Preset) -> Project {
+    use videolore::subtitles::{NewLine, Word};
+    let mut p = project_of(env, "black");
+    let media = p.media[0].id;
+    let words: Vec<Word> = text
+        .split(' ')
+        .enumerate()
+        .map(|(i, w)| Word {
+            start: Micros(i as i64 * 1_000_000),
+            end: Micros((i as i64 + 1) * 1_000_000),
+            text: w.into(),
+        })
+        .collect();
+    let end = Micros(words.len() as i64 * 1_000_000);
+    p.subtitles.replace_all(
+        vec![NewLine {
+            media,
+            start: Micros::ZERO,
+            end,
+            text: text.into(),
+            words,
+        }],
+        None,
+    );
+    p.subtitles.preset = preset;
+    p
+}
+
+// covers: REQ-310
+#[test]
+fn typewriter_shows_the_letters_of_the_word_on_their_times_and_not_the_next_words() {
+    let Some(env) = setup() else { return };
+    if !can_burn(&env) {
+        return;
+    }
+    let p = spoken_project(
+        &env,
+        "ab WORDS zz",
+        videolore::subtitles::Preset::Typewriter,
+    );
+    let (r, _) = env.export(&p, &env.dir.path().join("tw.mp4"));
+    let out = r.unwrap();
+    let count = |t: f64| ink(&env.frame_rgb(&out, t), W).map_or(0, |b| b.1 - b.0);
+    // 1.1 s: "ab" is spoken and the first letter of WORDS (5 letters over 1 s) is typed
+    let (early, mid, end) = (count(1.1), count(1.5), count(1.95));
+    assert!(early < mid && mid < end, "{early} {mid} {end}");
+    // the word after it is not drawn yet at 1.95 s: the ink stays narrower than the line
+    let full = count(2.5);
+    assert!(end < full, "{end} < {full}");
+    // the preview draws the same letters at the same times (same graph and ASS)
+    let still = |t: f64| {
+        let eg = render::output_geometry(&p, &env.info.encoders).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let r = render::still_args(
+            &p,
+            Micros::from_secs_f64(t),
+            &eg,
+            env.info.version,
+            &dir.path().join("g.txt"),
+            render::Source::Export,
+        )
+        .unwrap();
+        render::write_command_files(dir.path(), &r.command_files, &r.lut_files).unwrap();
+        std::fs::write(
+            dir.path().join(videolore::ass::ASS_FILE),
+            r.subtitles.as_ref().unwrap(),
+        )
+        .unwrap();
+        let o = Command::new(&env.info.ffmpeg)
+            .args(&r.args)
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        // RGBA bytes: the width of the letters' ink (green above 128)
+        let w = eg.preview().width as usize;
+        let (mut lo, mut hi) = (usize::MAX, 0);
+        for (i, p) in o.stdout.chunks(4).enumerate() {
+            if p[1] > 128 {
+                lo = lo.min(i % w);
+                hi = hi.max(i % w);
+            }
+        }
+        hi.saturating_sub(lo)
+    };
+    let (a, b) = (still(1.1), still(1.95));
+    assert!(a > 0 && a < b, "preview {a} < {b}");
+}
+
+// covers: REQ-309
+#[test]
+fn enlarge_word_draws_the_spoken_word_larger_and_leaves_the_others_where_they_are() {
+    let Some(env) = setup() else { return };
+    if !can_burn(&env) {
+        return;
+    }
+    let mut p = spoken_project(&env, "HH HH HH", videolore::subtitles::Preset::EnlargeWord);
+    p.subtitles.style.enlarge = 40;
+    let (r, _) = env.export(&p, &env.dir.path().join("en.mp4"));
+    let out = r.unwrap();
+    let height_of = |t: f64, x0: usize, x1: usize| {
+        let f = env.frame_rgb(&out, t);
+        let sub: Vec<u8> = (0..H)
+            .flat_map(|y| f[(y * W + x0) * 3..(y * W + x1) * 3].to_vec())
+            .collect();
+        ink(&sub, x1 - x0).map_or(0, |b| b.3 - b.2)
+    };
+    let f = env.frame_rgb(&out, 0.5);
+    let (a0, a1, _, _) = ink(&f, W).expect("the line");
+    // the first word is spoken at 0.5 s: it is taller than the last one, which is not
+    let third = a1 - (a1 - a0) / 5;
+    let first = height_of(0.5, a0, a0 + (a1 - a0) / 4);
+    let last = height_of(0.5, third, a1 + 1);
+    assert!(first > last + 3, "enlarged {first} vs {last}");
+    // at 2.5 s the last word is the large one and the first is back to the normal size
+    let first2 = height_of(2.5, a0, a0 + (a1 - a0) / 4);
+    let last2 = height_of(2.5, third, a1 + 1);
+    assert!(last2 > first2 + 3, "{last2} vs {first2}");
+    assert!(first2.abs_diff(last) <= 2, "the others keep their size");
+}
+
+/// A 2x2x2 `.cube` file that inverts the colours.
+fn invert_cube(env: &Env) -> String {
+    let mut t = String::from("TITLE \"invert\"\nLUT_3D_SIZE 2\n");
+    for b in 0..2u8 {
+        for g in 0..2u8 {
+            for r in 0..2u8 {
+                t.push_str(&format!("{} {} {}\n", 1 - r, 1 - g, 1 - b));
+            }
+        }
+    }
+    let p = env.dir.path().join("invert.cube");
+    std::fs::write(&p, t).unwrap();
+    p.to_string_lossy().into_owned()
+}
+
+/// How many pixels of an RGB frame are (strongly) red, green, and cyan.
+fn colours(frame: &[u8]) -> (usize, usize, usize) {
+    let mut n = (0, 0, 0);
+    for p in frame.chunks(3) {
+        let (r, g, b) = (p[0], p[1], p[2]);
+        if r > 200 && g < 80 && b < 80 {
+            n.0 += 1;
+        } else if g > 200 && r < 80 && b < 80 {
+            n.1 += 1;
+        } else if r < 80 && g > 200 && b > 200 {
+            n.2 += 1;
+        }
+    }
+    n
+}
+
+fn preview_rgb(env: &Env, p: &Project, at: Micros) -> Vec<u8> {
+    let cfg = PreviewConfig {
+        runner: limited(Priority::Preview),
+        ffmpeg: env.info.ffmpeg.clone(),
+        version: env.info.version,
+        encoders: env.info.encoders.clone(),
+    };
+    let mut pv = Preview::new(Some(cfg), Box::new(NullSink));
+    pv.seek(p, at, Instant::now()).unwrap();
+    let shot = super::v20::first_frame(&mut pv);
+    shot.rgba
+        .chunks(4)
+        .flat_map(|p| [p[0], p[1], p[2]])
+        .collect()
+}
+
+// covers: REQ-304
+// covers: REQ-311
+#[test]
+fn a_text_above_the_lut_keeps_its_colours_and_below_it_is_graded_in_the_export_and_the_preview() {
+    use videolore::effect_order::Row;
+    let Some(env) = setup() else { return };
+    if !can_burn(&env) {
+        return;
+    }
+    let mut p = project_of(&env, "black");
+    let id = add_text(&mut p, |t| {
+        t.colour = [255, 0, 0];
+        t.readability = Readability::None;
+    });
+    let lut = invert_cube(&env);
+    p.timeline
+        .set_lut(videolore::timeline::FrameTarget::Whole, Some(lut))
+        .unwrap();
+    let clip = p.timeline.clips[0].id;
+    // the old order: the text above the LUT keeps its own red on the inverted (white) frame
+    assert!(p.timeline.clip_order.is_empty());
+    let (red, _, cyan) = colours(&export_frame(&env, &p, "o-old.mp4", 1.0));
+    assert!(red > 100 && cyan == 0, "red {red}, cyan {cyan}");
+    // the LUT above the text grades the text too: cyan on white
+    p.set_order(clip, vec![Row::Lut, Row::Text(id.0)]);
+    let (red, _, cyan) = colours(&export_frame(&env, &p, "o-new.mp4", 1.0));
+    assert!(cyan > 100 && red == 0, "red {red}, cyan {cyan}");
+    // the preview draws the same (parity of the two renders)
+    let (pr, _, pc) = colours(&preview_rgb(&env, &p, Micros(1_000_000)));
+    assert!(pc > 100 && pr == 0, "preview red {pr}, cyan {pc}");
+    // and the order saved with the project is read back
+    let json = videolore::project::to_json(&p, &env.dir.path().join("x.vlproj")).unwrap();
+    let (q, _) = videolore::project::from_json(&json, env.dir.path()).unwrap();
+    assert_eq!(q.timeline.clip_order, p.timeline.clip_order);
+}
+
+// covers: REQ-305
+#[test]
+fn the_lower_of_two_overlapping_texts_is_covered_and_moving_a_row_swaps_them() {
+    use videolore::effect_order::Row;
+    let Some(env) = setup() else { return };
+    if !can_burn(&env) {
+        return;
+    }
+    let mut p = project_of(&env, "black");
+    let a = add_text(&mut p, |t| {
+        t.colour = [255, 0, 0];
+        t.readability = Readability::None;
+    });
+    let b = add_text(&mut p, |t| {
+        t.colour = [0, 255, 0];
+        t.readability = Readability::None;
+    });
+    let clip = p.timeline.clips[0].id;
+    let check = |p: &Project, name: &str, top: usize| {
+        for (what, rgb) in [
+            ("export", export_frame(&env, p, name, 1.0)),
+            ("preview", preview_rgb(&env, p, Micros(1_000_000))),
+        ] {
+            let (r, g, _) = colours(&rgb);
+            let (shown, hidden) = if top == 0 { (r, g) } else { (g, r) };
+            assert!(
+                shown > 100,
+                "{what}: the top text shows ({r} red, {g} green)"
+            );
+            assert!(
+                hidden * 10 < shown,
+                "{what}: the lower is covered ({r}, {g})"
+            );
+        }
+    };
+    // the older order: the later item (green) on top
+    check(&p, "ov-old.mp4", 1);
+    // A (red) above B: A covers B
+    p.set_order(clip, vec![Row::Text(a.0), Row::Text(b.0)]);
+    check(&p, "ov-a.mp4", 0);
+    // moved down: B covers A again, which is the older order
+    p.set_order(clip, vec![Row::Text(b.0), Row::Text(a.0)]);
+    assert!(p.timeline.clip_order.is_empty());
+    check(&p, "ov-b.mp4", 1);
+}
+
+// covers: REQ-304
+#[test]
+fn a_picture_item_over_two_clips_follows_the_order_of_each_clip_in_the_export_and_the_preview() {
+    use videolore::effect_order::Row;
+    let Some(env) = setup() else { return };
+    let png = env.fixture(
+        "red-64.png",
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=64x64:d=1",
+            "-frames:v",
+            "1",
+        ],
+    );
+    let mut p = project_of(&env, "black");
+    let m = p.media[0].clone();
+    p.timeline.append(&m).unwrap();
+    let inv = invert_cube(&env);
+    p.timeline
+        .set_lut(videolore::timeline::FrameTarget::Whole, Some(inv))
+        .unwrap();
+    let id = p.texts.new_id();
+    let pic = videolore::picture::read(&png).unwrap();
+    let mut item = TextItem::new_picture(id, pic, Micros(1_000_000), (W as u32, H as u32));
+    item.ttl = Micros(4_000_000);
+    p.texts.add(item).unwrap();
+    let (c1, c2) = (p.timeline.clips[0].id, p.timeline.clips[1].id);
+    // the picture was added after the LUTs: on clip 2 the LUT goes above it (graded cyan on
+    // white); clip 1 keeps the old order (the picture above the LUT keeps its red)
+    p.set_order(c2, vec![Row::Lut, Row::Picture(id.0)]);
+    assert!(p.timeline.order_of(c1).is_empty());
+    let (r, _) = env.export(&p, &env.dir.path().join("pic.mp4"));
+    let out = r.unwrap();
+    let (red1, _, cyan1) = colours(&env.frame_rgb(&out, 2.0));
+    assert!(red1 > 100 && cyan1 == 0, "clip 1: red {red1}, cyan {cyan1}");
+    let (red2, _, cyan2) = colours(&env.frame_rgb(&out, 4.0));
+    assert!(cyan2 > 100 && red2 == 0, "clip 2: red {red2}, cyan {cyan2}");
+    // the preview draws both clips the same way
+    let (pr1, _, pc1) = colours(&preview_rgb(&env, &p, Micros(2_000_000)));
+    assert!(pr1 > 100 && pc1 == 0, "preview clip 1: {pr1} {pc1}");
+    let (pr2, _, pc2) = colours(&preview_rgb(&env, &p, Micros(4_000_000)));
+    assert!(pc2 > 100 && pr2 == 0, "preview clip 2: {pr2} {pc2}");
+}

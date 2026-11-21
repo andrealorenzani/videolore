@@ -478,10 +478,10 @@ fn a_project_of_2_0_3_records_the_file_stats_without_an_analysis() {
     assert_eq!(count.load(Ordering::SeqCst), 0, "no analysis count change");
     assert!(app.project.media.iter().all(|m| m.stat.is_some()));
     assert!(!app.dirty);
-    // saving writes format 11 with the stats
+    // saving writes format 12 with the stats
     app.dispatch(Command::SaveProject, Instant::now()).unwrap();
     let text = std::fs::read_to_string(&file).unwrap();
-    assert!(text.contains("\"schema_version\": 11"));
+    assert!(text.contains("\"schema_version\": 12"));
     assert!(text.contains("\"file_size\"") && text.contains("\"modified_ms\""));
 }
 

@@ -112,3 +112,16 @@
 - tests/ffmpeg_integration/v21.rs: 156, 157, 158, 162, 163, 164, 165, 174
 - tests/module_cycles.rs: 153
 - tests/page.rs: 298, 299
+
+## 2.1.0 (first part)
+- src/lut/parse.rs, src/lut/store.rs, src/app/lut_tests.rs, tests/ffmpeg_integration/v16.rs: 300; src/app/lut_tests.rs: 301
+- src/ass/style_tests.rs: 306, 307, 308, 309, 310; src/word_styles.rs: 309, 310; src/app/style_tests.rs: 306, 307, 308, 309; tests/ffmpeg_integration/v21.rs: 306, 309, 310
+- src/project/v12_tests.rs: 311
+
+## 2.1.0 (second part: Applied effects, overlay stage, order in the project)
+- REQ-302: src/app/applied_tests.rs, src/ui/applied_ux_tests.rs, src/project/order_tests.rs
+- REQ-303: src/app/applied_tests.rs, src/ui/applied_ux_tests.rs
+- REQ-304: src/effect_order.rs, src/app/applied_tests.rs, src/ui/applied_ux_tests.rs, src/render/overlay_tests.rs, src/project/order_tests.rs, tests/ffmpeg_integration/v21.rs
+- REQ-305: src/effect_order.rs, src/render/overlay_tests.rs, tests/ffmpeg_integration/v21.rs
+- REQ-311: src/effect_order.rs, src/project/order_tests.rs, src/project/v12_tests.rs, src/render/overlay_tests.rs, tests/ffmpeg_integration/v21.rs
+- Gates: QG-20 (overlay parity, preview and export agree) = tests/ffmpeg_integration/v21.rs (3 tests); QG-21 (legacy argv unchanged) = render/overlay_tests.rs `a_clip_with_the_old_order_keeps...` + the frozen golden files in render/golden_tests.rs (unchanged).

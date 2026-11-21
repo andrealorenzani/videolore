@@ -74,7 +74,10 @@ mod tests {
         let video = dir.path().join("my \"video\" $(x).mp4");
         launch_in(dir.path(), PLAYER, &video).unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while !out.exists() && std::time::Instant::now() < deadline {
+        // the shell creates the file before it writes the argument: wait for the content
+        while std::fs::metadata(&out).map_or(true, |m| m.len() == 0)
+            && std::time::Instant::now() < deadline
+        {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert_eq!(

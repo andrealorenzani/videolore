@@ -35,6 +35,7 @@ use crate::stt::{
 use crate::subtitles::{LineId, Preset};
 use crate::time::{Fps, Micros};
 use crate::timeline::{Clip, ClipId, EditError, FrameTarget};
+pub use applied::{Applied, AppliedRow, RowMove};
 pub use command::{Command, ZOOM_STEP};
 pub use sphere::{Axis, LiveView, ResizeDrag};
 use std::collections::{BTreeSet, HashMap};
@@ -632,6 +633,8 @@ pub struct AppState {
     /// True while the ffmpeg check runs in the background.
     pub ffmpeg_checking: bool,
     ffmpeg_check: Option<Receiver<Result<FfmpegInfo, String>>>,
+    /// A large LUT file being read in the background (2.1.0, REQ-300).
+    lut_load: Option<lut::PendingLut>,
     pub settings: Settings,
     pub(crate) settings_path: Option<PathBuf>,
     /// The floating windows (Settings, effect popups, clip details, shortcuts).
@@ -888,6 +891,7 @@ impl AppState {
             ffmpeg,
             ffmpeg_checking: false,
             ffmpeg_check: None,
+            lut_load: None,
             settings,
             settings_path: None,
             popups: Popups::default(),
@@ -1382,6 +1386,7 @@ impl AppState {
                 self.open_frame_effect(effect);
                 Ok(())
             }
+            Command::MoveRow { clip, row, mv } => self.move_row(clip, row, mv, now),
             Command::PickLut(target) => self.pick_lut(target, now),
             Command::SetLut { target, path } => self.set_lut_file(target, &path, now),
             Command::RemoveLut(target) => self.remove_lut(target, now),
@@ -2089,6 +2094,7 @@ fn preview_config(
     })
 }
 
+mod applied;
 mod command;
 mod dispatch_interface;
 mod dispatch_playback;
@@ -2113,6 +2119,8 @@ mod tick;
 pub use subs_create::pick_track;
 
 #[cfg(test)]
+mod applied_tests;
+#[cfg(test)]
 mod cache_tests;
 #[cfg(test)]
 mod clarity_tests;
@@ -2136,6 +2144,8 @@ mod settings_tests;
 mod speed_tests;
 #[cfg(test)]
 mod sphere_tests;
+#[cfg(test)]
+mod style_tests;
 #[cfg(test)]
 mod subs_import_tests;
 #[cfg(test)]

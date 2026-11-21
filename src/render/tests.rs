@@ -1270,7 +1270,7 @@ fn the_camera_path_becomes_one_command_file_for_each_moving_clip() {
     assert!(graph.graph.contains("fps=30/1,sendcmd=f=cam0.txt,v360@c0="));
     assert_eq!(plan.command_files().len(), 1);
     let dir = tempfile::tempdir().unwrap();
-    write_command_files(dir.path(), plan.command_files()).unwrap();
+    write_command_files(dir.path(), plan.command_files(), plan.lut_files()).unwrap();
     assert_eq!(
         std::fs::read_to_string(dir.path().join("cam0.txt")).unwrap(),
         *text
@@ -1385,6 +1385,7 @@ fn graph_of(p: &Project) -> (Graph, Geometry, bool) {
                 inputs: vec![],
                 graph: String::new(),
                 command_files: vec![],
+                lut_files: vec![],
                 spatial: vec![],
             },
             Geometry {
@@ -1772,26 +1773,29 @@ fn each_clip_has_one_lut_stage_and_never_uses_a_user_name() {
         .set_lut(FrameTarget::Whole, Some(a.clone()))
         .unwrap();
     let g = lut_graph(&p, Source::Export);
+    // the same table on both clips is one file named by its content (ADR-206)
+    assert_eq!(g.lut_files.len(), 1);
+    let n = crate::lut::store::copy_name(&g.lut_files[0]);
     // before the pad (black bars keep their colour), then back to yuv
     assert!(
-        g.graph.contains(
-            "decrease,format=gbrp,lut3d=file=lut-clip-0.cube:interp=tetrahedral,\
-         format=yuv420p,pad="
-        ),
+        g.graph.contains(&format!(
+            "decrease,format=gbrp,lut3d=file={n}:interp=tetrahedral,format=yuv420p,pad="
+        )),
         "{}",
         g.graph
     );
     assert!(g.graph.contains("[0:v:0]") && !g.graph.contains("warm"));
-    assert_eq!(g.graph.matches("lut-clip-0.cube").count(), 1);
-    assert_eq!(g.graph.matches("lut-clip-1.cube").count(), 1);
-    let names: Vec<&str> = g.command_files.iter().map(|f| f.0.as_str()).collect();
-    assert_eq!(names, ["lut-clip-0.cube", "lut-clip-1.cube"]);
-    assert!(g.command_files[0].1.starts_with("LUT_3D_SIZE 2\n"));
+    assert_eq!(g.graph.matches(&n).count(), 2);
+    assert!(g.command_files.is_empty());
     // one clip alone
     p.timeline.set_lut(FrameTarget::Whole, None).unwrap();
     p.timeline.set_lut(FrameTarget::Clip(id), Some(a)).unwrap();
     let g = lut_graph(&p, Source::Export);
-    assert!(!g.graph.contains("lut-clip-0.cube") && g.graph.contains("lut-clip-1.cube"));
+    assert_eq!(g.graph.matches("lut3d").count(), 1);
+    assert!(
+        g.graph.contains("[1:v:0]trim")
+            && g.graph.split("[1:v:0]").nth(1).unwrap().contains("lut3d")
+    );
     // a frame effect: the LUT acts on the fitted picture before the overlay
     let b = lut_file(dir.path(), "b.cube");
     p.timeline.set_lut(FrameTarget::Whole, Some(b)).unwrap();

@@ -42,7 +42,12 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [360 video](business-360-video.md) — 360 marker in MKV and WebM, camera roll, easing and keyboard control, speed-first 360 export, subtitles and texts anchored to the sphere with re-anchor and off-view arrows, per-clip camera paths, spatial sound.
 - [New effects, frame and LUT options](business-effects-frame.md) — fade length and one-sided fades, music effects, Clean audio strength and Normalise speech, keyframe easing and volume over time, crop, blur strength, custom aspect, LUT strength, `.3dl`/`.csp` LUTs, favourite LUTs, clip speed, per-clip aspect, PNG picture items, aspect drop onto a clip.
 - [Continuous quality, cache and project page](business-quality.md) — preview cache limit, page image and policy, and the engineering quality goals.
-- Not built in 2.0.4: REQ-177, the subtitle accuracy target (open decision for Andrea, see [Subtitle accuracy](business-subtitle-accuracy.md)). The items left after 2.0.4 are in the [roadmap tasks](roadmap_tasks.md), 2.0.5.
+- Not built in 2.0.4: REQ-177, the subtitle accuracy target (open decision for Andrea, see [Subtitle accuracy](business-subtitle-accuracy.md)). The manual checks and future work left from 2.0.4 are in the [roadmap tasks](roadmap_tasks.md).
+
+### 2.1.0
+- [Applied effects](business-applied-effects.md) — the Applied effects widget (about 15% of the preview) listing the effects of the selected clip in order of application, reorder of LUTs, texts, picture items and subtitles, whole-video marks, project format 12.
+- [Subtitle and text styles](business-subtitle-styles.md) — shadow for texts and subtitles, the two word-highlight colours, the Enlarge word and Typewriter styles.
+- [Apply LUT](business-lut.md) (section "Importing the user's LUT files") — the maintainer's 144-point `.cube` LUT files import (up to 256 points); LUTs above 20 MB keep only their path in the project.
 
 ## Constraints
 - **ffmpeg is bundled** in every installer (since 0.2.0; before, it had to be installed by the user). A user-chosen ffmpeg can still be configured instead.
@@ -78,6 +83,7 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (2.0.2, Andrea's decisions, planned unless stated) The Export dialog keeps its fixed presets; hardware export always goes through ffmpeg; AV1, VP9 encoding and hardware decoding are in scope (not yet built); the 360 export always prioritises speed; whole-video keyframe copies are shown apart in the popup (not yet built). Details in [Export](business-export.md), [Boxes on the picture and 360 video](business-picture.md) and [Frame](business-frame.md).
 
 - (2.0.4, Andrea and the development) Hardware export always goes through ffmpeg; the Export presets stay fixed (AV1 and VP9 presets are added); the whole-video keyframe copies are shown apart; the 360 export prioritises speed; installers stay unsigned. Project format 11 (one change for the development) is refused by 2.0.3 and older. Details in each planned document.
+- (2.1.0, Andrea's request, built) The order of LUTs, texts and subtitles on a clip is chosen by the user and stored per clip; the other effects keep their fixed place. New effects of the same kind (shadow, highlight colours, two word styles) keep the 2.0.4 look by default. Details in [Applied effects](business-applied-effects.md) and [Subtitle and text styles](business-subtitle-styles.md).
 
 Topic-specific decisions are in each document.
 

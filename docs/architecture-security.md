@@ -112,6 +112,11 @@ The full list of new untrusted inputs, bounds and processes is in [2.0.4 quality
 - **Speed and volume keys:** numbers only, with the limits of the model (speed 500 to 2000 thousandths; volume keys 0 to 100 percent); no text reaches the filter graph.
 - **Speech fixture:** committed and checked by SHA-256; the tests do not run any speech synthesiser.
 
+## 2.1.0 additions (planned)
+- LUT files: opened read-only as regular files (FIFO and device refused on the open handle); streamed with a 512 MiB cap; lines at most 256 bytes; numbers finite and clamped; exactly the promised entries. The file is never written.
+- The Work copy of a LUT has a fixed name derived from its content hash; no user path or text reaches an ffmpeg filter (see [LUT](architecture-lut.md#large-luts-210-planned)).
+- Stored order ids, shadow values, enlarge sizes and colours are validated on load; damaged entries are dropped with a notice. Format 12 is refused by older programs without changing the file.
+
 ## Unsigned installers
 The installers are not code-signed (decided by Andrea), so Windows and macOS show a warning on first launch; the README explains the steps. The macOS app is sealed with an ad-hoc signature only. Signing is postponed, not rejected.
 

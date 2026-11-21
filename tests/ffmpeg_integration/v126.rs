@@ -105,7 +105,7 @@ fn preview_still(env: &Env, p: &Project, at: Micros) -> (Vec<u8>, usize) {
         Source::Export,
     )
     .unwrap();
-    render::write_command_files(dir.path(), &r.command_files).unwrap();
+    render::write_command_files(dir.path(), &r.command_files, &r.lut_files).unwrap();
     let o = Command::new(&env.info.ffmpeg)
         .args(&r.args)
         .current_dir(dir.path())

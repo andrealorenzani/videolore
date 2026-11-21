@@ -83,7 +83,7 @@ fn centre_with(env: &Env, p: &Project, at: Micros, src: Source) -> [i32; 3] {
     let dir = tempfile::tempdir().unwrap();
     let r =
         render::still_args(p, at, &eg, env.info.version, &dir.path().join("g.txt"), src).unwrap();
-    render::write_command_files(dir.path(), &r.command_files).unwrap();
+    render::write_command_files(dir.path(), &r.command_files, &r.lut_files).unwrap();
     let o = Command::new(&env.info.ffmpeg)
         .args(&r.args)
         .current_dir(dir.path())
@@ -264,4 +264,43 @@ fn the_360_video_export_shows_the_lut_colours() {
     assert_eq!(f.len(), 2048 * 1024 * 3);
     assert!(close(px(&f, 2048, 100, 500), [255, 255, 255], 10));
     assert!(close(px(&f, 2048, x as usize + 4, 500), [0, 0, 0], 30));
+}
+
+/// A cube of `n` points an edge: the output of grid point `(r, g, b)` (0..=1) is `f`.
+fn big_cube(env: &Env, name: &str, n: usize, f: impl Fn([f64; 3]) -> [f64; 3]) -> String {
+    let mut t = format!("TITLE \"big\"\nLUT_3D_SIZE {n}\n");
+    let m = (n - 1) as f64;
+    for b in 0..n {
+        for g in 0..n {
+            for r in 0..n {
+                let o = f([r as f64 / m, g as f64 / m, b as f64 / m]);
+                t.push_str(&format!("{:.6} {:.6} {:.6}\n", o[0], o[1], o[2]));
+            }
+        }
+    }
+    let p = env.dir.path().join(name);
+    std::fs::write(&p, t).unwrap();
+    p.to_string_lossy().into_owned()
+}
+
+// covers: REQ-300
+#[test]
+fn a_144_point_lut_swaps_the_channels_in_the_preview_and_the_export_within_two_levels() {
+    let Some(env) = setup() else { return };
+    let mut p = three_clips(&env, "red");
+    let swap = big_cube(&env, "swap144.cube", 144, |[r, g, b]| [b, g, r]);
+    let id = p.timeline.clips[1].id;
+    p.timeline
+        .set_lut(FrameTarget::Clip(id), Some(swap))
+        .unwrap();
+    let pv = preview_centre(&env, &p, Micros::from_secs_f64(3.0));
+    assert!(close(pv, BLUE, 4), "preview {pv:?}");
+    let (out, w) = export_to(&env, &p, "lut144.mp4");
+    let f = env.frame_rgb(&out, 3.0);
+    let got = px(&f, w, 80, 60);
+    assert!(close(got, BLUE, 8), "export {got:?}");
+    assert!(close(got, pv, 8), "export {got:?} vs preview {pv:?}");
+    // the other clips are not changed
+    let f = env.frame_rgb(&out, 1.0);
+    assert!(close(px(&f, w, 80, 60), RED, 8));
 }

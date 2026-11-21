@@ -36,6 +36,7 @@ impl AppState {
                 FrameTarget::Clip(c) => tl.get(*c).is_some(),
             },
             Command::RemoveLut(t) => tl.lut_of(*t).is_some(),
+            Command::MoveRow { clip, row, mv } => self.row_move_reason(*clip, *row, *mv).is_none(),
             Command::AddKey { target, .. } | Command::RemoveFrameEffect { target, .. } => {
                 match target {
                     FrameTarget::Whole => !tl.clips.is_empty(),
@@ -164,6 +165,9 @@ impl AppState {
         Some(match cmd {
             Command::Undo => "Nothing to undo",
             Command::Redo => "Nothing to redo",
+            Command::MoveRow { clip, row, mv } => self
+                .row_move_reason(*clip, *row, *mv)
+                .unwrap_or("Not available right now"),
             Command::OpenInPlayer => "Select a video in Media or a clip first",
             Command::Split | Command::AddSubtitle => "Move the playhead over a clip first",
             Command::AddText(_) | Command::AddPicture(_) | Command::OpenNewText => {

@@ -325,6 +325,30 @@ pub struct ClipLut {
     pub strength: u8,
 }
 
+/// The order of the movable effects of one clip (REQ-304, format 12): the rows top first (the
+/// top row is drawn last). Only a clip whose order differs from the older programs' is stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipOrder {
+    pub clip: ClipId,
+    pub rows: Vec<crate::effect_order::Row>,
+}
+
+/// Reads the stored orders without refusing the file for a damaged entry: it becomes an
+/// entry of the clip 0 (which never exists) holding an unknown row, and the project check
+/// drops it with a note (REQ-311).
+fn lenient_orders<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<ClipOrder>, D::Error> {
+    let raw: Vec<serde_json::Value> = Vec::deserialize(d)?;
+    Ok(raw
+        .into_iter()
+        .map(|v| {
+            serde_json::from_value(v).unwrap_or(ClipOrder {
+                clip: ClipId(0),
+                rows: vec![crate::effect_order::Row::Unknown],
+            })
+        })
+        .collect())
+}
+
 /// The Change aspect of one clip (REQ-286): the clip is made in its own frame, which is then
 /// placed in the project's frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -373,9 +397,34 @@ pub struct Timeline {
     /// Apply LUT of the clips, sorted by clip id; empty entries are removed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clip_luts: Vec<ClipLut>,
+    /// The order of the movable effects of the clips whose order was changed, sorted by clip
+    /// id (REQ-304, format 12); a clip not listed has the order of the older versions.
+    #[serde(
+        default,
+        deserialize_with = "lenient_orders",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub clip_order: Vec<ClipOrder>,
 }
 
 impl Timeline {
+    /// The stored order of a clip, top first (empty: the older order).
+    pub fn order_of(&self, id: ClipId) -> &[crate::effect_order::Row] {
+        self.clip_order
+            .iter()
+            .find(|o| o.clip == id)
+            .map_or(&[], |o| &o.rows)
+    }
+
+    /// Stores the order of a clip (an empty list removes the entry).
+    pub fn set_order(&mut self, id: ClipId, rows: Vec<crate::effect_order::Row>) {
+        self.clip_order.retain(|o| o.clip != id);
+        if !rows.is_empty() && self.get(id).is_some() {
+            self.clip_order.push(ClipOrder { clip: id, rows });
+            self.clip_order.sort_by_key(|o| o.clip);
+        }
+    }
+
     fn new_id(&mut self) -> ClipId {
         self.next_clip_id += 1;
         ClipId(self.next_clip_id)
@@ -567,6 +616,9 @@ impl Timeline {
         if let Some(p) = self.lut_of(FrameTarget::Clip(c.id)).map(str::to_string) {
             self.put_lut(id, Some(p));
         }
+        // and the order of its effects
+        let rows = self.order_of(c.id).to_vec();
+        self.set_order(id, rows);
         Ok(id)
     }
 
@@ -577,6 +629,7 @@ impl Timeline {
         self.prune_fades();
         self.clip_frames.retain(|f| f.clip != id);
         self.clip_luts.retain(|l| l.clip != id);
+        self.clip_order.retain(|o| o.clip != id);
         Ok(c)
     }
 
@@ -677,6 +730,7 @@ impl Timeline {
         self.prune_fades();
         self.clip_frames.retain(|f| f.clip != b.id);
         self.clip_luts.retain(|l| l.clip != b.id);
+        self.clip_order.retain(|o| o.clip != b.id);
         Ok(())
     }
 

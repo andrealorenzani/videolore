@@ -304,7 +304,7 @@ pub fn run(
     if let Some(t) = plan.track() {
         std::fs::write(work.path().join(t.file), &t.content).map_err(io)?;
     }
-    render::write_command_files(work.path(), plan.command_files()).map_err(io)?;
+    render::write_command_files(work.path(), plan.command_files(), plan.lut_files()).map_err(io)?;
     prepare_spatial(job, runner, plan.spatial(), work.path(), cancel)?;
     let mut after = None;
     if let Some((cand, codec, bps)) = hw_choice(job, &plan) {
@@ -891,7 +891,8 @@ impl Attempt<'_> {
             None => render::input_args(&graph.inputs),
         };
         let dir = self.work.path();
-        render::write_command_files(dir, &graph.command_files).map_err(|_| CheckFailure::Decode)?;
+        render::write_command_files(dir, &graph.command_files, &graph.lut_files)
+            .map_err(|_| CheckFailure::Decode)?;
         let args = outcheck::compare_args(
             inputs,
             graph.inputs.len(),
@@ -968,7 +969,8 @@ impl Attempt<'_> {
         if let Some(doc) = &graph.subtitles {
             write_subtitles(&dir, doc).map_err(fail)?;
         }
-        render::write_command_files(&dir, &graph.graph.command_files).map_err(fail)?;
+        render::write_command_files(&dir, &graph.graph.command_files, &graph.graph.lut_files)
+            .map_err(fail)?;
         let inputs = match self.job.threads {
             Some(t) => render::threaded_inputs(render::input_args(&graph.graph.inputs), t),
             None => render::input_args(&graph.graph.inputs),

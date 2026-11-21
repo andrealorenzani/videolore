@@ -351,6 +351,57 @@ const LINE_ROW: f32 = 20.0;
 /// The warning of a line whose box overlaps another line shown at the same time (REQ-169).
 pub const OVERLAPS: &str = "Overlaps another line shown at the same time";
 
+/// A colour button that reports a change once the pointer is up (one undo step per pick).
+fn colour_row(ui: &mut Ui, label: &str, c: &mut [u8; 3]) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(label);
+        let before = *c;
+        let r = egui::color_picker::color_edit_button_srgb(ui, c);
+        changed = *c != before && !ui.input(|i| i.pointer.any_down())
+            || r.clicked_elsewhere() && *c != before;
+    });
+    changed
+}
+
+/// Shadow, word colours and Enlarge word size of the style (REQ-306 to REQ-309).
+fn style_settings(ui: &mut Ui, subs: &crate::subtitles::Subtitles, cmds: &mut Vec<Command>) {
+    use crate::subtitles::{ENLARGE_MAX, ENLARGE_MIN};
+    let mut st = subs.style;
+    let mut done = false;
+    ui.horizontal(|ui| {
+        ui.label(tr!(ShadowLabel));
+        let r = ui.add(
+            egui::DragValue::new(&mut st.shadow.px)
+                .range(0..=crate::base::shadow::SHADOW_MAX)
+                .suffix(" px"),
+        );
+        done |= r.drag_stopped() || (r.changed() && !r.dragged());
+        let before = st.shadow.colour;
+        let c = egui::color_picker::color_edit_button_srgb(ui, &mut st.shadow.colour);
+        done |= st.shadow.colour != before && !ui.input(|i| i.pointer.any_down())
+            || c.clicked_elsewhere() && st.shadow.colour != before;
+    });
+    if matches!(subs.preset, Preset::WordHighlight | Preset::Typewriter) {
+        done |= colour_row(ui, "Not yet highlighted", &mut st.not_yet);
+        done |= colour_row(ui, "Highlighted", &mut st.highlighted);
+    }
+    if subs.preset == Preset::EnlargeWord {
+        ui.horizontal(|ui| {
+            ui.label(tr!(EnlargeBy));
+            let r = ui.add(
+                egui::DragValue::new(&mut st.enlarge)
+                    .range(ENLARGE_MIN..=ENLARGE_MAX)
+                    .suffix(" px"),
+            );
+            done |= r.drag_stopped() || (r.changed() && !r.dragged());
+        });
+    }
+    if done && st != subs.style {
+        cmds.push(Command::SetSubtitleStyle(st));
+    }
+}
+
 pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
     let subs = &app.project.subtitles;
     // the fonts of the scripts the lines use (REQ-188)
@@ -370,6 +421,7 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
                 }
             });
     });
+    style_settings(ui, subs, cmds);
     ui.horizontal_wrapped(|ui| {
         ui.label(tr!(Language));
         let current = match (&subs.language, subs.language_overridden) {

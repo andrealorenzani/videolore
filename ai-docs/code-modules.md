@@ -49,3 +49,4 @@
 
 
 - 2.0.4 group 3 modules: settings/interface.rs, ui/{place,theme,strings,view_menu,interface_ux_tests}.rs, app/dispatch_interface.rs, siblings.rs, player/src/{settings,playlist}.rs, tests/page.rs; keyframes::Ease shared by camera and keys.
+- 2.1.0 second part: effect_order (pure leaf: Row/Present/legacy/resolve/moved), project/order.rs (ClipRows, order_of, changed_orders, put_on_top, repair_orders), render/overlay.rs (OverlayStep, attach, legacy_windows), render/graph.rs overlay_chain, text/events.rs project_events_in/item_events/intersect, app/applied.rs (AppState::applied, move_row, RowMove, move_label), ui/applied_effects.rs (show, height, SHARE 0.15, MIN_HEIGHT 58); tests: project/order_tests, render/overlay_tests, app/applied_tests, ui/applied_ux_tests, ffmpeg_integration/v21.

@@ -22,12 +22,21 @@
 - ai-docs/code-history.md § 0.4.0 notes — L125-138 (14 lines)
 - ai-docs/code-history.md § 0.3.0 notes — L139-148 (10 lines)
 - ai-docs/code-history.md § Packaging / CI — L149-153 (5 lines)
+- ai-docs/roadmap-2_0-checkpoint.md § Principal Engineer 2.1.0 — checkpoint of the 2.1.0 work (my section only)
 - ai-docs/roadmap-2_0-checkpoint.md § Principal Engineer — checkpoint to resume the 2.0.4 roadmap work (temporary, shared file: edit only my section)
 - ai-docs/code-modules.md § ai-notes: code — module facts (dense, per module) — L1-4 (4 lines)
 - ai-docs/code-modules.md § Module facts — L5-48 (44 lines)
 - ai-docs/code-req-tests.md § ai-notes: code — requirement -> test files (generated) — L1-101 (101 lines)
 
 ## Index of docs/code*.md
+- docs/code-2.1.0.md § Code — 2.1.0 (large LUTs, Applied effects, shadows, word styles, project format 12) — L1-6 (6 lines)
+- docs/code-2.1.0.md § Why the 80 MB LUT was refused (measured) — L7-15 (9 lines)
+- docs/code-2.1.0.md § Large LUTs (REQ-300, REQ-301) — L16-37 (22 lines)
+- docs/code-2.1.0.md § Shadows, word colours, Enlarge word, Typewriter (REQ-306 to REQ-310) — L38-66 (29 lines)
+- docs/code-2.1.0.md § Applied effects and the order of the effects (REQ-302 to REQ-305) — L67-98 (32 lines)
+- docs/code-2.1.0.md § The overlay stage (REQ-304, REQ-305) — L99-123 (25 lines)
+- docs/code-2.1.0.md § Project format 12 (REQ-311) — L124-135 (12 lines)
+- docs/code-2.1.0.md § Not built (to continue) — L136-142 (7 lines)
 - docs/code-2.0.4-batches-5-7.md § Code — 2.0.4, batches 5 to 7 (subtitle files, editing gestures, whole-video clarity) — L1-4 (4 lines)
 - docs/code-2.0.4-batches-5-7.md § Stage 0 — files split without a change of behaviour — L5-9 (5 lines)
 - docs/code-2.0.4-batches-5-7.md § Stage 1 — subtitle files and fonts (REQ-180 to 188), project format 11 — L10-18 (9 lines)
@@ -202,6 +211,13 @@
 - docs/code.md § Cargo features — L82-92 (11 lines)
 - docs/code.md § Finding ffmpeg — L93-100 (8 lines)
 - docs/code.md § Dependencies — L101-126 (26 lines)
+
+## State (2.1.0, REQ-300..311 all built, none marked implemented; plan ai-docs/architecture-plan-2.1.0.md; doc docs/code-2.1.0.md)
+- Built (all with `// covers:`, none marked implemented): REQ-300, 301 (src/lut/{mod,parse,store}.rs, Graph.lut_files, app background load), 306, 307 (design A, spike S0d), 308, 309, 310 (src/word_styles.rs; Enlarge uses two events per word, no measured centre), 311 (format 12: shadow + style fields + clip_order + repair note). Second part: REQ-302..305 (src/effect_order.rs, Timeline.clip_order, project/order.rs, render/overlay.rs, app/applied.rs, ui/applied_effects.rs).
+- Spikes: S0a 144 cube ffmpeg 2.3 s / 80 MB, 256 cube 12.4 s / 233 MB; S0b skipped (Enlarge needs no measure); S0c `\ko` + `\2a&HFF&` hides letters and their outline; S0d box fill = OutlineColour, box shadow = BackColour. m3d not tried.
+- Gotchas: `Shadow` lives in `base::shadow` (text -> subtitles would be a module cycle); `Lut::at` is f32 from u16 (tests compare with 1/65535); `write_command_files` has a third argument (luts); test `find("Color")` is ambiguous when two colour buttons exist (pick by y); `\ko` durations are cumulative per letter, a render that starts inside a word gets `shift` to type letters at once; hw_tests flaked once under the full parallel run (pass alone, twice).
+- Second part facts: legacy stacking (top first) = texts (later item on top), lines, pictures, LUT; a clip is "changed" only when its resolved order differs, and only then do the overlay steps exist (argv of every other project byte-identical); changed clips' texts/lines/pictures are removed from the global ASS and the global picture overlays by time windows (`legacy_windows`), the per-clip ASS files are `ov<clip>-t<id>.ass` / `ov<clip>-s.ass` (they end in `.ass`, so `write_command_files` copies the fonts); the clip's LUT is taken out of the chain (`seg.lut_clip.take()`), so the Only background is ungraded; Sphere360 export bypasses the overlay (`subtitles_doc_ordered(..., false)`); `put_on_top` runs after the edit and is not recorded (undo restores the whole Edit); whole-video mark = same effect on every clip (>= 2 clips) + edge fades + project Change aspect; `ScrollArea::min_scrolled_height` default 64 breaks fixed-height lists; the harness `find` returns the status line when it says the same words as a widget (rows are announced "Applied effect: ..."); AddText over a 360 clip anchors the text; the picture of a Scale popup test needed a taller window. Debt: whole-video mark is inferred, not stored; the sphere-fixed rows are not movable (Q-3); `clip_rows` recomputes `subtitles.project` per call (frame_key and the widget call it only when a clip_order exists / when drawn).
+- Replaced tests: lut exact 0.5 -> tolerance; render lut-clip-N names -> hash names; 512 MiB parse test -> line-length test; schema 11 -> 12 (13 for "newer"); preset count 3 -> 5; colour picker test picks the topmost Color button.
 
 ## State (2.0.4 group 3b, second call: the cut-back REQs; doc docs/code-2.0.4-batches-12-15.md)
 - Built in the second call (all with `// covers:`): REQ-261 (in-house EBML writer, in place, uses ffmpeg's Void padding), 262, 263, 264, 265, 267, 269, 272, 274, 275, 276, 277, 278, 279 (speechnorm branch), 282 export + UI, 283, 289 (blend table), 292, 293, 248 Windows template (`packaging/windows-player.nsi`, not run on Windows).

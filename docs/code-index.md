@@ -43,7 +43,7 @@ functions (`file:symbol`), the tests and the requirements they cover (`REQ-NNN`,
 - Fades — `src/timeline.rs:Clip` (`fade_in`, `fade_out`), `src/render/segments.rs:segments` (REQ-008, 011)
 - Clip volume and Clean audio — `src/timeline.rs:Clip`, `src/render/graph.rs:build_graph` (REQ-084, 114)
 - Change aspect, Scale, Move — `src/frame.rs:FrameAspect`, `frame_size`, `Scale`, `Stack`, `Placement`; `src/keyframes.rs:Key`, `at`, `add`, `sanitise`; `src/app/frame.rs`; `src/render/graph.rs:compose_frame`; `src/ui/frame_popups.rs`, `src/ui/frame_handles.rs`; tests `src/app/frame_tests.rs`, `src/ui/frame_ux_tests.rs`, `tests/ffmpeg_integration/v15.rs` (REQ-124..132, 145, 148)
-- Apply LUT — `src/lut.rs:Lut`, `parse`, `read`, `cached`; `src/app/lut.rs`; `src/ui/lut_popup.rs`; tests `src/app/lut_tests.rs`, `src/ui/lut_ux_tests.rs`, `tests/ffmpeg_integration/v16.rs` (REQ-135..137)
+- Apply LUT — `src/lut/mod.rs:Lut`, `lut/parse.rs:parse_reader`, `lut/store.rs:cached`, `Load`, `write_copy`; `src/app/lut.rs`; `src/ui/lut_popup.rs`; tests `src/app/lut_tests.rs`, `src/ui/lut_ux_tests.rs`, `tests/ffmpeg_integration/v16.rs` (REQ-135..137)
 - Effects list, menus, markers — `src/ui/effects.rs`, `src/ui/menu.rs`, `src/ui/markers.rs`, `src/ui/actions.rs` (REQ-069, 075..083, 090, 114)
 
 ## Subtitles and texts

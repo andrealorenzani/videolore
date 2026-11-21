@@ -155,6 +155,19 @@ fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String)
                 }
             });
     });
+    ui.horizontal(|ui| {
+        ui.label(tr!(ShadowLabel));
+        let r = ui.add(
+            egui::DragValue::new(&mut item.shadow.px)
+                .range(0..=crate::base::shadow::SHADOW_MAX)
+                .suffix(" px"),
+        );
+        done |= r.drag_stopped() || (r.changed() && !r.dragged());
+        let before = item.shadow.colour;
+        let c = egui::color_picker::color_edit_button_srgb(ui, &mut item.shadow.colour);
+        done |= item.shadow.colour != before && !ui.input(|i| i.pointer.any_down())
+            || c.clicked_elsewhere() && item.shadow.colour != before;
+    });
     done
 }
 

@@ -646,7 +646,14 @@ fn the_colour_button_opens_the_picker_and_a_click_in_it_changes_the_colour() {
     app.dispatch(Command::OpenText(id), Instant::now()).unwrap();
     let mut h = Harness::new(app, 1280.0, 900.0);
     let before = h.app.project.texts.get(id).unwrap().colour;
-    let button = h.find("Color").expect("the colour button").rect;
+    // the first colour button of the popup is the text's (the shadow has one below it)
+    let button = h
+        .nodes
+        .iter()
+        .filter(|n| n.label == "Color" && n.interactive)
+        .min_by(|a, b| a.rect.min.y.total_cmp(&b.rect.min.y))
+        .expect("the colour button")
+        .rect;
     h.click(button.center());
     h.idle(3);
     // the picker is a new popup with a square: the largest interactive widget
