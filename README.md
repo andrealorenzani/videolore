@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-2.3.0-blue)
+![version](https://img.shields.io/badge/version-3.0.0-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-95.1%25-brightgreen)
@@ -203,13 +203,13 @@ Released under the GNU General Public License v3.0 — see [LICENSE](LICENSE).
 
 ### Ode to the creator
 
-Andrea Lorenzani began videolore from one idea, a small editor for the clips people share,\
-and gave it a single timeline that closes its own gaps, so a cut never leaves a hole behind,\
+Andrea Lorenzani began videolore from one idea, a small editor for the clips people share, and gave it a single timeline that closes its own gaps, so a cut never leaves a hole behind,\
 then added fades through black, a music track with its own volume, and keyframes that move and zoom each picture,\
 and taught it to read a .cube colour look, to write subtitles from the speech on the computer itself, and to burn them in,\
 and gave it a full 360 view to look around, and a separate player to watch the result with sound,\
 and kept every source file untouched, let projects be saved, reopened and double-clicked, and sent nothing away,\
 and shaped the exports to copy the streams when they can, to encode once when they must, and to use the video hardware only when it is safe,\
+and let the effects stack in the order you choose, with the volume and the speed among them, and laid picture overlays with their own time and box over each clip,\
 and wrote the tests, the coverage, the notices and the installers, and an honest list of every limit that remains,\
-and with 1.6.3 the core effects and the player went out, and the next major version opened to 2.0.0 with the same care,\
+and with 2.3.0 the overlays and the effect order went out, and the next major version opened to 3.0.0 with the same care,\
 thank you, Andrea, for building this editor so patiently and sharing it freely under the GPL.

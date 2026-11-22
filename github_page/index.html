@@ -5,7 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://github.com; style-src 'self' 'sha256-0ptmRb4f6NdGOPGLqTwet0pEyt8GCbQUUVtQ+ZQcw9E='; script-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>videolore — offline video editor and 360° video player</title>
-<meta name="description" content="videolore 1.6.3: a free, offline desktop video editor for short social media clips, with subtitles, 360° video and a video player, for Windows, macOS and Linux.">
+<meta name="description" content="videolore 2.3.0: a free, offline desktop video editor for short social media clips, with overlays, subtitles, LUT colour looks, 360° video and a separate video player, for Windows, macOS and Linux.">
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
 <meta name="theme-color" content="#2456c7">
 <link rel="canonical" href="https://andrealorenzani.github.io/videolore/">
@@ -34,10 +34,10 @@
   "description": "An offline desktop video editor for short clips made for social media, with subtitles made on the computer, 360° video and a separate video player.",
   "applicationCategory": "MultimediaApplication",
   "operatingSystem": "Windows (x86_64), macOS (Apple silicon), Linux (x86_64)",
-  "softwareVersion": "1.6.3",
-  "datePublished": "2026-11-20",
-  "dateModified": "2026-11-20",
-  "downloadUrl": "https://github.com/andrealorenzani/videolore/releases/tag/v1.6.3",
+  "softwareVersion": "2.3.0",
+  "datePublished": "2026-11-22",
+  "dateModified": "2026-11-22",
+  "downloadUrl": "https://github.com/andrealorenzani/videolore/releases/tag/v2.3.0",
   "license": "https://www.gnu.org/licenses/gpl-3.0.html",
   "author": { "@type": "Person", "name": "Andrea Lorenzani", "url": "https://andrealorenzani.github.io" }
 }
@@ -159,9 +159,9 @@
   <header>
     <h1>videolore — offline video editor</h1>
     <a class="download-link" href="#downloads">Download</a>
-    <span class="badge">version 1.6.3</span>
+    <span class="badge">version 2.3.0</span>
     <p class="links">
-      <span>Latest release:</span> <a href="https://github.com/andrealorenzani/videolore/releases/tag/v1.6.3">videolore 1.6.3 — core effects and player</a> (20 November 2026)<br>
+      <span>Latest release:</span> <a href="https://github.com/andrealorenzani/videolore/releases/tag/v2.3.0">videolore 2.3.0 — Multiple overlays and effect stack and order</a> (22 November 2026)<br>
       <span>Source:</span> <a href="https://github.com/andrealorenzani/videolore">github.com/andrealorenzani/videolore</a><br>
       <span>Latest build:</span> <a href="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml?query=branch%3Amain" aria-label="Latest build on main">build status <img src="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status of the latest build on main" class="badge-img"></a>
     </p>
@@ -169,7 +169,7 @@
 
   <section class="intro" aria-label="Introduction">
     <div class="text">
-      <p>An easy-to-use, offline desktop video editor for short clips made for social media, with an eye to 360° video. Everything it needs comes in its installer, ffmpeg included, no account is needed, nothing is uploaded and the source files are never changed. A separate video player, <strong>videolore-player</strong>, plays videos with sound, subtitles and 360° look-around.</p>
+      <p>An easy-to-use, offline desktop video editor for short clips made for social media, with an eye to 360° video. Everything it needs comes in its installer, ffmpeg included, no account is needed, nothing is uploaded and the source files are never changed. A separate video player, <strong>videolore player</strong>, plays videos with sound, subtitles and 360° look-around (<a href="#player-title">see below</a>).</p>
     </div>
     <figure>
       <picture><source media="(prefers-reduced-motion: reduce)" srcset="images/director-still.png"><img src="images/director.gif" width="363" height="505" alt="Illustration of a film director with a clapperboard and a megaphone"></picture>
@@ -178,7 +178,7 @@
 
   <section aria-labelledby="story-title">
     <h2 id="story-title">Evolution of this project</h2>
-    <p class="hint">From the first commit on 13 November 2026 to the latest release, 1.6.3. Every version, with its date and time (UTC).</p>
+    <p class="hint">From the first commit on 13 November 2026 to the latest release, 2.3.0. Every version, with its date and time (UTC).</p>
     <div class="timeline-wrap" tabindex="0" role="region" aria-label="Timeline of versions">
       <ol class="timeline">
         <li class="event start">
@@ -419,11 +419,67 @@
             <p>The video player opens with a start screen like the editor's, and the editor's splash shows a longer summary for each release.</p>
           </div>
         </li>
-        <li class="event today">
+        <li class="event">
           <div class="card">
-            <div class="version">1.6.3 · latest release</div>
+            <div class="version">1.6.3 · release</div>
             <div class="when">2026-11-20 00:49 +0000</div>
             <p>The release <a href="https://github.com/andrealorenzani/videolore/releases/tag/v1.6.3">core effects and player</a>: the frame effects, Apply LUT, the video player and the splash screens of 1.5.0 to 1.6.2, with installers for both programs.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">2.0.0</div>
+            <div class="when">2026-11-20 19:50 +0000</div>
+            <p>The second major version opens after release 1.6.3. It changes nothing by itself.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">2.0.1</div>
+            <div class="when">2026-11-20 20:06 +0000</div>
+            <p>Code maintenance: the shared helpers move to one common part, with an automatic check that keeps the code untangled. The app is unchanged.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">2.0.2</div>
+            <div class="when">2026-11-20 20:34 +0000</div>
+            <p>The start screen summary always fits its window, and the automatic tests run on the same pinned ffmpeg 9.0.2 that the installers carry.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">2.0.3</div>
+            <div class="when">2026-11-20 22:05 +0000</div>
+            <p>Readable text: sizes measured with the real font, an outline or a background box, and warnings for subtitle lines and texts that overlap or leave the picture. This version uses a newer project format.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">2.0.4</div>
+            <div class="when">2026-11-21 00:15 +0000</div>
+            <p>A large update: subtitle files (.srt, WebVTT, ASS) in and out, autosave, trimming by the clip edges, workspaces and themes, the player in "Open with" with a playlist, camera paths per clip and spatial sound for 360° video.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">2.1.0</div>
+            <div class="when">2026-11-21 19:43 +0000</div>
+            <p>LUT files up to 256 points, an Applied effects list that sets the order of LUTs, texts, pictures and subtitles, shadows, and the Enlarge word and Typewriter subtitle styles.</p>
+          </div>
+        </li>
+        <li class="event">
+          <div class="card">
+            <div class="version">2.2.0</div>
+            <div class="when">2026-11-21 22:07 +0000</div>
+            <p>The Applied effects column, where the effects of a clip can be reordered; whole-video effects become a copy on each clip; a text's size follows its box; LUTs are prepared in the background with progress.</p>
+          </div>
+        </li>
+        <li class="event today">
+          <div class="card">
+            <div class="version">2.3.0 · latest release</div>
+            <div class="when">2026-11-22 11:17 +0000</div>
+            <p>The release <a href="https://github.com/andrealorenzani/videolore/releases/tag/v2.3.0">Multiple overlays and effect stack and order</a>: overlap media (PNG, GIF and MOV with transparency), Change speed and keyframed Volume as effects, Fit and empty space for each clip; Crop is removed.</p>
           </div>
         </li>
       </ol>
@@ -486,42 +542,81 @@
       <div class="text">
         <h3>More in this release</h3>
         <ul class="facts">
-          <li><strong>Frame and picture</strong>: Change aspect to 4:3, 16:9 or 9:16 for vertical or square formats, with the picture fitted and a colour or blurred fill; Scale and Move with keyframes, for one clip or the whole video.</li>
-          <li><strong>Apply LUT</strong>: a colour look from a .cube file, for one clip or the whole video.</li>
-          <li><strong>Fades, volume and music</strong>: fades through black between clips, Fade IN/OUT, a volume and mute for each clip and for the whole video, and one music track with its own volume.</li>
-          <li><strong>Text items</strong>: titles and captions with Fade IN, Fade OUT, Blink and Slide, on their own timeline lane.</li>
-          <li><strong>Export</strong>: one file in the same format as the source or in one of 12 presets (H.264 or HEVC, MP4 or MOV), only the audio, or only the subtitles; streams are copied unchanged when no re-encoding is needed.</li>
-          <li><strong>Video player</strong>: videolore-player opens one video at a time, plays it with sound and volume, shows text subtitle tracks or a .srt file, goes full screen and turns 360° video by dragging. It never edits, and it has no network code.</li>
+          <li><strong>Overlap media</strong>: PNG, GIF and MOV files with transparency placed over a clip, for logos, stickers and short animations, each with its own start, end and box; a GIF or MOV plays once and then stays transparent. The overlaps share one lane on the timeline.</li>
+          <li><strong>Effect order</strong>: the Applied effects column lists the effects of the selected clip in the order they are applied, and they can be reordered inside the picture and sound groups; the preview and the export use the same order.</li>
+          <li><strong>Frame and picture</strong>: Change aspect to 4:3, 16:9 or 9:16, for the whole video or for each clip, fitted on the width or the height, with the empty space as a colour or a blurred copy; Scale and Move with keyframes.</li>
+          <li><strong>Speed and sound</strong>: Change speed from 50% to 200% for one clip or every clip; Volume with keyframes; Clean audio; fades through black between clips and one music track with its own volume.</li>
+          <li><strong>Apply LUT</strong>: a colour look from a .cube, .3dl or .csp file (up to 256 points), with a strength and favourites, prepared in the background with progress.</li>
+          <li><strong>Texts and subtitles</strong>: titles and captions with Fade IN, Fade OUT, Blink and Slide in, a size that follows the box, an outline or a background box, and shadows; subtitles in five styles (Classic, Box, Word highlight, Enlarge word, Typewriter), saved as .srt.</li>
+          <li><strong>Export</strong>: the full video, only the audio or only the subtitles; the same format as the source or one of 12 presets (H.264 or HEVC, MP4 or MOV); streams are copied unchanged when possible; Faster with the computer's video hardware, checked, with an automatic fallback.</li>
+          <li><strong>Interface</strong>: resizable and dockable sections, workspaces, menus with shortcuts, F1 for the shortcut list, and undo and redo for every edit.</li>
         </ul>
+        <p class="hint">Crop of a clip has been removed in 2.3.0: a crop in an older project is dropped when it opens. Projects saved by 2.3.0 use a newer project format that older versions refuse, leaving the file untouched.</p>
+      </div>
+    </article>
+  </section>
+
+  <section aria-labelledby="player-title">
+    <h2 id="player-title">The video player</h2>
+    <article class="feature image-right">
+      <div class="text">
+        <h3>videolore player: for watching, not editing</h3>
+        <p>videolore player (<code>videolore-player</code>) is a separate program, built from the same code as the editor, with its own download. It opens one video at a time, with File &gt; Open… or by dropping a video onto its window, and plays it with sound and volume. The Subtitles menu shows the video's own text and picture subtitle tracks, or a .srt file you open. View &gt; Full screen, F11 or F switches full screen on and off, and a 360° video is turned by dragging. It keeps a playlist (File &gt; Add to playlist, File &gt; Open folder…) and remembers its volume, mute, last folder and full-screen start.</p>
+      </div>
+      <figure>
+        <img src="images/videolore-player.png" width="1536" height="1024" loading="lazy" decoding="async" alt="Illustration of a man relaxing on a sofa with popcorn in front of a TV showing videolore player">
+      </figure>
+    </article>
+    <article class="feature">
+      <div class="text">
+        <h3>How it differs from the editor</h3>
+        <ul class="facts">
+          <li>It never edits a video: there is no timeline, no effects and no export.</li>
+          <li>It has no speech engine and no network code: it makes no download at all.</li>
+          <li>The installers add it to "Open with" for MP4, MOV, MKV, WebM, M4V and AVI files; it becomes the default only if you choose it.</li>
+          <li>File &gt; Open in editor in the player, and File &gt; Open in player in the editor, move a file between the two programs.</li>
+          <li>It carries its own copy of ffmpeg 9.0.2, like the editor, so nothing else has to be installed.</li>
+        </ul>
+      </div>
+    </article>
+    <article class="feature">
+      <div class="text">
+        <h3>Download the player</h3>
+        <ul class="facts">
+          <li>Windows (x86_64): <a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-player-2.3.0-windows-x86_64-setup.exe">videolore-player-2.3.0-windows-x86_64-setup.exe</a> (60.2 MB)</li>
+          <li>macOS (Apple silicon): <a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-player-2.3.0-macos-aarch64.dmg">videolore-player-2.3.0-macos-aarch64.dmg</a> (68.1 MB)</li>
+          <li>Linux (x86_64): <a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-player-2.3.0-linux-x86_64.AppImage">videolore-player-2.3.0-linux-x86_64.AppImage</a> (134.4 MB) or <a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-player-2.3.0-linux-x86_64.tar.gz">videolore-player-2.3.0-linux-x86_64.tar.gz</a> (144.8 MB)</li>
+        </ul>
+        <p class="hint">All the files of the release, editor and player, are listed in <a href="#downloads">Downloads</a>.</p>
       </div>
     </article>
   </section>
 
   <section aria-labelledby="downloads">
     <h2 id="downloads">Downloads</h2>
-    <p class="platforms"><strong>Latest release: <a href="https://github.com/andrealorenzani/videolore/releases/tag/v1.6.3">videolore 1.6.3 — core effects and player</a></strong>, published on 20 November 2026. Two programs, each with its own download: the editor <strong>videolore</strong> and the video player <strong>videolore-player</strong>. Every installer includes ffmpeg and ffprobe 9.0.2; nothing else has to be installed.</p>
+    <p class="platforms"><strong>Latest release: <a href="https://github.com/andrealorenzani/videolore/releases/tag/v2.3.0">videolore 2.3.0 — Multiple overlays and effect stack and order</a></strong>, published on 22 November 2026. Two programs, each with its own download: the editor <strong>videolore</strong> and the video player <strong>videolore-player</strong>. Every installer includes ffmpeg 9.0.2, pinned and checked by checksum; nothing else has to be installed.</p>
     <div class="table-wrap">
     <table class="libs">
       <thead>
         <tr><th scope="col">Program</th><th scope="col">Platform</th><th scope="col">File</th><th scope="col">Size</th></tr>
       </thead>
       <tbody>
-        <tr><td>Editor</td><td>Windows (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-1.6.3-windows-x86_64-setup.exe">videolore-1.6.3-windows-x86_64-setup.exe</a><br><span class="small">Installer, for the current user only, no administrator rights</span></td><td class="size">58.0 MB</td></tr>
-        <tr><td>Editor</td><td>macOS (Apple silicon)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-1.6.3-macos-aarch64.dmg">videolore-1.6.3-macos-aarch64.dmg</a><br><span class="small">Disk image: drag to Applications</span></td><td class="size">66.3 MB</td></tr>
-        <tr><td>Editor</td><td>Linux (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-1.6.3-linux-x86_64.AppImage">videolore-1.6.3-linux-x86_64.AppImage</a><br><span class="small">AppImage: one file, runs without installing</span></td><td class="size">128.2 MB</td></tr>
-        <tr><td>Editor</td><td>Linux (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-1.6.3-linux-x86_64.tar.gz">videolore-1.6.3-linux-x86_64.tar.gz</a><br><span class="small">Archive with the executable</span></td><td class="size">138.0 MB</td></tr>
-        <tr><td>Player</td><td>Windows (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-player-1.6.3-windows-x86_64-setup.exe">videolore-player-1.6.3-windows-x86_64-setup.exe</a><br><span class="small">Installer, for the current user only, no administrator rights</span></td><td class="size">56.9 MB</td></tr>
-        <tr><td>Player</td><td>macOS (Apple silicon)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-player-1.6.3-macos-aarch64.dmg">videolore-player-1.6.3-macos-aarch64.dmg</a><br><span class="small">Disk image: drag to Applications</span></td><td class="size">64.0 MB</td></tr>
-        <tr><td>Player</td><td>Linux (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-player-1.6.3-linux-x86_64.AppImage">videolore-player-1.6.3-linux-x86_64.AppImage</a><br><span class="small">AppImage: one file, runs without installing</span></td><td class="size">126.0 MB</td></tr>
-        <tr><td>Player</td><td>Linux (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-player-1.6.3-linux-x86_64.tar.gz">videolore-player-1.6.3-linux-x86_64.tar.gz</a><br><span class="small">Archive with the executable</span></td><td class="size">135.6 MB</td></tr>
-        <tr><td>Sources</td><td>All</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v1.6.3/videolore-1.6.3-third-party-source.tar.xz">videolore-1.6.3-third-party-source.tar.xz</a><br><span class="small">Source code of the bundled ffmpeg</span></td><td class="size">30.5 MB</td></tr>
+        <tr><td>Editor</td><td>Windows (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-2.3.0-windows-x86_64-setup.exe">videolore-2.3.0-windows-x86_64-setup.exe</a><br><span class="small">Installer, for the current user only, no administrator rights</span></td><td class="size">61.6 MB</td></tr>
+        <tr><td>Editor</td><td>macOS (Apple silicon)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-2.3.0-macos-aarch64.dmg">videolore-2.3.0-macos-aarch64.dmg</a><br><span class="small">Disk image: drag to Applications</span></td><td class="size">71.3 MB</td></tr>
+        <tr><td>Editor</td><td>Linux (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-2.3.0-linux-x86_64.AppImage">videolore-2.3.0-linux-x86_64.AppImage</a><br><span class="small">AppImage: one file, runs without installing</span></td><td class="size">137.3 MB</td></tr>
+        <tr><td>Editor</td><td>Linux (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-2.3.0-linux-x86_64.tar.gz">videolore-2.3.0-linux-x86_64.tar.gz</a><br><span class="small">Archive with the executable</span></td><td class="size">147.9 MB</td></tr>
+        <tr><td>Player</td><td>Windows (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-player-2.3.0-windows-x86_64-setup.exe">videolore-player-2.3.0-windows-x86_64-setup.exe</a><br><span class="small">Installer, for the current user only, no administrator rights</span></td><td class="size">60.2 MB</td></tr>
+        <tr><td>Player</td><td>macOS (Apple silicon)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-player-2.3.0-macos-aarch64.dmg">videolore-player-2.3.0-macos-aarch64.dmg</a><br><span class="small">Disk image: drag to Applications</span></td><td class="size">68.1 MB</td></tr>
+        <tr><td>Player</td><td>Linux (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-player-2.3.0-linux-x86_64.AppImage">videolore-player-2.3.0-linux-x86_64.AppImage</a><br><span class="small">AppImage: one file, runs without installing</span></td><td class="size">134.4 MB</td></tr>
+        <tr><td>Player</td><td>Linux (x86_64)</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-player-2.3.0-linux-x86_64.tar.gz">videolore-player-2.3.0-linux-x86_64.tar.gz</a><br><span class="small">Archive with the executable</span></td><td class="size">144.8 MB</td></tr>
+        <tr><td>Sources</td><td>All</td><td><a href="https://github.com/andrealorenzani/videolore/releases/download/v2.3.0/videolore-2.3.0-third-party-source.tar.xz">videolore-2.3.0-third-party-source.tar.xz</a><br><span class="small">Source code of the bundled ffmpeg</span></td><td class="size">32.0 MB</td></tr>
       </tbody>
     </table>
     </div>
     <ul class="facts hint">
       <li>The installers are not code-signed yet, so Windows (SmartScreen) and macOS (Open Anyway in System Settings &gt; Privacy &amp; Security) ask for a one-time confirmation the first time a program is opened; the README explains the steps.</li>
-      <li>The Linux build runs on systems with glibc 2.39 or newer (Ubuntu 24.04 and newer, Fedora).</li>
-      <li>Subtitles are made on the computer; the speech files (32 MB, 190 MB or 574 MB) are downloaded once, only after you agree. On x86-64 processors this needs AVX2 (Intel Haswell 2013 / AMD Excavator or newer).</li>
+      <li>The Linux files are made for x86_64 Ubuntu LTS and Fedora.</li>
+      <li>Subtitles are made on the computer; the speech files (Fast 32 MB, Balanced 190 MB or Most accurate 574 MB) are downloaded once, only after you agree, and checked by checksum. On Windows and Linux this needs a processor with AVX2 (Intel Haswell 2013, AMD Excavator or newer); on an older processor a message says so and everything else works.</li>
       <li>Older versions are on the <a href="https://github.com/andrealorenzani/videolore/releases">Releases</a> page; the latest build on main, with its installers, is on the <a href="https://github.com/andrealorenzani/videolore/actions/workflows/build.yml?query=branch%3Amain">build page</a>. From source: Rust 1.100 or newer, <code>cargo build --release --locked</code> (the player with <code>-p videolore-player</code>).</li>
     </ul>
   </section>
@@ -529,11 +624,14 @@
   <section aria-labelledby="privacy-title">
     <h2 id="privacy-title">Privacy and quality</h2>
     <ul class="facts">
-      <li>No account, no telemetry and no update check. The only network use is the speech model download for subtitles, after your consent, checked by its size and SHA-256 before use.</li>
-      <li>Video, audio and project files are treated as untrusted: their values are checked and capped, and source files are never written.</li>
-      <li>661 automated tests (563 for the editor's engine and interface, 62 that run the real ffmpeg on generated videos, 36 for the player); line coverage 95.6%, and each of the 150 implemented requirements is checked by at least one test.</li>
-      <li>Every push is tested on Linux and builds the executables for Linux, macOS and Windows; the release files are built by the same automatic process.</li>
-      <li>At most 3 ffmpeg processes run at a time (up to 6 at "Maximum speed"), so the window stays responsive: during an export and subtitle generation each frame of the interface is checked to take at most 200 ms.</li>
+      <li>No account, no telemetry and no update check. The only network use is the speech model download for subtitles, after your consent, over HTTPS and checked by its checksum before use.</li>
+      <li>ffmpeg is started with argument lists, never through a shell. Media files, projects, settings, downloads and typed text are treated as untrusted: size limits, strict checks and tests with hostile files; source files are never written.</li>
+      <li>Temporary files stay in a folder readable only by you and are removed when a job ends or, after a crash, at the next start.</li>
+      <li>The preview and the export are built by the same code from the same project, so what you see is what is exported; exports of older projects are compared with recorded command lines, so a project keeps exporting the same video after an update.</li>
+      <li>About 1,170 automated tests (997 library tests, 118 that run the real ffmpeg, 48 for the player, plus structure and page checks); the whole suite runs in about two minutes; line coverage 95.1%, and each of the 320 implemented requirements is checked by at least one test.</li>
+      <li>Every change is built and checked automatically for Linux, macOS and Windows; the release files are built by the same automatic process.</li>
+      <li>At most 3 ffmpeg processes run at a time by default (up to 6 at "Maximum speed").</li>
+      <li>Measured: the blurred background of Change aspect costs about 2 ms a frame at 1080p and at 4K (a frame at 25 fps lasts 40 ms); 360 spatial sound is prepared about 69 times faster than real time; a 144-point LUT (80 MB file) is ready in the preview in about 2.3 s; memory does not grow with the length of the source.</li>
     </ul>
   </section>
 
@@ -553,6 +651,8 @@
         <tr><td>serde 1</td><td>Reads and writes project files</td><td>(authors: Erick Tryzelaar and David Tolnay, MIT OR Apache-2.0)</td></tr>
         <tr><td>image 0.25</td><td>Reads the splash screen pictures</td><td>(the image-rs developers, MIT OR Apache-2.0)</td></tr>
         <tr><td>fontdb 0.24</td><td>Finds the fonts installed on the computer for texts</td><td>(authors: Yevhenii Reizner, MIT)</td></tr>
+        <tr><td>harfrust 0.12</td><td>Shapes the text to measure titles and subtitles</td><td>(MIT)</td></tr>
+        <tr><td>skrifa 0.44</td><td>Reads the font files to measure texts</td><td>(MIT OR Apache-2.0)</td></tr>
         <tr><td>ffmpeg 9.0.2</td><td>Reads, encodes and renders video, sound and subtitles (bundled in the installers)</td><td>(the FFmpeg developers, GPL-3.0-or-later builds)</td></tr>
         <tr><td>Phosphor Icons</td><td>The icons of buttons, menus and lists (bundled as a font)</td><td>(Phosphor Icons, MIT)</td></tr>
         <tr><td>Noto Sans Bold</td><td>The subtitle font (bundled)</td><td>(SIL Open Font License 1.1)</td></tr>
@@ -561,7 +661,7 @@
   </section>
 
   <footer>
-    <p class="small">Page updated on 20 November 2026 for release 1.6.3.</p>
+    <p class="small">Page updated on 22 November 2026 for release 2.3.0.</p>
     <p class="small">Copyright (C) 2026 <a href="https://andrealorenzani.github.io">Andrea Lorenzani</a>.</p>
     <p class="small">Released under the GNU General Public License v3.0. See <a href="https://github.com/andrealorenzani/videolore/blob/main/LICENSE">LICENSE</a>, and the <a href="https://github.com/andrealorenzani/videolore">source code on GitHub</a>.</p>
   </footer>
