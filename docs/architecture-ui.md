@@ -1,102 +1,81 @@
-# Architecture: user interface
+# Architecture: user interface, boxes, icons and splash
 
-Part of [Architecture](architecture.md). Since 1.1.0 (requirements REQ-024, REQ-025 and REQ-066..081, see [business](business.md)).
+Part of [Architecture](architecture.md). Requirements: [interface](business-interface.md), [UI](business-ui.md), [icons](business-icons.md), [splash](business-splash.md), [text](business-text.md) and [frame](business-frame.md) gestures. Module map: [components](architecture-components.md). 360 handles: [360 video](architecture-360.md).
 
-## Window structure
-From top to bottom: menu bar, toolbar, content area, status bar. The three bars have a fixed height set by their content. The content area holds four sections, each with a title header:
+## Window and sections
+- Menu bar, toolbar, content, status bar (fixed heights). Four sections with title headers; defaults (also after **View > Reset layout**):
 
-| Top row (2/3 of the height) | | Bottom row (1/3) | |
+| Top row (2/3 of height) | | Bottom row (1/3) | |
 |---|---|---|---|
-| Media (30% of width) | Preview (70%) | Timeline (70%) | Effects (30%) |
+| Media (30 % of width) | Preview (70 %) | Timeline (70 %) | Effects (30 %) |
 
-These are the defaults at first start and after **View > Reset layout**. Each frame is drawn in a fixed order: background results are collected, dropped files are handled, keyboard shortcuts are matched, then the bars, the sections and their borders, the popups, the dialogs. Every control produces a command that the application state runs, so menus, toolbar, shortcuts and context menus share the same behaviour.
+- The Applied effects column sits right of the Preview ([effects](architecture-effects.md#applied-effects-column-and-order-210-to-220-req-302-to-305-311-313-317-320-to-322)).
+- Each frame: background results, dropped files, shortcuts, bars, sections and borders, popups, dialogs. Every control produces a `Command` run by the application state, so menus, toolbar, shortcuts and context menus share one behaviour.
+- **Own layout, not egui panels** (ADR-041): egui's panels store absolute widths and cannot keep proportions. Three borders (Media | Preview, Timeline | Effects, top | bottom) move only their two neighbours. Proportions are kept on resize; borders on whole pixels; the sections and 6 px gaps cover the content (within 1 px at 800x500, 1280x800 and 2560x1440). Minimums: Media and Effects 160 px wide; Preview and Timeline 240 px; rows 100 px high; a small window keeps the saved proportions. The layout is a **program setting**, saved when a drag ends.
+- **2.0.4 (REQ-234 to 247):** remembered window and popup places with an off-screen rule; sections that hide, collapse and dock; workspaces; toolbar and shortcut editors (`ui/keymap.rs`); theme Light, Dark or System (`ui/theme.rs`); text size through egui styles; every visible word in one English table (`ui/strings.rs`; a test rejects literal labels in `ui/*.rs`); accessibility names through eframe's AccessKit feature (ADR-197).
+- **Reachable:** every section and popup scrolls when needed; popups stay inside the window; in the preview the controls come first and the picture shrinks first; long names end with "…". Smallest window 800x500: a test with every section at its minimum, 50 media, 200 lines and a very long name opens every popup and checks each control is visible or in a reachable scroll area.
+- **Toolbar:** 12 commands up to 1.2.5, 15 since 1.2.6 (separated Align horizontally, Align vertically, Reset group); the commands that do not fit go to a "»" menu.
 
-## Resizable sections
-- Three borders can be dragged: Media | Preview, Timeline | Effects, and top row | bottom row. Only the two neighbouring sections change; the cursor changes over a border and the border is highlighted.
-- Sizes are stored as proportions, so resizing the window keeps them. Borders are placed on whole pixels and the sections plus the 6-pixel gaps between them cover the content area exactly (within 1 pixel of the proportions at 800x500, 1280x800 and 2560x1440).
-- Minimum sizes: Media and Effects 160 px wide, Preview and Timeline 240 px wide, each row 100 px high. A border stops at the minimum. If the window is too small for the saved proportions, the minimums win while drawing, but the saved proportions are kept, so enlarging the window again restores them.
-- The layout is a **program setting**, never stored in a project; opening a project does not change it. It is saved once when a drag ends, not while dragging.
-- The layout code is a small pure module (no drawing), tested on its own.
+## Menus, shortcuts and actions
+- One **table of actions** (`ui::actions::ACTIONS`; `ActionId` with a required `icon`, so a command without one does not compile; ADR-042) feeds the menu bar (File, Edit, Playback, Effects, View, Help), toolbar, tooltips, the Keyboard shortcuts window and key handling. Tests: the shortcuts window lists exactly the bound shortcuts; no shortcut used twice.
+- An item is greyed exactly when its command is unavailable; greyed controls say why on hover ("Select a clip first", "Nothing to undo"). Undo and Redo name the action ("Undo Split").
+- Cmd on macOS, Ctrl elsewhere. Shortcuts do nothing while typing or while a dialog needs an answer. Esc closes the topmost popup. egui's keyboard zoom is off (ADR-046).
+- Menus are drawn inside the window on every system, macOS included, where the system menu bar is off so Cmd+Q asks about unsaved changes (ADR-024; [projects](architecture-projects.md#saving-and-unsaved-changes)).
+- **Since 1.4.0** the Effects menu lists only effects (Fade IN/OUT, Subtitles, Volume, Clean audio, Add text, Apply submenus); item commands are in the Edit menu (ADR-090). File > Export… and the toolbar Export button (Ctrl/Cmd+E) open the [export dialog](architecture-export.md#export-dialog-140-req-118-to-122).
+- **Context Menu (1.3.0, 1.4.0):** a toolbar group shown only when it applies (REQ-106): Align horizontally, Align vertically and Reset for a selected line or text item (one command per object, one undo step); Set POV and Reset view when the playhead is over a 360 clip. One pure rule over selection and playhead (ADR-074).
 
-**Why our own layout:** egui's resizable panels store absolute widths, cannot keep proportions when the window changes, do not limit a drag to the two neighbours, and keep their state outside our settings file. Docking libraries (`egui_dock`, `egui_tiles`) would add a crate for docking features that are out of scope.
+## Effects, popups and timeline
+- The Effects section lists effect types; a row shows its name and a tooltip (drag onto a clip, or double-click for the whole video); a click opens its popup ([effects](architecture-effects.md)).
+- Popups (Fades, Subtitles, Volume, Clip details, the selected fade or line, Keyboard shortcuts, Settings, Apply LUT, Add Text, Add Picture, the 360 keyframe popup) are windows inside the main window, **not modal**. One per type; position kept for the session. Open popups and the selection are application state changed only by commands (ADR-043).
+- Each change in a popup is one undo step (text on focus loss, slider on release, "Remove all fades" as a whole). A popup for a missing fade or line closes. "Play this line" plays from the line's start and pauses at its end.
+- **Add Text (1.3.0):** the Effects row "Add Text" (or Effects > Add text at playhead): text, effects, time to live, colour, font; Add is one undo step; Esc or Close creates nothing; "Loading fonts…" while the scan runs. **Apply LUT (1.6.0):** Choose file, file name (full path in a tooltip), Remove effect ([picture](architecture-picture.md#apply-lut)).
+- **Timeline markers:** a diamond for a fade at a clip boundary, a flag with a thin bar for a line, a "+" at boundaries without a fade, a marker per POV of a 360 clip (1.2.6). Markers are computed from the edit at each draw (nothing stored; ADR-048); only visible ones are drawn. Click selects, moves the playhead and opens the popup; several under the pointer give a list. Ctrl/Cmd+click adds line markers to the selection; Shift+drag selects lines starting in a range. Since 1.2.0 also start and end fades and clips with a volume other than 100 % or muted.
+- **Lanes:** Text lane; overlap lane (2.3.0; only while overlaps exist; three sub-rows visible; wheel scroll; `ui/overlap_lane.rs`).
+- **Time ruler (1.2.0):** "45s" up to 90 s; "01:40" up to 90 minutes (minutes may pass 59: "75:30"); "01:05:00" beyond. Ticks on round steps (1, 2, 5, 10, 15, 30 s; 1, 2, 5, 10, 15, 30 min; 1 h and more), the smallest that leaves room for the widest label; a pure module.
+- Double-click a clip: Clip details; right-click a clip, marker or empty timeline: a context menu with the same commands.
 
-## Everything reachable
-- Every section body and every popup is scrollable; scrollbars appear only when the content does not fit. Popups are kept inside the window.
-- In the preview the play controls and seek bar are placed first; the picture takes what is left and shrinks first.
-- The timeline scrolls vertically when its rows (ruler, marker lane, video track, music track) do not fit, and horizontally as before.
-- Long names are shortened with "…"; the full name is shown on hover.
-- The smallest window stays 800x500. An automated test at that size, with every section at its minimum, 50 media items, 200 subtitle lines and a very long file name, opens every popup in turn and checks that every control is visible or inside a scroll area that can reach it.
+## Selection
+One selection of lines and text items in window state (pure module `selection`, 1.3.0; not saved, not in undo). A plain click selects only that object (unless already selected, so a drag moves the group); Ctrl/Cmd or Shift click toggles; Shift+drag on the timeline selects objects starting in the range; a plain click on empty space or Esc (no popup open) clears it. Every surface sends the same events. Dragging a selected box moves the group to the dragged object's final place, one undo step.
 
-## Menus, toolbar and shortcuts
-- One **table of actions** lists every command with its label, shortcuts and tooltip. The menu bar (File, Edit, Playback, Effects, View, Help), the toolbar, tooltips, the Keyboard shortcuts window and the keyboard handling all read it, so they cannot disagree. A test checks that the shortcuts window lists exactly the bound shortcuts and that no shortcut is used twice.
-- An item is greyed exactly when its command is unavailable; greyed toolbar buttons and menu items explain why on hover (for example "Select a clip first", "Nothing to undo").
-- Undo and Redo name the action ("Undo Split"). The undo history stores a short name with each step.
-- Shortcuts use Cmd on macOS and Ctrl elsewhere, shown in the system's style. They do nothing while typing in a text field or while a dialog that needs an answer is open. Esc closes the topmost popup.
-- egui's own keyboard zoom (Ctrl/Cmd with +, - and 0 scaling the whole interface) is turned off, because those keys zoom the timeline.
-- The toolbar shows the common commands as one row (12 up to 1.2.5; 15 since 1.2.6 with a separated group Align horizontally, Align vertically, Reset, see [boxes](architecture-boxes.md)). When the window is too narrow, the commands that do not fit move into a "»" menu at the right end, so all of them stay usable at 800 px.
-- Menus are drawn inside the window on every system, including macOS, where the system menu bar stays off so that Cmd+Q asks about unsaved changes (see [project files](architecture-projects.md#unsaved-changes)). Very long menus scroll.
-- **1.4.0:** the Effects menu lists only effects (Fade IN/OUT, Subtitles, Volume, Clean audio, Add text, and the Apply ▸ submenus); the item commands (Generate subtitles, Add subtitle line, Add or remove fade, Align horizontally and vertically, Reset, Reset subtitle position) are in the Edit menu, with the same shortcuts and reasons. File > Export… and the toolbar's Export button open the [export dialog](architecture-export-dialog.md); Ctrl/Cmd+E does the same. The Clean audio row is also in the Effects list, and the Effects ▸ and drag lists gain it.
+## Boxes on the picture (1.2.6, 1.4.0, 1.6.1)
+- A box is a rectangle with corner handles around one movable object (lines and text items); the box layer takes any list of boxes. Boxes come from the measuring code (same font, size and wrap as the export) and are drawn only in the preview; an export with and without boxes is identical (test).
+- **View > Show boxes on the picture:** a setting (on by default). Off: no outline or handle, no corner resize; dragging the text still moves it.
+- **Resize:** a corner drag scales with the opposite corner fixed; the scale is the pointer's projection on the diagonal, limited to the picture and to 25 % to 400 %.
+- **Line size (1.2.6):** thousandths of the preset size, 250 to 4000 (none = 100 %), stored per line; the file gets a font-size tag (outline and shadow scaled); no size = the 1.2 output (golden). Several selected lines get the dragged size, each keeps its position; one undo step.
+- **Text items (1.4.0):** width only, through the right-edge handle ([text](architecture-text.md#box-size-and-place)); the centre stays on the picture (REQ-117; on 360 the look-around view); Align (REQ-115) keeps the other coordinate and the width.
+- **Visible edges (1.6.1, REQ-145, 146):** a box partly outside (Change aspect cuts a side, a line or text sits on the edge, Scale above 100 %) keeps handles on the visible part of its edges; a line's edge is proportional like its corners (25 % to 400 %, opposite edge fixed); a text keeps only the width handle on its visible right edge. One drag, one undo step. Hit priority (ADR-103): subtitle and text boxes, Scale corners, visible edges, Move target, picture.
+- **Effect commands:** Align horizontally or vertically (centre to the middle of the picture; greyed "Select something on the picture first"); Reset (lines: clears position and size, greyed when already original; a 360 clip at the playhead with no line selected returns the live camera to front, level, default zoom and keeps POVs; no undo). All are shared actions (toolbar group, Edit menu, right-click menus, tooltips, shortcuts; Set POV too).
+- **One box rule (2.0.4, QG-16):** `placement::padded_line_rect` gives the measured box and the preview hit box (`ui/placement.rs` `line_box`); the box dragged is the box exported.
+- **Tests:** hit-testing; resize with the opposite corner fixed; limits; align; reset; group size; the Context Menu rule table; the width handle; centre clamp; with ffmpeg the burned text size and centre match the preview within 2 % of the height and the output has no box; the setting survives save and reload.
 
-## Status bar
-Left: the latest message. Middle: background work with progress (files being analysed, preview copies, speech model download, subtitle generation with Cancel, export with Cancel). Right: the output folder. The list of background jobs is computed by a function of the application state, tested without a window.
+## Drag and drop, gestures, performance
+- **In-window drag (1.2.0):** egui's built-in drag and drop (no crate): effects onto clips (the clip highlights; elsewhere "not allowed"); works on Wayland.
+- **Dropped files (1.1.0):** media imported as File > Import; a project opens after the unsaved-changes prompt; with several projects only the first opens and the status bar says the others were ignored. Drops are ignored while a dialog needs an answer.
+- **Known limitation:** drops from outside work on Windows, macOS and Linux X11, not on native Linux Wayland (winit 0.30 does not report them; ADR-047). File > Import and Open remain. Forcing X11 was rejected.
+- **Gestures (2.0.4, REQ-189 to 199):** a drag (trim, markers, text handles) is live while held and one command on release (`ui/gesture_ux_tests.rs`); `[` and `]` are bound as in the shortcut table; guides and safe areas are part of the preview view.
+- **Performance:** while an export and subtitle generation run, each frame stays under 200 ms, also while dragging borders, with popups open, or dragging an effect onto a clip or a line in the preview (automated tests). Estimate under 16 ms per frame at 1280x800 with 50 media and 200 lines (not a gate). The layout is constant time; off-view markers are skipped; the line list draws visible rows only; settings are written when a drag ends, on layout reset or a recent-list change.
 
-## Effects and popups
-- The Effects section lists the effect types (Fade through black, Subtitles, Volume). Since 1.2.0 each row shows only the name, with a tooltip explaining how to apply it: drag it onto a clip, or double-click it for the whole video. Clicking one opens its popup. See [effects](architecture-effects.md).
-- Popups (Fades, Subtitles, Volume, Clip details, the selected fade or subtitle line, Keyboard shortcuts, Settings) are windows inside the main window, like Settings since 0.3.0. They are **not modal**: editing and playback continue while they are open. There is one popup per type; its position is kept for the session.
-- Which popups are open, and which fade or subtitle line is selected, is part of the application state and changed only through commands. This makes the behaviour testable without drawing and lets menus, shortcuts, the timeline and the Effects list open the same popups.
-- Each change in a popup is one undo step (a text edit when the field loses focus, a slider when released, "Remove all fades" as a whole). A popup for a fade or line that no longer exists (for example after a cut) closes.
-- "Play this line" plays from the start of a subtitle line and pauses at its end.
+## Recent projects, one window, settings fields
+- Up to 10 recent projects, most recent first, after a successful open or save; a missing file is reported and removed; opening goes through the unsaved-changes prompt.
+- **One window (2.0.4, REQ-225 to 233, ADR-182):** a second start writes a file to the inbox of the running window (`src/instance.rs`) and exits; the running window opens it through the usual path.
+- UI fields of the settings file (version 2, optional): section proportions and recent projects (1.1.0), show boxes (1.2.6), applied share (2.2.0: thousandths, default 150, range 80 to 300), start-screen option and last shown version (2.0.4). Damaged or out-of-range values fall back to the default; other settings are kept. Rules: [security](architecture-security.md#project-and-settings-files).
+- **Testing:** headless; egui's accessibility tree lists every control (role, label, position, enabled state); tests find and click them, drag borders and check reachability against the recorded scroll areas. `egui_kittest` (same egui release) is the fallback. Screen-reader support is not enabled. Per-feature tests: [build](architecture-build.md#tests-by-area).
 
-## Timeline markers
-- Each fade and each subtitle line has a marker in a lane above the video track: a diamond for a fade at its clip boundary, a flag with a thin bar for a subtitle line. A boundary without a fade shows a small "+" handle that adds one.
-- Markers are computed from the edit every time it is drawn (nothing new is stored, so the project format does not change). They follow cuts, ripples and zoom, and disappear with the clip they belong to. Only markers in the visible part of the timeline are drawn.
-- Clicking a marker selects it, moves the playhead there and opens its popup. When several markers are under the pointer, a small list lets the user choose.
-- Since 1.2.0 there are also markers for the fade from black at the start and to black at the end, and for a clip whose volume is not 100% or is muted. Ctrl/Cmd+click on subtitle line markers selects several lines, and Shift+drag on the timeline selects the lines starting in a range (see [subtitles](architecture-subtitles.md#position-on-screen-120)). Dragging an effect from the Effects list onto a video clip applies it there. Since 1.2.6: a marker for each POV of a 360 clip, opening a popup with time, direction, zoom and Remove (see [360 video](architecture-360.md)).
+## Icons (1.6.0, REQ-142, 143)
+- **Set:** Phosphor Icons, Regular weight (MIT for icons and font), one file `assets/icons/Phosphor-Regular.ttf` with `LICENSE-Phosphor.txt` and `SOURCE.txt` (version, source, SHA-256).
+- **Not chosen:** `egui-phosphor` 0.14.0 (needs egui 0.36); `egui-pop-phosphor` (fork, unknown maintainer); SVG through `egui_extras` (MPL-2.0 renderer, outside REQ-143); Font Awesome (CC BY 4.0 needs attribution in the window). Lucide (ISC) is the fallback (ADR-114).
+- **Drawing:** `ui::icons::install(ctx)` adds the font as a fallback of the proportional family; each icon is a named constant in `src/ui/icons.rs`; nothing else uses raw code points.
+- **Tests:** every constant exists in the font's character map (`ttf-parser`, a development dependency through `fontdb`); every `ActionId`, toolbar entry, Effects row, marker type and popup title has an icon; the font's SHA-256 equals `SOURCE.txt`; the notices list the set.
 
-## Time ruler (1.2.0)
-- Labels depend on the time at the right edge of the visible part: up to 90 s in seconds ("45s"), up to 90 minutes as minutes and seconds ("01:40", minutes may go past 59, e.g. "75:30"), beyond that as hours, minutes and seconds ("01:05:00").
-- Ticks fall on round steps (1, 2, 5, 10, 15, 30 s; 1, 2, 5, 10, 15, 30 min; 1 h and more). The step is the smallest one that leaves room for the widest label, so labels never overlap at any zoom; only visible ticks are computed. The rule is a small pure module, tested on its own.
-- Double-clicking a clip opens Clip details; right-clicking a clip, a marker or the empty timeline opens a context menu with the same commands as the menus.
-
-## Recent projects
-Up to 10 projects, most recent first, are stored in the program settings after a successful open or save. A missing file shows a message and is removed from the list. Opening a recent project goes through the unsaved-changes prompt.
-
-## Drag and drop
-- Dropping media files on the window imports them exactly like File > Import. Dropping a project opens it after the unsaved-changes prompt; if several projects are dropped, only the first is opened and the status bar says the other files were ignored. Drops are ignored while a dialog needs an answer.
-- **Known limitation:** drag and drop works on Windows, macOS and Linux with X11, but not in native Linux Wayland sessions, because the windowing library used by egui (winit 0.30) does not report dropped files there. File > Import… and File > Open… remain available. Forcing X11 on Linux was rejected because it would degrade every Wayland user (scaling, input methods). This will be revisited when egui moves to a winit release that supports it.
-
-## Settings file
-The settings file stays at version 2 with two new optional fields: the section proportions and the recent projects. Files written by 1.0 open without any notice. A damaged or out-of-range value falls back to its default and every other setting is kept. 1.0 can still read files written by 1.1, but drops these two fields when it saves. See [security](architecture-security.md#project-and-settings-files) for the validation rules.
-
-## Testing the interface
-The interface is tested headless (no window): egui's accessibility tree, which lists every control with its role, label, position and enabled state, is used to find controls, click them, drag borders and check that everything is reachable. Positions inside scroll areas are checked against a list of scroll areas recorded while drawing. If this helper grows too large, the `egui_kittest` test library (same egui release) will be used instead. Screen-reader support itself is not enabled in the application yet.
-
-## Performance
-- While an export and subtitle generation run, every frame stays under 200 ms, also while dragging a border or with popups open (automated test). The goal is under 16 ms per frame at 1280x800 with 50 media items and 200 subtitle lines (estimate, not a gate).
-- Since 1.2.0 the same 200 ms limit is tested while dragging an effect onto a clip and a subtitle in the preview during an export and word matching.
-- The layout is computed in constant time, markers outside the view are skipped, the subtitle list draws only visible rows, and the settings file is written only when a drag ends, the layout is reset or the recent list changes.
-
-## Selection (1.3.0)
-- Before 1.3.0 the window kept two selection states (one set of subtitle lines and one "selected line"); a plain click in the preview could lose a multi-selection. Since 1.3.0 there is **one selection** of objects (subtitle lines and text items) in window state, held by the pure module `selection`, not saved and not in the undo history.
-- The rules are pure functions: a plain click selects only the object (unless it is already selected, so a drag can move the group); Ctrl/Cmd or Shift click toggles it; Shift+drag on the timeline selects the objects whose start is in the range; a plain click on empty space or Esc (when no popup is open) clears it. Every surface (timeline markers, Subtitles popup list, the preview boxes, the Text lane) sends the same events.
-- Dragging a selected box in the preview moves the whole group to the dragged object's final place, as one undo step.
-
-## Add Text popup (1.3.0)
-- The Effects list's "Add Text" row (and Effects > Add text at playhead) opens a non-modal popup with the multiline text, the effects, time to live, colour and font (see [text items](architecture-text.md)). "Add" is one command and one undo step; Esc or Close creates nothing. The popup's list of installed fonts is filled by the background scan; while it runs the picker shows "Loading fonts…".
-- Fade through black is labelled "Fade IN/OUT" everywhere in the interface (label change only, one label table; the internal name and the project format are unchanged).
-
-## 2.0.4 additions (stages 2, 3, 7 and 8)
-- **Interface (REQ-234 to REQ-247):** remembered window and popup places with an off-screen rule (`ui/place.rs`, `ui/view_menu.rs`); sections that hide, collapse and dock; workspaces; the toolbar and shortcut editors (`ui/keymap.rs`); a theme (Light, Dark or System, `ui/theme.rs`); text size through the egui text styles; all visible words in one English table (`ui/strings.rs`, a test rejects literal labels in `ui/*.rs`); accessibility names through eframe's AccessKit feature.
-- **Gestures (REQ-189 to REQ-199):** a drag (trim, markers, text handles) is live while held and one command on release (`ui/gesture_ux_tests.rs`); the `[` and `]` keys are bound as listed in the shortcut table; guides and safe areas are part of the preview's view.
-- **Built 2.2.0 (REQ-200 to REQ-202 amended, REQ-201 offer removed):** the whole-video popup and its one row per clip, the "Apply to new clips" status item and the dashed copy handles are removed; copies open their clips' popups. Earlier text, built in 2.0.4 to 2.1.0: **Whole video and keyframes (REQ-200 to REQ-205):** one row per clip in the whole-video popup; an offer for new clips is a status item with a button; keyframes can be copied and pasted; there is one keyframe widget for Scale and Move and no separate file for it.
-- **One window (REQ-225 to REQ-233):** a second start writes a file to the inbox of the running window (`src/instance.rs`) and exits; the running window opens it through the usual open path.
-
-## Risks
-- egui changes its menu, popup and panel API between releases; the logic lives in small pure modules (layout, actions, markers, background jobs) so the drawing code stays thin.
-- Global keys such as Delete, Backspace and the arrows must not fire while typing; this is checked by tests for each key.
-- The menu bar inside the window looks less native on macOS, where Hide and Minimize remain unavailable.
-
-## Icons, splash and the Apply LUT popup (1.6.0)
-- Every toolbar button, menu item, Effects row, marker type and popup or dialog title gets an icon from one bundled font; the icon's command table is the same one that drives menus and shortcuts (see [icons](architecture-icons.md)).
-- The splash opens at editor start as an in-app popup with the same closing rules (see [splash](architecture-splash.md)). Since 1.6.2 the window itself is shared with the player (`ui::splash_window`); the editor only adds its popup command.
-- Apply LUT has a popup with Choose file, the file name (full path in a tooltip) and Remove effect (see [LUT](architecture-lut.md)).
+## Splash (1.6.0, 1.6.2, 2.0.4)
+- **Behaviour:** at every start without a file on the command line the editor and the player show a splash window: a picture with "Version X.Y" over its lower rectangle, and beside it a panel with the summary and a Close button. An in-app window above the main window, closed by Close, Esc or the title-bar control; it never blocks and does not ask about unsaved changes. Both programs use the library module `splash` (pure) and `ui::splash_window` (drawing) with their own picture and summary; the editor's `ui::splash_ui` is a thin adapter.
+- **Editor:** shown at a start without a project or video on the command line (a path on the command line shows none); the first-start notice (REQ-045) appears after it closes. **Player:** shown without a video on the command line; a video opens at once; a `.vlproj` means no splash. Order of Esc in the player: splash, other popup, full screen ([player](architecture-player.md)).
+- **Option (2.0.4, REQ-295, ADR-199, ADR-240):** Settings "Show the start screen": "At every start" (default) or "Once for each version"; the pure `should_show(option, last shown version, path argument)` in `splash.rs` serves both programs. A stored "Never" reads as "Once for each version" (2.3.0, `lenient_splash`; `SplashOption::{Always, OncePerVersion}`).
+- **Assets (compiled in):** `assets/splash/splash.gif` (editor, `splash::EDITOR`), `splash-player.gif` (player, `splash::PLAYER`), `summary.txt` and `summary-player.txt` (`include_str!`). Fixed names since 1.6.3; summaries rewritten in place per version (rule 4f). A missing picture is a compiler error; `build.rs` (2.0.4) stops the build for a missing or empty summary. Each picture is 88 KB and both sit in the shared library (about 175 KB more, estimate).
+- **Summary:** UTF-8; a heading and at most five items.
+- **Version text:** "Version X.Y" centred in the rectangle at the largest size fitting minus 6 px: editor x 74 to 408, y 381 to 465 (334 x 84 px); player x 78 to 386, y 388 to 462 (308 x 74 px); dark or light by mean brightness; a test checks the rectangles lie inside the pictures.
+- **Summary fit (no scroll, no silent clip):** inner width 400 px minus 14 px each side; the body starts at 15 px and shrinks by bisection to a floor of **7 px** until all fits above Close (REQ-154, 2.0.2; was 14 px down to 10 px). Heading = body + 4 px. A summary not fitting at 7 px fails a test.
+- **Layout:** image at its size times one factor; panel 400 px wide, as high as the image; if the screen is small, both scale by `min(1, available width / total width, available height / image height)`. Pure functions `splash::layout`, `fit_text`, `fit_summary`.
+- **Decoding:** once per program on first display, GIF decoder of the `image` crate (about 100 ms budget); up to 64 frames as looped textures; repaint only while open; caps 4096 px per side and 64 MiB RGBA (1.6.2).
+- **Tests:** each picture decodes at its size (editor 486 x 506, player 487 x 505); each summary has a heading and 1 to 5 items; rectangles inside pictures; panel 400 px (±1) and height equal to the picture; scaling when small; "Version 1.6" fits both rectangles; both summaries fit at 7 px; state tests (open at start, closed by each method, not shown with a path, the notice waits for the close, shown again next start).
+- **Risks:** a stale summary (rewritten each release, tested to fit); the pictures are Andrea's own work under MIT (notices, settled 2026-11-20); an in-app window, not an OS window (multi-window behaviour on Wayland and macOS is untested).

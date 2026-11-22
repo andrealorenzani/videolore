@@ -633,7 +633,8 @@ fn preset_of(codec: Codec) -> usize {
 #[test]
 fn av1_and_vp9_presets_use_the_hardware_and_match_best_quality() {
     let Some(env) = setup() else { return };
-    for codec in [Codec::Av1, Codec::Vp9] {
+    // the two codecs on their own threads: their software encoders are the slow part
+    in_parallel([Codec::Av1, Codec::Vp9], |codec| {
         let wanted = codec.software_encoders();
         if !wanted.iter().any(|e| env.info.encoders.contains(*e))
             || !env.info.encoders.contains("libopus")
@@ -642,7 +643,7 @@ fn av1_and_vp9_presets_use_the_hardware_and_match_best_quality() {
                 !required(),
                 "the CI ffmpeg must have {wanted:?} and libopus"
             );
-            continue;
+            return;
         }
         let preset = preset_of(codec);
         let p = env.hw_project(codec);
@@ -693,7 +694,7 @@ fn av1_and_vp9_presets_use_the_hardware_and_match_best_quality() {
             "{method:?}"
         );
         assert_eq!(env.format_of(&file), want);
-    }
+    });
     only_outputs(env.dir.path());
 }
 

@@ -1,7 +1,7 @@
 # Code — Change aspect, Scale, Move and keyframes (1.5.0)
 
 What 1.5.0 added, as built. The requirements are in [Frame](business-frame.md) (REQ-124 to
-REQ-132); the design is in [architecture-frame.md](architecture-frame.md).
+REQ-132); the design is in [architecture-picture.md](architecture-picture.md#frame-and-composition-change-aspect-scale-move).
 
 ## Where things are
 

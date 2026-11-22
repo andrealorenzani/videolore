@@ -7,7 +7,12 @@
 use super::*;
 
 impl AppState {
-    pub(super) fn dispatch_settings(&mut self, cmd: Command, now: Instant) -> Routed {
+    pub(super) fn dispatch_settings(
+        &mut self,
+        cmd: Command,
+        now: Instant,
+        _label: &'static str,
+    ) -> Routed {
         let mut pass = None;
         let run = || -> Result<(), String> {
             match cmd {

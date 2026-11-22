@@ -1,7 +1,7 @@
 # Code — boxes, text size and 360° video (1.2.6)
 
 Part of [Code](code.md). Design: [architecture-360.md](architecture-360.md) and
-[architecture-boxes.md](architecture-boxes.md). Requirements REQ-096..105.
+[architecture-ui.md](architecture-ui.md#boxes-on-the-picture-126-140-161). Requirements REQ-096..105.
 
 ## Where things are
 

@@ -2,7 +2,7 @@
 
 What 1.4.0 added, as built. The requirements are in [Export](business-export.md), [Music and
 sound](business-music.md), [Text](business-text.md) and [Boxes on the picture](business-picture.md);
-the design is in [architecture-export-dialog.md](architecture-export-dialog.md).
+the design is in [architecture-export.md](architecture-export.md#export-dialog-140-req-118-to-122).
 
 ## Where things are
 

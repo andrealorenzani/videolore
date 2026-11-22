@@ -55,7 +55,7 @@ impl AppState {
                     None => tl.start_fade() && tl.end_fade(),
                 };
                 if !already {
-                    self.edit(now, effect_label(effect), |e| match clip {
+                    self.edit(now, effect.undo_name(), |e| match clip {
                         Some(id) => e.timeline.set_clip_fades(id, true).map_err(err),
                         None => e.timeline.set_edge_fades(true).map_err(err),
                     })?;
@@ -538,20 +538,5 @@ impl AppState {
         {
             self.drag_pos = None;
         }
-    }
-}
-
-/// Undo name of applying an effect.
-fn effect_label(effect: EffectKind) -> &'static str {
-    match effect {
-        EffectKind::Fade => "Fade IN/OUT",
-        EffectKind::Subtitles => "Create subtitles",
-        EffectKind::Volume => "Volume",
-        EffectKind::CleanAudio => "Clean audio",
-        EffectKind::ChangeAspect => "Change aspect",
-        EffectKind::Scale => "Scale",
-        EffectKind::Move => "Move",
-        EffectKind::ApplyLut => "Apply LUT",
-        EffectKind::ChangeSpeed => "Change speed",
     }
 }

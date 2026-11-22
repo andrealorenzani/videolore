@@ -111,74 +111,86 @@ The About screen lists every bundled third-party component with its version, lic
 | Quit | Ctrl/Cmd + Q |
 
 ### Known limitations
+Installation and system
 - Installers are not code-signed: each system asks for a one-time confirmation (see Installation).
-- On Windows and Linux, generating subtitles needs a processor with AVX2, FMA and F16C (see System requirements). On older processors it is not available and a message says so; this check was tested with simulated processors, not on old hardware.
-- **Faster export** needs NVIDIA graphics driver 610 or newer; with an older driver the normal method is used, and Settings → Advanced says why.
-- **Faster export on Linux** (Intel and AMD) needs the system's video acceleration library (libva) and the graphics driver. With the bundled ffmpeg it needs libva 2.21 or newer: Ubuntu 24.04 has 2.20, so the hardware is skipped there and the normal method is used. A system ffmpeg chosen in Advanced can still use the hardware.
-- **Faster export on Fedora** needs the RPM Fusion "freeworld" video drivers for AMD and Intel hardware (for example `mesa-va-drivers-freeworld`); without them the normal method is used.
-- **Faster is not always quicker.** On integrated Intel graphics it was measured from 14% quicker to 41% slower than Best quality before 2.2.0. In 2.2.0 the safety check runs at the same time as its decode; on one measured Intel computer the export was about 9% quicker than Best quality, short of the 20% that was aimed at, and the hardware encoding is the remaining time. Files may be a little larger.
-- On the Intel driver tested on Ubuntu 24.04, hardware HEVC export is not usable; the normal method makes those files.
-- Faster export has been verified on real hardware only on Linux with Intel integrated graphics. Other combinations of system and graphics card are protected by the automatic fallback, but not yet measured.
-- On a very busy computer the video hardware can still be missed; Faster then uses the normal method. When the check is inconclusive it is repeated once in the background.
-- On computers with more than one graphics card, NVIDIA is always preferred; the card cannot be chosen.
-- Chinese, Japanese and Korean subtitles and texts use the fonts installed on the computer, so they may look different on each computer or show empty boxes. Arabic and Devanagari have bundled fonts.
+- Generating subtitles on Windows and Linux needs a processor with AVX2, FMA and F16C (see System requirements). On an older processor a message says so; the check was tested with simulated processors, not on old hardware.
 - Drag and drop does not work in Linux Wayland sessions; use File > Import media… and File > Open… there.
-- Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
+- Copy and Cut put a marker text on the system clipboard, so other applications see that text when they paste.
 - On macOS the menu bar has no Quit item yet; Cmd+Q still asks about unsaved changes.
-- Projects saved by version 2.3.0 (project format 14) cannot be opened by 2.2.0 or earlier; they are refused with a message and left untouched. Projects in formats 13 and older open as before.
-- Projects saved by version 2.2.0 (project format 13) cannot be opened by 2.1.0 or earlier; they are refused with a message and left untouched. Projects in formats 1 to 12 open as before.
-- Projects saved by version 2.1.0 (project format 12) cannot be opened by 2.0.4 or earlier; they are refused with a message and left untouched. Projects in formats 1 to 11 open as before.
-- Projects saved by version 2.0.4 cannot be opened by 2.0.3 or earlier; they are refused with a message and left untouched.
-- Projects saved by version 2.0.3 cannot be opened by 2.0.2 or earlier; they are refused with a message and left untouched.
-- Projects saved by version 1.4.0 or later cannot be opened by version 1.3.0 or earlier; they are refused with a message and left untouched. Projects from 1.3.0 and earlier open with the same result, except as listed below.
-- When a video's own subtitles are used, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the accuracy target is not met yet with the Fast model (on the reference clip 82% of the words were matched, with an average start error of 0.48 s). A speech-region timing was tried in 2.2.0 and reached 43% of the words within 0.3 s on the reference clip (target 90%), so the earlier timing is still used.
+- Chinese, Japanese and Korean subtitles and texts use the fonts installed on the computer, so they may look different on each computer or show empty boxes. Arabic and Devanagari have bundled fonts. Text items use the installed fonts, and a font that is not installed is replaced by the bundled subtitle font, with a note in the text's popup.
+
+Faster export (hardware)
+- Faster export needs NVIDIA graphics driver 610 or newer; with an older driver the normal method is used, and Settings → Advanced says why.
+- On Linux (Intel and AMD) it needs libva and the graphics driver. With the bundled ffmpeg it needs libva 2.21 or newer: Ubuntu 24.04 has 2.20, so the hardware is skipped there. A system ffmpeg chosen in Advanced can still use the hardware.
+- On Fedora it needs the RPM Fusion "freeworld" video drivers for AMD and Intel hardware (for example `mesa-va-drivers-freeworld`); without them the normal method is used.
+- Faster is not always quicker. On integrated Intel graphics it was measured from 14% quicker to 41% slower than Best quality before 2.2.0. In 2.2.0 one measured Intel computer was about 9% quicker than Best quality, short of the 20% aimed at; the hardware encoding is the remaining time. Files may be a little larger.
+- On the Intel driver tested on Ubuntu 24.04, hardware HEVC export is not usable; the normal method makes those files.
+- Faster export has been verified on real hardware only on Linux with Intel integrated graphics. Other combinations are protected by the automatic fallback but not yet measured.
+- On a very busy computer the video hardware can be missed; Faster then uses the normal method. An inconclusive check is repeated once in the background.
+- On computers with more than one graphics card, NVIDIA is always preferred; the card cannot be chosen.
+
+Subtitles
+- When a video's own subtitles are used, their text and line times are kept exactly, but the word-by-word highlight timing is approximate: the accuracy target is not met (Fast model: 82% of the words matched, average start error 0.48 s; the speech-region timing of 2.2.0 reached 43% of the words within 0.3 s, target 90%, so the earlier timing is still used).
 - Matching a video's subtitles to the speech works only as well as their text follows what is said; translated or paraphrased subtitles often get evenly spread words, and a message says so.
 - Moved subtitle lines shown at the same time can overlap; a warning marks them, but nothing moves them apart. Use Reset position or drag one of them.
-- The `.srt` file has no subtitle positions.
-- Removing a file from the media list also drops the undo steps that refer to it.
-- Under Automatic, a 1280x720 source never gets a preview copy.
-- The preview copy cache is kept under a 4 GB limit set in Settings, and the oldest copies are removed first; the cleanup runs on the interface thread for now.
-- A 360 clip with a moving camera exports at about one third of real time.
-- 360 video must be a single equirectangular picture (no stereo 3D, cube maps or partial 180° video). Spatial sound turns with the camera's yaw and pitch, not its roll, for a 360 clip with four audio channels, which is read as first-order ambisonics (an assumed channel order).
-- Text items use the fonts installed on your computer (so they can look different on another computer), and a font that is not installed is replaced by the bundled subtitle font, with a note in the text's popup. Text items are not written to the `.srt` file.
-- A project file with a text whose time to live is above 24 hours, or below 0.1 s, is refused as damaged on opening; while editing, a text's time to live is limited to the video's length.
-- A 360 video export to MP4 and MOV is marked as 360 video; a 360 export to Matroska or WebM carries the marker only when the check of the file passes.
-- Clean audio strength has a slider, but at full strength it reduces background noise without removing it completely. Quiet speech (about -32 dB) can lose up to about 2.5 dB at full strength, and its cost on weak computers is not measured.
+- Subtitles in scripts other than Latin, Greek and Cyrillic are not fully supported.
+- The `.srt` file has no subtitle positions. Text items are not written to it.
+- The Enlarge word and Typewriter styles are video effects only: `.srt`, `.vtt` and `.ass` files keep plain text and times. Typewriter has no caret and no typing sound.
+- The shadow has one fixed distance and colour for each text or subtitle style; it cannot change over time.
+
+Texts and boxes
 - A text is at most 10% of the picture height unless its Maximum size is set (2% to 50%), so a short text in a big box does not fill it. Its size is measured with the font the picture uses.
-- Texts of projects saved before 2.0.3 open with Readability None and take the measured size of their box when opened, so large multi-line texts may shrink; a one-time message says so. A 360 switch set in a 1.3.0 project is dropped when it opens.
-- A text or a subtitle line dragged past an edge of the picture is cut in the preview and in the export; the status bar counts such items, and Move inside the picture brings them back.
-- A video without spherical information is always flat: the "Treat as 360° video" switch is removed.
-- The Export dialog remembers its choices for the session only, not in the project or in Settings. The video and audio formats are a fixed list of presets.
-- A 360 video ignores the video format presets and keeps the sphere's own size.
-- A 360 video export ignores Change aspect, Scale and Move; the flat camera view applies them.
+- Texts of projects saved before 2.0.3 open with Readability None and take the measured size of their box, so large multi-line texts may shrink; a one-time message says so.
+- A text or subtitle line dragged past an edge of the picture is cut in the preview and in the export; the status bar counts such items, and Move inside the picture brings them back.
+- A project file with a text whose time to live is above 24 hours, or below 0.1 s, is refused as damaged; while editing, a text's time to live is limited to the video's length.
+- Subtitle lines and text items keep their place in the frame and do not follow Scale or Move.
+- Overlap media and PNG picture items are not drawn in a 360 video export; picture items take no text effects.
+- Overlap media: the MOV file is measured when it is added, not at each preview or export; its sound is not played; an overlap has no keyframes and no rotation. HEVC with alpha, and other codecs that the bundled ffmpeg does not read with alpha, are drawn opaque.
+- A file above 1920 x 1080 is drawn at half size in the preview, so the preview is softer than the export for it. A large PNG (4000 x 4000) takes about 830 MB of memory in the export, and a still is decoded again for every frame: a 4 s still takes about 5 s to export.
+
+Editing, effects and LUTs
+- Removing a file from the media list also drops the undo steps that refer to it.
 - Change aspect, Scale and Move make the export a re-encode, even at their default values. A clip with a speed is re-encoded too, and two clips with different speeds cannot be merged.
 - The longer side of a frame is capped at 4096 px: a Change aspect on a large source can give a smaller frame, and a large frame exports more slowly (export time not measured).
-- Keyframes are straight lines unless a segment is eased (its checkbox in the keyframe popup); they show in the popup and on the clip's marker, not as separate timeline markers.
-- Subtitle lines and text items keep their place in the frame and do not follow Scale or Move.
-- The Scale corners and the Move target show the clip's own Scale or Move.
-- A 1.6.0 clip with its own Scale or Move and a whole-video one becomes one combined path when opened: exact at the keyframe times, a straight line between them.
+- Keyframes are straight lines unless a segment is eased; they show in the popup and on the clip's marker, not as separate timeline markers.
 - Clips added after a whole-video effect do not get it; a note appears when that happens.
 - A whole-video Scale or Move is a separate copy on each clip; each copy's keyframes are edited in its own clip's popup.
-- Apply LUT reads `.cube`, `.3dl` and `.csp` files. A missing LUT file stops the export until it is found again, or the export is made without the LUT.
+- A 1.6.0 clip with its own Scale or Move and a whole-video one becomes one combined path when opened: exact at the keyframe times, a straight line between them.
+- Clean audio at full strength reduces background noise without removing it completely. Quiet speech (about -32 dB) can lose up to about 2.5 dB at full strength, and its cost on weak computers is not measured.
+- Apply LUT reads `.cube` (up to 256 points per side and 512 MiB, loaded in the background with a percentage), `.3dl` and `.csp` (read whole, up to 64 MiB). The preview of a 256-point LUT takes about 12 s to prepare on the development computer and shows the picture without the LUT until then; the export always uses it.
+- A missing LUT file stops the export until it is found again, or the export is made without the LUT.
 - By default Apply LUT is applied below Change aspect, so the blurred or coloured fill is not graded; a LUT moved above Change aspect in the Applied effects column grades the fill too.
-- Overlap media and PNG picture items are not drawn in a 360 video export; picture items take no text effects.
-- An overlap's MOV file is measured when it is added, not at each preview or export; its sound is not played; an overlap has no keyframes and no rotation. HEVC with alpha, and other codecs that the bundled ffmpeg does not read with alpha, are drawn opaque.
-- An overlay file above 1920 x 1080 is drawn at half size in the preview, so the preview is softer than the export for it. A large PNG (4000 x 4000) takes about 830 MB of memory in the export, and a still is decoded again for every frame, so a 4 s still takes about 5 s to export.
-- Crop is removed: a crop in an older project is dropped when it opens, with one status line. Change aspect is the way to frame a clip.
-- The player's picture subtitles are not shown on 360 video; a picture subtitle already on screen when playback or a paused still starts inside it appears at its next change.
-- In the preview, spatial sound waits for its pre-pass before the sound starts, and a clip longer than 10 minutes keeps its recorded sound there.
-- Apply LUT files of 256 points and 512 MiB load in the background; the preview of a 256-point LUT takes about 12 s to prepare (measured on the development computer), and until then it shows the picture without the LUT.
-- `.3dl` and `.csp` files are read whole and are limited to 64 MiB; the 256-point and 512 MiB limits are for `.cube` files.
-- If a project is closed while a LUT is still loading, the status bar shows an error, and the LUT is applied to a missing target.
-- The Enlarge word and Typewriter styles are video effects only: `.srt`, `.vtt` and `.ass` subtitle files keep plain text and times. Typewriter has no caret and no typing sound.
-- The shadow has one fixed distance and colour for each text or subtitle style; it cannot change over time.- In the Applied effects column the order of the subtitle lines of a clip is one row; each line cannot be moved on its own. Change speed stays fixed.
-- Projects saved with 2.2.0 keep the order you set per clip; the order cannot yet be copied from one clip to another.
+- If a project is closed while a LUT is still loading, the status bar shows an error and the LUT is applied to a missing target.
+- The order of effects cannot be copied from one clip to another. In the Applied effects column the subtitle lines of a clip are one row; each line cannot be moved on its own. Change speed stays fixed.
 - On 360 clips, texts and subtitle lines anchored to the sphere keep fixed rows in the widget, draw Enlarge word and Typewriter as plain text, and the 360 video export ignores the order.
+- Crop is removed: a crop in an older project is dropped when it opens, with one status line. Change aspect is the way to frame a clip.
+- A video without spherical information is always flat: the "Treat as 360° video" switch is removed.
+
+360 video, player and preview
+- 360 video must be a single equirectangular picture (no stereo 3D, cube maps or partial 180° video). Spatial sound turns with the camera's yaw and pitch, not its roll, for a 360 clip with four audio channels, which is read as first-order ambisonics (an assumed channel order).
+- A 360 clip with a moving camera exports at about one third of real time.
+- A 360 video ignores the video format presets and keeps the sphere's own size, and it ignores Change aspect, Scale and Move; the flat camera view applies them.
+- A 360 video export to MP4 and MOV is marked as 360 video; to Matroska or WebM the marker is written only when the check of the file passes.
+- The player's picture subtitles are not shown on 360 video; a picture subtitle already on screen when playback or a paused still starts inside it appears at its next change.
+- In the preview, spatial sound waits for its pre-pass before the sound starts; a clip longer than 10 minutes keeps its recorded sound there.
+- Very large sources get a preview copy; under Automatic, a 1280x720 source never gets one. The preview copy cache is kept under the 4 GB limit set in Settings, and the oldest copies are removed first; the cleanup runs on the interface thread for now.
+
+Export dialog and settings
+- The Export dialog remembers its choices for the session only, not in the project or in Settings. The video and audio formats are a fixed list of presets.
+
+Project files and older versions
+- Projects saved by version 2.3.0 (format 14) cannot be opened by 2.2.0 or earlier; projects in formats 13 and older open as before.
+- Projects saved by version 2.2.0 (format 13) cannot be opened by 2.1.0 or earlier; formats 1 to 12 open as before.
+- Projects saved by version 2.1.0 (format 12) cannot be opened by 2.0.4 or earlier; formats 1 to 11 open as before.
+- Projects saved by version 2.0.4 cannot be opened by 2.0.3 or earlier; projects saved by 2.0.3 cannot be opened by 2.0.2 or earlier.
+- Projects saved by version 1.4.0 or later cannot be opened by 1.3.0 or earlier. Older programs refuse these files with a message and leave them untouched.
+- Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings.
+- Projects saved with 2.2.0 keep the order set per clip; a 1.3.0 project's 360 switch is dropped when it opens.
 
 Docs: [business](docs/business.md) · [architecture](docs/architecture.md) · [code](docs/code.md) · [changelog](docs/changelog.md) · [roadmap](docs/roadmap.md)
 
 ## Latest changes
-- **2.3.0** — overlap media: PNG, GIF and MOV files with transparency placed over a clip, with their own time and box, in one shared lane on the timeline; Change speed and Volume as effects (Volume with keyframes); Fit and empty space for each clip; Crop removed (an old crop is dropped on opening); Enlarge word keeps the other words in place; project format 14.
+- **2.3.0** — overlap media: PNG, GIF and MOV files with transparency placed over a clip, with their own time and box, in one shared lane on the timeline; Change speed and Volume as effects (Volume with keyframes); Fit and empty space for each clip; Crop removed (an old crop is dropped on opening); Enlarge word keeps the other words in place; project format 14 (versions up to 2.2.0 refuse it and leave the file untouched).
 - **2.2.0** — an Applied effects column on the right of the Preview where every effect except Speed can be reordered; whole-video effects become a copy on each clip; a text's size follows its box, with an optional maximum per text; LUTs are prepared in the background with progress; picture items up to 16 megapixels; a Faster check that runs its decode and samples at once (about 9% quicker on one measured Intel computer); project format 13.
 - **2.1.0** — LUT files up to 256 points and 512 MiB, loaded in the background with progress; an Applied effects widget that sets the order of LUTs, texts, picture items and subtitles in the preview and the export; shadows for texts and subtitles; two highlight colours for subtitle words, and the Enlarge word and Typewriter subtitle styles; project format 12.
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).

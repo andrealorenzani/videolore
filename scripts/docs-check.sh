@@ -29,6 +29,7 @@ check_index() {
     [ -e "$sub" ] || continue
     base=$(basename "$sub")
     area=${base%%-*}
+    [ "$area" = andrea ] && area=business  # docs/andrea-choices.md is listed by the business index
     index="docs/$area.md"
     [ -e "$index" ] || { echo "FAIL: $sub has no index $index"; continue; }
     grep -qF "]($base)" "$index" || echo "FAIL: $index does not link sub-document $base"

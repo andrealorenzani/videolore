@@ -1,9 +1,9 @@
 # ai-notes: documenter notes
 
-Owner: documenter. Index refreshed in the 2.2.0 architecture part (README, roadmap and changelog line ranges from `grep -n '^#'`; refresh after every change of a managed doc).
+Owner: documenter. Short notes for AI. The index is refreshed with `scripts/doc-index.sh <file>` after each change of a managed doc; read a paragraph with `scripts/doc-section.sh` or `sed -n 'A,Bp'`.
 
 ## Index of managed docs
-README.md, docs/roadmap.md, docs/changelog.md and docs/workflow.md (no sub-documents). Other docs/*.md belong to their owners.
+Managed by the documenter: README.md, docs/roadmap.md, docs/changelog.md, docs/workflow.md (not to be edited in this round), docs/scripts.md and docs/andrea-choices.md (documented here, Andrea's choices list). Other docs/*.md belong to their owners, who compact them.
 
 - README.md § videolore — L1-25 (25 lines)
 - README.md § What it is — L26-28 (3 lines)
@@ -14,10 +14,10 @@ README.md, docs/roadmap.md, docs/changelog.md and docs/workflow.md (no sub-docum
 - README.md § Linux (x86_64, Ubuntu LTS and Fedora) — L54-60 (7 lines)
 - README.md § From source — L61-69 (9 lines)
 - README.md § Usage — L70-112 (43 lines)
-- README.md § Known limitations — L113-179 (67 lines)
-- README.md § Latest changes — L180-185 (6 lines)
-- README.md § License — L186-191 (6 lines)
-- README.md § Ode to the creator — L192-203 (12 lines)
+- README.md § Known limitations — L113-191 (79 lines)
+- README.md § Latest changes — L192-197 (6 lines)
+- README.md § License — L198-203 (6 lines)
+- README.md § Ode to the creator — L204-215 (12 lines)
 - docs/roadmap.md § Roadmap — L1-4 (4 lines)
 - docs/roadmap.md § Priority 1 — Release checks — L5-18 (14 lines)
 - docs/roadmap.md § Priority 2 — Text and subtitles on the picture — L19-29 (11 lines)
@@ -33,130 +33,137 @@ README.md, docs/roadmap.md, docs/changelog.md and docs/workflow.md (no sub-docum
 - docs/roadmap.md § Priority 12 — Splash, project page and release process — L155-173 (19 lines)
 - docs/roadmap.md § Not planned — L174-190 (17 lines)
 - docs/changelog.md § Changelog — L1-4 (4 lines)
-- docs/changelog.md § 2.3.0 — 2026-11-22 11:17 +0000 — L5-18 (14 lines)
-- docs/changelog.md § 2.2.0 — 2026-11-21 22:07 +0000 — L19-32 (14 lines)
-- docs/changelog.md § 2.1.0 — 2026-11-21 19:43 +0000 — L33-40 (8 lines)
-- docs/changelog.md § 2.0.4 — 2026-11-21 00:15 +0000 — L41-59 (19 lines)
-- docs/changelog.md § 2.0.3 — 2026-11-20 22:05 +0000 — L60-71 (12 lines)
-- docs/changelog.md § 2.0.2 — 2026-11-20 20:34 +0000 — L72-76 (5 lines)
-- docs/changelog.md § 2.0.1 — 2026-11-20 20:06 +0000 — L77-81 (5 lines)
-- docs/changelog.md § 2.0.0 — 2026-11-20 19:50 +0000 — L82-83 (2 lines)
-- docs/workflow.md § Agentic workflow — L1-3 (3 lines)
-- docs/workflow.md § Agents — L5-20 (16 lines)
-- docs/workflow.md § Commands — L22-30 (9 lines)
-- docs/workflow.md § `/add-feature` pipeline — L32-49 (18 lines)
-- docs/workflow.md § `/release` pipeline — L51-68 (18 lines)
-- docs/workflow.md § Rules (full text in `AGENTS.md`) — L70-84 (15 lines)
-- docs/workflow.md § Token economy — L86-95 (10 lines)
-- docs/workflow.md § Skills — L97-98 (2 lines)
-- docs/workflow.md § CI — L100-101 (2 lines)
-- docs/workflow.md § Scripts — L103-115 (13 lines)
-- docs/workflow.md § Hooks and settings — L117-118 (2 lines)
-- docs/workflow.md § Repository — L120-121 (2 lines)
-- docs/workflow.md § Where things live — L123-137 (15 lines)
-- docs/workflow.md § Workflow manifest — L139-155 (17 lines)
+- docs/changelog.md § 2.3.0 — 2026-11-22 11:17 +0000 — L5-5 (1 lines)
+- docs/changelog.md § Release 2.3.0 — Multiple overlays and effect stack and order — L6-30 (25 lines)
+- docs/changelog.md § 2.2.0 — 2026-11-21 22:07 +0000 — L31-44 (14 lines)
+- docs/changelog.md § 2.1.0 — 2026-11-21 19:43 +0000 — L45-52 (8 lines)
+- docs/changelog.md § 2.0.4 — 2026-11-21 00:15 +0000 — L53-71 (19 lines)
+- docs/changelog.md § 2.0.3 — 2026-11-20 22:05 +0000 — L72-83 (12 lines)
+- docs/changelog.md § 2.0.2 — 2026-11-20 20:34 +0000 — L84-88 (5 lines)
+- docs/changelog.md § 2.0.1 — 2026-11-20 20:06 +0000 — L89-93 (5 lines)
+- docs/changelog.md § 2.0.0 — 2026-11-20 19:50 +0000 — L94-95 (2 lines)
+- docs/workflow.md § Agentic workflow — L1-4 (4 lines)
+- docs/workflow.md § Agents — L5-21 (17 lines)
+- docs/workflow.md § Commands — L22-31 (10 lines)
+- docs/workflow.md § `/add-feature` pipeline — L32-50 (19 lines)
+- docs/workflow.md § `/release` pipeline — L51-69 (19 lines)
+- docs/workflow.md § Rules (full text in `AGENTS.md`) — L70-85 (16 lines)
+- docs/workflow.md § Token economy — L86-96 (11 lines)
+- docs/workflow.md § Skills — L97-99 (3 lines)
+- docs/workflow.md § CI — L100-102 (3 lines)
+- docs/workflow.md § Scripts — L103-116 (14 lines)
+- docs/workflow.md § Hooks and settings — L117-119 (3 lines)
+- docs/workflow.md § Repository — L120-122 (3 lines)
+- docs/workflow.md § Where things live — L123-138 (16 lines)
+- docs/workflow.md § Workflow manifest — L139-156 (18 lines)
 - docs/workflow.md § Workflow history — L157-172 (16 lines)
+- docs/scripts.md § Scripts that read the documents — L1-13 (13 lines)
+- docs/scripts.md § Requirements — L14-16 (3 lines)
+- docs/scripts.md § Reading a long document — L17-19 (3 lines)
+- docs/andrea-choices.md § Choices made by Andrea — L1-4 (4 lines)
+- docs/andrea-choices.md § Process — L5-27 (23 lines)
+- docs/andrea-choices.md § Text, subtitles and LUT — L28-35 (8 lines)
+- docs/andrea-choices.md § Speed, overlap and effects (2.3.0) — L36-43 (8 lines)
+- docs/andrea-choices.md § Open items — L44-45 (2 lines)
 
 ## Release hand-off: known limitations
-For the Product Manager (RELEASE step 2, prioritising the roadmap). Cleaned from the README "Known limitations" in the 1.6.3 RELEASE-CLEAN. Removed as fixed: the 0.4.2 installer note (fixed in 0.4.3, tag v0.4.3); no other item removed, all README limits kept. Each item keeps its source (the version where it was recorded, from the roadmap or the changelog).
+Cleaned in RELEASE-CLEAN 2.3.0 (sections of the README "Known limitations", which hold the same wording). Source in brackets: the version or REQ where the limit comes from; "README" = the README item had no version and its source is not recorded. Read by the Product Manager.
 
-The list is from 1.6.3. Since then the 2.0.4 close rewrote the README limitations to the built state (window memory, Ctrl/Cmd+V, macOS menu, format 11, speed, picture items, 360 text, spatial sound, player features, LUT copies); the next RELEASE-CLEAN rewrites this section from the README.
+Installation and system
+- Installers are not code-signed; one-time confirmation on each system. [2.0.2, Andrea's decision; signing not planned]
+- Subtitles on Windows and Linux need AVX2, FMA and F16C; older processors get a message; tested with simulated processors only. [0.3.0 processor check]
+- Drag and drop does not work on Linux Wayland. [1.1.0]
+- macOS menu bar has no Quit item; Cmd+Q still asks about unsaved changes. [README; REQ-232 2.0.4 menu bar not checked on a real Mac]
+- CJK subtitles and texts use the installed fonts (possible empty boxes). Arabic and Devanagari are bundled. [2.0.4 REQ-187/188, system fonts only, D61]
+- Text items use installed fonts; a missing font is replaced by the bundled subtitle font with a note. [1.3.0 text items, 2.0.4 font rules]
 
-Installation and platforms
-- Installers are not code-signed: each system asks for a one-time confirmation (source: 0.2.0, roadmap code signing).
-- Generating subtitles on Windows and Linux needs AVX2, FMA and F16C (Intel from 2013, AMD from 2015, all Ryzen); on older processors a message says so and subtitle lines can be added by hand; the check was tested with simulated processors, not on old hardware (source: 0.3.0).
-- Versions before 1.1.0 drop the saved layout and the recent-projects list when they save their settings (source: 1.1.0, decision of 2026-11-15).
-- On macOS the menu bar has no Quit item yet; Cmd+Q still asks about unsaved changes (source: 2.0.4 review).
-- Drag and drop does not work in Linux Wayland sessions; use File > Import media… and File > Open… (source: 1.1.0).
-- Ctrl/Cmd+V pastes clips only when the system clipboard holds text; Paste in the Edit menu and the toolbar always works (source: 1.1.0). Note: since 2.0.4 Ctrl/Cmd+V pastes the most recent cut or copy made in videolore; this item is stale and goes at the next RELEASE-CLEAN.
-- Projects saved by version 2.0.4 cannot be opened by 2.0.3 or earlier; projects saved by 2.0.3 cannot be opened by 2.0.2 or earlier; projects saved by 1.4.0 or later cannot be opened by 1.3.0 or earlier (source: 2.0.3, 2.0.4 format 11, 1.4.0).
+Faster export (hardware)
+- NVIDIA driver 610 or newer needed; older driver uses the normal method. [0.4.x hardware check; architecture non-functional targets]
+- Linux (Intel, AMD): libva 2.21 or newer with the bundled ffmpeg (Ubuntu 24.04 has 2.20, hardware skipped); a system ffmpeg in Advanced can use hardware. [README; Linux hardware check]
+- Fedora: RPM Fusion freeworld drivers for AMD and Intel. [README; Linux hardware check]
+- Faster is not always quicker (14% quicker to 41% slower before 2.2.0; about 9% quicker in 2.2.0 on one Intel computer, target 20% not met). Files may be a little larger. [2.2.0, REQ-315 planned]
+- Intel driver on Ubuntu 24.04: hardware HEVC not usable. [README; hardware check measurement]
+- Verified on real hardware only on Linux with Intel integrated graphics. [0.4.0 QG-05]
+- A busy computer can miss the hardware; then the normal method. [README; hardware check design]
+- With several graphics cards NVIDIA is always preferred; the card cannot be chosen. [0.4.0]
 
-Export and hardware
-- Faster export needs NVIDIA graphics driver 610 or newer; with an older driver the normal method is used and Settings > Advanced says why (source: 0.4.0).
-- Faster export on Linux (Intel and AMD) needs libva; with the bundled ffmpeg it needs libva 2.21 or newer, so Ubuntu 24.04 (libva 2.20) uses the normal method; a system ffmpeg chosen in Advanced can still use the hardware (source: 0.4.0).
-- Faster export on Fedora needs the RPM Fusion freeworld video drivers for AMD and Intel (source: 0.4.0).
-- Faster is not always quicker: on integrated Intel graphics it was measured from 14% quicker to 41% slower than Best quality (source: 0.4.0, QG-05 measurement).
-- On the Intel driver tested on Ubuntu 24.04, hardware HEVC export is not usable (source: 0.4.0).
-- Faster export has been verified on real hardware only on Linux with Intel integrated graphics (source: 0.4.0, QG-05 checklist).
-- On a very busy computer the video hardware can still be missed; Faster then uses the normal method (source: 0.4.2).
-- On computers with more than one graphics card NVIDIA is always preferred (source: 0.4.0).
-- A 360 clip with a moving camera exports at about one third of real time (source: 1.2.6).
-- 360 video must be a single full equirectangular picture; spatial sound turns with yaw and pitch, not roll, for four-channel 360 clips (assumed channel order) (source: 1.2.6, 2.0.4 REQ-273).
-- A 360 export to MP4 and MOV is marked as 360 video; Matroska and WebM carry the marker when the file check passes (source: 1.3.0, 2.0.4 REQ-261).
-- A 360 video ignores the video format presets and keeps the sphere's own size (source: 1.4.0).
-- A 360 video export ignores Change aspect, Scale and Move; the flat camera view applies them (source: 1.5.0).
-- Change aspect, Scale and Move make the export a re-encode; a clip with a speed too, and two clips with different speeds cannot be merged (source: 1.5.0, 2.0.4 REQ-281).
-- The longer side of a frame is capped at 4096 px (source: 1.5.0).
-- The Export dialog remembers its choices for the session only; the video and audio formats are a fixed list of presets (source: 1.4.0).
-- Apply LUT is applied before the frame effect of Change aspect, so the blurred or coloured fill is not graded (source: 1.6.0, accepted deviation).
-- The preview copy cache is kept under a 4 GB limit; the cleanup runs on the interface thread (source: 2.0.4 REQ-297).
-- Under Automatic, a 1280x720 source never gets a preview copy (source: 0.2.0).
-- Clean audio at full strength does not remove noise completely; quiet speech (about -32 dB) can lose up to about 2.5 dB (source: 1.4.0, 2.0.4 REQ-278).
+Subtitles
+- Reused subtitles: text and line times exact, word timing approximate; target not met (Fast: 82% of words, 0.48 s average start error; speech-region method 2.2.0: 43% within 0.3 s, target 90%). [2.2.0, REQ-177 planned]
+- Matching works only as well as the text follows the speech; paraphrased subtitles get evenly spread words, with a message. [1.2.0]
+- Moved subtitle lines shown together can overlap; a warning, no automatic move. [2.0.3, D53]
+- The .srt file has no subtitle positions; text items are not written to it. [1.2.0 SRT export; 1.3.0 text items]
+- Enlarge word and Typewriter are video effects only; .srt, .vtt and .ass keep plain text. Typewriter has no caret and no typing sound. [2.1.0]
+- The shadow has one fixed distance and colour per style, not over time. [2.1.0]
+- Scripts other than Latin, Greek and Cyrillic are not fully supported. [1.2.0]
 
-Subtitles and speech
-- Chinese, Japanese and Korean subtitles and texts use the installed fonts and may show empty boxes; Arabic and Devanagari have bundled fonts (source: 0.2.0, 2.0.4 decision D61).
-- Speech is recognised in pieces of about two minutes; a word cut at a boundary can be lost (source: 0.3.0).
-- When a video's own subtitles are used, the word-by-word highlight timing is approximate (82% of the words matched, average start error 0.48 s on the reference clip) (source: 1.2.0, REQ-095, REQ-177).
-- Matching a video's subtitles to the speech works only as well as their text follows what is said (source: 1.2.0).
-- Moved subtitle lines shown at the same time can overlap (source: 1.2.0).
-- The .srt file has no subtitle positions (source: 1.2.0).
-- Align horizontally does nothing for a subtitle line that is still at its style's place (source: 1.2.6).
+Texts and boxes
+- Text at most 10% of picture height unless its Maximum size is set (2% to 50%); a short text in a big box does not fill it; measured with the picture's font. [2.0.3 cap; 2.2.0 REQ-323, D64]
+- Texts of projects saved before 2.0.3 open with Readability None and their box size; large multi-line texts may shrink; one-time message. [2.0.3, Andrea: "Sizes change on open"]
+- Text or subtitle line dragged past the picture edge is cut in preview and export; status bar counts it; Move inside the picture brings it back. [1.4.0]
+- Time to live above 24 h or below 0.1 s: project refused as damaged; while editing limited to the video length. [1.3.0 deviation]
+- Subtitle lines and text items do not follow Scale or Move. [1.5.0]
+- Overlap media and PNG picture items are not drawn in a 360 video export; picture items take no text effects. [2.3.0 REQ-327..331, 2.0.4]
+- Overlap MOV: measured when added; no sound played; no keyframes or rotation; HEVC with alpha and other codecs without alpha read are drawn opaque. [2.3.0]
+- Overlay above 1920 x 1080: half size in preview; a 4000 x 4000 PNG takes about 830 MB in export; a still is decoded per frame (4 s still about 5 s export). [2.3.0]
 
-Editing, preview and projects
-- Removing a file from the media list drops the undo steps that refer to it (source: 0.2.0).
-- A project file with a text whose time to live is above 24 hours, or below 0.1 s, is refused as damaged on opening (source: 1.3.0).
-- Texts of projects from before 2.0.3 open with Readability None and take the measured size of their box (source: 2.0.3, REQ-155..167).
-- A video without spherical information is always flat (source: 1.4.0).
-- A text or a subtitle line dragged past an edge of the picture is cut in the preview and in the export (source: 1.4.0).
-- A text's size is never above 10% of the picture height (source: 2.0.3, REQ-156).
-- Text items use the installed fonts and are not written to the .srt file (source: 1.3.0).
-- Subtitle lines and text items keep their place when the picture is scaled or moved (source: 1.5.0).
-- Clips added after a whole-video effect do not get it; a note appears (source: 1.6.1, 2.0.4).
-- A 1.6.0 clip with its own and a whole-video Scale or Move becomes one combined path (source: 1.6.1).
-- Keyframes are straight lines unless a segment is eased (source: 1.5.0, 2.0.4 REQ-282).
-- Apply LUT reads .cube, .3dl and .csp; a missing LUT stops the export until found, or the export is made without it (source: 1.6.0, 2.0.4 REQ-292).
-- PNG picture items are not drawn in a 360 video export (source: 2.0.4 REQ-287).
+Editing, effects and LUTs
+- Removing a media file drops the undo steps that refer to it. [README; undo history 1.1.0]
+- Change aspect, Scale and Move make the export re-encode even at defaults; a clip with speed is re-encoded and clips with different speeds cannot be merged. [1.5.0; Change speed 2.3.0 REQ-281]
+- Frame longer side capped at 4096 px; large frames export slower (not measured). [1.5.0, assumption]
+- Keyframes are straight unless eased; shown in the popup and on the clip marker, not as timeline markers. [1.5.0; easing 2.0.4 REQ-282]
+- Clips added after a whole-video effect do not get it; a note appears. [1.6.1 REQ-147]
+- Whole-video Scale or Move is a separate copy per clip, edited in each clip's popup. [1.6.1 REQ-148; 2.0.4 REQ-200]
+- A 1.6.0 clip with its own and a whole-video Scale or Move becomes one combined path on opening (exact at keyframes, straight line between). [1.6.1 migration]
+- Clean audio at full strength does not remove noise completely; quiet speech (about -32 dB) can lose up to about 2.5 dB; cost on weak computers not measured. [1.4.0]
+- Apply LUT: .cube up to 256 points and 512 MiB, loaded in the background with progress; preview of a 256-point LUT takes about 12 s to prepare (dev computer); export always uses it. [2.1.0 REQ-300/301, 2.2.0 REQ-312, D63]
+- .3dl and .csp read whole, limit 64 MiB. [2.1.0 REQ-300]
+- A missing LUT file stops the export until found, or export without the LUT. [1.6.0 REQ-292]
+- Closing a project while a LUT loads: status error and the LUT is applied to a missing target. [2.2.0]
+- LUT below Change aspect by default: the fill is not graded; a LUT moved above grades it too. [2.2.0 REQ-320]
+- Order of effects cannot be copied from one clip to another; subtitle lines of a clip are one row in Applied effects; Change speed fixed. [2.2.0 REQ-320; 2.3.0]
+- On 360 clips, anchored texts and subtitle lines keep fixed rows; Enlarge word and Typewriter drawn as plain text; 360 export ignores the order. [2.2.0 REQ-320; 2.0.4]
+- Crop removed; an old crop is dropped on opening with one status line. [2.3.0 REQ-283]
+- No 360 switch: a video without spherical information is always flat. [1.4.0]
+- Copy and Cut put marker text on the clipboard. [2.0.4 REQ-195]
 
-Player
-- The player's picture subtitles are not shown on 360 video; a picture subtitle already on screen at a start or a pause appears at its next change (source: 2.0.4 REQ-253).
+360 video, player and preview
+- 360 video: single equirectangular picture only (no stereo 3D, cube maps, partial 180). [1.2.6; 2.0.4]
+- Spatial sound follows yaw and pitch, not roll; four-channel 360 audio read as first-order ambisonics (assumed channel order). [2.0.4 REQ-273, D61]
+- A 360 clip with a moving camera exports at about one third of real time. [1.2.6]
+- 360 video ignores format presets and Change aspect, Scale and Move (the flat camera view applies them); keeps the sphere size. [1.3.0; 2.0.4 REQ-266]
+- MP4 and MOV 360 files carry the marker; Matroska and WebM only when the check passes. [2.0.4 REQ-261]
+- Player picture subtitles are not shown on 360 video; one already on screen when playback starts inside it appears at its next change. [2.0.4]
+- Preview: spatial sound waits for its pre-pass; a clip over 10 minutes keeps its recorded sound there. [2.0.4]
+- Preview copies: under Automatic, a 1280x720 source gets none; the cache is limited to 4 GB (Settings), oldest removed first, cleanup on the interface thread. [2.0.4 cache limit]
+- A project mixing 360 and flat clips exports only as the flat camera view. [1.3.0]
+- Video edits do not move text items. [1.3.0; not in README: check whether still true]
 
-## Consistency checks (2.0.4 close)
-- Read in full: README, docs/roadmap.md, docs/changelog.md (2.0.4 part), the 2.0.4 checkpoint and the batches-12-15 page.
-- README: stale limitations and usage text corrected to the built state (2.0.4 features, the window memory, the player, LUT, Ctrl/Cmd+V, macOS menu, 360 text); Latest changes 2.0.4, 2.0.3, 2.0.2; badge 94.9 via `scripts/coverage.sh --badge`; poem unchanged.
-- Roadmap: delivered 2.0.4 items removed (speed and pictures are new, anchored 360 text and paths, picture subtitles partly, quality items), 2.0.5 items added (manual checks, roll and pre-pass, picture subtitles on 360 and at a start or pause, picture item limits, REQ-177 decision kept, blurred fill and REQ-206 kept), Enhance speech model moved to Not planned.
-- Splash summaries: editor and player summaries rewritten for the built 2.0.4 items, five lines each.
-- docs/architecture-2.0.4-overview.md: a forbidden reference to `ai-docs/` removed (docs-check).
+Export dialog, projects
+- Export dialog choices last for the session only; formats are a fixed list of presets. [1.4.0; 2.0.4 presets kept]
+- Project format 14 (2.3.0) is refused by 2.2.0 and earlier; format 13 (2.2.0) by 2.1.0 and earlier; format 12 (2.1.0) by 2.0.4 and earlier; 2.0.4 by 2.0.3; 2.0.3 by 2.0.2; 1.4.0 or later by 1.3.0 and earlier. Refused with a message, left untouched. [format history, architecture-projects]
+- Versions before 1.1.0 drop the saved layout and recent-projects list when saving settings. [1.1.0]
+- Projects saved by 2.2.0 keep the order per clip; a 1.3.0 project's 360 switch is dropped on opening. [2.2.0; 1.4.0]
+
+## Consistency checks (RELEASE-CLEAN 2.3.0)
+- README: Known limitations rewritten (60 items in plain wording, grouped; duplicates merged; fixed items and history dropped; two real limits restored: clipboard and scripts). Usage, Latest changes and poem unchanged. Badges unchanged (version 2.3.0, coverage 95.1 from the last code run).
+- docs/business.md: Documents, key decisions and limitations rewritten by topic (per-version narrative removed; the limitations point to the README). Links to all business-*.md kept.
+- docs/architecture.md: index rewritten by topic (version narrative removed); all architecture-*.md are linked; NFR targets kept with their figures.
+- docs/andrea-choices.md: new; the list of Andrea's choices (AskUserQuestion answers, his instructions, decisions marked as his in the docs).
+- docs-check runs in the index mapping for docs/andrea-choices.md (mapped to docs/business.md).
 
 ## Open items (documenter)
-- The known-limitations hand-off above is from 1.6.3 with the 2.0.4 corrections; the next RELEASE-CLEAN rewrites it from the README.
-- Roadmap item "Migrated text sizes" is kept for the option to offer the old size again.
-- Roadmap item "Gated alignment test on CI's versions" is kept: not checked whether the real-speech test runs on CI with the pinned speech fixture.
-- Picture item limits (ADR-192) and REQ-177 are open decisions; the roadmap keeps them.
-- Other docs/*.md not compacted in 2.0.4 (owners clean their own docs at release).
-- Roadmap items "Binary input for 256-point LUTs" and "Smaller preview table for LUTs" moved to Not planned in 2.2.0 (D63); LUT preparation progress is planned in 2.2.0 (REQ-312).
-- 2.2.0 architecture open points in the roadmap: time-based progress estimate, conditional blur size, QG-22 to QG-27 numbering, whole-video popup removal in the 2.2.0 release notes.
-- 2.1.0 open points (REQ-305, REQ-303, REQ-300) are closed by the 2.2.0 business plan and removed from the roadmap; README Usage item 14 and the What it is line now give the `.cube`, `.3dl` and `.csp` limits per format.
-- Roadmap Priority 1 has the second speech clip for REQ-177 (user action before the build).
-- Verification of the 2.1.0 splash summary fit (heading plus five lines) is by the fit test, which was not run by the documenter.
-- README updated at the 2.2.0 close (Usage 3, 13, 14, 16; Known limitations; Latest changes 2.2.0, 2.1.0, 2.0.4). The default text cap in the README (10% of the picture height) matches the code (`TextItem::cap()` = 100 thousandths when no maximum is set).
+- Not compacted in this round (owners' documents): docs/code*.md, docs/architecture-*.md sub-documents (per-version pages such as code-2.0.4-batches-*, code-2.1.0, code-2.2.0, code-2.3.0, architecture-2.x overviews), docs/roadmap.md content (Product Manager writes it in RELEASE), docs/roadmap_tasks.md, docs/changelog.md (not cleaned by rule). README Usage (about 15 KB) is user-facing and kept; it could move to docs/usage.md in a later round.
+- docs/workflow.md not edited (the user asked to keep AGENTS.md and workflow docs out of this round); its Scripts table does not yet list the new read-only scripts: docs/scripts.md describes them.
+- AGENTS.md Scripts list: proposed line in the return message (to be added through /change-workflow).
+- Roadmap item "Video edits do not move text items" to check (from the 1.3.0 limits, not in the README).
 
 ## Development log
-- 1.0.0 to 1.6.2: one line per development in the changelog and in the earlier notes (compacted in 1.6.3; the detailed per-part checks of those versions are not kept here).
-- 1.6.3: version 1.6.3 (no change needed in RELEASE-CLEAN), changelog entry Changed (splash file names) and Workflow (release flow, project page rules, /analysis), no user-facing change, README latest changes unchanged.
-- 1.6.3 RELEASE 1.6.3 "core effects and player": changelog release summary and a Changed bullet (splash origin and licence: own work, MIT); roadmap: splash origin item and hardware-document split removed, dispatch_inner, module cycles and 360 test pictures added to priority 11; docs updated on the splash origin; coverage badge 95.6; README unchanged (1.6.3 is workflow-only, latest changes are 1.6.2, 1.6.1, 1.6.0); docs-check ok, version check ok.
-- 1.6.3 RELEASE-CLEAN: known limitations hand-off, github_page/after release.md with the Documenter section, roadmap cleanup, README known limitations cleanup, architecture.md label, workflow LICENSE wording, notes compacted, docs-check ok, version 1.6.3 unchanged, poem unchanged, releases/ not touched.
-- 2.0.0 POEM: new README poem written after 1.6.3 release (opening of 2.0.0), docs-check ok, version 2.0.0 consistent.
-- 2.0.1 to 2.0.3: one line per part in the changelog (business, architecture, code); the detailed checks are not kept here.
-- 2.0.4 business, architecture, checkpoint: version set to 2.0.4; changelog entry; the 2.0.4 architecture bullets were kept in the checkpoint file until built (ai-docs/roadmap-2_0-checkpoint.md, section Documenter); docs-check ok.
-- 2.1.0 business (2026-11-21 19:43 +0000): version set to 2.1.0 (notices regenerated: rust-crates.txt, rust-crates-player.txt); changelog 2.1.0 entry (business plan bullet); roadmap: postponed 2.1.0 items added (Enlarge word and Typewriter in subtitle files, Typewriter caret and sound, keyframes for the text shadow, reordering of fixed effects, per-line order in the widget); README unchanged (no delivered change); docs/business.md index already links the 2.1.0 documents; docs-check ok, version check ok.
-- 2.0.4 close (2026-11-21 19:27 +0000, final pass): version 2.0.4 consistent; coverage badge 94.9 (`scripts/coverage.sh --badge 94.9`); changelog 2.0.4 bullets for speed, picture items, per-clip aspect, 360 text and paths, spatial sound, player picture subtitles and quality items; README Latest changes 2.0.4 updated, Usage and Known limitations corrected to the built state, poem unchanged; roadmap: 2.0.4 items removed and the 2.0.5 items added (manual checks, roll, pre-pass, picture subtitle limits, picture item limits, CI QG-06 items already present); splash summaries (editor and player) rewritten within five lines; docs/architecture-2.0.4-overview.md forbidden ai-docs reference removed; docs-check ok, version check ok. The checkpoint file ai-docs/roadmap-2_0-checkpoint.md is kept (not deleted).
-- 2.1.0 close (2026-11-21, after the principal engineer's build): version 2.1.0 consistent (no change); changelog 2.1.0 entry replaced by the delivered bullets (Added, Fixed, Changed); README: badge 95.0 via the coverage script, Usage items 6, 13, 14 and new 16 (Applied effects), known limitations for 2.1.0, Latest changes 2.1.0, 2.0.4, 2.0.3; roadmap: source tag of the manual checks fixed, 2.1.0 open points and principal engineer future work added, Typewriter sound items merged, binary LUT items updated with the 12 s measurement; docs/business-export.md stale "planned in 2.0.4" line removed; splash summary.txt rewritten for 2.1.0 (player summary unchanged: no player change); poem unchanged; docs-check and version check run.
-- 2.2.0 business (PLAN, 2026-11-21 22:07 +0000): version set to 2.2.0 (notices regenerated, check ok); changelog 2.2.0 entry (business plan bullet); roadmap: 2.1.0 decisions item removed, REQ-177 second-clip item added, items marked planned in 2.2.0, whole-video copies candidate added; README LUT wording fixed (What it is, Usage item 14, limits per format); poem and Latest changes unchanged; docs-check ok, version check ok.
-- 2.1.0 architecture (PLAN, 2026-11-21): version 2.1.0 consistent (no change); changelog 2.1.0 architecture bullet with links to the 2.1.0 overview, applied effects, subtitle styles, LUT and security pages; roadmap: 360 movable order (Priority 9), binary input and smaller preview table for 256-point LUTs and typing sound (Priority 10) added, the LUT colour management item kept once; docs/architecture.md index already links the 2.1.0 pages; docs-check ok, version check ok.
-- 2.2.0 architecture (PLAN, 2026-11-21 22:52 +0000): version 2.2.0 consistent (no change); changelog 2.2.0 architecture bullet with links to the 2.2.0 overview, speed and subtitle accuracy pages; roadmap: binary LUT input and smaller preview table moved to Not planned (D63, ffmpeg measurements), progress for the LUT preparation noted (REQ-312), time-based progress estimate, conditional blur size, QG-22 to QG-27 numbering and the whole-video popup release note added; index refreshed; docs-check ok, version check ok.
-- 2.2.0 architecture (PLAN part 2, 2026-11-21 23:09 +0000): version 2.2.0 consistent (no change); changelog 2.2.0 architecture part 2 bullet (format 13, order, column, text size) and the part 1 bullet corrected from "format 12 stays" to format 13; roadmap: items added for copying the order between clips, audio fades after the sound group, time per frame of non-default orders, and the release notes item extended with format 13; business-applied-effects REQ-322 sentence updated to the decided format 13 (ADR-222); index refreshed; docs-check ok, version check ok.
-- 2.2.0 code and close (2026-11-22): version 2.2.0 consistent (no change); coverage badge 95.1 (`scripts/coverage.sh --badge 95.1`, no test run); changelog 2.2.0 entry replaced by the delivered bullets (Added, Changed, Removed); README Latest changes 2.2.0, 2.1.0, 2.0.4, Usage 13, 14, 16, Known limitations (Faster, format 13, subtitle timing, text cap, whole-video copies, LUT preparation, order rules), poem unchanged; roadmap: reordering of fixed effects removed, Faster and cache items updated, blur-size item removed, REQ-177 and REQ-315 decisions and items added, picture rows default place, Fade names, cost of non-default orders; splash summary.txt rewritten for 2.2.0 (player summary unchanged: no player change); docs-check ok, version check ok.
-- 2.2.0 business (PLAN part 2, 2026-11-21): version 2.2.0 consistent (no change); changelog 2.2.0 bullet for the Applied effects column, the text box and the reorder (REQ-317 to REQ-323); roadmap: "LUT order with the frame effect" removed (answered by REQ-320), "Reordering of fixed effects" marked planned in 2.2.0, "Migrated text sizes" annotated with REQ-319 and D64 (texts of projects before format 10 stay open); README unchanged (no strip wording, no "user does not choose the size" wording); index refreshed; docs-check ok, version check ok.
-- 2.3.0 business (PLAN and REFINE, 2026-11-22 11:17 +0000): version 2.3.0 set (scripts/version.sh set 2.3.0, consistent; scripts/notices.sh run because the version script asked, packaging/notices/rust-crates-player.txt changed); changelog 2.3.0 entry with planned bullets; roadmap: Keyframes for other effects narrowed to fades and text, Picture item limits and Default place updated, new items Alpha video in hardware decoders, Sound of MOV overlaps, Number of overlaps per clip, Manual crop of a clip in Not planned; docs/business-overlap.md stale 'open' markers on REQ-328 and REQ-329 replaced with the decided status; docs-check ok. Open for later parts: README Applied effects and Clip details text still names Crop and Speed row (built state, update at code or close part).
-- 2.3.0 architecture (PLAN, 2026-11-22): version 2.3.0 consistent (no change); changelog 2.3.0 bullets for format 14, the shared overlap lane, the half-size preview above 1920 x 1080 and the Enlarge word fix (REQ-333); roadmap: intro says 2.3.0 is planned, four overlap and picture items added (full-size preview, keyframes and rotation, lane zoom, old picture items); architecture-subtitle-styles links REQ-333. Open: REQ-309 note says 2.1.0 build, the architecture says 2.2.0 finding; roadmap item Enlarge word vertical shift to be removed when 2.3.0 is built; docs-check ok.
-- 2.3.0 code and close (2026-11-22 13:21 +0000): version 2.3.0 consistent (no change); coverage badge 95.1 (`scripts/coverage.sh --badge 95.1`, no test run); changelog 2.3.0 entry replaced by the built bullets (Added, Changed, Fixed, Removed; the 'planned' markers gone); roadmap: Enlarge word vertical shift removed, items added for large overlay memory (`-framerate 1`), MOV re-probe, overlap box handles, split keeps overlaps per half; README Latest changes 2.3.0, 2.2.0, 2.1.0; Usage 2, 5, 11, 13 (Overlap media), 16 (Applied effects rows, Change speed); Known limitations (2.3.0 format 14 line, overlap limits, Crop removed, Enlarge word and Speed row wording); splash summary.txt rewritten for 2.3.0 (player summary unchanged); poem unchanged; docs-check ok, version check ok, notices --check ok, release-guard ok. Resolved from the architecture part: the README Crop and Speed row text is updated. Still open: docs/code-index.md and docs/code-architecture.md for 2.3.0 (release step, principal engineer).
+- 1.6.3 RELEASE-CLEAN and RELEASE: known limitations hand-off, page data file, roadmap cleanup, changelog release summary, coverage badge.
+- 2.0.0 POEM: new README poem after the 1.6.3 release.
+- 2.0.1 to 2.0.3: one changelog entry per part; detailed checks not kept here.
+- 2.0.4 business, architecture, code and close: changelog entries, roadmap, README latest changes, coverage 94.9 then close.
+- 2.1.0 business, architecture, code, close: version set, changelog entries, README usage and known limitations, coverage 95.0.
+- 2.2.0 business, architecture, code, close: changelog, roadmap, README; coverage 95.1 (badge via script, no test run).
+- 2.3.0 business, architecture, code, close: version set, changelog, roadmap, README latest changes, coverage 95.1.
+- 2.3.0 RELEASE (2026-11-22): changelog release summary "Multiple overlays and effect stack and order" (2.0.x to 2.3.0 highlights), docs-check links fixed (changelog, code-360, code-export, code-frame), README coverage badge 95.1 and format 14 note, docs-check ok, version and notices checks ok. Not changed: version, poem, roadmap, releases/.
+- 2.3.0 RELEASE-CLEAN (2026-11-22): README known limitations cleaned; docs/business.md and docs/architecture.md compacted by topic; docs/andrea-choices.md and docs/scripts.md created; read-only scripts req.sh, reqs-status.sh, doc-section.sh, doc-index.sh added; docs-check maps andrea-choices to the business index; github_page/after release.md with the Documenter section; version unchanged (2.3.0), changelog and releases/ untouched, poem unchanged.

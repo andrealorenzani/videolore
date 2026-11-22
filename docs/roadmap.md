@@ -1,190 +1,199 @@
 # Roadmap
 
-Known limitations and improvements, in priority order: the most valuable and most urgent first. Each band says why it is there; inside a band the items are grouped by area. Each item says where it came from. Delivered items are removed and mentioned in the [changelog](changelog.md). The items are grouped into suggested versions and batches in [roadmap tasks](roadmap_tasks.md). 2.2.0 and 2.3.0 are built and awaiting release (2.0.0 to 2.3.0 are not released yet); the manual checks and future work left from 2.0.4 are listed in roadmap tasks.
+Open items after version 2.3.0, most valuable and urgent first. Each band says why it comes there; each item says where it came from. Delivered items are removed (see the [changelog](changelog.md)). Suggested versions and batches: [roadmap tasks](roadmap_tasks.md).
 
-## Priority 1 — Release checks
-Why first: the items are checks that need a real computer, player or ear, or a run on other systems, and one measurement not yet repeated on the bundled ffmpeg 9.0.2. The manual checks are in [release verification](business-verification.md); they stay here until the maintainer records their results there.
-- **Manual checks of 2.0.4** — items 26, 29, 30 and 31 to 35 of the [release verification](business-verification.md): screen readers (NVDA, VoiceOver, Orca); the player under "Open with" on Windows, whose installer template has not been run on Windows yet; window and popup places on two screens; clip speed by ear and eye; picture items on a real video; off-view arrows on 360 clips; per-clip camera paths; picture subtitles in the player. They are not a release blocker. (source: 2.0.4 manual checks)
-- **Maintainer measurements for 2.0.3** — on the reference clip, measure the Balanced and Most accurate levels (time, words matched, start error); measure the cost of a 20 MB installed font; check the font names by hand on Linux, macOS and Windows (REQ-165). Record the results in [release verification](business-verification.md). (source: 2.0.3 business plan, maintainer measurement)
-- **Subtitle accuracy decision point (REQ-177)** — the Fast speech model mishears 5 of 28 words on the reference clip, so the target of 90% of words within 0.3 s is not met. The speech-region method was built in 2.2.0 and reached 43% on the reference clip, so it is not used; DTW timestamps and a one-sided onset snap were measured earlier and not shipped. A larger speech model stays the other option (its own download size, consent and checksum rules; the recommendation thresholds may change). See [subtitle accuracy](business-subtitle-accuracy.md). (source: 2.0.3 architecture plan, decision needed; 2.2.0 measurement)
-- **Second speech clip for REQ-177** — Andrea records and commits `tests/fixtures/align/second-clip-30s.wav` (a second speech clip of about 30 s, with its transcript), so that a pace-aware method for continuous speech can be judged on more than the reference clip. The speech-region method pins the words of a pause-free region by their length, which the reference clip does not follow. (source: 2.2.0 measurement, user action needed)
-- **Faster on integrated graphics: accept the result or keep the target** — the concurrent safety check made Faster about 9% quicker than Best quality on one Intel computer, against the 20% aimed at (REQ-315). Decide whether this result is accepted or the work goes on (next items in Priority 5). (source: 2.2.0 measurement, decision needed)
-- **Player builds on real systems** — the player's Windows and macOS builds were only checked with clippy, and its installers only with the configuration check; build and run them. (source: 1.6.0, check before release)
-- **Check that 1.5.x refuses project format 8** — with the real 1.5.0 build, open a project saved with 1.6.0 (it uses a LUT) and confirm it is refused with the newer-version message and left untouched. (source: 1.6.0, check before release)
-- **Clean audio and MP3 output by ear** — the `afftdn` filter and the `libmp3lame` encoder on the bundled ffmpeg 9.x are checked by the CI smoke test only; listen to the speech and the noise after a Clean audio export, and play an MP3 Only audio file. (source: 1.4.0, check to do)
-- **Windows and macOS test runs with the pinned ffmpeg 9.0.2** — the integration tests run only on Linux in CI; run them on Windows and macOS with the same pinned build. Each is a long CI job. (source: 2.0.2, check to do)
-- **Moving-camera export cost on 9.0.2** — the moving-camera export was not measured again on the bundled ffmpeg 9.0.2 (the static camera timing was); measure it with the 360 camera numbers in the developer documentation. (source: 2.0.2, measurement to do)
-- **Check the reworked release flow** — run a release once and review the consolidation: the sizes after compaction, the roadmap priorities and `docs/roadmap_tasks.md`, the code index and the mermaid diagrams, the regenerated page and its download links. (source: 1.6.3, workflow)
+## Priority 1 — Release checks and decisions
+Why first: they need a real computer, player, ear or a decision by the maintainer.
+- **Manual checks of 2.0.4** — screen readers, the player under "Open with" on Windows, two-screen window places, clip speed by ear, picture items, 360 arrows, camera paths, player picture subtitles. Not a blocker. (source: 2.0.4)
+- **Maintainer measurements for 2.0.3** — Balanced and Most accurate levels; installed font cost; font names on three systems (REQ-165). (source: 2.0.3)
+- **Accuracy target of reused subtitles (REQ-177)** — decide: a larger speech model, or keep the target open. See Priority 3. (source: 2.0.3, decision)
+- **Faster on integrated graphics (REQ-315)** — about 9% quicker against 20%; accept or keep the target. (source: 2.2.0, decision)
+- **Second speech clip for REQ-177** — the maintainer records and commits `tests/fixtures/align/second-clip-30s.wav` with its transcript. (source: 2.2.0, user action)
+- **Player builds on real systems** — Windows and macOS builds and installers run once. (source: 1.6.0)
+- **Format 8 refusal by 1.5.x** — open a 1.6.0 project that uses a LUT with the real 1.5.0 build; it must be refused and left untouched. (source: 1.6.0)
+- **Clean audio and MP3 by ear** — `afftdn` and `libmp3lame` on the bundled ffmpeg 9.x. (source: 1.4.0)
+- **Windows and macOS test runs with the pinned ffmpeg 9.0.2** — integration tests run on Linux in CI only. (source: 2.0.2)
+- **Moving-camera export cost on 9.0.2** — measure again on the bundled ffmpeg. (source: 2.0.2)
+- **Release process check** — run one release and review the consolidation. (source: 1.6.3)
 
 ## Priority 2 — Text and subtitles on the picture
-Why: captions and titles are what social creators put on a video most often; readability, placement and fit problems show in every export. The delivered items of 2.0.3 are removed (see the [changelog](changelog.md)).
-- **Migrated text sizes** — text items made in 1.3.0 take the best-fit size of their box when a project opens, so large multi-line texts shrink; offer the old size again only if users need it. Projects saved in format 10 or later keep their look (REQ-319), and a text can set its own maximum size (REQ-323, D64). (source: 1.4.0, known limitation; 2.2.0 business plan)
-- **Text items and picture moves** — text items keep their place when the picture is scaled or moved, so a text may end over the edge of the picture; let texts follow the picture, or warn. (source: 1.5.0, known limitation)
-- **Font scan finishes after a project opens** — a font scan that ends after a project opens does not trigger a repaint, so texts stay measured with the bundled font until the next render; repaint when the scan ends. (source: 2.0.3, known gap)
-- **Text that follows video edits** — text items keep their timeline time when the video is edited, unlike a subtitle line that follows its speech; decide whether they should follow the clips. (source: 1.3.0, known limitation)
-- **Longer text times** — a project file with a text whose time to live is above 24 hours is refused as damaged on opening; raise the limit if longer texts are needed. (source: 1.3.0, known limitation)
-- **Text in the .srt file** — decide whether text items are written to the subtitle file, or kept to the video only. (source: 1.3.0, open question)
-- **Measuring font for the preview** — the font used to measure the box has no CJK glyphs, so the box widths of such text are approximate. (source: 1.2.0, known limitation)
-- **Subtitle font copy and box padding on macOS and Windows** — the libass font-copy precedence and the padding of the opaque box (BorderStyle 3) are settled by tests on Linux; check them by hand on macOS and Windows, together with the font names (REQ-165). (source: 2.0.3 architecture plan, check to do)
+Why: captions and titles are what social creators put on a video most often.
+- **Migrated text sizes** — 1.3.0 texts take the best-fit size on opening; offer the old size only if asked. (source: 1.4.0)
+- **Text and picture moves** — texts keep their place when the picture moves and may end past the edge; follow the picture or warn. (source: 1.5.0)
+- **Text that follows video edits** — texts keep their time when the video is edited; decide. (source: 1.3.0)
+- **Text in the .srt file** — decide whether text items are written to it. (source: 1.3.0)
+- **Longer text times** — a time to live above 24 hours is refused on opening; raise the limit if needed. (source: 1.3.0)
+- **Font scan repaint** — repaint when a font scan ends after a project opens. (source: 2.0.3)
+- **CJK measuring font** — box widths of CJK text are approximate. (source: 1.2.0)
+- **Subtitle font copy and padding on macOS and Windows** — check by hand with the font names (REQ-165). (source: 2.0.3)
 
 ## Priority 3 — Subtitle accuracy and subtitle features
-Why: automatic subtitles are a core promise of the program, and the accuracy target for reused subtitles is not met yet. The delivered items of 2.0.3 and 2.0.4 are removed; the target decision is in Priority 1.
-- **Meet the accuracy target of reused subtitles** — the word timing of a video's own subtitles is approximate: 82% of the words were matched and the start error averaged 0.48 s, against a target of 90% and 0.3 s. DTW timestamps, a one-sided onset snap and a speech-region method were measured and not shipped; a larger speech model is the remaining option (see Priority 1). Then re-enable the strict test `alignment_matches_real_speech`. (source: 1.2.0, known limitation, REQ-095, REQ-177; 2.2.0 measurement)
-- **Five-minute real-speech test of piece boundaries** — the test of REQ-178 (no lost or duplicated words at a piece boundary) on a real five-minute speech clip is not in the tests yet; the other speech tests use the committed fixture `tests/fixtures/align/speech.mkv`. (source: 2.0.3, test gap)
-- **Gated alignment test on CI's versions** — the real-speech test of reused subtitles has been run only on the development machine; confirm it with the ffmpeg version and the speech fixture CI uses. (source: 1.2.0, not verified locally)
-- **Measure the larger speech levels** — speed and memory of Balanced and Most accurate are estimates; measure them and tune the recommendation thresholds. (source: 0.3.0, assumption)
-- **Re-check the tracks of replaced files** — a file replaced on disk keeps its old subtitle-track list until it is imported again; only media with unknown tracks is checked when a project opens. (source: 1.2.0, known limitation)
-- **Subtitle fonts for Chinese, Japanese and Korean** — Arabic and Devanagari have bundled fonts; the CJK scripts use the fonts installed on the computer (decided in 2.0.4 to keep the installers small), so they may look different per computer or show empty boxes. (source: 0.2.0, known limitation; 2.0.4 decision)
-- **Text from picture-based tracks** — read DVD, Blu-ray (PGS) and DVB subtitle tracks with OCR, so that their text can be edited; the editor ignores them today and the player shows them (see Priority 8). (source: 1.2.0, out of scope of the 1.2.0 request)
-- **Style per line or clip** — each line or clip with its own style; today there are three styles for the whole project. (source: 1.2.0, out of scope of the 1.2.0 request)
-- **Custom style editor** — change the colours, fonts and placement of the three styles. (source: 1.2.0, out of scope of the 1.2.0 request)
-- **Translation and more than one language per project** — one language per project today. (source: 1.2.0, out of scope of the 1.2.0 request)
-- **Other speech models** — only the three quality levels are offered. (source: 1.2.0, out of scope of the 1.2.0 request)
-- **Enlarge word and Typewriter in subtitle files** — the two word styles of 2.1.0 are video effects only; the .srt, .vtt and .ass files keep plain text and times. Decide whether a subtitle format can carry them. (source: 2.1.0 business plan, postponed on purpose)
-- **Typewriter caret and typing sound** — the typing effect has no caret and no key sound in 2.1.0; add them if users ask for them (REQ-310 leaves the sound out of scope). (source: 2.1.0 business plan, postponed on purpose)
-- **Preview cache key for Typewriter** — the preview's cache key follows the spoken word, not each letter; measure the letter steps and cache them one by one only if the preview needs it. (source: 2.1.0, Principal Engineer future work)
+Why: automatic subtitles are a core promise; the accuracy target is not met.
+- **Meet the accuracy target (REQ-177)** — 82% of words matched and 0.48 s average start error, against 90% and 0.3 s; then re-enable the strict test. (source: 1.2.0, 2.2.0)
+- **Pace-aware method for continuous speech** — the speech-region method reached 43%; judge a new method on the second clip. (source: 2.2.0)
+- **Five-minute real-speech test (REQ-178)** — on a real five-minute clip. (source: 2.0.3)
+- **Gated alignment test on CI's versions** — confirm with the ffmpeg and fixture CI uses. (source: 1.2.0)
+- **Larger speech levels** — measure speed and memory of Balanced and Most accurate. (source: 0.3.0)
+- **Replaced files** — re-check the track list of a file replaced on disk. (source: 1.2.0)
+- **Subtitle fonts for other scripts** — CJK and other scripts use installed fonts; bundled fonts need a licence check. (source: 0.2.0, 2.0.4)
+- **Text from picture-based tracks** — OCR of DVD, Blu-ray and DVB subtitles. (source: 1.2.0)
+- **Style per line or clip; custom style editor; translation; other speech models.** (source: 1.2.0)
+- **Enlarge word and Typewriter in subtitle files** — decide whether a format can carry them. (source: 2.1.0)
+- **Typewriter caret and typing sound** — add if users ask. (source: 2.1.0)
+- **Preview cache key for Typewriter** — the cache follows the word, not each letter. (source: 2.1.0)
 
 ## Priority 4 — Editing speed and safety
-Why: keyframe editing and the timeline save time on every edit. The delivered items of 2.0.4 are removed.
-- **Double-click on a clip that already has the LUT** — a double-click gives the clip the chosen LUT again and replaces the one it has; decide whether it should keep the clip's settings or ask first. (source: 1.6.1, decision: replace by default, minor)
-- **Keyframe popup usability** — in the small Scale and Move popup keyframes are harder to pick and edit; check the popup in real use and rework it if users struggle. (source: 1.5.0, product risk)
-- **Time-based progress while ffmpeg starts** — the LUT preparation progress during the ffmpeg start is an estimate based on time, not a measured value; replace it with a real measure if the estimate misleads users. (source: 2.2.0 architecture plan, open point)
+Why: these save time on every edit.
+- **Double-click on a clip that already has the LUT** — keep its settings or ask. (source: 1.6.1)
+- **Keyframe popup usability** — hard to pick keyframes in the small Scale and Move popup. (source: 1.5.0)
+- **Time-based LUT progress** — the start progress is an estimate. (source: 2.2.0)
+- **Undo steps lost when a media file is removed.** (source: 1.1.0)
 
-## Priority 5 — Export speed and hardware
-Why: export time is what users wait for; the hardware path is measured on one system only, and Faster is not always quicker. The delivered items of 2.0.4 are removed.
-- **Make Faster really faster on integrated graphics** — on an Intel Iris Plus G7 the hardware export plus its safety check ranged from 14% quicker to 41% slower than Best quality before 2.2.0. The 2.2.0 check runs its decode and samples at once: about 9% quicker than Best quality (12.3 s to 11.3 s), against the 20% aimed at. The hardware encode phase is the remaining cost (next item); a skeleton render of the rest and a speed target per kind of graphics are still open. (source: 0.4.0, QG-05 measurement; REQ-206 in 2.0.4; 2.2.0 measurement, REQ-315)
-- **Decode and upload speed of hardware export on integrated graphics** — on the reference project the hardware encode phase (decoding the sources and uploading them to the graphics card) takes about 7.5 s of an 11 s export; a faster decode or upload is what would bring Faster near the 20% target. (source: 2.2.0 measurement, REQ-315)
-- **Under extreme load the check can still find no hardware** — after its repeat, a very busy computer can still end with "no hardware", so Faster uses the normal method. (source: 0.4.2, known limitation)
-- **Verify hardware export on every system** — only Linux with Intel graphics has been tried on real hardware; Windows (NVIDIA, Intel, AMD), Linux (NVIDIA, AMD) and macOS (Apple) still need the QG-05 checklist in [code-hardware](code-hardware.md). (source: 0.4.0, known limitation)
-- **Hardware export with the included ffmpeg on Ubuntu 24.04** — Intel and AMD hardware is skipped there because the system video library (libva 2.20) is older than the included ffmpeg needs (2.21); the program says so (REQ-217). Still open: an ffmpeg build that works with the older libva, or a compatible libva. Fedora needs the RPM Fusion freeworld drivers for AMD and Intel. (source: 0.4.0, known limitation)
-- **Intel HEVC hardware** — broken on the tested Ubuntu Intel driver even at constant quality; revisit with newer drivers. (source: 0.4.0, known limitation)
-- **Hardware check of 360 video export with texts** — the 360 video export with anchored texts has not been run on real graphics hardware; check it with the QG-05 checklist. (source: 1.3.0, check to do)
-- **Hardware export with frame effects** — the Scale, Move and Change aspect graphs are tested with the normal method only; check them with the hardware export and its output check on real graphics hardware. (source: 1.5.0, check to do)
-- **Export speed for 4K and HEVC presets** — re-encodes to 3840x2160 and to libx265 are slow, and no speed is promised; measure them and speed them up if they are too slow for users. (source: 1.4.0, known limitation)
-- **Export speed of large frames** — a frame made larger by Change aspect (for example 1600x2844, or 4K in 9:16 near the 4096 px cap) makes export slow and may hit codec limits. The Export dialog warns above 4096 px (REQ-221); measure the export time and decide whether to limit the frame size. (source: 1.5.0, product risk)
-- **Export time of blurred fill** — the blurred background of Change aspect has not been timed on real material; measure its cost and speed it up if too slow, for example with a lighter path for Move-only and Scale 100%. The blur is computed at one eighth of each side (measured faster than a quarter at 4K). (source: 1.5.0, measurement to do; 2.0.4 blur divisor 8)
-- **Playback of a blurred fill and Scale in the preview** — the blurred background is kept while its inputs do not change (REQ-223); the blur adds about 2 ms a frame (measured in 2.2.0, not in playback), and Scale still renders the whole still on every change of the picture state. Render only the changed part. (source: 1.5.0, known limitation; REQ-223 in 2.0.4; 2.2.0 measurement)
-- **Measure Clean audio in the preview on weak computers** — the processor cost of Clean audio in the preview has not been measured on a weak computer; measure it, and use lighter noise-reduction values in the preview only if it causes underruns (the export keeps the tuned values). (source: 1.4.0, measurement to do)
-- **Memory and time of large overlay files** — a 4000 x 4000 PNG overlay peaks at about 830 MB in ffmpeg (the plan assumed 64 MB), and a still is decoded again for every frame: a 4 s still takes 5.1 s to export, against 0.9 s with `-framerate 1` on the still input (760 MB). Measure it on real material and decide whether the option is used; the argument lists are fixed by golden tests. (source: 2.3.0 measurement, Overlap media)
+## Priority 5 — Overlap media and picture items
+Why: overlaps are new in 2.3.0; their limits show in real use.
+- **Memory and time of large overlay files** — a 4000 x 4000 PNG peaks at about 830 MB; a still is decoded per frame. (source: 2.3.0)
+- **Full-size preview of large overlays** — files above 1920 x 1080 are drawn at half size. (source: 2.3.0)
+- **Alpha in hardware decoders** — the software path is used where alpha is dropped; check on real graphics. (source: 2.3.0, R1)
+- **Drawn handles on the overlap box.** (source: 2.3.0)
+- **Sound of MOV overlaps** — decide whether it plays with the clip. (source: 2.3.0)
+- **Number of overlaps per clip** — decide whether a limit is needed. (source: 2.3.0)
+- **Overlap lane zoom.** (source: 2.3.0)
+- **Re-probe MOV overlays when used.** (source: 2.3.0)
+- **Split keeps overlaps per half** — check that users expect it. (source: 2.3.0)
+- **Overlay keyframes and rotation.** (source: 2.3.0)
+- **Default place of new picture rows** — revisit with users. (source: 2.2.0, 2.3.0)
+- **Picture item limits** — the other planned limits (20 items, 8 MiB) are not built; decide. (source: 2.0.4, 2.2.0)
+- **Removal of old picture items** — remove the old kind in a later format change. (source: 2.3.0)
+- **Overlap in 360 export** — not drawn; decide. (source: 2.3.0)
 
-## Priority 6 — Installation and platforms
-Why: unsigned installers and platform gaps add friction at the first start and for users on macOS, Windows and Linux desktops.
-- **Idle heartbeat for the one-window lock** — while videolore is idle the running window does not refresh its lock, so a second start may not find the lock state reliably after a crash; add a heartbeat. (source: 2.0.4 review, future work)
-- **Drag and drop on Linux Wayland** — dropping files onto the window does not work in Wayland sessions, because the windowing library does not report dropped files there. Enable it when the library supports it. File > Import media… and File > Open… work there. (source: 1.1.0, known limitation)
-- **Quit item in the macOS menu** — the macOS menu bar has Hide and Minimize; add a Quit item that asks about unsaved changes like Cmd+Q does. (source: 2.0.4 review, future work)
-- **Detection in the installers** — the computer is set up at the first start of the app; detection could also run during installation. Open question. (source: 0.3.0, open question)
-- **Builds of 1.2.0 on real systems** — the macOS and Windows builds were checked only by CI; confirm the builds and the subtitle export on real systems. (source: 1.2.0, not verified locally)
-- **Legal review of source offers** — the way the source code of bundled components is offered has not been reviewed by a lawyer. (source: 0.2.0, assumption)
-- **Other systems** — builds exist for Windows and Linux on x86-64 and for macOS on Apple Silicon only; Intel Macs and ARM Windows or Linux are not built. (source: 0.4.0, scope decision)
+## Priority 6 — Export speed and hardware
+Why: export time is what users wait for; hardware is measured on one system only.
+- **Make Faster really faster on integrated graphics** — cheaper check or a target per kind of graphics. (source: 0.4.0, 2.2.0; REQ-206, REQ-315)
+- **Decode and upload speed of hardware export** — about 7.5 s of an 11 s export on the reference project. (source: 2.2.0)
+- **Busy computer and hardware check** — skip a candidate that times out twice; tell busy from hanging. (source: 0.4.2)
+- **Verify hardware export on every system** — Windows (NVIDIA, Intel, AMD), Linux (NVIDIA, AMD), macOS (Apple). (source: 0.4.0)
+- **Ubuntu 24.04 with the included ffmpeg** — libva 2.20 against 2.21; an ffmpeg build or compatible libva. Fedora needs RPM Fusion drivers. (source: 0.4.0)
+- **Intel HEVC hardware** — broken on the tested driver; revisit. (source: 0.4.0)
+- **Choose the graphics card** — NVIDIA is always preferred. (source: 0.4.0)
+- **Hardware check of 360 export with texts, and of frame effects.** (source: 1.3.0, 1.5.0)
+- **Export speed for 4K and HEVC presets.** (source: 1.4.0)
+- **Export speed of large frames** — frames above 4096 px are slow; decide a limit. (source: 1.5.0)
+- **Export time of blurred fill** — measure on real material. (source: 1.5.0)
+- **Playback of a blurred fill and Scale in the preview** — render only the changed part. (source: 1.5.0, 2.2.0)
+- **Clean audio cost in the preview** — measure on weak computers. (source: 1.4.0)
+- **Cost of non-default orders** — such clips are built step by step; measure and tune. (source: 2.2.0)
 
-## Priority 7 — Interface
-Why: comfort and discoverability; none of these blocks a task. The delivered items of 2.0.4 are removed.
-- **Sub-second ruler labels** — the timeline ruler shows whole seconds only; at frame zoom show fractions of a second. (source: 1.2.0, known limitation)
-- **Multi-selection lost** — a multi-selection was reported to disappear; it could not be reproduced in 1.3.0. Report a concrete way to trigger it if it persists. (source: 1.3.0, not reproduced)
+## Priority 7 — Installation and platforms
+Why: unsigned installers and platform gaps add friction.
+- **Drag and drop on Linux Wayland** — enable when the library reports drops. (source: 1.1.0)
+- **Quit item in the macOS menu.** (source: 2.0.4)
+- **Idle heartbeat for the one-window lock.** (source: 2.0.4)
+- **Detection during installation** — open question. (source: 0.3.0)
+- **Builds of 1.2.0 on real systems** — macOS and Windows. (source: 1.2.0)
+- **Other systems** — Intel Macs, ARM Windows and Linux are not built. (source: 0.4.0)
+- **Legal review of source offers** — by a lawyer (Andrea's check). (source: 0.2.0)
 
-## Priority 8 — Video player
-Why: the player is a separate, watch-only program; these items make it easier to use, and none is needed for editing. The delivered items of 2.0.4 are removed.
-- **Picture subtitles on 360 clips** — picture subtitles (Blu-ray, DVD, DVB) are not drawn on 360 video, in the editor or in the player. (source: 2.0.4, REQ-253 limit)
-- **Picture subtitles at a start or a pause** — a picture subtitle already on screen when playback, a jump or a paused still starts inside it appears at its next change; show it at once. (source: 2.0.4, REQ-253 limit)
-- **Lighter ffmpeg build for the player** — the player's installers carry their own copy of the pinned `ffmpeg` and `ffprobe`, and their size is not measured yet; measure it and build a smaller `ffmpeg` for the player if it is large. (source: 1.6.0, measurement to do)
+## Priority 8 — Interface
+Why: comfort and discoverability; none blocks a task.
+- **Sub-second ruler labels.** (source: 1.2.0)
+- **Multi-selection lost** — report a way to trigger it. (source: 1.3.0)
 
-## Priority 9 — 360 video
-Why: a niche of users with 360 footage; the gaps are known and bounded. The delivered items of 2.0.4 are removed.
-- **Roll in the spatial sound** — the sound turns with the camera's yaw and pitch only; roll does not change the stereo pair (REQ-273). Apply it if users expect the camera's roll to move the sound. (source: 2.0.4, REQ-273 decision)
-- **Spatial sound pre-pass in the background** — the preview runs the pre-pass synchronously before its sound starts (about 1.7 s per 120 s of four-channel sound in the test profile), and a clip over 10 minutes keeps its recorded sound there; run the pre-pass in the background. (source: 2.0.4 review, future work)
-- **Spherical information of 360 video export** — check on real players that a re-encoded 360 video still shows as 360 video, with the same spherical information as the source, in MP4, MOV, Matroska and WebM. (source: 1.3.0, check to do)
-- **Faster 360 video export** — the 360 video export always prioritises speed (Andrea's decision of 2026-11-20); measure it on real 8K x 4K material and speed it up if it is too slow for users. Whether REQ-103 gets a speed requirement is decided when this item is planned. (source: 1.3.0, slow export accepted; 2.0.2 decision: speed first)
-- **Faster moving-camera export** — a 360 clip with a moving camera exports at about one third of real time; send fewer commands per second to `ffmpeg`, or compute the projection inside the program. (source: 1.2.6, known limitation)
-- **GPU or SIMD path for 360 reprojection** — if the 8K look-around target of REQ-104 is not met, move the 360 reprojection to the graphics card or to SIMD code. (source: 1.2.6, product risk)
-- **Instant look-around** — a camera still is estimated at 150–700 ms (targets 400 ms for 4K and 700 ms for 8K); if that feels slow while dragging, add a quick view computed inside the program. (source: 1.2.6, measurement to do)
-- **Stereo 3D, cube maps and 180° video** — side-by-side or top-and-bottom stereo, cube-map layouts, partial 180° pictures and cropped equirectangular pictures are not recognised; only one full equirectangular picture is supported, and cropped ones are shown as flat video. (source: 1.2.6, postponed from the 1.2.6 request)
-- **360 movable order and export** — the sphere-fixed items of a 360 clip (anchored text, subtitle lines) keep fixed rows in the Applied effects order, and the 360 video export ignores the order; let them move and let the export follow it. (source: 2.1.0 architecture plan, postponed with Q-3 = A; 2.1.0 Principal Engineer future work)
-- **Enlarge word and Typewriter on 360 clips** — anchored subtitle lines of a 360 clip draw these two styles as plain text; draw them on the sphere's projection too. (source: 2.1.0, Principal Engineer future work)
+## Priority 9 — Video player
+Why: the player only watches video; none is needed for editing.
+- **Picture subtitles on 360 clips.** (source: 2.0.4, REQ-253)
+- **Picture subtitles at a start or a pause.** (source: 2.0.4, REQ-253)
+- **Lighter ffmpeg build for the player** — measure the installers first. (source: 1.6.0)
 
-## Priority 10 — Effects and frame
-Why: each new effect is new scope with its own requirements, so these wait for the items above. The delivered items of 2.0.4 are removed.
-- **Clean audio on quiet speech** — quiet speech (about -32 dB) can lose up to about 2.5 dB at full Clean audio strength; a lower strength is available (REQ-278). Measure the loss and decide the default. (source: 1.4.0, known limitation)
-- **Keyframes for other effects** — keyframes serve Scale, Move and Volume (Volume as its own effect from 2.3.0, REQ-280); extend them to fades and text, each with its own requirements. (source: 1.5.0, out of scope of the 1.5.0 request; 2.3.0 scope narrowed to fades and text)
-- **More effect types** — effects beyond fades, volume, speed, subtitles, text items and PNG pictures. Each effect needs its own requirements. (source: 1.1.0, postponed from the 1.1.0 request)
-- **Other stickers or shapes on the picture** — PNG pictures are built (REQ-287); other stickers and shapes are not. (source: 1.2.6, postponed from the 1.2.6 request)
-- **Picture item limits** — the 16 megapixel limit is built in 2.2.0 and applies to overlap files from 2.3.0; the plan's other limits (20 items, 8 MiB per file) are not in the code. Decide whether to add them. (source: 2.0.4 architecture decision, open; 2.2.0 build; 2.3.0 business plan)
-- **Alpha video in hardware decoders** — overlaps with transparency (MOV with alpha, GIF) need alpha decoding; where a hardware decoder drops the alpha, the program uses the software path. Measure the cost of that path and check it on real graphics hardware. (source: 2.3.0 business plan, risk R1)
-- **Sound of MOV overlaps** — a MOV overlap is shown without its sound; decide whether its sound should play with the clip. (source: 2.3.0 business plan, MINOR default)
-- **Number of overlaps per clip** — several overlaps on one clip are allowed; decide whether a limit is needed for the preview and the export. (source: 2.3.0 business plan, MINOR default)
-- **Full-size preview of large overlay files** — overlay files above 1920 x 1080 are drawn at half size in the preview, so the preview is softer than the export for them; draw them at full size if the preview can keep up, after measuring the cost. (source: 2.3.0 architecture decision, known limitation)
-- **Overlay keyframes and rotation** — an overlap has no keyframes, no rotation and no own video track; add them if users need a moving or turned picture. (source: 2.3.0 architecture plan, known limitation)
-- **Re-probe MOV overlays at use** — a MOV overlap is measured by ffprobe when it is added and not again at each preview or export; read it again when it is used, in case the file changed. (source: 2.3.0 known limitation)
-- **Drawn handles on the overlap box** — the preview box of an overlap draws no handles; the edges and corners are found by the pointer only. Draw them as the subtitle and text boxes do. (source: 2.3.0 known limitation)
-- **Split keeps overlaps per half** — a split copies an overlap that crosses the cut into both halves, under new ids; check with users that this is what they expect. (source: 2.3.0 decision to check)
-- **Overlap lane zoom** — the shared overlap lane shows three sub-rows and scrolls for more; add a zoom of the lane if dense overlaps are hard to edit. (source: 2.3.0 architecture plan)
-- **Removal of old picture items** — picture items with no clip under their start stay picture items in format 14; remove the old kind in a later format change, once no project needs it. (source: 2.3.0 architecture plan)
-- **Colour management for LUTs** — apply a LUT in the colour space its author made it for, so a LUT made for another workflow looks as intended. (source: 1.6.0, known limitation)
-- **Read the Find LUT file in the background** — the choice of **Find the LUT file…** reads the chosen file on the interface thread; read it in the background like the LUT load. (source: 2.1.0, Principal Engineer future work)
-- **LUT still loading when a project closes** — a project closed while its LUT is being read still gets the LUT applied to a missing target, with an error line only; make closing a project cancel the read. (source: 2.1.0, Principal Engineer future work)
-- **Exact conversion of combined Scale and Move** — a 1.6.0 clip that had its own Scale or Move and the whole video's one is converted to one combined path, exact only at the key times; if a user reports a changed old project, store the exact result instead. (source: 1.6.1, design option not taken)
-- **Keyframes for the text shadow** — the shadow of 2.1.0 is one fixed distance and colour; let it change over time with keyframes. (source: 2.1.0 business plan, postponed on purpose)
-- **Remove several whole-video copies at once** — a whole-video effect is copied to every clip, so removing it means removing several copies; one action for all of them is a candidate for later. (source: 2.2.0 business plan, candidate)
-- **Per-line order in the Applied effects widget** — the order of 2.1.0 covers the subtitle lines of a clip as one row; let each subtitle line have its own place. (source: 2.1.0 business plan, postponed on purpose)
-- **Copy the order of effects between clips** — the order of the Applied effects column is stored per clip and cannot be copied to another clip yet; add a copy action if users ask for it. (source: 2.2.0 architecture part 2, see [order of effects](architecture-2.2.0-order.md))
-- **Audio fades after the sound group** — the audio fades of a clip stay fixed after the sound group of the order; confirm with users whether they must move. (source: 2.2.0 architecture part 2, to confirm)
+## Priority 10 — 360 video
+Why: a niche with known, bounded gaps.
+- **Faster 360 and moving-camera export** — about a third of real time; measure on 8K x 4K. (source: 1.2.6, 1.3.0)
+- **GPU or SIMD path for reprojection** — if the 8K target of REQ-104 is missed. (source: 1.2.6)
+- **Instant look-around** — a quick view if dragging feels slow. (source: 1.2.6)
+- **Roll in the spatial sound (REQ-273).** (source: 2.0.4)
+- **Four-channel 360 sound order** — assumed ambisonic channel order; check. (source: 2.0.4, D61)
+- **Spatial sound pre-pass in the background.** (source: 2.0.4)
+- **Spherical information of 360 export** — check in real players for MP4, MOV, MKV and WebM. (source: 1.3.0)
+- **Video format presets and frame effects in 360 export** — apply them or say so. (source: 1.3.0, 2.0.4)
+- **Mixed 360 and flat clips** — exported as the flat view only. (source: 1.3.0)
+- **Movable order of sphere-fixed items** — let them move and the export follow. (source: 2.1.0)
+- **Enlarge word and Typewriter on 360 clips** — draw on the sphere. (source: 2.1.0)
+- **Stereo 3D, cube maps and 180° video** — scope decision. (source: 1.2.6)
 
-## Priority 11 — Quality, tests and measurements
-Why: keeps the code and the tests healthy and replaces assumed numbers with measured ones; no direct user value, so it follows the user-facing work.
-- **Measured quality goals** — the numbers of the quality goals (detection time, regressions, speed) are assumptions to confirm with measurements. (source: 0.3.0, assumption)
-- **Measure the Apply LUT cost** — the targets (a 1080p preview within 20% of the playback rate without a LUT, an export at most 1.5 times the re-encode without one) are assumptions; measure them on real clips and a 33-point and a 65-point LUT. (source: 1.6.0, measurement to do)
-- **Record 4K and 8K frame times** — the frame times of the preview and of the 360 view at 4K and 8K were not recorded; measure them against the 200 ms target of REQ-104. (source: 1.3.0, measurement to do)
-- **Headless frame-time baseline** — record the frame time of the preview and timeline without a window, to compare versions. (source: 1.2.0, skipped item)
-- **Faster test suite** — tests got 25% faster in 0.3.0 against a 30% goal; most of the remaining time is the two real speech-recognition tests. (source: 0.3.0, QG-03 result)
-- **Smaller 360 pictures in the integration tests** — the 360 view tests in `tests/ffmpeg_integration/v13.rs` and `v126.rs` use large pictures; smaller ones would cut the suite time. (source: 1.6.3, test suite time)
-- **Shorter check job on push** — the 1.6.0 run took 28 min in total (an outlier), and the apt step of its check job took 20 min; 1.6.1 installs only the missing packages. Measure the next runs against the typical 5.9 min and report QG-06; the 30% time target stays an assumption. (source: 1.6.1, CI time measurement, QG-06)
-- **Measure the CI cost of the pinned ffmpeg and of the installer configuration job** — the pinned ffmpeg download and the `package-config` job are new in 2.0.2; measure their time in CI and report QG-06. (source: 2.0.2, measurement to do, QG-06)
-- **Preview copies with a lighter preset** — `ultrafast` would decode a little cheaper, but every existing preview copy would be regenerated. (source: 0.3.0, performance review)
-- **Preview copies for 720p sources under Automatic** — a 1280x720 source never gets a preview copy in Automatic; check whether slower computers need one. (source: 0.2.0, known limitation)
-- **Preview cache limit on a worker** — the 4 GB size limit (REQ-297) removes the oldest copies; move that cleanup to a background worker so that it cannot delay the interface, and measure its time. (source: 2.0.4 review, future work)
-- **Large-file memory test** — the memory acceptance test runs on a few minutes of video, not 4 GB; add a run on a large file. (source: 0.4.2, assumption in the product documentation)
-- **Stable computer identity on virtual machines** — a virtual machine or container whose number of cores changes between starts is treated as a new computer; with custom settings this only shows a notice. (source: 0.3.0, known limitation)
-- **Interface tests with a test harness** — the interface tests use a small helper on the window's accessibility tree; move them to `egui_kittest` if the helper grows. (source: 1.1.0, planned fallback)
-- **Split the application module** — `src/app.rs` (3,515 lines) mixes the editing state with popups, recent projects, drops and the effect and subtitle commands, and `src/render.rs` (3,227 lines) holds the graph builders; move them into their own submodules when they are next changed. The function `dispatch_inner` (about 870 lines of one match) is split by area (editing, effects, subtitles, export, view) at the same time. (source: 1.1.0, size of the modules; app.rs grown since 1.2.0, render.rs noted in 1.6.0; dispatch_inner noted in 1.6.3)
-- **One keyframe module for the 360 camera and the picture** — `camera.rs` and `keyframes.rs` share the same rules; move the camera onto `keyframes.rs`, with the 360 tests as the safety net. (source: 1.5.0, architecture debt)
-- **Measure the cycle check's CI cost** — `tests/module_cycles.rs` parses the source once on every test run; measure its time in CI (estimated 1 to 3 s in a debug build) and report QG-06. (source: 2.0.1, measurement to do)
-- **Cycle check limits** — the check is syntactic: a cycle created through a macro, and `#[path]` or `include!` files, are not followed (the check fails on `#[path]`); extend it if such code appears. (source: 2.0.1, known limitation)
-- **Shared core crate** — if a third program is planned, move the engine (preview, export and the ffmpeg graphs) out of the editor's library into a `videolore-core` crate; the player uses the library without the speech feature today. (source: 1.6.0, architecture decision: not needed for two programs)
-- **Re-check the module-cycle note at release** — the note on module dependency cycles in the component architecture page is checked against the code and the cycle test at the next release. (source: 2.0.3 architecture plan, documentation check)
-- **Quality gates QG-22 to QG-27 for 2.2.0** — the quality gates of the 2.2.0 plan are proposed; confirm their numbering at the build. (source: 2.2.0 architecture plan, open point)
+## Priority 11 — Effects, frame and LUT
+Why: each new effect is new scope with its own requirements.
+- **Clean audio on quiet speech** — loss of up to about 2.5 dB; decide the default. (source: 1.4.0)
+- **Keyframes for text and other effects** — the text shadow is one fixed distance and colour. (source: 1.5.0, 2.1.0)
+- **More effect types and stickers or shapes.** (source: 1.1.0, 1.2.6)
+- **Remove several whole-video copies at once.** (source: 2.2.0)
+- **Per-line order in the Applied effects widget.** (source: 2.1.0)
+- **Copy the order of effects between clips.** (source: 2.2.0)
+- **Audio fades after the sound group** — confirm with users. (source: 2.2.0)
+- **Colour management for LUTs.** (source: 1.6.0)
+- **LUT still loading when a project closes** — cancel the read on close. (source: 2.1.0)
+- **Find the LUT file in the background.** (source: 2.1.0)
+- **Exact conversion of combined Scale and Move** — only if a user reports a changed old project. (source: 1.6.1)
 
-## Priority 12 — Splash, project page and release process
-Why: presentation and process; low urgency, and most of it depends on decisions by Andrea.
-- **Animated splash image** — the splash picture is a static GIF, kept as supplied; a multi-frame GIF would animate with no code change. REQ-134 says "the GIF plays as it is", so decide whether the requirement or the picture changes. (source: 1.6.0, decision: static in 1.6.0; REQ-134 wording open from 1.6.2)
-- **Splash summary from the changelog** — each release needs two summary texts written by hand, one for the editor and one for the player; take them from the changelog entry so they are not written twice, and decide whether they list only what users see. (source: 1.6.0, known limitation; two texts from 1.6.2)
-- **Missing splash picture or summary** — since 1.6.2 the build fails when a picture or the version's summary is missing; decide whether a release should build without the splash instead. (source: 1.6.0, open question; build failure from 1.6.2)
-- **Clearer message for a missing splash summary** — a missing `summary.txt` or `summary-player.txt` is reported by the compiler with the file name only; add a build script with a clearer message if that proves unclear. (source: 1.6.2, design option not taken)
-- **Splash picture size in the programs** — both pictures are compiled into both programs, an estimated 175 KB more per program, not yet measured; move the player's picture into the player crate if the size matters. (source: 1.6.2, measurement to do)
-- **Smaller project page images** — the page's GIF images total about 341 KB; animated WebP or AV1 would cut that weight, but browser support must be checked first. (source: 1.4.1, project page image review)
-- **Content-Security-Policy hashes on the project page** — the page's policy (REQ-299) allows only the hosts the page uses; hashes for its inline code would tighten it further. Decide at the next change of the page. (source: 2.0.4 review, future work)
-- **Test memory cap as a project rule** — every build and test run on the development machine is capped at 8 GB with no swap; make this a written rule of the development workflow. (source: 1.6.2, workflow change)
-- **Package list for the player on crates.io** — the player's crate has no `include` list; set one if the player is ever published on crates.io. (source: 1.6.2, only if published)
-- **Wording of the leaves layer** — the "Leaves" row of the module table in the code architecture page (modules that use no other module) needs a wording review. (source: 2.0.1, documentation review at the next release)
-- **Player notice file version line** — the version line of the player's third-party notice file changes on every version bump, so it shows as modified in every release; decide whether the notices script should write it or the line should be left out. (source: 2.0.1, workflow noise)
-- **Cost of non-default orders** — a clip whose Applied effects order differs from the default is built step by step: a text below Change aspect or on the layer is drawn by a matte (two renders), and such a clip does not use the blurred-background cache of the preview. The cost per frame is not measured; measure it on real material and tune the preview if it is slow. (source: 2.2.0 architecture part 2, measurement to do; 2.2.0 known limits)
-- **Default place of new picture rows** — a new Change aspect, Scale, Move, Fade or Overlap media takes its default place, not the top of the order, because a Scale on top of Change aspect would scale the background; a user who wants another place must move it. Overlap media goes on top of the picture group by default (2.3.0, MINOR). Revisit with users. (source: 2.2.0 architecture part 2, decision to revisit; 2.3.0 business plan)
-- **Fade row names in the Applied effects widget** — one Fade row names its fades "Fade IN", "Fade OUT", "Fade IN/OUT with the previous/next clip" or "Fade IN/OUT" when there are several; check the names with users. (source: 2.2.0 build)
-- **Run the notices script after every version bump** — `scripts/notices.sh` must be run after each version bump, so that the third-party notice files match the new version. (source: 2.0.2, workflow)
-- **2.2.0 release notes: format 13 and whole-video popup** — the release notes of 2.2.0 must say that the project format changed to 13 (2.1.0 and older refuse it) and that the whole-video popup is removed. (source: 2.2.0 architecture plan, open point; 2.2.0 architecture part 2)
+## Priority 12 — Quality, project page and release process
+Why: keeps the code and tests healthy, replaces assumed numbers with measured ones, and keeps the page and release right; low urgency.
+- **Measured quality goals** — detection time, regressions and speed are assumptions. (source: 0.3.0)
+- **Apply LUT cost** — measure with 33- and 65-point LUTs. (source: 1.6.0)
+- **4K and 8K frame times** — preview and 360 view against REQ-104. (source: 1.3.0)
+- **Headless frame-time baseline.** (source: 1.2.0)
+- **Faster test suite and smaller 360 pictures in tests.** (source: 0.3.0, 1.6.3)
+- **CI time** — push check (QG-06), pinned ffmpeg download, installer job, cycle check. (source: 1.6.1, 2.0.1, 2.0.2)
+- **Preview copies** — a lighter preset; copies for 720p sources under Automatic. (source: 0.3.0, 0.2.0)
+- **Preview cache cleanup on a worker.** (source: 2.0.4)
+- **Large-file memory test.** (source: 0.4.2)
+- **Stable computer identity on virtual machines.** (source: 0.3.0)
+- **Interface tests with a harness** — `egui_kittest` if the helper grows. (source: 1.1.0)
+- **Split the application module** — `src/app.rs`, `src/render.rs` and `dispatch_inner`, when next changed. (source: 1.1.0, 1.6.3)
+- **One keyframe module for the 360 camera and the picture.** (source: 1.5.0)
+- **Cycle check limits** — macro-generated cycles and `#[path]` files are not followed. (source: 2.0.1)
+- **Shared core crate** — only if a third program is planned. (source: 1.6.0)
+- **Quality gates QG-22 to QG-27** — confirm numbering. (source: 2.2.0)
+- **Animated splash picture** — decide REQ-134 wording. (source: 1.6.0)
+- **Splash summary from the changelog** — take the two summaries from the changelog. (source: 1.6.0)
+- **Missing splash picture or summary** — build without the splash or not. (source: 1.6.0)
+- **Splash picture size in the programs.** (source: 1.6.2)
+- **Smaller project page images** — about 341 KB of GIFs. (source: 1.4.1)
+- **Content-Security-Policy hashes on the project page.** (source: 2.0.4)
+- **Notices after every version bump.** (source: 2.0.2)
+- **Player notice file version line** — decide whether to leave it out. (source: 2.0.1)
+- **Release notes of 2.2.0 and 2.3.0** — project formats 13 and 14 and the removed whole-video popup and Crop. (source: 2.2.0, 2.3.0)
+- **Test memory cap as a workflow rule (8 GB).** (source: 1.6.2)
+- **Package list for the player on crates.io** — only if published. (source: 1.6.2)
+
+## Accepted limits (explained, not planned)
+- **Subtitles need AVX2, FMA and F16C on Windows and Linux** — older processors get a message. (source: 0.3.0)
+- **Text items use installed fonts** — a missing font falls back to the bundled font with a note. (source: 1.3.0)
+- **Paraphrased subtitles** — matching works only as well as the text follows the speech. (source: 1.2.0)
+- **Moved subtitle lines shown together can overlap** — a warning only. (source: 2.0.3, D53)
+- **Text size cap** — 10% of picture height unless a maximum is set (2% to 50%). (source: 2.0.3, 2.2.0)
+- **Clips added after a whole-video effect** — they do not get it; a note appears. (source: 1.6.1, REQ-147)
+- **Keyframes are straight unless eased.** (source: 1.5.0)
+- **Frame effects re-encode even at defaults; speed clips do not merge with other speeds** — by design. (source: 1.5.0, 2.3.0)
+- **Copy and Cut put the marker text on the clipboard.** (source: 2.0.4)
+- **LUT preparation of a 256-point table takes about 12 s** — D63. (source: 2.2.0)
+- **.3dl and .csp files up to 64 MiB.** (source: 2.1.0)
+- **A missing LUT file stops export until found, or export without the LUT.** (source: 1.6.0)
+- **LUT below Change aspect does not grade the fill** — a user choice. (source: 2.2.0)
+- **NVIDIA driver 610 or newer** — an older driver uses the normal method. (source: 0.4.x)
+- **Preview of 1280 x 720 sources under Automatic gets no copy.** (source: 0.2.0)
+- **No 360 switch; a video without spherical information is flat.** (source: 1.4.0)
+- **Overlap MOV drawn opaque without alpha.** (source: 2.3.0)
 
 ## Not planned
-- **Remembering export choices in the project or in Settings** — the Export dialog keeps its choices for the session only, by design in 1.4.0; revisit only if users ask for it. Decided on 2026-11-17.
-- **Rewriting H.264, AAC and other codecs in Rust** — considered and rejected on 2026-11-16: ffmpeg's x264, x265 and AAC encoders are tuned with SIMD code, a rewrite would likely be slower and less correct, and it adds licence, patent and maintenance risk. Speed comes from hardware decoding and encoding instead.
-- **Slower speech engine for old processors** — dropped on 2026-11-14: processors without AVX2 get a clear message and subtitle lines can still be added by hand. Accepted limitation: subtitles cannot be generated automatically there.
-- **Keeping layout and recent projects in versions before 1.1.0** — versions before 1.1.0 do not know the saved layout and the recent-projects list, so they drop both when they save their settings. Accepted on 2026-11-15: downgrades are rare and the projects themselves are not affected.
-- **Starting the executables job in parallel with the checks** — would cut the time of a push by the length of the checks, but it would build executables that have not passed the checks; rejected on 2026-11-19.
-- **Code signing and notarisation** — installers stay unsigned: Windows and macOS ask for a one-time confirmation on first launch, and the README explains the steps. Andrea decided on 2026-11-20; signing was postponed before, not rejected.
-- **Custom resolutions, frame rates and bitrates** — the Export dialog keeps its fixed presets and "Same as source"; custom resolutions, frame rates, bitrates, quality values and encoder options are not planned. Decided by Andrea on 2026-11-20.
-- **A separate vendor pipeline for hardware export** — hardware export always goes through ffmpeg, the bundled one or the one the user chose; no separate pipeline per graphics vendor. Decided by Andrea on 2026-11-20.
-- **Translated interface** — the interface is English only in 2.0.4 (REQ-245), decided by Andrea (D60); the texts are kept in one table so that a translation can be added later.
-- **Opening projects from newer versions in older versions** — projects saved by 1.4.0 or later are refused by 1.3.0 and earlier, and projects saved by 1.6.1 or later by older versions; the refusal is by design (the file is left untouched), accepted as a compatibility rule.
-- **Frame effects re-encode even at their default values** — Change aspect, Scale and Move make the export a re-encode, so that the output always matches the preview; by design (REQ-131).
-- **Binary input for 256-point LUTs** — ffmpeg 9.0.2 reads a `.m3d` table as text: an integer `.m3d` restarts the preview in 3.4 s and a float one in 5.1 s, against 12.4 s for `.cube`; a binary HALD image is fast (0.36 s) but interpolates trilinearly and needs a 16-bit path, so the colours would change. Decision D63 (2.2.0) keeps the `.cube` route with a background preparation and progress (built in 2.2.0, REQ-312). (source: 2.1.0 roadmap item, measured in the 2.2.0 architecture plan)
-- **Smaller preview table for LUTs** — a smaller table breaks the exact colours between preview and export. Decision D63 (2.2.0): the preview keeps the full table and shows the preparation progress instead (REQ-312). (source: 2.1.0 roadmap item, decided in 2.2.0)
-- **Manual crop of a clip** — the per-clip Crop (REQ-283, built in 2.0.4) is removed in 2.3.0 by Andrea's decision of 2026-11-22; Change aspect (fit and empty space) is the way to frame a clip. Projects with a crop lose it on opening, with one message. The project format changes with it, so older versions refuse the file.
-- **Keeping the 360 switch of 1.3.0 projects** — the manual "360°" switch was removed in 1.4.0 and a switch set in a 1.3.0 project is dropped on opening; accepted, the file's own information decides.
-- **Speech model for Enhance speech** — decided by Andrea on 2026-11-21 (D61): Enhance speech is speech-level normalisation ("Normalise speech") with no model file, so the licence check of a speech model is not needed.
+- **Remembering export choices in the project or in Settings** — the dialog keeps them for the session. Decided 2026-11-17.
+- **Rewriting H.264, AAC and other codecs in Rust** — ffmpeg's encoders are tuned with SIMD. Decided 2026-11-16.
+- **Slower speech engine for old processors** — dropped 2026-11-14.
+- **Keeping layout and recent projects in versions before 1.1.0** — accepted 2026-11-15.
+- **Starting the executables job in parallel with the checks** — rejected 2026-11-19.
+- **Code signing and notarisation** — installers stay unsigned. Decided 2026-11-20.
+- **Custom resolutions, frame rates, bitrates and encoder options.** Decided 2026-11-20.
+- **A separate vendor pipeline for hardware export.** Decided 2026-11-20.
+- **Translated interface** — English only (REQ-245, D60).
+- **Opening projects from newer versions in older versions** — refused by design.
+- **Binary input for 256-point LUTs and a smaller preview table** — measured; the full `.cube` table stays (D63, REQ-312).
+- **Manual crop of a clip** — removed in 2.3.0 (Andrea, 2026-11-22); Change aspect frames a clip.
+- **Keeping the 360 switch of 1.3.0 projects** — dropped on opening.
+- **Speech model for Enhance speech** — normalisation with no model file (D61, 2026-11-21).

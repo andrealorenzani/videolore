@@ -1,51 +1,120 @@
 # Architecture: main technical decisions
 
-Part of [Architecture](architecture.md). The decisions behind the whole program; the details of each area are in its sub-document.
+Part of [Architecture](architecture.md). One line per decision: the choice and its reason, with the record id (ADR-NNN; the full records with context and alternatives are kept with the project's architecture notes). Details: the linked area documents.
 
-- **GUI: eframe/egui, latest release.** Pure Rust, single executable, all three platforms. Alternatives considered: iced, slint, gtk4-rs, tauri.
-- **Media: `ffmpeg`/`ffprobe` as separate programs**, not linked libraries, now bundled. See [ffmpeg](architecture-ffmpeg.md).
-- **Preview audio: cpal.** Without an audio device the preview continues silently.
-- **Concurrency: standard threads and channels**, no async runtime. A job queue caps `ffmpeg` processes. See [media pipeline](architecture-media-pipeline.md).
-- **Shared helpers in one base module, no module cycles (2.0.1):** file reading and writing, private work folders, positions, cache and model names and language names live in `src/base/`, which uses no other module; a test fails when a module cycle appears. Alternatives: a separate crate (more build and packaging work), shims that re-export the old paths (hide the edges). See [code structure](architecture-structure.md).
-- **Automatic setup in the app, not the installers (0.3.0):** the first start on every system (the AppImage too) detects the computer in milliseconds, without network or benchmarks, and saves recommended settings. Installers do no tuning, so there is one tested code path. See [performance](architecture-performance.md).
-- **Plain settings (0.3.0, Export added in 0.4.0):** Preview quality, Subtitle quality, How hard videolore works and Export (Faster / Best quality), in a window inside `videolore` (not a separate system window, so it looks and behaves the same everywhere and can be tested automatically). Technical options sit in a collapsed "Advanced" section.
-- **Export strategy:**
-  - *Stream copy* (fast, lossless) only when all clips share the same format, the output format matches, there are no effects (fades, music, subtitles, video volume changes) and every cut is on a keyframe.
-  - Otherwise *one re-encode pass* in a single `ffmpeg` run.
-  - Output goes to a temporary file in the destination folder and is renamed when complete; a failed or cancelled export leaves no partial file. Source files are never overwritten.
-- **Encoders:** each output format has a preferred encoder list with fallbacks; formats with no available encoder are disabled with an explanation. Software encoders by default.
-- **Hardware export (0.4.0):** opt-in ("Best quality" stays the default everywhere), H.264 and HEVC only, the same target bitrate as the software method so files are about the same size, a background check run only when "Faster" is chosen, a 30 s stall watchdog, a check of every hardware result (strict full decode, file details, and a comparison with the normal pipeline's frames matched by position, 3 samples by PSNR) and a silent software redo on any problem. Drivers that refuse bitrate control get a VA-API constant-quality variant with size limits; with the bundled `ffmpeg`, VA-API and Quick Sync are skipped on Linux systems whose libva is older than 2.21 (for example Ubuntu 24.04). The settings file stays at version 2 with two optional fields, so 0.3.x can still read it. See [hardware export](architecture-hardware-export.md).
-- **User interface (1.1.0):** our own proportional layout for the four sections instead of egui's resizable panels; one table of actions for menus, toolbar, tooltips and shortcuts; non-modal popups inside the window whose state belongs to the application; markers computed from the edit, so the project format does not change; egui's keyboard zoom turned off; menus inside the window on every system. No new crates. See [user interface](architecture-ui.md).
-- **Drag and drop (1.1.0):** supported on Windows, macOS and Linux X11; not in native Linux Wayland sessions, where the windowing library does not report dropped files (decided by Andrea: ship where supported, documented as a known limitation).
-- **Fades:** 0.5 s or half the clip, whichever is shorter; video and audio aligned. Since 1.2.0 a fade applied to a clip covers both its edges, and the fades from and to black belong to the start and end of the video, not to a clip, so they stay there whatever is edited (see [effects](architecture-effects.md#fade-through-black)).
-- **Clip volume (1.2.0):** stored in each clip and multiplied by the video level; clips at 100% add nothing to the export command, so older projects export exactly as before.
-- **Subtitle tracks and word matching (1.2.0):** `ffmpeg` converts a track to SRT and a small in-house reader parses it; words are matched to the speech by an in-house sequence alignment per line; line start and end always come from the track. No new crate, no extra model. See [subtitle tracks](architecture-subtitle-tracks.md).
-- **Subtitle positions (1.2.0):** stored per line as a fraction of the picture and burned in with position tags written by `videolore`, so preview and export match; the selection of lines is window state, not project data.
-- **Speech-to-text:** local whisper.cpp, included in release builds; three quality levels, each model downloaded once after consent. See [subtitles](architecture-subtitles.md).
-- **whisper.cpp CPU baseline (0.2.1):** compiled for AVX2/FMA/F16C on x86-64 instead of for the build machine's CPU. Since 0.3.0 the processor is checked first, so older computers get a clear message instead of a crash. A slower speech engine for older processors is not planned (decided on 2026-11-14). See [subtitles](architecture-subtitles.md#cpu-requirements-since-021).
-- **Projects:** format version 3 since 1.2.0 (always written; 1.1 cannot open it, older files open unchanged; version 4 since 1.2.6; version 5 since 1.3.0); unsaved changes are detected by comparing the edit with the last saved one, so undoing back to the saved state clears the marker. See [Projects](architecture-projects.md).
-- **360 video (1.2.6):** the `v360` filter of the bundled `ffmpeg` for preview and export, driven by absolute `sendcmd` commands that send only changed values (no new crate; an own reprojection or a GPU shader was rejected: two implementations to keep within 1°, subtitles); POVs are stored per source in source time so editing never makes the camera jump; the exported picture is flat and fills the output frame; 360 counts as 1920x1080 for the automatic format; projects use format version 4 (written always, 1.2.5 cannot open it). See [360 video](architecture-360.md).
-- **Boxes and sizes (1.2.6):** one box layer for every movable object, a per-line text size 25–400% burned with a font-size tag, Align and Reset as ordinary actions of the shared table, "Show boxes" as a program setting. See [boxes](architecture-boxes.md).
-- **Text, selection and 360 (1.3.0):** text items are rendered by the subtitle path (libass), so no second text engine; fonts are the installed ones (one crate added, `fontdb`); the sphere anchoring uses the existing projection engine, so there is no second projection; one selection replaces the two selection states; project format 5; the 360 marker of MP4 and MOV exports is written by a small in-house writer, because ffmpeg 6.1.1 drops it on re-encode. See [text](architecture-text.md), [360 video](architecture-360.md) and [dependencies](architecture-dependencies.md).
-- **Clean audio, export dialog and text box (1.4.0):** noise reduction with the bundled `ffmpeg`'s `afftdn` filter (no model file, no new crate; the neural and non-local filters were rejected for cost and download); the Export dialog is a window with session-only choices, and its formats are a fixed table, so every output goes through the one existing export path; the best fit of a text is one pure estimate used by both preview and export, so the two cannot disagree (no font measurement in the export path); the 360 switch is removed in favour of the file's own information. Projects move to format 6. See [effects](architecture-effects.md#clean-audio-140), [export dialog](architecture-export-dialog.md) and [text](architecture-text.md).
-- **Products and layout (1.6.0):** a Cargo workspace with the editor as the root package and the player as a member that uses the same library without the speech feature, so the player's network-free build is a CI fact. The player reuses the editor's preview engine on an in-memory one-clip project, so there is one ffmpeg graph for both; it has no save or export command. See [player](architecture-player.md) and [build](architecture-build.md).
-- **Apply LUT (1.6.0):** a pure in-house `.cube` reader (3D and 1D, one path through a normalised 3D cube), the project keeps the file's path, and `ffmpeg`'s `lut3d` filter applies it in the picture branch of the graph. See [LUT](architecture-lut.md).
-- **Splash and icons (1.6.0):** the splash is an in-app window whose assets are compiled in (a missing image or summary for a release fails the build); icons come from one vendored MIT icon font (Phosphor) instead of a crate that does not yet match egui 0.37. See [splash](architecture-splash.md) and [icons](architecture-icons.md).
-- **Installers:** unsigned. See [packaging](architecture-packaging.md).
-- **Readable text and placement (2.0.3):** the text size is measured from the font's glyph widths (two font crates already in the program's tree, no new download); the outline and the box are drawn by the subtitle path, so preview and export share them; warnings instead of automatic moves, except the move back after an enlarging text edit; project format 10. See [text](architecture-text.md), [subtitles](architecture-subtitles.md) and [projects](architecture-projects.md).
-- **Subtitle accuracy (2.0.3):** the speech engine's own word timing per quality level is tried before any change of model; recognition in two-minute pieces with a two-second margin, each word kept by the piece where it starts. See [subtitle tracks](architecture-subtitle-tracks.md).
-- **macOS menu bar (2.0.4):** one allow-listed unsafe call in the macOS part of `desktop.rs` builds the menu with objc2-app-kit; no menu crate (the `muda` crate was not used). This is one more unsafe call, an amendment of the 0.3.0 unsafe policy. See [security](architecture-security.md).
-- **Windows player association (2.0.4):** the installer offers the player under "Open with" only, through its own NSIS template; the default program stays the user's choice (decided by Andrea). The generic packaging registration was not used.
-- **Installer check (2.0.4):** one reusable workflow runs the installer configuration check; the build calls it and it runs alone on pull requests that touch packaging.
-- **360 marker in MKV and WebM (2.0.4):** written in place into the file the export made: the padding ffmpeg leaves is reused, own fields only, nothing after the track list moves. No second copy of the file. See [360 video](architecture-360.md).
-- **Blurred fill (2.0.4):** an eighth of each side, measured: at 4K the blur takes 2.9 to 3.1 s against 3.3 to 3.7 s for a quarter; the quarter named in the requirement is not used. The background of a still is kept in one raw RGBA file in the private folder (ffmpeg reads files, not memory); playback still runs the blur for each frame. See [performance](architecture-performance.md) and [frame](architecture-frame.md).
-- **Enhance speech (2.0.4):** ffmpeg `speechnorm`, named "Normalise speech"; no model file is bundled or downloaded. A neural model (`arnndn`) was not used: its licence was not checked. See [effects](architecture-effects.md).
-- **LUT strength (2.0.4):** the table is blended with the identity by the chosen strength, so one table serves every strength. See [LUT](architecture-lut.md).
-- **Camera start (2.0.4):** the start view of a clip is computed by `camera::start_camera`, which stays in the camera module, so the media module does not depend on the camera module (no import cycle). See [360 video](architecture-360.md).
-- **Clip speed (2.0.4, REQ-281):** a clip's timeline length is its source length divided by its speed; keys and subtitle times stay in source time and are mapped with `Clip::len`, `src_len`, `to_timeline` and `to_src`; the picture uses `setpts` and the sound one `atempo` (range 0.5 to 2.0). A clip with a speed is never stream copied and two clips of different speeds do not merge. Reason: one time mapping in one place; `Clip` stays `Copy` with a `u16` field. See [2.0.4 overview](architecture-2.0.4-overview.md#main-technical-decisions).
-- **Picture items as text items (2.0.4, REQ-287):** a picture is an optional part of a text item (lane, box, move, resize, undo and time to live are the text item's), drawn as a looped still overlay with no ASS events. Alternative of the plan: a separate picture list with its own popups and undo paths (`pictures.rs`), not built, because it would copy every text rule. See [text](architecture-text.md#picture-items-204).
-- **Per-clip camera paths (2.0.4, REQ-268):** copy on write: a clip follows its source's path until its own path is first changed. Alternative of the plan: copy the source's path into every clip on load; rejected because the copies would diverge at once and the saved file would grow. See [360 video](architecture-360.md#per-clip-camera-paths-204).
-- **Anchored 360 lines as text items (2.0.4, ADR-188, REQ-257):** the preset's outline or box and the word highlight in the sphere frame, drawn with the texts. Supersedes the plain white of 1.3.0 (amends REQ-112). Rejected: a second drawing pass over the view.
-- **Spatial sound (2.0.4, ADR-189, REQ-273):** first-order ambisonics turned in Rust, a fixed cardioid pair to stereo (Q-2), a 32-bit float WAV pre-pass in the work folder for the export and before the preview's audio starts. Rejected: a time-varying ffmpeg pan (not possible) and an ambisonic library (not added: the maths is small). Assumption: channel order W, Y, Z, X.
-- **Picture subtitles in the player (2.0.4, ADR-185, REQ-253):** the file's own bitmap subtitle stream is overlaid in the shared render graph, only when chosen; no extra process and no drag. Rejected: a separate decoder process per track (it would take playback slots). The golden argv of other projects is unchanged.
-- **Text module split and one box rule (2.0.4, QG-16):** `text/` submodules by area and `placement::padded_line_rect` for every box, so the drawn box and the dragged box are one rule.
+## Platform, language, build
+- **GUI eframe/egui 0.37** (ADR-001): pure Rust, one executable, three platforms (iced, slint, gtk4-rs, tauri considered).
+- **Latest stable Rust, `rust-version` 1.100** (ADR-012; supersedes the MSRV reasoning of ADR-001).
+- **Std threads and channels, no async runtime** (ADR-004); the UI thread drains every channel once per frame.
+- **Support crates** serde, serde_json, thiserror, directories, rfd, tempfile (ADR-005); later crates in [dependencies](architecture-dependencies.md).
+- **Features `audio` and `stt`, both default** (ADR-022); the minimal build has no sound and no speech.
+- **Workspace: editor as root, player as member** (ADR-105): the player uses the library without speech, so its network-free build is a CI fact. Versions written and checked in both manifests (ADR-116).
+- **CI on fixed runners with SHA-pinned actions** (ADR-036); CI jobs (ADR-011) and test speed (ADR-035).
+- **Licence GPL-3.0-only**; supply chain: cargo-deny licence list, cargo-about notices, pinned archives (ADR-025, ADR-026).
+
+## Media engine and export
+- **ffmpeg and ffprobe as separate programs, never linked** (ADR-002); **bundled since 0.2.0** (ADR-013: GPL builds with x264 and x265; LGPL rejected, no H.264 or HEVC encoder).
+- **Preview audio through cpal;** without a device the preview is silent and wall-clocked (ADR-003; clock part superseded by ADR-016).
+- **Job queue with a process cap:** 3 for Light and Balanced, 3 to 6 for Maximum; priorities preview, export, import, background (ADR-015, ADR-029).
+- **Preview: latest-only still mailbox, FrameKey, wall-clock master, audio correction** (ADR-016); one render per burst, 80 ms quiet (REQ-034).
+- **Stream copy only when safe, otherwise one re-encode; temporary file then rename** (ADR-006); encoder lists with fallbacks, software first (ADR-007; hardware opt-in ADR-037).
+- **Monotone input runs; hvc1 tag rule** (ADR-017; REQ-036, REQ-037).
+- **Proxies by resolution, cores and memory; cache key by source and settings** (ADR-018); 360 copy 4096x2048 (1.2.6).
+- **Frame graph:** layers fitted without pad, background, overlay, fades after composition (ADR-098); numbers only in expressions, script file when long (ADR-099); colour `#RRGGBB` to `0xRRGGBB` (ADR-100).
+- **Music:** amix, volume, afade; gain (p/100)^2; limiter (ADR-010, ADR-019).
+- **Export dialog as a window with session-only choices and a fixed format table** (ADR-082, ADR-083, ADR-084): every output uses the one export path.
+
+## Hardware export (0.4.0 to 2.0.4)
+- **Opt-in "Faster"; "Best quality" default everywhere** (REQ-055). H.264 and HEVC only; vendor arguments incl. the VA-API CQ deviation (ADR-037); hardware probe with 1 s, 4 s and 10 s limits (ADR-038).
+- **Hardware first, output check, silent software redo** on any problem; 30 s stall watchdog (ADR-039); failure memory per format and method (ADR-040).
+- **Output check:** file details, strict full decode, three position-matched samples at 25 dB PSNR per plane (ADR-039; 2.0.4 ADR-177: samples only, paused during jobs).
+- **Codec presets AV1 and VP9; preview hardware decoding; graphics card Automatic or a validated device name** (ADR-178, ADR-179).
+
+## Speech and subtitles
+- **Local whisper.cpp through whisper-rs** (ADR-009, ADR-021; cloud and Vosk rejected; ADR-009 superseded in parts by ADR-022 and ADR-030).
+- **Three quality levels = three models, each downloaded once after consent** (ADR-030).
+- **CPU baseline GGML_NATIVE=OFF (AVX2, FMA, F16C)** (ADR-027), amended by ADR-031: processor check and message, no slower engine.
+- **Lines against the source media, shown through the timeline** (ADR-020); creation per range, all-or-nothing, one undo (ADR-055).
+- **Word alignment per cue by Needleman-Wunsch, in-house, deterministic** (ADR-056); sound onset correction (2.0.3).
+- **Per-line ASS position and size** (ADR-057); ASS escaping and presets (ADR-020).
+- **Embedded tracks through ffprobe and ffmpeg SRT extraction; in-house SRT** (ADR-053, ADR-054); **separate track mov_text or srt, never default** (ADR-171).
+- **Accuracy (REQ-177): speech regions and a frozen setting** (ADR-220); built, NOT MET (43 % against 90 %).
+
+## Project, settings and storage
+- **Versioned JSON; newer formats refused and never written; strict validation** (ADR-023; format steps ADR-051 v3, ADR-076 v5, ADR-104 v7, ADR-169 v11, ADR-222 v13, ADR-230 v14).
+- **The current version is always written** (1.2.0): no writers for old formats; older programs refuse newer files.
+- **Unsaved changes by comparison with the saved edit** (ADR-023); quit path with macOS default menu off (ADR-024).
+- **Markers computed from the edit, so the format does not change** (1.1.0; ADR-048).
+- **Settings version 2 with additive optional fields** (ADR-044, ADR-195).
+- **Machine detection at each start and recommended settings; no installer tuning** (ADR-028; levels ADR-029).
+- **Private work folders (0700), lock file, crash clean-up** (ADR-033); autosave copies in the cache, never the project (ADR-173); one window by lock file and inbox (ADR-182); preview copy cache by hashed names, the open project never removed (ADR-198).
+- **Per-clip data:** clip keys in source time, whole-video keys in timeline time (ADR-094); frame storage (ADR-093); edit rules: split and copy keep keys, merge needs equal keys, remove drops, one undo (ADR-101).
+- **Whole-video effects as copies on the clips** (1.6.1, format 9; REQ-083, 147, 148); the video's Change aspect stays one setting.
+- **Format 13 for the order of all rows** (ADR-222; 12 read with defaults); **format 14 for overlaps, 13 converted in memory** (ADR-230, ADR-241).
+
+## Effects, frame and picture
+- **Fades 0.5 s or half the clip; edge fades belong to the clip from 1.6.1** (ADR-008; ADR-049 superseded by ADR-123).
+- **Clip volume per clip, multiplied by the video level; 100 % adds nothing to the command** (ADR-050).
+- **Clean audio with ffmpeg `afftdn`, no model file** (1.4.0, ADR-080, ADR-081; neural and non-local filters rejected for cost and download). **Enhance speech with `speechnorm` named "Normalise speech"** (2.0.4); `arnndn` not used (licence not checked).
+- **Frame size capped at 4096 px on the longer side** (ADR-097; decided 2026-11-19; 1920 px and no cap rejected).
+- **Keyframes: at most 200 per effect; Scale 100 to 4000 permille; Move 0 to 10000; hold and linear** (ADR-095); Scale pivot as a hidden offset (ADR-096).
+- **Blurred fill at 1/8 of each side** (ADR-180; measured; REQ-222 names 1/4, a product decision open); blur levels and custom ratios (ADR-193); the still's blurred background as one raw RGBA file (ADR-180).
+- **Effects by drag onto a clip or double-click for the whole video, one command** (ADR-052, ADR-090).
+- **Text items through the subtitle ASS path, one engine** (ADR-066); effects as ASS events with caps (ADR-067); installed fonts via fontdb 0.24 (ADR-068).
+- **Best-fit text size: one pure estimate for preview and export** (1.4.0, ADR-087); by glyph widths from 2.0.3. Migration to the box: choice A (ADR-088).
+- **LUT: pure `.cube` reader, the path stored, `lut3d` in the picture branch** (ADR-109, ADR-110); missing-file rule (ADR-111; ADR-112 superseded by the three-button modal of ADR-191).
+- **LUT strength blended with the identity; LUT copies up to 20 MB and 64 MiB per project; read cap 96 MiB** (ADR-191).
+- **LUT sizes 2 to 256, streamed, one Work copy per content** (2.1.0; ADR-202 to 213); **background preparation with percentage and the picture unprocessed until ready** (2.2.0, D63, route D, ADR-214).
+- **Applied effects order:** legacy order for old projects; rows move inside their groups; the default order is the 2.1.0 build (ADR-223 to 225, ADR-229); new rows keep their default place (deviation from REQ-321).
+- **Overlap media bound to its clip; warning before removal; once then transparent; 16 MP limit** (ADR-230 to 241; REQ-325 to 331).
+- **Enlarge word drawn alone at its measured centre** (ADR-235; the REQ-333 fix of REQ-309); Typewriter one event per word (REQ-310).
+- **Start screen option** (ADR-199; ADR-240; stored "Never" reads as "Once for each version").
+- **Clip speed: one time mapping (`Clip::len`, `src_len`, `to_timeline`, `to_src`); `setpts` and `atempo` 0.5 to 2.0; never stream copied; different speeds do not merge** (2.0.4, REQ-281).
+- **Picture items are text items with an optional picture** (2.0.4, REQ-287; a separate picture list rejected); the picture limit of 16 megapixels (ADR-219, REQ-316); the plan's count and size limits (ADR-192) are open.
+
+## 360 video
+- **360 through the `v360` filter for preview and export, one engine** (ADR-059); own reprojection and GPU shader rejected.
+- **Detection from spherical metadata; the switch removed in 1.4.0** (ADR-060, ADR-086).
+- **POVs per source in source time; the live view is not saved** (ADR-061, ADR-062).
+- **Absolute sendcmd commands, only changed values, half-frame intervals** (ADR-059 as built; at most 10 updates per second, REQ-266).
+- **360 export geometry: fill the frame, d_fov, the 4096 proxy rule, a too-large message** (ADR-063).
+- **Anchored items burned into the sphere frame before v360; flat place on flat clips** (ADR-069, ADR-077, ADR-078). Anchored subtitle lines were plain white (DEV-3, ADR-069 superseded by ADR-188 in 2.0.4: preset outline or box and word highlight).
+- **Spherical marker in-house for MP4 and MOV (ADR-078); in place for MKV and WebM (ADR-187, 2.0.4).**
+- **Export choice 360 video or flat camera view** (ADR-085, 1.4.0 rule); 360 video ignores Change aspect, Scale and Move (ADR-102).
+- **Per-clip camera paths by copy on write** (2.0.4, REQ-268), not a copy on load (rejected: copies diverge and the file grows).
+- **Spatial sound: first-order ambisonics in Rust, a fixed cardioid pair, a 32-bit float WAV pre-pass; no time-varying ffmpeg pan** (ADR-189); channel order W, Y, Z, X assumed.
+
+## User interface
+- **Own proportional layout instead of egui panels** (ADR-041).
+- **One action table for menus, toolbar, tooltips and shortcuts** (ADR-042).
+- **Popup and instance state in AppState, driven by commands; non-modal popups** (ADR-043).
+- **Acceptance tests through the AccessKit tree** (ADR-045); egui keyboard zoom off (ADR-046); drag and drop through winit, not on Linux Wayland (ADR-047).
+- **One selection value; a context group rule over selection and playhead** (ADR-073, ADR-074).
+- **Boxes and handles on the picture; the box layer takes any list of boxes** (ADR-064); hit priority (ADR-103).
+- **"Fade IN/OUT" label, internal name unchanged** (ADR-075); the text width handle on the right edge only (ADR-091).
+- **Icons from one vendored MIT font (Phosphor), not a crate** (ADR-114).
+- **Splash as an in-app window with assets compiled in** (ADR-113; partly superseded by ADR-128 to 131).
+- **Notices in About from the packaging notice files** (ADR-115, ADR-026).
+- **Remembered places, sections, workspaces, themes, AccessKit names** (2.0.4, REQ-234 to 247, ADR-197).
+- **Menus inside the window on every system** (1.1.0, macOS included).
+
+## Packaging, platform and security
+- **Installers unsigned; packages per OS (NSIS, dmg, AppImage, tar.gz)** (ADR-014; signing postponed by decision of Andrea).
+- **Linux AppImage assembled by hand with a pinned appimagetool; no `.deb`** (decided 2026-11-20).
+- **Player installers with their own identifiers; Windows "Open with" template only** (ADR-108, ADR-184; the default program stays the user's choice).
+- **Installer check as a reusable workflow on packaging pull requests; weekly advisories read-only** (ADR-181).
+- **Security hardening: no shell, `file:` prefix, protocol whitelist, bounded reads, FIFO refusal, checked downloads** (ADR-034); unsafe policy with three reviewed sites (ADR-183 amends).
+- **Menu bar by one allow-listed objc2 call; no menu crate** (ADR-183).
+- **Speech downloads with consent, HTTPS only, SHA-256** (ADR-021, ADR-030); no telemetry, no update check.
+
+## Structure and testing
+- **Shared helpers in one `base` module; no module cycles, checked by a test** (2.0.1; ADR-136 to 141, ADR-140 the test). Alternatives rejected: a separate crate; re-export shims.
+- **Split before features: `render` and `app` by area, no behaviour change** (ADR-168, 2.0.4).
+- **One format bump per development** (format 11 for 2.0.4 by D58, 12, 13, 14).
+- **Golden argv tests: projects without new features produce the same command** (QG-15).
+- **Tests use the bundled pinned ffmpeg; `VIDEOLORE_REQUIRE_FFMPEG` and `VIDEOLORE_REQUIRE_STT` make missing dependencies fail** (2.0.2, 2.0.3).
+- **Timing tests use the best of up to five samples; product limits unchanged** (QG-09).
+- **Speech fixture committed and checked by SHA-256; espeak-ng removed from CI** (2.0.4, QG-14).
+
+## Open choices
+Listed in [risks](architecture-risks.md#open-product-decisions): the blur divisor, the picture item limits, the Faster target, REQ-177, the boxed shadow design, the default 360 choice.

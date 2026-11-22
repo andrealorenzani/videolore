@@ -1,127 +1,84 @@
-# Architecture: subtitles and speech-to-text
+# Architecture: subtitles, speech-to-text and subtitle styles
 
-Part of [Architecture](architecture.md).
+Part of [Architecture](architecture.md). Requirements: [subtitles](business-subtitles.md), [files](business-subtitle-files.md), [styles](business-subtitle-styles.md), [accuracy](business-subtitle-accuracy.md). Text items: [text](architecture-text.md).
 
-## Model
-- Subtitle lines are stored against the **source media**, not the timeline: each line has the media it belongs to, start and end in that file, the text, optional word timings and an "edited by hand" flag.
-- What is shown is computed from the timeline (REQ-018): for each video clip, the lines of its source that fall inside the clip's kept range are shown, shifted to the clip's position. So cutting a clip removes its subtitles, copying duplicates them, moving moves them, trimming hides those outside the range (extending the trim shows them again) and splitting keeps them.
-- Editing (REQ-016, all undoable): add a line at the playhead (2 s, inside the clip under the playhead), delete, change text, change timing (converted through the clip it is shown in and kept inside it).
-- A line used in two copies of the same clip is the same speech: changing its text changes both.
-- Changing a line's text drops its word timings; the word-highlight style then spreads the highlight evenly over the words.
-- One language and one style per project. Since 1.2.0 each line can also have its own position on screen (see [Position on screen](#position-on-screen-120)).
+## Model and editing
+- Lines are stored against the **source media** (media, start and end in that file, text, optional word timings, "edited by hand" flag). The timeline shows, for each video clip, the lines of its source inside the kept range, shifted to the clip: cutting removes them, copying duplicates, moving moves, trimming hides (extending shows again), splitting keeps (REQ-018).
+- Edits (REQ-016, undoable): add at the playhead (2 s, inside the clip under it), delete, change text (drops word timings), change timing (kept inside its clip). A line in two copies is the same speech. One language and one style per project.
+- **Position:** the box centre as a fraction of the picture (1/10000), shared by copies; "Reset position" returns to the style's place (1.2.0). **Size:** 25 to 400 % (1.2.6; [UI](architecture-ui.md#boxes-on-the-picture-126-140-161)). Dragging keeps the centre on the picture (1.4.0); one drag, one undo step; a dragged selected line moves the group.
+- **Placement (2.0.3):** overlaps and parts outside the picture are **warned, never moved** (dashed outline; status bar count); "Move inside the picture" (least move, one undo step); Align stores a line's place first; a grown line keeps its centre.
 
 ## Styles and burn-in
-Three styles (REQ-017):
-1. **Classic:** white text with a black outline, at the bottom.
-2. **Box:** white text on a semi-transparent box, in the lower third.
-3. **Word highlight:** bold white text, the current word in yellow, about 4 words at a time, centre-low.
-
-- Subtitles are burned into the picture by `ffmpeg`'s `subtitles` filter (libass) from a subtitle file in ASS format written by `videolore`.
-- Text size = the smaller of 5.5% of the video height and 9% of its width, so it reads well both in 9:16 and in landscape; margins scale the same way.
-- The subtitle file and the bundled font are written to a private temporary folder, and `ffmpeg` runs inside that folder, so no file path has to be written into the filter (avoids escaping problems with Windows paths and quotes).
-- Preview uses the same file at export resolution, scaled down, so preview and export match.
-- Fonts: Noto Sans Bold, Latin/Greek/Cyrillic only; see the limitation in [ffmpeg](architecture-ffmpeg.md#subtitle-rendering-and-fonts).
-- User text cannot inject styling: `{`, `}` and `\` are replaced with look-alike characters, and only `videolore` writes line breaks and highlight tags. Text is limited to 1000 characters per line.
-
-## Speech-to-text
-- **Engine:** whisper.cpp through the `whisper-rs` crate, running on the CPU, fully offline (REQ-014). Alternatives rejected: cloud services (privacy, cost), Vosk (quality), candle-whisper (speed and maturity).
-- **Included in release builds** (build feature `stt`, on by default). Building it from source needs `cmake`, a C++ compiler and libclang. A build with `--no-default-features` leaves it out: "Generate subtitles" then says it is not available in this build, while editing, styles and burn-in still work.
-- **What is transcribed:** see [Creating subtitles](#creating-subtitles). Only the video's own audio, never the music.
-- **Steps:**
-  1. The processor is checked (see [CPU requirements](#cpu-requirements-since-021)), and the model of the chosen [quality level](#subtitle-quality-levels-030) must be present (otherwise the consent dialog opens).
-  2. `ffmpeg` extracts the audio as 16 kHz mono to a file in `videolore`'s private work folder (one background slot of the job queue).
-  3. Transcription reads it in 120 s chunks (bounded memory; small artefacts at chunk boundaries are accepted).
-  4. Word timings are grouped into lines at pauses longer than 0.6 s or at the style's word limit.
-- **Language (REQ-015):** detected on the first chunk and saved in the project; the user can override it, which re-runs transcription in that language.
-- **Background, progress, cancel:** progress is per chunk; cancel takes effect during transcription.
-- **Threads:** set by "How hard videolore works" (since 0.3.0; based on physical cores, see [performance](architecture-performance.md#how-hard-videolore-works)); one transcription at a time. It does not count toward the `ffmpeg` process limit.
-- **Speed (0.3.0):** flash attention was measured and is off at every level (it made subtitles slower); one decoding state is reused for the whole job instead of one per chunk; decoding stays greedy at every level (beam search would make "Most accurate" 2–3 times slower).
-- Changing the quality level never regenerates by itself.
+- Three styles (REQ-017): **Classic** (white, black outline, bottom); **Box** (white on a semi-transparent box, lower third); **Word highlight** (bold white, current word yellow, about 4 words, centre-low).
+- Burn-in: the `subtitles` filter (libass) reads an ASS file written by videolore; size = the smaller of 5.5 % of the video height and 9 % of its width. The ASS file and the bundled font are written to the private work folder and ffmpeg runs there, so no path enters a filter. Preview uses the same file at export resolution.
+- Styling cannot be injected: `{`, `}`, `\` are replaced; only videolore writes tags; 1000 characters per line. A positioned line gets `\an5`/`\pos` from checked numbers; the burned centre is within 2 % of the requested place (test).
+- **Shadow (2.1.0, REQ-306, 307):** 0 to 20 px at 1080 px height (default 0). The style's `Shadow` is `px * height / 1080` and `BackColour` the shadow colour, for every style including boxed. Boxed styles (`BorderStyle 3`): design A (box fill from `OutlineColour`, by spike) or design B (vector box behind the text). Shadow 0 writes the 2.0.4 values. Blinking hides the shadow with the text. `base/shadow.rs`, `subtitles::StyleSettings`.
+- **Highlight colours (REQ-308):** Word highlight has **Not yet highlighted** (default white) and **Highlighted** (default yellow); stored in the project and the ASS export.
+- **Enlarge word (REQ-309; fix REQ-333, 2.3.0, ADR-235):** the spoken word N px larger at 1080 px (1 to 40, default 12). 2.2.0 built a hidden base event with an enlarged run on the line's `\an5 \pos`, so the whole line moved. 2.3.0: `measure::Shaped::place_words` gives each word's place, `ass::word_centres` its centre, `word_styles::enlarge` draws the word alone as `{\an5\pos(x,y)\fs..}`; the others keep their place; an unmeasurable line keeps the in-line form. Gate: centre within 2 % of the picture height; the in-house layout must match libass at 1080 px (spike).
+- **Typewriter (REQ-310):** one event per word; letters appear with karaoke tags over a transparent secondary colour; spoken words stay in the Not-yet colour; a word under 0.1 s appears at once; no typing sound.
+- Word styles add about two events per word (caps: [NFR](architecture-nfr.md#sizes-and-limits)). Lines without word times spread words evenly. `Command::SetSubtitleStyle`; `word_styles` plans; `Preset::{EnlargeWord, Typewriter}`.
 
 ## Creating subtitles
-Since 1.2.0 Subtitles is applied like the other effects (see [effects](architecture-effects.md#applying-an-effect)):
-- **On a clip:** only the part of the source that the clip uses is processed (the audio is extracted with a start time and a length); lines of that source outside this part are left untouched. Lines of that source overlapping the part are replaced by the new ones, which are kept inside it.
-- **On the whole video:** each source used on the timeline is processed in full, as before (so lengthening a trim later reveals more subtitles), and all lines are replaced.
-- If a source involved contains a text subtitle track, the user chooses between its text and speech recognition; see [subtitle tracks](architecture-subtitle-tracks.md).
-- If lines in the processed part were edited by hand, the user is asked first (REQ-044); lines elsewhere do not count.
-- One subtitle job at a time; while it runs, starting another is greyed with "Subtitles are being created". Progress shows "Creating subtitles", or "Matching subtitles to the speech" when a track's text is used.
-- The result is applied as **one undo step** only when the whole job has finished. Cancelling, at any point, changes nothing.
+- Applied like the other effects ([effects](architecture-effects.md)). **On a clip:** only the source part the clip uses is processed; lines outside it are untouched; overlapping lines are replaced by the new ones, kept inside it. **On the whole video:** each source on the timeline is processed in full (a longer trim reveals more); all lines replaced.
+- A text track in a source gives the choice of its text or recognition ([tracks](#subtitle-tracks-and-word-matching)). Hand-edited lines in the processed part trigger a question first (REQ-044).
+- One job at a time ("Subtitles are being created" greys the entry); progress "Creating subtitles" or "Matching subtitles to the speech". The result is **one undo step** at the end; cancelling changes nothing.
 
-## Position on screen (1.2.0)
-- Each line has an optional position: the centre of its text box, stored as a fraction of the picture (in 1/10000 steps), so it survives a change of output format. Without a position the line sits where its style puts it, exactly as in 1.1.
-- The position belongs to the line, so copies of the same clip share it (they are the same speech).
-- **Burn-in:** a positioned line gets a centre-anchor and position tag at the start of its ASS line, computed from the stored fraction at the export resolution. Only `videolore` writes these tags, from checked numbers. Preview and export use the same subtitle file, so the text appears in the same place (an automated test with `ffmpeg` checks the centre of the burned text is within 2% of the frame height of the requested place).
-- **Dragging in the preview:** `videolore` computes the boxes of the lines visible at the playhead with egui's text layout and the same bundled font (Noto Sans Bold) at the same size and wrap width as the export. Until 1.3.0 the box was kept fully inside the picture; since 1.4.0 only its centre must stay on the picture, so a line can be dragged partly past an edge (the part outside is not drawn). While dragging, an outline of the text follows the pointer at once and the preview frame is re-rendered in the background (only the latest request); nothing is saved during the drag. Releasing is one undo step. "Reset position" returns to the style's place.
-- **Selecting several lines:** Ctrl+click (Cmd+click on macOS) on a line marker or in the Subtitles popup list adds or removes a line; a plain click selects only that line. Shift+drag on the timeline selects every line whose start is in the dragged range (with Ctrl/Cmd too it adds to the selection), and moves the playhead to the first one. Clicking empty timeline clears the selection; Esc closes the topmost popup first, then clears it.
-- **Moving a group:** dragging one of the selected lines moves them all to exactly the same position (their previous relative positions are not kept), as one undo step. Since 1.4.0 only the dragged line's centre is kept on the picture (see above). Reset position on a selection resets all of them.
-- The selection is part of the window state, not of the project or the undo history.
-- **Size (1.2.6):** a line can also have its own text size, 25–400% of the style's, with a box and corner handles in the preview; see [boxes](architecture-boxes.md).
-- **1.3.0:** the selection is one thing for the timeline and the preview: Ctrl/Shift+click on a box adds to it without moving it, and a Shift+drag selection survives so the selected boxes can be moved together (see [user interface](architecture-ui.md#selection-130)). A subtitle line added at the playhead on a 360 clip is anchored to the sphere; drawn there, it is plain white text without its preset style (see [360 video](architecture-360.md#anchored-text-and-subtitles-130)).
-- **Known limits:** egui and the burn-in library may measure text a few pixels differently near the edges (the burned result is what counts); a line made longer after being placed near an edge may then cross it; positioned lines shown at the same time can overlap.
+## Speech-to-text
+- **Engine:** whisper.cpp through `whisper-rs`, CPU, offline (REQ-014); cloud services, Vosk and candle-whisper rejected (ADR-009, ADR-021).
+- **Build:** feature `stt` (default; needs cmake, a C++ compiler, libclang); without it "Generate subtitles" says it is not available; editing and burn-in still work. The player is built without it.
+- **Steps:** (1) processor check and the model of the chosen level present (else the consent dialog); (2) ffmpeg extracts 16 kHz mono to the work folder (one background slot); (3) transcription in 120 s pieces, each also reading 2 s on each side; a word belongs to the piece where it starts; (4) word timings grouped into lines at pauses over 0.6 s or the style's word limit. Only the video's own audio is transcribed, never the music.
+- **Language (REQ-015):** detected on the first piece and saved; the user may override (re-runs).
+- **Threads:** from "How hard videolore works" ([performance](architecture-performance.md)); one transcription at a time; not counted in the ffmpeg cap. Speed (0.3.0): flash attention off; one decoding state per job; greedy decoding (beam search would make "Most accurate" 2 to 3 times slower). A level change never regenerates by itself.
 
-## Subtitle files and the separate track (2.0.4, stage 1)
-- **Import:** SRT and WebVTT files are read as regular files of at most 16 MiB, UTF-8 (a byte-order mark is accepted; other encodings are refused), at most 100,000 cues, every time finite; control and bidi characters are removed. The lines then go through the same creation rules as the other lines (one undo step).
-- **Export:** the same lines are written as SRT, WebVTT or ASS (`ass` module), through a temporary file and a rename.
-- **Separate subtitle track (REQ-182, ADR-171):** an SRT track is added as one more input and written as `mov_text` (MP4 and MOV) or `srt` (MKV). It is never the default track. The "not default" flag is set in the MP4 track header by clearing the enabled bit (ffmpeg always enables the first track of a kind); MKV uses the disposition.
-- **Fonts for more scripts (ADR-172):** Arabic and Devanagari faces are committed (SIL OFL); Chinese, Japanese and Korean use the system's fonts, and the subtitle list says so when none is installed. The font list is read on the first open of the subtitle list.
-- Burned-in subtitles keep their 1.2.0 to 2.0.3 rules; the separate track is for players that show tracks.
+## CPU requirements
+- whisper.cpp is built for a **fixed baseline**: `.cargo/config.toml` sets `GGML_NATIVE=OFF` (0.2.1: release builds run on CI machines whose CPUs, e.g. with AVX-512, users may lack).
+- Minimum on x86-64: AVX2, FMA, F16C, BMI2 (Intel Haswell 2013 and later; AMD 2015 and later, all Ryzen). AVX-512 never used. Apple Silicon supported.
+- **Start-up check (0.3.0):** SSE4.2, AVX, AVX2, FMA, F16C, BMI2. If one is missing: "This computer's processor is too old for automatic subtitles; you can still add subtitle lines by hand.", no download, the three levels greyed, whisper code never run.
+- No slower engine for old CPUs (decided 2026-11-14; a helper would be about 7 times slower; out of scope unless requested). Assumption: whisper.cpp runs no newer instruction while starting. Source builds use the same baseline (`GGML_NATIVE=ON` for one's own machine). `SOURCE_DATE_EPOCH` must stay unset (it selects the slow baseline silently).
 
-## 2.0.3: placement and warnings
-- **Warnings, not moves:** two subtitle lines or text items shown at the same time whose boxes overlap are both marked in the Subtitles list and on the timeline; a line or text partly outside the picture shows a dashed outline and the status bar counts them at the playhead. Nothing moves by itself, except the move back inside after a text edit that makes its box larger.
-- **Move inside the picture:** a command (Context Menu and Edit menu) moves the selected items by the least move that puts their whole box inside; greyed out when none is partly outside. One undo step.
-- **Group move:** a selection of lines and text items moves together when one selected box is dragged; one undo step.
-- **Stacked boxes:** when boxes overlap at the point clicked, the line shown at the playhead is picked; each further click on the same spot takes the next one.
-- **Align and size:** Align on a line still at its style's place stores its place first; the command is greyed out with "already centred" when nothing would move. When a line grows or wraps onto more lines, its centre stays where it was.
-- **Hint:** while a line or text is selected, the status bar names the selection gestures.
-- **Scale, Move and Change aspect** never move items (they keep their place in the frame); they are warned about as above.
-- **Tests:** pure rules (boxes, least move, centre, overlaps) and the commands, with one undo step each; the pixel check of the centre of a grown line (within 0.5% of the picture height) in preview and export.
-
-## CPU requirements (since 0.2.1)
-- whisper.cpp is compiled for a **fixed instruction-set baseline**, not for the machine that builds it. This is set once in `.cargo/config.toml` (`GGML_NATIVE=OFF`), which the `whisper-rs` build passes on to whisper.cpp's build.
-- **Why:** before 0.2.1 whisper.cpp was optimised for the CPU of the build machine. Release executables are built on GitHub's servers, whose CPUs can have instructions (such as AVX-512) that many users' CPUs lack; generating subtitles could then crash on those computers.
-- **Minimum CPU for generating subtitles on x86-64 (Windows, Linux):** AVX2, FMA, F16C and BMI2, i.e. roughly Intel processors from 2013 (Haswell) on and AMD processors from 2015 (Excavator, all Ryzen) on. AVX-512 is never used.
-- **macOS (Apple Silicon):** unchanged; every Apple Silicon Mac is supported.
-- **Older x86-64 CPUs (since 0.3.0):** at start-up `videolore` checks for SSE4.2, AVX, AVX2, FMA, F16C and BMI2. If any is missing, "Generate subtitles" shows "This computer's processor is too old for automatic subtitles; you can still add subtitle lines by hand.", no download is offered, the three quality levels are greyed out with the same reason, and whisper.cpp code is never run. Everything else works normally. (In 0.2.1 and 0.2.2 subtitle generation was expected to crash on these computers.)
-- **No slower engine for older CPUs in 0.3.0.** The program contains a single copy of whisper.cpp, so a second copy built for older CPUs would clash with it, and picking the best code at run time would need whisper.cpp as separate loadable libraries, which the `whisper-rs` build does not support. The only workable route would be a separate helper program built for older CPUs (about 7 times slower). Andrea decided on 2026-11-14 not to build it: it is out of scope and would be reconsidered only on request.
-- **Assumption:** whisper.cpp runs no newer-CPU instructions while the program starts, so the check is reached. An optional CI step running the tests under an emulated older CPU may confirm it.
-- Building from source uses the same baseline. Someone building only for their own computer can set `GGML_NATIVE=ON` in the environment.
-- CI's build cache key was changed so that whisper.cpp builds made the old way are not reused.
-
-## Subtitle quality levels (0.3.0)
-"Subtitle quality" in Settings picks one of three whisper models, all multilingual, quantised, MIT licence, from a fixed revision of `huggingface.co/ggerganov/whisper.cpp`:
+## Quality levels and models (0.3.0)
 
 | Level | File | Size | SHA-256 |
 |---|---|---|---|
-| Fast (the 0.2.x model) | `ggml-tiny-q5_1.bin` | 32,152,673 bytes (32 MB) | `818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7` |
-| Balanced | `ggml-small-q5_1.bin` | 190,085,487 bytes (190 MB) | `ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb` |
-| Most accurate | `ggml-large-v3-turbo-q5_0.bin` | 574,041,195 bytes (574 MB) | `394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2` |
+| Fast | `ggml-tiny-q5_1.bin` | 32,152,673 bytes | `818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7` |
+| Balanced | `ggml-small-q5_1.bin` | 190,085,487 bytes | `ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb` |
+| Most accurate | `ggml-large-v3-turbo-q5_0.bin` | 574,041,195 bytes | `394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2` |
 
-- **Estimated cost (assumption, to be measured):** compared with Fast, Balanced is about 6–8 times slower and Most accurate about 20–30 times slower; with 8 threads on a modern x86 processor that is roughly 30x, 5x and 1–2x faster than real time. Extra memory while transcribing: about 0.5 GB (Balanced) and 1.3 GB (Most accurate).
-- **Why these models:** "base" (60 MB) gains too little over "tiny"; "medium" (539 MB) is slower and less accurate than "large-v3-turbo"; 8-bit versions are about 40% bigger for little gain; unquantised ones are 3–6 times bigger; English-only versions lose other languages.
-- Which level is recommended, and when a level is unavailable, is described in [performance](architecture-performance.md#recommended-settings).
-- An automated test (run in CI with the three models cached) checks that Balanced and Most accurate make no more word errors than Fast on a synthetic reference sentence.
+- All multilingual, quantised, MIT, from a fixed revision of `huggingface.co/ggerganov/whisper.cpp`.
+- Cost (assumption): Balanced 6 to 8 times slower than Fast, Most accurate 20 to 30 times; roughly 30x, 5x and 1 to 2x real time with 8 threads. Extra memory while transcribing: about 0.5 GB (Balanced), 1.3 GB (Most accurate; unavailable below about 8 GB RAM).
+- Why these: "base" gains little over "tiny"; "medium" is slower and less accurate than large-v3-turbo; 8-bit about 40 % bigger; unquantised 3 to 6 times bigger; English-only loses languages. CI test: Balanced and Most accurate make no more word errors than Fast on a synthetic sentence.
 
 ## Speech model download
-- Models are downloaded only when subtitles are generated with a level whose model is missing, never in advance and never by "Use recommended settings".
-- **Consent first:** before any network access a dialog shows the level, size, licence and source. Choices:
-  - **Download**;
-  - **Use Fast instead (no download)**, only if the Fast model is already present: for this run only, the setting is unchanged;
-  - **Download the Fast one instead (32 MB)**, only if no model is present yet;
-  - **Choose a file on this computer…**: it must have that level's exact size and SHA-256 and is copied into the data folder;
-  - **Cancel**: nothing changes.
-- Downloaded over HTTPS from the fixed address of that level only, into a partial file, limited to the expected size, checked for SHA-256 and then moved into the app's data folder (`…/videolore/models/`). An interrupted download, a wrong checksum or a full disk deletes the partial file ("Not enough free disk space" in the last case). After that, everything is offline.
-- Before each use the file size is checked, and the SHA-256 once per session.
-- The download uses the `ureq` HTTP client with `rustls` (no system OpenSSL), honours `HTTPS_PROXY`, has timeouts, follows at most 5 redirects and only to HTTPS. Non-HTTPS addresses are refused before connecting. No other part of the program uses the network.
-- **Storage:** Settings shows the space used by downloaded speech files (the sum of the known model files present) and offers to remove them after confirmation. Only the known model files and their partial downloads are deleted; subtitles already in projects are not affected, and a model is downloaded again (with consent) when next needed.
+- Only when a level's model is missing and subtitles are generated; never in advance or by "Use recommended settings".
+- **Consent:** the dialog shows level, size, licence and source. Choices: **Download**; **Use Fast instead (no download)** (only if Fast is present; this run only); **Download the Fast one instead (32 MB)** (only if no model); **Choose a file on this computer...** (exact size and SHA-256 of that level; copied into the data folder); **Cancel**.
+- HTTPS only, the level's fixed address, into a partial file limited to the expected size; SHA-256 checked, then moved to `…/videolore/models/`. An interrupted download, a wrong checksum or a full disk deletes the partial ("Not enough free disk space"). Size checked before each use; SHA-256 once per session.
+- `ureq` with `rustls` (no system OpenSSL), `HTTPS_PROXY` honoured, timeouts, at most 5 redirects, HTTPS only. Settings shows the space used and offers removal (known model files and partials only).
+
+## Subtitle files and tracks
+- **Import (2.0.4):** SRT and WebVTT, regular files of at most 16 MiB, UTF-8 (BOM accepted; other encodings refused), at most 100,000 cues, finite times; control and bidi characters removed; then the usual creation rules (one undo step).
+- **Export:** SRT, WebVTT or ASS (`ass` module), through a temporary file and rename. File > Export subtitles (.srt): the timeline's lines after cuts, trims and copies; numbered; `HH:MM:SS,mmm --> HH:MM:SS,mmm`; UTF-8 without BOM; empty lines skipped; positions not written; greyed with "No subtitles on the timeline". One in-house reader and writer (no crate).
+- **Separate track (REQ-182, ADR-171):** an SRT is one more input written as `mov_text` (MP4, MOV) or `srt` (MKV); never the default (MP4: the enabled bit is cleared).
+- **Fonts (ADR-172):** Arabic and Devanagari faces committed (SIL OFL); Chinese, Japanese and Korean from system fonts.
+- **Text tracks in videos (1.2.0):** ffprobe lists SRT, ASS/SSA, MP4 timed text and WebVTT tracks with language and title; picture tracks (PGS, DVB, DVD, teletext) ignored; at most 16 per file; language matches a code (letters, digits, `-`, at most 16 characters); title cleaned, at most 64 characters; identified by a position counted by videolore. Tooltip "Contains subtitles (<language>)". Media imported before 1.2.0 are checked when the project opens.
+- **Reading a track:** ffmpeg converts it to SRT in the work folder (cancellable); videolore reads a regular file of at most 16 MiB with its own parser (`,` or `.` before milliseconds, CRLF, BOM, missing numbers; damaged blocks skipped; times checked). Only cues overlapping the processed part are used; tags such as `{\an8}` removed. Assumption: cue times relative to the file start (a test covers a file not starting at zero).
+
+## Subtitle tracks and word matching
+- **Choice:** "Use the video's subtitles", "Recognise speech" or "Cancel" (asked every time). Several tracks: a list; per source the track with the same language and title, else the same language, else the first. Sources without a track are recognised.
+- **Use:** each line takes text, start and end from the track; recognition runs on the same audio only to place words (for word highlight), with the same consent and processor rules.
+- **Matching (2.0.3):** deterministic, no crate or model. Words compared ignoring case and punctuation; long words may differ by one letter in four; short words must match exactly. Each cue is matched alone against recognised words from 1 s before to 1 s after it (Needleman-Wunsch with edit distance). A cue is matched when at least half its words match; matched words take the recognised times kept inside the cue; others spread evenly. **Cue start and end never change.** Unmatched cue: keeps its timing; status "N of M lines could not be matched to the speech; their words are spread evenly over the line". 10,000 cues under 50 ms.
+- **Sound correction (2.0.3):** each matched word starts at the latest sound rise (10 ms steps) between 1.0 s and 0.2 s before the recognised start (the engine's DTW timing, 0.4 to 0.75 s late, is not used).
+- **Paraphrased tracks:** when at least half a track's lines fall back, the status says the track does not follow the speech closely; the text is kept.
+- **Fallbacks:** no speech support: "Use the video's subtitles (this computer cannot match words to the speech; they will be spread evenly)", nothing downloaded; download declined: "Use without matching words"; recognition fails: that part falls back with a message; Cancel: nothing changes.
+
+## Accuracy target (REQ-177, amended 2.2.0): NOT MET
+- **Target:** on the reference clip (committed 20 s synthetic clip, Fast) at least 90 % of matched words within 0.3 s; the matched share is reported; Balanced and Most accurate not worse than Fast. Test `alignment_matches_real_speech` in CI (VIDEOLORE_REQUIRE_STT=1).
+- **Measured:** 2.0.3 Fast matched 23 of 28 words, mean word-start error 0.48 s, maximum 1.10 s (82 %).
+- **2.2.0 method (`speech_regions.rs`, pure):** 10 ms RMS in dB; noise floor = 10th percentile; speech = floor plus T; silences under G bridged; regions under 0.10 s dropped; words of each cue placed over regions in the window (start − 1 s to end + 1 s) by dynamic programming (cost: length mismatch against at least 0.1 s per word and characters / R, plus lambda per skipped word); region-edge snap. Grid of 81 fixed settings: T {9, 12, 15} dB, G {0.12, 0.20, 0.30} s, R {8, 10, 12} characters/s, lambda {0.5, 1, 2} s.
+- **Result (2026-11-22):** best setting 10 of 23 within 0.3 s (43 %); eligibility needs 75 %; `FROZEN = None`; the default path stays. Rejected spikes: dynamic time warping (0.43 to 0.75 s late), energy-onset snap (7 of 23).
+- **Next step (if pursued):** a second clip (about 30 s of real speech with its transcript, sha-256 checked, Andrea's) with the frozen setting, pass at 90 % within 0.3 s, no re-tuning without a new decision; a pace-aware method is needed.
 
 ## Tests
-- Transcription and download are behind small interfaces with test doubles, so the whole flow (chunking, language, progress, cancel, consent per level, "Use Fast instead", checksum mismatch, interrupted download, non-HTTPS refusal, storage and removal, old-processor message, regenerate confirmation) is tested without the real models. Since 1.2.0 also: only the clip's part reaches `ffmpeg` and the recogniser, lines of other clips are unchanged, positions in the ASS file, selection and group moves.
-- One integration test runs the real model on a short synthetic voice clip (committed as a fixture; the generator is not needed to run it) and checks that "hello" is recognised with increasing word times. It runs in CI with the model cached.
-
-## Risks
-- The C++ build of whisper.cpp on three platforms slows CI and can break on toolchain changes.
-- Scripts other than Latin, Greek and Cyrillic depend on system fonts.
-- On x86-64 computers without AVX2 (before about 2013) automatic subtitles are not available (message, no crash; see [CPU requirements](#cpu-requirements-since-021)).
-- Many users will be asked to approve a 190 MB or 574 MB download on their first subtitle generation; the 32 MB Fast option is offered in the same dialog.
-- Model speed and memory figures are estimates until measured.
-- If the build environment ever sets `SOURCE_DATE_EPOCH`, whisper.cpp's build silently falls back to the slow SSE-only baseline; it must stay unset (or AVX2, FMA, F16C and BMI2 must be enabled explicitly).
+- Transcription and download behind doubles: chunking, language, progress, cancel, consent per level, "Use Fast instead", checksum mismatch, interrupted download, non-HTTPS refusal, storage and removal, old processor, regenerate confirmation; the clip's part alone reaches ffmpeg; ASS positions; selection and group moves.
+- One integration test runs the real model on a committed short voice clip ("hello", increasing word times) in CI with the model cached.
+- ffprobe detection from recorded output and real MKV and MP4 files; SRT reader on damaged and hostile files; writer output read back by ffmpeg; matching with a fake recogniser.
+- Word styles: Enlarge (2 %, others fixed, N = 0 refused, one undo); Typewriter (about two letters at 0.4 s of a 1 s five-letter word; export equals preview); shadows (8 px copy offset within 2 %; boxed shadow behind the box); highlight colours in preview, export and ASS.

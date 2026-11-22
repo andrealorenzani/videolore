@@ -28,7 +28,7 @@ impl AppState {
                 // dropped on a clip: that clip gets its own aspect (REQ-288, REQ-286)
                 if let Some(id) = clip {
                     if tl.own_aspect(id).is_none() {
-                        self.edit(now, "Change aspect", |e| {
+                        self.edit(now, effect.undo_name(), |e| {
                             e.timeline
                                 .set_clip_aspect(id, Some(FrameAspect::default()))
                                 .map_err(err)
@@ -38,7 +38,7 @@ impl AppState {
                     return Ok(());
                 }
                 if tl.frame_aspect.is_none() {
-                    self.edit(now, "Change aspect", |e| {
+                    self.edit(now, effect.undo_name(), |e| {
                         e.timeline
                             .set_frame_aspect(Some(FrameAspect::default()))
                             .map_err(err)
@@ -63,8 +63,7 @@ impl AppState {
                     None => tl.clips.iter().any(|c| lacks(c.id)),
                 };
                 if needed {
-                    let label = if scale { "Scale" } else { "Move" };
-                    self.edit(now, label, |e| {
+                    self.edit(now, effect.undo_name(), |e| {
                         let added = if scale {
                             e.timeline.add_scale(target)
                         } else {

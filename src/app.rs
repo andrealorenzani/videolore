@@ -37,6 +37,7 @@ use crate::time::{Fps, Micros};
 use crate::timeline::{Clip, ClipId, EditError, FrameTarget};
 pub use applied::{Applied, AppliedRow, RowMove};
 pub use command::{Command, ZOOM_STEP};
+pub use effect_kind::{EffectKind, EffectSpec, Target};
 pub use sphere::{Axis, LiveView, ResizeDrag};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -50,6 +51,23 @@ pub(super) enum Routed {
     Done(Result<(), String>),
     Pass(Command),
 }
+
+/// One area of [`AppState::dispatch`]: it runs the commands of its area (`Routed::Done`)
+/// and hands every other one back (`Routed::Pass`). The last argument is the undo name.
+type DispatchArea = fn(&mut AppState, Command, Instant, &'static str) -> Routed;
+
+/// The areas, in the order they see a command (each lives in `app/dispatch_<area>.rs`); a
+/// new command is one arm in the module of its area.
+const DISPATCH_AREAS: [DispatchArea; 8] = [
+    AppState::dispatch_project,
+    AppState::dispatch_subtitles,
+    AppState::dispatch_settings,
+    AppState::dispatch_interface,
+    AppState::dispatch_playback,
+    AppState::dispatch_view,
+    AppState::dispatch_effects,
+    AppState::dispatch_objects,
+];
 
 /// The text Copy and Cut put on the system clipboard (the clip stays inside the program).
 pub const CLIPBOARD_MARKER: &str = "videolore clip";
@@ -77,88 +95,6 @@ pub enum ConsentChoice {
     /// download; words spread evenly). Offered only when subtitles are being reused.
     UseWithoutMatching,
     Cancel,
-}
-
-/// An effect of the Effects section.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EffectKind {
-    Fade,
-    Subtitles,
-    Volume,
-    /// Reduces the background noise of the video's sound (REQ-114).
-    CleanAudio,
-    /// The shape of the whole video's frame and what fills the empty space (REQ-124).
-    ChangeAspect,
-    /// Zooms the picture, with keyframes (REQ-127, REQ-129).
-    Scale,
-    /// Moves the picture, with keyframes (REQ-128, REQ-129).
-    Move,
-    /// Changes the colours of the picture with a LUT file (1.6.0, REQ-135).
-    ApplyLut,
-    /// The speed of one clip or of all of them, not keyframed (2.3.0, REQ-281).
-    ChangeSpeed,
-}
-
-impl EffectKind {
-    pub const ALL: [EffectKind; 9] = [
-        EffectKind::Fade,
-        EffectKind::Subtitles,
-        EffectKind::Volume,
-        EffectKind::CleanAudio,
-        EffectKind::ChangeAspect,
-        EffectKind::Scale,
-        EffectKind::Move,
-        EffectKind::ApplyLut,
-        EffectKind::ChangeSpeed,
-    ];
-
-    /// True for the effects of the picture frame (1.5.0).
-    pub fn is_frame(self) -> bool {
-        matches!(
-            self,
-            EffectKind::ChangeAspect | EffectKind::Scale | EffectKind::Move | EffectKind::ApplyLut
-        )
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            EffectKind::Fade => "Fade IN/OUT",
-            EffectKind::Subtitles => "Subtitles",
-            EffectKind::Volume => "Volume",
-            EffectKind::CleanAudio => "Clean audio",
-            EffectKind::ChangeAspect => "Change aspect",
-            EffectKind::Scale => "Scale",
-            EffectKind::Move => "Move",
-            EffectKind::ApplyLut => "Apply LUT",
-            EffectKind::ChangeSpeed => "Change speed",
-        }
-    }
-
-    /// The popup of the effect.
-    pub fn popup(self) -> Popup {
-        match self {
-            EffectKind::Fade => Popup::Fades,
-            EffectKind::Subtitles => Popup::Subtitles,
-            EffectKind::Volume => Popup::Volume,
-            EffectKind::CleanAudio => Popup::CleanAudio,
-            EffectKind::ChangeAspect
-            | EffectKind::Scale
-            | EffectKind::Move
-            | EffectKind::ApplyLut
-            | EffectKind::ChangeSpeed => Popup::Instance,
-        }
-    }
-}
-
-/// What an effect is applied to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Target {
-    /// One video clip.
-    Clip(ClipId),
-    /// The selected clip (or the one under the playhead).
-    Selected,
-    /// The whole video: one clip from the start of the timeline to its end.
-    WholeVideo,
 }
 
 /// The very start or the very end of the video.
@@ -1393,225 +1329,14 @@ impl AppState {
 
     fn dispatch_inner(&mut self, cmd: Command, now: Instant) -> Result<(), String> {
         let label = cmd.undo_name();
-        let cmd = match self.dispatch_project(cmd, now, label) {
-            Routed::Done(r) => return r,
-            Routed::Pass(c) => c,
-        };
-        let cmd = match self.dispatch_subtitles(cmd, now, label) {
-            Routed::Done(r) => return r,
-            Routed::Pass(c) => c,
-        };
-        let cmd = match self.dispatch_settings(cmd, now) {
-            Routed::Done(r) => return r,
-            Routed::Pass(c) => c,
-        };
-        let cmd = match self.dispatch_interface(cmd, now) {
-            Routed::Done(r) => return r,
-            Routed::Pass(c) => c,
-        };
-        let cmd = match self.dispatch_playback(cmd, now) {
-            Routed::Done(r) => return r,
-            Routed::Pass(c) => c,
-        };
-        let cmd = match self.dispatch_view(cmd, now, label) {
-            Routed::Done(r) => return r,
-            Routed::Pass(c) => c,
-        };
-        match cmd {
-            Command::ApplyEffect { effect, target } => self.apply_effect(effect, target, now),
-            Command::OpenFrameEffect(effect) => {
-                self.open_frame_effect(effect);
-                Ok(())
+        let mut cmd = cmd;
+        for area in DISPATCH_AREAS {
+            match area(self, cmd, now, label) {
+                Routed::Done(r) => return r,
+                Routed::Pass(c) => cmd = c,
             }
-            Command::MoveRow { clip, row, mv } => self.move_row(clip, row, mv, now),
-            Command::PickLut(target) => self.pick_lut(target, now),
-            Command::SetLut { target, path } => self.set_lut_file(target, &path, now),
-            Command::RemoveLut(target) => self.remove_lut(target, now),
-            Command::SetAspect(a) => self.set_aspect(Some(a), now),
-            Command::RemoveAspect => self.set_aspect(None, now),
-            Command::AddKey { target, effect } => self.add_key(target, effect, now),
-            Command::RemoveKey { target, effect } => self.remove_key(target, effect, now),
-            Command::SetKeyEase {
-                target,
-                effect,
-                ease,
-            } => self.set_key_ease(target, effect, ease, now),
-            Command::RemoveFrameEffect { target, effect } => {
-                self.remove_frame_effect(target, effect, now)
-            }
-            Command::SelectKey(k) => {
-                self.popups.key = k;
-                Ok(())
-            }
-            Command::DragPicture(d) => {
-                self.drag_picture(d, now);
-                Ok(())
-            }
-            Command::SetPicture(d) => self.set_picture(d, now),
-            Command::SetClipVolume {
-                clip,
-                volume,
-                muted,
-            } => self.set_clip_volume(clip, volume, muted, now),
-            Command::SetSpeedAll { speed } => self.set_speed_all(speed, now),
-            Command::RemoveVolume { clip } => self.remove_volume(clip, now),
-            Command::SetVolumeKeyEase { clip, at, ease } => {
-                self.edit(now, "Volume keyframe ease", |e| {
-                    e.timeline.set_volume_key_ease(clip, at, ease).map_err(err)
-                })
-            }
-            Command::AddOverlap(path) => self.add_overlap(path, now),
-            Command::SetOverlapBox {
-                id,
-                place,
-                width,
-                height,
-                reshaped,
-            } => self.set_overlap_box(id, place, width, height, reshaped, now),
-            Command::SetOverlapTimes { id, from, len } => {
-                self.set_overlap_times(id, from, len, now)
-            }
-            Command::RemoveOverlap(id) => self.remove_overlap(id, now),
-            Command::SelectOverlap(id) => {
-                self.selected_overlap = id;
-                Ok(())
-            }
-            Command::ConfirmRemoval => self.confirm_removal(now),
-            Command::CancelRemoval => self.cancel_removal(),
-            Command::SetCleanAudio { target, on } => self.set_clean_audio(target, on, now),
-            Command::SetSpeechEnhance { target, on } => self.set_speech_enhance(target, on, now),
-            Command::SetCleanStrength { target, percent } => {
-                self.set_clean_strength(target, percent, now)
-            }
-            Command::SetEdgeFade { edge, on } => self.set_edge_fade(edge, on, now),
-            Command::ToggleLine(id) => self.toggle_line(id),
-            Command::AddText(draft) => self.add_text(draft, now),
-            Command::AddPicture(path) => self.add_picture(path, now),
-            Command::EditText(item) => self.edit_text(item, now),
-            Command::MoveText { id, start, ttl } => self.move_text(id, start, ttl, now),
-            Command::DeleteTexts(ids) => self.delete_texts(ids, now),
-            Command::SetTextBoxes { ids, place } => self.set_text_boxes(ids, place, now),
-            Command::ResizeTextWidth { ids, width } => {
-                self.resize_text_box(ids, TextEdge::Right, width, now)
-            }
-            Command::ResizeTextBox { ids, edge, value } => {
-                self.resize_text_box(ids, edge, value, now)
-            }
-            Command::SetReadability { ids, readability } => {
-                self.set_readability(ids, readability, now)
-            }
-            Command::ResizeTextAnchorWidth { ids, width_cd } => {
-                self.resize_text_anchor_width(ids, width_cd, now)
-            }
-            Command::MoveTextAnchor {
-                ids,
-                yaw_cd,
-                pitch_cd,
-            } => self.move_text_anchor(ids, yaw_cd, pitch_cd, now),
-            Command::MoveLineAnchor {
-                ids,
-                yaw_cd,
-                pitch_cd,
-            } => self.move_line_anchor(ids, yaw_cd, pitch_cd, now),
-            Command::OpenText(id) => self.open_text(id, now),
-            Command::OpenNewText => {
-                self.popups.text = None;
-                self.popups.show(Popup::Text);
-                Ok(())
-            }
-            Command::ToggleText(id) => self.toggle_text(id),
-            Command::SelectText(id) => {
-                if self.project.texts.get(id).is_none() {
-                    return Err("no such text".into());
-                }
-                self.selection.select_only(ObjRef::Text(id));
-                Ok(())
-            }
-            Command::SelectRange { from, to, add } => self.select_range(from, to, add, now),
-            Command::ClearSelection => {
-                self.selection.clear();
-                Ok(())
-            }
-            Command::SetLinePositions { ids, pos } => self.set_line_positions(ids, pos, now),
-            Command::ResetPosition => {
-                let ids = self.selected_lines();
-                self.reset_lines(ids, now)
-            }
-            Command::ResetObjects => self.reset_objects(now),
-            Command::MoveSelection {
-                lines,
-                texts,
-                place,
-            } => self.move_selection(lines, texts, place, now),
-            Command::MoveInside => self.move_inside(now),
-            Command::ReAnchor => self.re_anchor(now),
-            Command::AlignSelected(axis) => self.align_selected(axis, now),
-            Command::ResizeLines {
-                ids,
-                line,
-                size,
-                pos,
-            } => self.resize_lines(ids, line, size, pos, now),
-            Command::DragResize(d) => {
-                self.drag_resize(d, now);
-                Ok(())
-            }
-            Command::DragCamera { dx, dy, view_w } => self.drag_camera(dx, dy, view_w, now),
-            Command::RollCamera { dx, view_w } => self.roll_camera(dx, view_w, now),
-            Command::TurnCamera { yaw_cd, pitch_cd } => self.turn_camera(yaw_cd, pitch_cd, now),
-            Command::ZoomCamera(scroll) => self.zoom_camera(scroll, now),
-            Command::SetPov => self.set_pov(now),
-            Command::EditPov { media, old_t, pov } => self.edit_pov(media, old_t, pov, now),
-            Command::RemovePov { media, t } => self.remove_pov(media, t, now),
-            Command::ToggleBoxes => self.toggle_boxes(),
-            Command::CopyKeys { clip, effect } => self.copy_keys(clip, effect),
-            Command::PasteKeys { clip, effect } => self.paste_keys(clip, effect, now),
-            Command::MoveKey {
-                clip,
-                effect,
-                from,
-                to,
-            } => self.move_key(clip, effect, from, to, now),
-            Command::ToggleSnap => self.toggle_snap(),
-            Command::ToggleSafeAreas => self.toggle_safe_areas(),
-            Command::DragLines(d) => {
-                self.drag_lines(d, now);
-                Ok(())
-            }
-            Command::PickExportSrt => {
-                if !self.has_shown_subtitles() {
-                    return Err(effects::NO_SUBTITLES.into());
-                }
-                let name = self.srt_name();
-                match self.dialogs.pick_subtitles_save(&name) {
-                    Some(p) => self.export_srt(p),
-                    None => Ok(()),
-                }
-            }
-            Command::ExportSrt(p) => self.export_srt(p),
-            Command::ChooseSubtitleSource(c) => self.choose_subtitle_source(c),
-            Command::DropFiles(paths) => {
-                if self.modal.is_some() || self.notice.is_some() {
-                    self.status = "Close the open dialog before dropping files".into();
-                    return Ok(());
-                }
-                match drop_plan(paths) {
-                    DropPlan::Nothing => Ok(()),
-                    DropPlan::Import(files) => self.import(files),
-                    DropPlan::Open(p, ignored) => {
-                        let r = self.guarded(PendingAction::Open(Some(p)), now);
-                        if ignored > 0 && r.is_ok() {
-                            self.status = format!(
-                                "Only the first dropped project is opened; {ignored} other \
-                                 file(s) ignored"
-                            );
-                        }
-                        r
-                    }
-                }
-            }
-            _ => Err("command not handled".into()),
         }
+        Err("command not handled".into())
     }
 
     /// Index of the boundary between `left` and `right`, when they are adjacent.
@@ -2172,12 +1897,15 @@ fn preview_config(
 
 mod applied;
 mod command;
+mod dispatch_effects;
 mod dispatch_interface;
+mod dispatch_objects;
 mod dispatch_playback;
 mod dispatch_project;
 mod dispatch_settings;
 mod dispatch_subtitles;
 mod dispatch_view;
+mod effect_kind;
 mod effects;
 mod enabled;
 mod export_flow;

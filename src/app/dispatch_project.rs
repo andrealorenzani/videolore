@@ -363,6 +363,26 @@ impl AppState {
                         Ok(())
                     })
                 }
+                Command::DropFiles(paths) => {
+                    if self.modal.is_some() || self.notice.is_some() {
+                        self.status = "Close the open dialog before dropping files".into();
+                        return Ok(());
+                    }
+                    match drop_plan(paths) {
+                        DropPlan::Nothing => Ok(()),
+                        DropPlan::Import(files) => self.import(files),
+                        DropPlan::Open(p, ignored) => {
+                            let r = self.guarded(PendingAction::Open(Some(p)), now);
+                            if ignored > 0 && r.is_ok() {
+                                self.status = format!(
+                                    "Only the first dropped project is opened; {ignored} other \
+                                     file(s) ignored"
+                                );
+                            }
+                            r
+                        }
+                    }
+                }
                 other => {
                     pass = Some(other);
                     Ok(())

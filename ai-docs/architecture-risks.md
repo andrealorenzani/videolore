@@ -1,144 +1,85 @@
-# ai-notes: risks (owner: architect; index in ai-docs/architecture.md)
+# ai-notes: risks and open items (owner: architect; index in ai-docs/architecture.md)
 
-Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 time-dependent command spike). Items with [open] need a decision or measurement.
+Resolved items are removed. [OPEN] needs a decision or measurement; [TECH] technical risk accepted; [MANUAL] checked by hand only. The human list: docs/architecture-risks.md.
 
-## Release and manual checks
-- [2.0.2 decided 2026-11-20] no `.deb` package (AppImage and tar.gz only); QG-10 wording corrected by the Product Manager. Splash pictures: Andrea's own work, MIT, in packaging/notices/third-party.txt (Q-E closed).
-- [2.0.2 plan] wall-clock gates in tests can fail on a busy machine; best-of-5 sampling (ADR-144) keeps the product limits; check by a load run (plan step 9).
-- [2.0.2 plan] pinned test ffmpeg adds a network download and cache to the check job (QG-06 time).
-- [2.0.2 plan] the suite tests the pinned build on Linux only; Windows and macOS builds of 9.0.2 are untested by the suite (Future work).
-- [2.0.2 plan] format 8 fixture is hand-written (no 1.6.0 writer in the tree); the real 1.6.0 file is checked by hand (checklist 2).
-- Manual-only checks: macOS launch-time odoc timing, Gatekeeper on nested ffmpeg (fallback `xattr -dr com.apple.quarantine /Applications/videolore.app`), SmartScreen on unsigned installers, Linux file managers (tar.gz ELF double-click; README fallback). odoc failure -> in-app Open still works. Checklist in docs/code.md (PE).
-- GPL corresponding-source adequacy not lawyer-reviewed (ASSUMPTION).
-- H.264/HEVC patent licensing varies by country -> note in notices.
-- cargo-packager no release for ~1 y -> fallback hand NSIS + hdiutil (ADR-014).
-- Riedl macOS ffmpeg URL retention unknown -> CI fails loudly, re-pin. BtbN daily build pins expire -> re-pin month-end.
-- Speech-to-text needs C++ toolchain + libclang on every CI platform (slow, fragile builds; whisper-rs-sys bindgen).
-- Test runs: local rule-7 suite runs tests twice (cargo test + coverage.sh) [open, ADR-035]; the single llvm-cov run is CI only.
+## Open decisions and measurements
+- [OPEN, Andrea] REQ-177 subtitle timing (2.0.3 D56, 2.2.0): NOT MET (10 of 23 = 43 %, target 90 %; FROZEN None). A second clip (about 30 s real speech) is the next check; a pace-aware method is needed. Continuous speech may fail the frozen setting.
+- [OPEN, Andrea] REQ-315 Faster on integrated graphics: NOT MET (8.7 % against 20 %; the rest is the hardware encode phase). Levers (b) (0.1 s) and (c) (hardware decode of the check) not taken. Decide: re-baseline per hardware class, or a cheaper check.
+- [OPEN, product] REQ-222 blur divisor: built 1/8 (measured, ADR-180); the requirement says 1/4. PM decides the wording.
+- [OPEN, Andrea] picture items (REQ-287, ADR-192): no count (20), file size (8 MiB) or pixel limit in code; picture kept by path. Add limits in `picture.rs`/`text`, or record that the header read suffices.
+- [OPEN, PE to record] speed-first 360 preset (Q-5): the rule is built; the preset name is not in the notes.
+- [OPEN, 2.1.0 spike result] boxed shadow: design A (libass draws the box fill from OutlineColour) or design B (vector box, must match 2.0.4 geometry at 1080 px); spike S0d recorded in the plan.
+- [OPEN, spike] Enlarge word: in-house layout vs libass at 1080 px (S0b); fallback decided with Andrea if it misses 2 px.
+- [OPEN] AccessKit size on Linux (Q-4 closed; size measured in 2.0.4 stage 8, recorded where?).
+- [OPEN, PE] module-cycle result of 2.2.0 and 2.3.0: confirmed at VERIFY (2.3.0 cycle test green per the PE; the list changed).
 
-## Readable text, placement, accuracy (2.0.3 plan; plan ai-docs/architecture-plan-2.0.3.md)
-- [2.0.3 decided 2026-11-20] Q-1 = B: the 2.0.2 text outline (8% black) disappears for old texts on opening (REQ-158 as written); Future work: the REQ-167 message may mention it. Q-2 = A: old texts change size on opening (REQ-156/157, REQ-167 count, no restore).
-- [2.0.3 plan, D56] REQ-177 reworded: >= 90% of the MATCHED words within 0.3 s at Fast after the one-sided onset snap (ADR-164); the snap may not reach it (measured DTW was 0.43 to 0.75 s late; onsets within 0.03 s of the reference); then Andrea decides (larger model, D54). The PE stops and reports at that point; no silent gate change.
-- [2.0.3 plan] libass may prefer the system font over the copy in the work `fonts/` folder (ADR-156): Linux test; macOS and Windows by hand (REQ-165).
-- [2.0.3 plan] libass box padding for BorderStyle 3 and the outline width as padding (ADR-157): confirm by a pixel test; if not, the Box padding is drawn by a second outline value.
-- [2.0.3 plan] "fill" of a box is the line box (lines x hhea ascender-descender), not the ink height (assumption, ADR-154); a reviewer may expect ink.
-- [2.0.3 plan] harfrust/skrifa on odd fonts: any failure gives the bundled font (test); a font whose name ID 1 differs from its family name in fontdb may not be found by libass (ADR-156 detail).
-- [2.0.3 plan] piece margins of 2 s: words longer than 2 s could be lost at a boundary (none expected in speech; the synthetic test covers 1.5 s words).
-- [2.0.3 plan, D56] the one-sided snap misses words the Fast model mishears (5 of 28 on the reference); they are not matched and are not gated. Onset snap depends on the audio energy: noisy speech may give wrong onsets (test with noise is a PE decision).
-- [2.0.3 plan] the blur fix (ADR-152) relies on the ffmpeg bound derived from one message; verified on 9.0.2 by a size sweep; other ffmpeg builds (system override) may differ.
-- [2.0.3 plan] text.rs (1211 lines) and render.rs (3439) grow: PE may split the event builder (text/events.rs) if text.rs passes ~1500 lines.
-
-## Hardware export (0.4.0+)
-- No GPU in CI: real hardware only via QG-05 manual matrix; unverified combinations are known limitations.
-- NVIDIA needs driver >= 610 (SDK 13.1 headers); older -> probe fails fast, software export, Advanced explains. Likely common late 2026.
-- Linux VA-API/QSV need system libva + vendor driver (intel-media-driver / Mesa radeonsi); Fedora default Mesa lacks H.264/HEVC encode (AMD needs RPM Fusion mesa-va-drivers-freeworld). QSV on linux uses default render node only. Multi-GPU prefers NVIDIA.
-- Bundled linux ffmpeg 9.0.2 needs libva >= 2.21 (vaMapBuffer2); Ubuntu 24.04 ships 2.20 -> VA-API and QSV skipped with the bundled ffmpeg on Ubuntu 24.04 (only system ffmpeg override uses them). Guard prevents core dump. Revisit: pin a BtbN build vs older libva, or bundle libva (driver ABI coupling).
-- [open] QG-05 g (>= 40% faster) FAILED on Intel iGPU VA-API CQ (-14% / +41% / +6%): iGPU encode + check not faster than x264 veryfast. Known limitation; recommend re-baseline g or segment-only check render.
-- VA-API CQ (ADR-037 deviation): content-dependent size/quality; QP 23 near the e limit on some sources; size held only by watch-restart + 1.5x check; oversize -> software, not remembered. QSV has no CQ variant.
-- HEVC VA-API broken on Ubuntu free intel-media-driver 24.1 even at CQ -> HEVC software on such systems.
-- libva byte scan ~3.1 s on the 173 MB bundled binary (background, once per session) delays first probe result (not in the run budget).
-- Probe timeouts (0.4.2): a slow-failing candidate costs 5 s per probe and makes the answer inconclusive -> always repeated once -> ~13–20 s bg work + one Probe slot per trigger, possible dGPU wake on hybrid laptops. No distinction between busy computer and hanging candidate. 10 s total can still end "no hardware" under extreme load (repeat mitigates).
-- PSNR 25 dB threshold and vendor bitrate factors are ASSUMPTIONS -> tune from QG-05.
-- Corruption only between sampled frames passes the output check -> QG-05 d.
-- Hardware presence of encoders in bundled binaries not verified from build scripts alone -> packaging smoke test.
-- Check cost: strict decode + full graph render; on iGPU ~ as much as the software encode saving (QG-05 g fail).
+## Hardware export (0.4.0 to 2.0.4)
+- [MANUAL] real hardware only via QG-05 (no GPU in CI). QG-05 g FAILED on Intel iGPU VA-API CQP (−14 % / +41 % / +6 %). [OPEN] re-baseline g or segment-only check render.
+- [TECH] NVIDIA needs driver ≥ 610 (SDK 13.1); older: probe fails fast, software export, Advanced explains.
+- [TECH] Linux VA-API and QSV need system libva and a vendor driver (intel-media-driver, Mesa radeonsi); Fedora's default Mesa lacks H.264/HEVC encode (RPM Fusion `mesa-va-drivers-freeworld`); QSV uses the default render node only.
+- [TECH] bundled Linux ffmpeg 9.0.2 needs libva ≥ 2.21 (`vaMapBuffer2`); Ubuntu 24.04 ships 2.20 → VA-API and QSV skipped with the bundled build (guard prevents a core dump). Revisit: pin a BtbN build with older libva, or bundle libva (driver ABI coupling).
+- [TECH] VA-API CQP (ADR-037 deviation): size and quality depend on the content; QP 23 near the quality limit on some sources; size held only by the watch-restart and the 1.5x check; oversize → software, not remembered. QSV has no CQ variant. HEVC VA-API broken on Ubuntu's free intel-media-driver 24.1 even at CQP → software.
+- [TECH] libva byte scan ~3.1 s on the 173 MB binary (background, once per session), delays the first probe result.
+- [TECH] probe timeouts (0.4.2): a slow-failing candidate costs 5 s and makes the answer inconclusive → always repeated → 13 to 20 s background work and one Probe slot per trigger (possible dGPU wake on hybrid laptops). A busy computer and a hanging candidate are not told apart; 10 s total can still end "no hardware" under extreme load. A cheaper probe is future work.
+- [ASSUMPTION] 25 dB PSNR threshold and vendor bitrate factors → tune from QG-05. Corruption only between sampled frames passes the output check (QG-05 d). Encoder presence in bundled binaries confirmed only by the smoke test.
+- [TECH] check cost: strict decode plus full graph render; on iGPU about as much as the saving.
 
 ## Speech and subtitles
-- Speed and memory of the larger speech models are estimates; recommendation thresholds may move after measurement (A10).
-- Whisper token timestamps ±0.1–0.3 s; 0.3 s alignment gate may be borderline with the Fast model (ASSUMPTION) -> fixture with clear pauses; PE reports measured error.
-- Alignment quality depends on how closely a track follows the speech (translated or paraphrased tracks often fall back to even spread); cost ≈ full recognition of the range.
-- Track cue times assume ffmpeg normalises to file start (ASSUMPTION) -> integration test MKV with start_time != 0.
-- Pre-AVX2 x86-64 users: subtitles gate message (ADR-031); residual ASSUMPTION: static ggml init does not run AVX2 at start-up (optional qemu check, PE verifies).
-- Projects saved by 1.2.0 and later cannot be opened by older versions (schema bumps; see ADR-051/065/076/093/104/124).
-- Text edited after a drag can make the box cross the edge (no re-clamp); positioned lines overlapping in time overlap on screen (no collision avoidance); egui vs libass width may differ by pixels at edge clamp (ASS authoritative).
-- [1.5.0 spike] Time-dependent sizes: accepted by ffmpeg 6.1.1; bundled 9.x not checked yet (roadmap).
+- [TECH] Whisper word times ±0.1 to 0.3 s; the 0.3 s gate may be borderline with the Fast model (ASSUMPTION); the one-sided onset snap misses words the Fast model mishears (5 of 28 on the reference); not gated. Noisy speech may give wrong onsets.
+- [TECH] alignment depends on how closely a track follows the speech (paraphrased tracks spread evenly); the cost is about a full recognition.
+- [ASSUMPTION] cue times relative to the file start (MKV with start_time ≠ 0 test).
+- [TECH] piece margins of 2 s: words longer than 2 s could be lost at a boundary (synthetic test covers 1.5 s).
+- [TECH] pre-AVX2 x86-64: subtitles message (ADR-031); static ggml init residual assumption (optional qemu check).
+- [TECH] speed and memory of larger models are estimates (A10).
+- [TECH] afftdn may muffle speech (gate measured on the fixture).
+- [TECH] projects saved by 1.2.0 and later cannot be opened by older versions (schema bumps; ADR-051, 065, 076, 093, 104, 124, 169, 222, 230).
+- [TECH] text edited after a drag may cross the edge (no re-clamp); positioned lines overlapping in time overlap on screen (no collision avoidance); egui and libass width may differ by pixels at the edge clamp (ASS authoritative).
+- [TECH] libass may prefer the system font over the work copy (`fonts/`, ADR-156): Linux tested; macOS and Windows by hand (REQ-165). libass box padding for BorderStyle 3 and outline as padding (ADR-157): pixel test; else a second outline value. Box fill is the line box (ADR-154 assumption; a reviewer may expect ink). Font name ID 1 may differ from the family name in fontdb (libass may not find it).
+- [TECH] the blur fix (ADR-152) relies on an ffmpeg bound derived from one message; verified on 9.0.2 by a size sweep; a system ffmpeg override may differ.
 
-## Interface
-- Drag and drop does nothing on native Linux Wayland (winit 0.30): documented limitation; Import/Open menus remain. Re-check on eframe/winit upgrade.
-- egui API churn (MenuBar/Popup/Panel) -> keep UI thin; logic in pure modules.
-- Global shortcuts vs text fields (Delete/Backspace/Left/Right/Home/End) -> guarded by egui_wants_keyboard_input(), tested per key.
-- AccessKit bounds inside ScrollArea are content-relative/clipped -> own UiCache.containers registry; if the helper grows > ~150 lines switch to egui_kittest.
-- In-window menu bar on macOS (ADR-024) looks non-native; Hide/Minimize missing.
-- Toolbar overflow with 15 actions at 800 px; shortcut collisions (1.2.6).
-- Downgrade: 1.0 builds drop layout + recent fields on their next save (accepted).
-- Edge handles vs picture drag (PE test); 1.6.1 Q-F rule approximate between key times for rare projects.
+## Interface and platform
+- [TECH] drag and drop does nothing on native Linux Wayland (winit 0.30); Import and Open remain. Re-check on eframe or winit upgrades.
+- [TECH] egui API churn (MenuBar, Popup, Panel): thin UI, logic in pure modules; new stable lints fixed promptly.
+- [TECH] global shortcuts vs text fields guarded by `egui_wants_keyboard_input()`, tested per key.
+- [TECH] AccessKit bounds inside ScrollArea are content-relative: own `UiCache.containers`; switch to `egui_kittest` if the helper grows beyond about 150 lines.
+- [TECH] in-window menu bar on macOS (ADR-024) looks non-native; Hide and Minimize missing.
+- [TECH] toolbar overflow with 15 actions at 800 px; shortcut collisions (1.2.6).
+- [ACCEPTED] 1.0 builds drop the layout and recent fields on their next save; settings: 1.0 drops unknown fields.
+- [TECH] edge handles vs picture drag (PE test); 1.6.1 combined-path rule approximate between key times for rare projects.
+- [MANUAL] macOS launch-time open-document timing, Gatekeeper on the nested ffmpeg (fallback `xattr -dr com.apple.quarantine /Applications/videolore.app`), SmartScreen on unsigned installers, Linux file managers (tar.gz ELF double-click; README fallback), the Windows player "Open with" (not run on Windows), macOS menu bar (ADR-183, checked for aarch64-apple-darwin only, not run), Wayland drop on a real session. Open-document failure: in-app Open still works.
+- [TECH] "Hide" and "Minimize" absent on macOS (ADR-024).
 
-## 360 video and text
-- Exporting a moving camera runs at about one third of real time or less at 1080p (accepted; speed work on roadmap: fewer commands per second, in-process projection).
-- Camera stills while dragging an 8K source may feel slow; quick in-process view = Future work.
-- Two copies of the same part of one source share their POVs (accepted; Future work).
-- CI ffmpeg on Linux is distro apt (6.1): v360 command flags may differ from bundled 9.x (BtbN reset_rot/command semantics not re-measured; assumed same). Tests gated on the spike result.
-- libass vs fontdb family names may differ (silent fallback in export only); text on the sphere narrows toward the poles (accepted, Q1 = A); slide leaves the view (ADR-077); blink event cost (capped); egui vs libass wrap.
-- 360 video export slow (no speed promised); 360 file without spherical information stays flat (1.4.0).
-- Spherical marker: MP4/MOV only (own writer, ADR-078); MKV/WebM unmarked; bundled 9.x not measured.
-- Text best-fit size is an estimate (85–115% of the box) until 2.0.3 (ADR-154 measured fit, plan); migration by search may shrink large multi-line texts (confirmed by product owner, 1.4.0); REQ-167 count in 2.0.3.
-- afftdn may muffle speech (gate measured on fixture).
+## Release and tooling
+- [TECH] GPL corresponding-source adequacy not lawyer-reviewed (ASSUMPTION). H.264 and HEVC patent licensing varies by country (notice).
+- [TECH] cargo-packager has had no release for about a year: fallback hand NSIS and `hdiutil` (ADR-014).
+- [TECH] Riedl macOS ffmpeg URL retention unknown (CI fails loudly, re-pin). BtbN daily build pins expire (re-pin to month-end).
+- [TECH] speech-to-text needs a C++ toolchain and libclang on every CI platform (slow, fragile; whisper-rs-sys bindgen).
+- [OPEN, ADR-035] local suite runs tests twice (cargo test and coverage); CI uses one llvm-cov run.
+- [TECH] wall-clock gates can fail on a busy machine: best-of-5 sampling (ADR-144); load run in the release checklist.
+- [TECH] the pinned test ffmpeg adds a download and cache to the check job (QG-06 time); the suite tests the pinned build on Linux only (Windows and macOS 9.0.2 untested by the suite).
+- [TECH] the format 8 fixture is hand-written; the real 1.6.0 file is checked by hand.
+- [TECH] ffmpeg build variance for a user override or PATH: startup capability probe and fallback.
+- [DOC] docs/business-export.md REQ-061 still says "at most 1 s each, at most 3 s in total" (superseded by the 0.4.2 deviation, ADR-038); PM to reword.
 
-## Frames, LUT, player, splash (1.5.0–1.6.2)
-- Frame: longer side capped at 4096 px (decided 2026-11-19); Scale and Move on a 360 clip act on its flat camera view only; keyframes in a small popup are harder to use; text items keep their place when the picture moves (may end over the edge).
-- Whole-video Scale/Move copies: a key before a new start is hidden, not lost; users expecting clips added later to get the effect (rule documented, no message).
-- Q-F rule (1.6.1): combined path approximate between key times for rare projects.
-- LUT: lut3d options on the bundled 9.x unverified (PE step); yuv round trip 1–2 levels (test tolerance); origin/licence of the splash image (see release item above).
-- Player: duplicates ffmpeg in its installer (size); file handling limited (no file association, one file at a time); 1.5.x refusal of format 8 checked by hand only.
-- Splash: stale or long summary fails the test (shrinks, not clipped); build breaks until both summaries exist (intended); both pictures compiled into both binaries (measure).
+## Frames, LUT, player, splash, pictures
+- [TECH] Frame: longer side 4096 px (decided 2026-11-19); Scale and Move on 360 act on the flat camera view only; keyframes in a small popup are hard to use; texts keep their place when the picture moves (may end over the edge).
+- [TECH] whole-video Scale and Move copies: a key before a new start is hidden, not lost; clips added later do not get the effect (documented, no message).
+- [TECH] LUT: `lut3d` options on the bundled 9.x unverified (PE step); YUV round trip 1 to 2 levels (test tolerance); a LUT that lifts black shows on a faded frame (new projects, ASSUMPTION); a 256-point LUT: about 450 MB Work copy and about 293 MB disk per Work folder, plus ffmpeg float table about 201 MB per process (measured 225 MB RSS).
+- [TECH] player: duplicates ffmpeg in its installer (size); one file at a time; format 8 refusal checked by hand only.
+- [TECH] splash: a stale or long summary fails the test (shrinks, not clipped); both pictures compiled into both binaries (size to measure); origin and licence recorded (1.6.3).
+- [TECH] picture subtitles: none on 360 clips; a subtitle on screen at a run start appears at its next change; no drag. Spatial sound: four channels read as W, Y, Z, X (SN3D assumed); a file with another layout turns wrongly; roll not applied; the preview waits for the pre-pass (clips over 10 minutes keep recorded sound); real-time CPU on weak hardware unmeasured.
+- [TECH] 360: a moving camera exports at about one third of real time or less at 1080p (accepted; roadmap: fewer commands per second, in-process projection); camera stills from an 8K source may feel slow; two copies of the same part share their POVs (accepted); CI ffmpeg is distro apt 6.1 for the picture tests (`reset_rot` and command semantics not re-measured on 9.x; assumed same); libass vs fontdb names (silent fallback in export); text on the sphere narrows toward the poles (Andrea Q1 = A); slide leaves the view (ADR-077); a 360 file without spherical information stays flat (1.4.0); the marker is MP4, MOV, MKV and WebM (MKV and WebM in place, ADR-187; the real player check is manual).
+- [TECH] text best-fit size estimate 85 to 115 % of the box until 2.0.3 (ADR-154 measured fit); migration by search may shrink large multi-line texts (confirmed by the product owner, 1.4.0).
+- [TECH] afftdn may muffle speech (gate on the fixture).
+- [TECH] Settings file cap 64 KiB; project read cap 96 MiB; LUT copies 20 MB each, 64 MiB per project (ADR-191).
+- [ACCEPTED] the 2.0.2 Q-1 = B: old text outline (8 %) disappears for old texts on opening (REQ-158); Q-2 = A: old texts change size on opening (REQ-156, 157; REQ-167 count, no restore).
 
 ## Code structure and debt
-- Large files: app.rs 3072 lines, render.rs 3437 lines, ui/mod.rs 582 lines; new logic goes into submodules (app/effects.rs, app/subs_create.rs, app/lut.rs, app/texts.rs, ...); further split = Future work.
-- Import cycles (9 pairs, one 16-module group, app<->ui): planned for 2.0.1 in ai-docs/architecture-plan-2.0.1.md (base module, check in cargo test, ADR-136..141). Open until the Principal Engineer's step 8 and the release verification.
-- camera.rs not refactored into keyframes (debt, ADR-095).
-- Settings file: 1.0 builds drop unknown fields (accepted).
-- Hardware probe: each VA-API candidate may cost 5 s per probe; cheaper probe is Future work.
+- [DEBT] large files: `app.rs` ~2100 core lines after the 2.0.4 split; `render.rs` split to `render/`; `ui/mod.rs` large; `text.rs` split (2.0.4). New logic goes into submodules; further splits are future work.
+- [DEBT] `camera.rs` not refactored into keyframes (ADR-095).
+- [DEBT] the cycle check is syntactic (cycles through macros not seen); planned for 2.0.1 (ADR-136 to 141) and done.
 
-## Process and tooling
-- egui frequent breaking releases (ADR-012) -> thin UI; new stable lints -> fix promptly.
-- Scope: largest so far; long CI -> milestones each green.
-- ffmpeg build variance for user override or PATH -> startup capability probe + fallback; bundled copy has known caps.
-- The 1.1.0 risk "app.rs grows" superseded by the 1.2.0 submodule split (see above).
-- Documentation mismatch: docs/business-export.md REQ-061 still states "at most 1 second each, at most 3 seconds in total" (superseded by ADR-038 deviation 0.4.2); PM to reword.
-
-## 2.0.4 (built 2026-11-21; plan ai-docs/architecture-plan-2.0.4.md § 7; stage numbers in brackets)
-- [OPEN, decide] picture items (REQ-287, ADR-192): no count (20), file size (8 MiB) or pixel limit in the code; the picture is kept by path, not embedded. Either add the limits in `picture.rs`/`text` (PE, small) or record the decision that the header read is enough (Andrea).
-- [OPEN] speed-first 360 preset (Q-5): the rule is built, the preset name is not in the notes (PE to record in `docs/code-*`). muda spike result (ADR-183) and AccessKit size (ADR-197, Q-4) not recorded.
-- [TECHNICAL, assumption] spatial sound: four channels read as W, Y, Z, X with SN3D taken as given; a file with another layout is turned wrongly; roll is not applied (the pair does not change with pitch); the preview waits for the pre-pass (clips over 10 min keep recorded sound).
-- [TECHNICAL] picture subtitles: none on 360 clips; a subtitle on screen at a run start appears at its next change; no drag.
-- [closed D61, Q-1] player under "Open with" only; the default is the user's choice. Manual check per OS (stage 9, item 22).
-- [closed D61, Q-2; REQ-273 BUILT] spatial sound: fixed cardioid pair to stereo; real-time CPU on weak hardware unmeasured (pre-pass 69x real time in debug); cut-back 1 not used.
-- [closed D61, Q-3] no bundled CJK font: Chinese, Japanese and Korean depend on installed system fonts; a Linux system without them gets the note, not a silent box. Risk: rare CJK users see the note (stage 1, manual item 9).
-- [closed D61, Q-4] AccessKit on all three systems; Linux AT-SPI adds crates and binary size, measured in stage 8 and recorded.
-- [closed D61, Q-5] 360 export preset: the fastest preset within 1.5 times the Best-quality size, measured in stage 10.
-- [closed D61, Q-6] Enhance speech: built as speechnorm named "Normalise speech", no model file; a bundled arnndn model would need its licence check first.
-- [closed D61, Q-7] MKV and WebM 360 marker: built in place (spherical.rs, ADR-187); the real-player check is manual item 23.
-- Hardware AV1 and VP9 on real systems: encoders rare, decoders unverified; the output check protects files, not speed (stages 5, manual 15).
-- Busy-or-hanging classification under load: false "hanging" would skip a working candidate; tested with fakes only (stage 4).
-- Preview hardware decode failure mid-playback: the restart must keep the last frame (stage 5).
-- Export graph regressions (speed, per-clip frame, picture overlays and picture subtitles are built since stage 13/14): golden argv gate for projects without the features; the new paths have their own tests.
-- REQ-222 says a quarter-size blur; built an eighth (BLUR_DIVISOR 8, measured, ADR-180 update); the requirement wording is the product manager's decision (checkpoint).
-- Project size: LUT copies up to 20 MB and 64 MiB per project; read cap 96 MiB (stage 11, ADR-191).
-- macOS menu bar: built as an allow-listed objc2 call (ADR-183, ADR-034 amended), checked for aarch64-apple-darwin only, not run; Wayland drop unverified on a real session (manual 17).
-- Autosave: disk time for large projects every 2 minutes (stage 2); copy on the UI thread costs O(clips).
-- Fonts raise every installer by the Arabic and Devanagari faces only (stage 1); the UI font parse happens on the first open of the subtitle list (measured). CJK depends on system fonts (D61).
-- Stage 0 split: large diff with no behaviour change; the PE checks golden tests and the cycle test before any feature (ADR-168).
-
-## 2.1.0 PLAN (open at the plan; plan § 11, § 12)
-- Decided by Andrea 2026-11-21: Q-1 = B (edge 256, 512 MiB file cap, background load with progress); Q-2 = A (whole frame graded); Q-3 = A (sphere-fixed items are fixed rows); REQ-307 kept as written (plan § 12).
-- 256-point LUT: about 450 MB Work copy and 450 MB of text parsed by each ffmpeg process at start; ffmpeg float table about 201 MB per process (S0a measures; a preview-start limit would need a binary input or a smaller preview table, decided with Andrea).
-- Enlarge word centre depends on libass layout versus the in-house measure (spike S0b); fallback is decided with Andrea if it misses 2 px.
-- Typewriter depends on the \k reveal and the hidden-letter alpha of libass (spike S0c).
-- Work copy disk: about 450 MB per distinct 256^3 LUT per Work folder (80 MB at 144^3); preview start may write it (time on weak disks unmeasured).
-- LUT after fades in new projects: a LUT that lifts black shows on a faded frame (ASSUMPTION; new projects only).
-- Golden argv of projects with LUTs changes (file name `lut-<hash16>.cube`); the PE updates only the fixtures that use a LUT and says so.
-- Boxed shadows (REQ-307 as written): design A needs libass to draw the box fill from OutlineColour (spike S0d); design B draws the box as a vector event, which must match the 2.0.4 box geometry at 1080 px. Event caps (2000/20000) re-checked on a long subtitle file.
-- The 2.0.4 stacking of overlapping texts is assumed (later items on top) and confirmed by reading; a test pins it before the overlay stage (S6).
-
-## 2.2.0 PLAN (open at the plan; plan § 12)
-- BUILT 2026-11-22: REQ-315 NOT MET (8.7% of 20%; the rest is the hardware encode phase); REQ-177 NOT MET (43% of 90%; no frozen setting; open decision for Andrea); deviation from REQ-321 for new rows (default place; reasons in docs/code-2.2.0.md); the 180 px column minimum (about 20% at 1280 x 800); module-cycle result of 2.2.0 to confirm at VERIFY.
-- [format 13, ADR-222] 2.1.0 (not released) refuses 13: developers testing 2.1.0 must update; release notes say so.
-- [order, ADR-224/225] pair formulations (Scale/Move, LUT alpha, Clean audio dry branch) may need more work than estimated; S0e decides before S4. A LUT below Frame grades only the layer, above it the fill (user choice, REQ-320).
-- [text, ADR-227] centring and slide distance to confirm (S0f); the column takes 180 px at the minimum window (business accepted).
-- [Q-1 answered 2026-11-21, route D] LUT start kept at about 12 s (`.cube`); the first graded frame comes after that, the picture is unprocessed meanwhile (D63). Alternatives measured and rejected (ADR-214): `.m3d` integer 3.4-3.6 s, float 5.1 s, HALD 0.36 s (trilinear, 16-bit path unverified).
-- The percentage during the ffmpeg start is time-based (estimate); not a measured progress.
-- Blur: proxy cost small (+3.2 ms per frame at 1080p); the real preview graph decides (S0b).
-- Faster on the Iris: the check (strict decode plus three renders) is the cost; REQ-315 may stay open if the scheduling levers do not reach 20%.
-- REQ-177: the prototype's success was on one synthetic clip with pauses; continuous speech may fail the frozen setting on the second clip (then REQ-177 stays planned).
-- Whole-video removal changes what 2.1.0 users see (accepted by Andrea; the release notes say it).
-- CI time (QG-06) with the 256-point timing test; disk 293 MB per 256-point LUT in the Work folder.
+## Plan-era items now built (kept for history)
+- 2.0.4 (ADR-168 to 201): closed decisions D61 (Q-1 player Open with only; Q-2 spatial pair; Q-3 no bundled CJK; Q-4 AccessKit; Q-5 360 preset rule; Q-6 speechnorm not arnndn; Q-7 MKV marker in place). Open at build: [TECH] Wayland drop unverified; busy-or-hanging classification tested with fakes only; the preview hardware decode failure mid-playback restarts at the playhead, keeping the last frame (stage 5).
+- 2.1.0: Q-1 = B (edge 256, 512 MiB, background load with progress); Q-2 = A (whole frame graded); Q-3 = A (sphere-fixed items are fixed rows); REQ-307 kept as written. The Work copy of 256^3 LUTs is about 450 MB; the golden argv of projects with LUTs changes (`lut-<hash16>.cube`).
+- 2.2.0: Q-1 route D (LUT about 12 s start, unprocessed picture meanwhile, D63); format 13 refused by 2.1.0 (release notes say so); whole-video removal changes what 2.1.0 users see (accepted by Andrea; release notes say it); deviation from REQ-321 for new rows (default place); column minimum 180 px (about 20 % at 1280 x 800; business accepted).

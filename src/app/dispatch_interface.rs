@@ -10,7 +10,12 @@ use super::*;
 use crate::settings::interface::{MAX_LIST, MAX_NAME, MAX_POPUPS};
 
 impl AppState {
-    pub(super) fn dispatch_interface(&mut self, cmd: Command, now: Instant) -> Routed {
+    pub(super) fn dispatch_interface(
+        &mut self,
+        cmd: Command,
+        now: Instant,
+        _label: &'static str,
+    ) -> Routed {
         let mut pass = None;
         let run = || -> Result<(), String> {
             let ui = &mut self.settings.interface;

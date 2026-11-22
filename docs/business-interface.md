@@ -1,6 +1,7 @@
-# Business — Interface (2.0.4)
+# Business — Interface
 
-Back to the [index](business.md). Batch 12 of the [roadmap tasks](roadmap_tasks.md), built in the 2.0.4 development. The window, popups and toolbar remember their state and suit each user. These requirements change decisions of the window layout (REQ-024, REQ-066, REQ-067), which were fixed except for resizing.
+Back to the [index](business.md). The window, popups and toolbar remember their state and suit each user. These requirements change the layout decisions of REQ-024, REQ-066 and REQ-067, which were fixed except for resizing.
+
 ## Window and popups
 - REQ-234 (implemented): The window's size, position and maximised state are program settings, restored at the next start. If the saved position is outside every screen, the window opens on the main screen at the default size. Acceptance: resize and move, restart: same size and place; a saved position outside the screens opens the window visible.
 - REQ-235 (implemented): Each effect popup, the Clip details popup and the Settings window remember their position across sessions (a program setting per popup). Off-screen positions fall back to the default. Acceptance: move the Fades popup, restart, open it: same place; an off-screen place opens at the default.
@@ -17,16 +18,15 @@ Back to the [index](business.md). Batch 12 of the [roadmap tasks](roadmap_tasks.
 
 ## Look and text
 - REQ-243 (implemented): **View > Theme**: System (default), Light or Dark. It applies to the whole window and every popup, and System follows the operating system's setting. Acceptance: each choice changes every section and popup; the body text and its background reach a contrast of at least 4.5 to 1 in both themes (test of the colour pairs); System follows the operating system when it changes.
-- REQ-244 (implemented): A **Text size** choice in Settings (in the collapsed "Appearance and start-up" header, plain words; built there instead of the main section; to be confirmed by Andrea): Normal, Large (125%) or Larger (150%) for menus, labels and popups. The timeline zoom is not affected. Every control stays reachable at 800x500 (REQ-068). Acceptance: Larger makes labels 1.5 times as high; at 800x500 every control is reachable with a scrollbar.
-- REQ-245 (implemented): The interface texts are kept in one table, in English only: no other language is added in 2.0.4. The table is the place where a language can be added later. Acceptance: every interface text has an English entry (a test); no interface text is written outside the table.
+- REQ-244 (implemented): A **Text size** choice in Settings (in the collapsed "Appearance and start-up" header; to be confirmed by Andrea): Normal, Large (125%) or Larger (150%) for menus, labels and popups. The timeline zoom is not affected. Every control stays reachable at 800x500 (REQ-068). Acceptance: Larger makes labels 1.5 times as high; at 800x500 every control is reachable with a scrollbar.
+- REQ-245 (implemented): The interface texts are kept in one table, in English only. The table is the place where a language can be added later (Andrea: English only in 2.0.4). Acceptance: every interface text has an English entry (a test); no interface text is written outside the table.
 - REQ-246 (implemented): Every toolbar button, menu item, section and popup control has an accessible name and role, exposed to screen readers through AccessKit, enabled in the release builds on Windows, macOS and Linux. Acceptance: an accessibility-tree test finds a name for every toolbar command and popup button; a screen-reader check on each system is in [verification](business-verification.md).
 
-## Key decisions (2.0.4)
-- [MINOR] Sections can be hidden, collapsed and placed left or right; they still cannot be moved freely. This partly reverses the 1.1.0 rule (layout fixed except resizing), to meet the roadmap item.
-- [MINOR] Workspaces, toolbar and shortcut choices are program settings, never in a project (rule C3).
-- [MINOR] Icons-only is the default toolbar, as since 1.6.0.
-- Translation: decided by Andrea: English only in 2.0.4; no other language is added. The text table is built so that a language can be added later.
+## Key decisions
+- Sections can be hidden, collapsed and placed left or right; they still cannot be moved freely (partly reverses the 1.1.0 rule, to meet the roadmap item).
+- Workspaces, toolbar and shortcut choices are program settings, never in a project (C3).
+- Icons-only is the default toolbar, as since 1.6.0.
 
-## Out of scope (2.0.4)
+## Out of scope
 - Free movement, floating or detaching of sections; resizing of the menu bar, toolbar or status bar.
-- Sub-second ruler labels and the multi-selection report (not in a batch).
+- Sub-second ruler labels and the multi-selection report (see the [roadmap](roadmap.md)).

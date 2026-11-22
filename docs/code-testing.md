@@ -1,201 +1,59 @@
 # Code — tests and CI
 
-## Tests
+Back to the [index](code.md). Which test covers a requirement: `scripts/req-code.sh REQ-NNN` (every such test carries `// covers: REQ-NNN`; `scripts/feature-coverage.sh` checks that each implemented requirement has one).
 
-- **Unit tests** sit next to the code (`#[cfg(test)]`; the larger ones in `src/app/tests.rs` and
-  `src/ui/tests.rs`). They use a fake `Runner` (`ffmpeg::fake::FakeRunner`), so no ffmpeg is
-  needed. Background jobs really run on threads; tests wait for them with
-  `app::tests::settle`.
-- **Fakes for slow or external things:** a counting runner checks that the process cap of every
-  "How hard" level (3, 4, 6) is never exceeded (20 probes + export + preview) and that lowering
-  the cap never stops a running process; simulated machines (`Machine::simulated`, an x86-64
-  machine without AVX2) drive the recommendation, the effort table and the old-processor
-  message; a fake transcriber and a fake model downloader drive
-  subtitle generation (consent, checksum, cancel, language); test machines are injected for the
-  proxy rule; the proxy cache and the model folder are temporary folders.
-- **UI tests** run whole frames headless with `egui::Context::run_ui` (layout at several sizes,
-  every dialog, shortcuts, clicks and drags on the timeline and the music lane, the window close
-  button via `ViewportEvent::Close`, the Settings window and the banner, read back from the
-  painted text). `stays_responsive_while_exporting_and_transcribing` runs 30 frames with
-  play/pause, timeline clicks and Settings while a fake export streams progress and a fake
-  speech job keeps every core busy: every frame must take ≤ 200 ms and show its effect;
-  `borders_and_popups_stay_responsive_and_export_cancels_from_the_status_bar` does the same
-  while dragging a section border with three effect popups open, then cancels the export from
-  the status bar and checks that no file is left.
-- **Interface tests through the accessibility tree** (`src/ui/ux_tests.rs`): a small `Harness`
-  turns on egui's AccessKit output and reads every widget's role, label, bounds and enabled
-  state each frame; clicks, right-clicks, double-clicks, drags and keys are real input events at
-  those positions. They check the menus against the action table (labels, shortcuts, greyed
-  items), the toolbar's "»" menu, border drags (live, saved once), markers and the chooser,
-  context menus, Clip details, Esc and the shortcuts, the shortcuts window, dropped files, the
-  Effects section. The "everything reachable" test (REQ-068) runs at 800x500 with 50 media
-  items, 200 subtitle lines and a 200-character name, with sections at their minimum sizes and
-  with each popup, dialog and menu open: every interactive widget must be inside the window, and
-  inside its section, unless it is inside a scroll area (recorded each frame in
-  `UiCache::containers`) whose visible part can be reached.
-- **1.2.0:** `src/app/effects_tests.rs` (effects on a clip or the whole video, the video's own
-  subtitles with a fake runner that "extracts" an SRT track and a scripted recogniser, the
-  consent choices, cancel at every step, line selection and positions, SRT export); pure
-  tests in `align`, `srt`, `ui/ruler`, `ui/placement`; interface tests drag an effect row onto
-  a clip, drag a subtitle in the preview, Ctrl/Cmd+click markers and Shift+drag the timeline;
-  a third responsiveness test drags an effect and a subtitle while an export and a matching
-  job run.
-- **Frozen 1.1 output:** `tests/fixtures/project-v2-1.1.vlproj` (a 1.1 project with fades,
-  music, mix and word-timed subtitles) and `project-v1.vlproj` must give exactly the export
-  arguments and subtitle document in `tests/fixtures/export-argv-1.1.0.txt`, captured with the
-  1.1.0 code. Regenerate it only on purpose
-  (`cargo test --lib write_golden_1_1 -- --ignored`). Since 1.6.1 the tests compare with
-  `export-argv-1.1.0-in-1.6.1.txt` (and `export-argv-1.2.5-in-1.6.1.txt`), where the video's
-  sound level is applied per clip; the 1.1.0 and 1.2.5 files stay as the historical record.
-- **Module structure (2.0.1):** `tests/module_cycles.rs` parses `src/` with `syn` and fails on a cycle between top-level modules, on a `crate::` path inside `base`, and on a `#[path]` attribute (comments, `#[cfg(test)]` items and test files are skipped; REQ-153); its own tests use small in-memory sources. The tests of `base` live in the files of `src/base/`; `scratch::tests::file_names_are_those_of_version_2_0_0` pins the names that must not change (REQ-151).
-- **Memory:** a hostile-input test must not build its input at the size of the attack (the
-  subtitle track test once built 10 GB of JSON and brought a machine down). When running the
-  suite on a small machine, cap it, e.g. `systemd-run --user --scope -p MemoryMax=6G
-  -p MemorySwapMax=0 -- cargo test --workspace`. Every test, clippy and coverage run of a
-  development is made under such a cap (8 GB, `MemorySwapMax=0`) and a `timeout`, one cargo job
-  at a time; `target/llvm-cov-target` is deleted after coverage when the disk has less than 8 GB free.
-- **Settings and hostile input:** the settings decisions are pure functions tested with corpora
-  (bad JSON, unknown values, huge numbers, nesting, relative paths, newer formats, 0.2.x files);
-  project files are tested with a hostile corpus (truncated, nested, out-of-range numbers,
-  `../` and absolute paths, control and text-direction characters, more than 16 MiB, a FIFO).
-- **Integration tests** (`tests/ffmpeg_integration.rs`) run the real ffmpeg. Clips are generated
-  at test time (`testsrc2`, `sine`, `color` + `geq`); no media is stored in git. Generated clips
-  are cached in `target/tmp/fixtures/<hash of parameters and ffmpeg>` (written under a unique
-  name and renamed, so parallel tests are safe) and reused by later runs. They cover stream copy, letterbox, fades, cancel, preview frames, `hvc1` tagging
-  (needs libx265), 200 pieces of one file exported frame-accurately with a single input, music
-  mix/cut/fade/volume, subtitle burn-in (needs libass), a real proxy of a 1440p clip, and memory
-  use with a 2 s vs a 120 s source (160×90, 10 fps: the test is about length) (each measured in its own process, re-running the test
-  binary on the hidden helper `memory_peak_of_one_preview`, so tests running in parallel, such as
-  the speech model, do not count). They are skipped when ffmpeg is missing, unless
-  `VIDEOLORE_REQUIRE_FFMPEG=1` (set in CI, where missing libx265/libass also fail).
-- **Real speech recognition** (`real_speech_is_transcribed`, feature `stt`) runs only when
-  `VIDEOLORE_STT_MODEL` points to the pinned Fast file (in CI); the speech is the committed `tests/fixtures/align/speech.mkv`.
-  `higher_levels_are_at_least_as_accurate` needs `VIDEOLORE_STT_MODELS_DIR` with the three
-  speech files (cached in CI): the word error rate of Balanced and Most accurate on a spoken
-  reference sentence must not be worse than Fast's.
-  `abort_check_of_whisper_ignores_heap_garbage` (needs only the model) fills the heap with freed
-  `0xFF` blocks before each transcription: it guards against the whisper-rs 0.16 cancel callback
-  bug, which read the cancel flag from uninitialised heap memory and so made every transcription
-  fail with "code -6" on CI only.
-- **Hardware export** ("Export: Faster"): CI has no graphics hardware, so a fake ffmpeg (unit
-  tests) and a test runner that stands in for each vendor with libx264/libx265 and damages files
-  on request (integration tests) drive every failure path; the tests are listed in
-  [code-hardware.md](code-hardware.md). `VIDEOLORE_REAL_HW=1` exports for real on the machine's
-  own video hardware, and the ignored `qg05_reference_render` measures QG-05 (time, size, VMAF).
-- **Fixtures:** `tests/fixtures/project-v1.vlproj` is a project saved by 0.1.x; it must keep
-  opening (and exporting) identically. `tests/fixtures/export-argv-0.3.0.txt` holds the export
-  commands of 0.3.0 for 6 plans; Best quality must keep producing exactly these.
-- Each implemented requirement (`REQ-NNN (implemented)` in `docs/business*.md`) has at least one
-  test marked `// covers: REQ-NNN`, checked by `scripts/feature-coverage.sh`.
+## Kinds of tests
+- **Unit tests** sit next to the code (`#[cfg(test)]`; larger ones in `*_tests.rs` files beside their module, e.g. `src/app/tests.rs`, `src/ui/tests.rs`). A fake `Runner` (`ffmpeg::fake::FakeRunner`; `holding_streams()` keeps stdout open until killed) replaces ffmpeg. Background jobs really run on threads; tests wait with `app::tests::settle`. Helpers: `app::tests::{state, state_with, FakeDialogs, runner, info, import}`.
+- **Fakes for slow or external things:** a counting runner checks the process cap of every "How hard" level (3, 4, 6) with 20 probes + export + preview, and that lowering it never stops a running process; `Machine::simulated` (e.g. x86-64 without AVX2) drives the recommendation and the old-processor message; a fake transcriber (it "hears" what lies in the audio it gets) and a fake model downloader drive subtitle generation; proxy cache and model folder are temporary folders.
+- **UI tests** run whole frames headless with `egui::Context::run_ui` (layouts at several sizes, dialogs, shortcuts, timeline and music-lane gestures, `ViewportEvent::Close`). The four responsiveness gates in `src/ui/tests.rs` (e.g. `stays_responsive_while_exporting_and_transcribing`: 30 frames while a fake export streams and a fake speech job keeps every core busy, each frame ≤ 200 ms; at most two over 200 ms and none over 1 s) run one at a time (`one_gate_at_a_time`) and are `sampled` (best of up to five runs; limits never relaxed).
+- **Accessibility-tree tests** (`src/ui/ux_tests.rs:Harness`; AccessKit on): role, label (leading icon stripped by `Node::label`, raw in `Node::raw`), bounds and enabled state per frame; clicks, drags (`Harness::drag`, `press_and_move`, five steps) and keys are real input events; `shapes` counts the painted shapes. They check the menus against the action table, the toolbar "»" menu, borders, markers, context menus, Clip details, Esc, the Effects section. REQ-068 "everything reachable" runs at 800x500 with 50 media, 200 lines, a 200-character name, every popup open: each interactive widget is inside the window and its section unless inside a reachable scroll area (`UiCache::containers`). The Effects section (240 px at 1280x800) holds 10 rows: the harness cannot click a row below it.
+- **Module structure** (`tests/module_cycles.rs`, REQ-153): parses `src/` with `syn`; fails on a cycle between top-level modules, a `crate::` path in `base`, a `#[path]` attribute (comments, `#[cfg(test)]` items and test files skipped; macro-generated paths not seen). `scratch::tests::file_names_are_those_of_version_2_0_0` pins file names (REQ-151).
+- **Hostile input:** settings decisions are pure functions tested with corpora (bad JSON, unknown values, huge numbers, nesting, relative paths, newer formats, 0.2.x files); project files with truncated, nested, out-of-range, `../`/absolute paths, control and bidi characters, > 16 MiB, a FIFO. A hostile test never builds its input at the size of the attack (one once built 10 GB of JSON).
+- **Timing:** fake-process limits are long enough for a busy machine (hardware repeat test 200/400 ms a try; probe fakes 200 ms). Wall-clock gates (`project` fifo load 1 s, `media` stuck probe 5 s, `machine` detection 3 s) pass on the best of up to five samples (`base::testing::best_of`); result waits are 120 s harness timeouts. `hw::the_real_hardware_check_is_quick_and_stable` tries a slow pair up to four times. Autosave tests pass a time (`tick(now + 2 min)`); `finish_autosave` joins the worker. Tests that install fonts share the process registry: unique nine-character family names, `fonts::install_patched`; `fonts::with_coverage` fakes script coverage.
+- **Player:** `player/src/tests.rs` uses a scripted `Runner` (ffprobe answers by file name); `player/src/ui_tests.rs` reads the accessibility tree; `player/tests/ffmpeg.rs` plays, pauses, seeks, sets volume, an embedded track, an `.srt`, a 360 drag, a hand-written PGS stream (`pgs`), and compares the video's folder before and after.
+- **Splash:** `src/splash.rs` (`check_program`, `fit_summary`, `decode_capped` 64 MiB) and `src/ui/splash_ux_tests.rs` (`SplashRects::summary_used` vs `summary_room`; REQ-154: both summaries fit at the 7 px floor, `summary_fits_at_floor`).
+- **The `cpu_message` test name is a contract with CI:** `cargo test … cpu_message` must run at least one test.
+
+## Golden output
+- `tests/fixtures/project-v1.vlproj` (0.1.x) and `project-v2-1.1.vlproj` must give exactly `export-argv-1.1.0-in-1.6.1.txt` (and 1.2.5: `export-argv-1.2.5-in-1.6.1.txt`); the 1.1.0 and 1.2.5 originals stay as the record (`write_golden_1_1`, `write_golden_1_2_5`, ignored, run only on purpose). `export-argv-0.3.0.txt`: Best quality for 6 plans. Formats 4 and 5: `project-v4-1.2.6.vlproj`, `project-v5-1.3.0.vlproj`, `export-argv-v4-v5-in-2.0.4.txt` (`render/golden_tests.rs`). A project without later effects exports exactly as before.
+- `text/size_tests.rs` pins the 2.0.4 text sizes.
+
+## Integration tests (real ffmpeg)
+`tests/ffmpeg_integration.rs` holds the shared `Env` (fixtures, `job`, `export`, `frame_rgb`, `format_of`) and the basics; the files below are its modules. Clips are generated at test time (`testsrc2`, `sine`, `color`, `geq`) and cached in `target/tmp/fixtures/<hash of parameters and ffmpeg>` (unique name then rename: parallel-safe). Committed media: `tests/fixtures/align/` (`speech.mkv` synthetic speech with an English SRT track with one misspelt word, `reference.json`, `track.srt`, `make.sh` needs espeak-ng) and `tests/fixtures/overlay/alpha.{png,gif,mov}`. Skipped without ffmpeg unless `VIDEOLORE_REQUIRE_FFMPEG=1` (CI; then a version other than `packaging/ffmpeg.lock`, or missing libx265/libass, fails).
+
+| File | What |
+|---|---|
+| `ffmpeg_integration.rs` | stream copy, letterbox, fades, cancel, preview frames, `hvc1` (libx265), 200 pieces of one file frame-accurate with one input, music, burn-in (libass), a 1440p proxy, memory of a 2 s vs 120 s preview (each in its own process: `memory_peak_of_one_preview` re-run with `VIDEOLORE_MEMORY_PROBE`), `memory_stays_small_with_a_large_picture` |
+| `v12.rs` | whole-video fades, muted and 50 % clips, positioned subtitle burn-in within 2 % (0.5 px at 320x180), SRT read back, MKV + SRT and MP4 + timed text with languages; real speech (`VIDEOLORE_STT_MODEL`; `VIDEOLORE_REQUIRE_STT=1` in CI; fixture SHA-256 `v12::check_fixture`), `higher_levels_are_at_least_as_accurate` (`VIDEOLORE_STT_MODELS_DIR`), `abort_check_of_whisper_ignores_heap_garbage` (guards the whisper-rs 0.16 cancel-callback bug), alignment tests (`alignment_matches_real_speech` ignored: not met) |
+| `v126.rs` | 360: a generated 1024x512 sphere with a meridian and a parallel; camera paths in preview and export |
+| `v13.rs` | texts on black clips with a raised bit rate; texts and lines fixed to the sphere |
+| `v14.rs` | Export dialog presets; Clean audio compared through the same encoding pass (mono → stereo lowers the level by itself) |
+| `v15.rs`, `v16.rs` | Change aspect, Scale, Move on flat colour clips; Apply LUT with 2x2x2 cubes and a 144-point channel swap (preview and export within 2 levels) |
+| `v20.rs` | paused frames in and near the end of a fade and of a clip; format 8 LUT project; required encoders and filters |
+| `v21.rs` | text size against drawn pixels, readability, blink, an installed patched font (`tests/support/patched_font.rs`), a missing font; shadows, Typewriter, Enlarge word; order of texts, LUT and pictures per clip |
+| `v204.rs`, `v204b.rs` | separate subtitle track in MP4 and MKV, Arabic and Devanagari glyphs (empty fontconfig), kept background vs whole render (< 2/255); spatial sound (`pan=quad`, `the_pre_pass_runs_far_faster_than_real_time`) |
+| `v22.rs`, `v22order.rs` | blurred fill cost, speech-region checks; every order pair of the step builder in preview and export, a text by matte, a 360 flat view |
+| `v23overlap.rs` | overlap transparency (still, GIF, MOV), once then transparent, reshaped, the Enlarge word centre in a real render |
+| `hw.rs` | hardware export with simulated vendors (libx264/libx265, SVT-AV1, libvpx-vp9 stand in and damage files on request); independent exports of one test run on threads (`in_parallel`, also the AV1 and VP9 codecs); `VIDEOLORE_REAL_HW=1` uses the real hardware; ignored `qg05_reference_render`, `req315_phase_times` |
 
 ## Coverage
+`scripts/coverage.sh --fail-under 85` measures line coverage of the workspace (`src/main.rs` and `player/src/main.rs` excluded: wiring only); CI runs the tests once, instrumented, with `cargo llvm-cov --workspace --fail-under-lines 85`. Not covered on purpose: native file dialogs (`dialogs.rs`), the macOS-only code, the whisper.cpp glue outside the gated test. If coverage drops far below the usual ~95% after a toolchain change, delete `target/llvm-cov-target`.
 
-`scripts/coverage.sh --fail-under 85` (locally; CI uses the equivalent single
-`cargo llvm-cov --fail-under-lines 85` run) measures line coverage of the library (`src/main.rs` is
-excluded: it only wires the library). Not covered on purpose: the native file dialogs
-(`dialogs.rs`), the macOS Apple Event code (compiled only on macOS) and the real whisper.cpp
-glue outside the gated test.
+## Running the suite on a small machine
+Cap memory and time, one cargo job at a time: `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 timeout 2400 cargo test --workspace`. Two suites at once overload the processor and make the timing gates of `app::hw_tests` fail. Delete `target/llvm-cov-target` and `target/debug/incremental` when the disk is short; `CARGO_INCREMENTAL=0` keeps the build smaller.
 
 ## Continuous integration (`.github/workflows/build.yml`)
-
 | Job | When | What |
 |---|---|---|
-| `check` | every push / PR, `ubuntu-24.04` | the tests' ffmpeg is the pinned linux-x86_64 build of `packaging/ffmpeg.lock` (`scripts/fetch-ffmpeg.sh`, cached by the hash of the lock; `VIDEOLORE_FFMPEG`/`VIDEOLORE_FFPROBE` and `PATH` point to it; with `VIDEOLORE_REQUIRE_FFMPEG=1` the integration tests fail when its version differs from the lock, QG-07, QG-08); `cargo about --version` must print 0.9.3; apt `libasound2-dev pkg-config cmake libclang-dev`; the three speech files cached (checked by SHA-256); fmt; clippy with default, no and all features; the tests once, instrumented (`cargo llvm-cov`, line coverage ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check` (vulnerabilities and yanked crates fail; exceptions only in `deny.toml` with a reason); Rust crate notices up to date; version check; feature coverage 100 %; frozen release docs untouched; fmt, clippy, tests and coverage run with `--workspace`, and the player's `cargo tree` is searched for network and speech crates |
-| (all jobs) | | `Swatinem/rust-cache` with `prefix-key: v2-rust-ggml-portable`, bumped whenever the whisper.cpp build flags change so no old build is reused |
-| (test steps) | | `cargo test` output is saved; on failure `scripts/test-annotations.sh` turns failing tests (name, file/line, panic message), compiler errors and crashed test binaries into GitHub error annotations, readable without logging in |
-| `package-config` | every push / PR | Installer configuration (QG-10): `package.sh <windows-x86_64\|macos-aarch64> <editor\|player> --config-only` and `package.sh linux-x86_64 <editor\|player> --stub`, with checks of the files made; nothing is uploaded |
-| `msrv` | every push / PR | Build all targets with exactly the `rust-version` of `Cargo.toml` (equal to stable by policy; the tests run in `check`) |
-| (security) | | Read-only token by default (`contents: write` only in `package`); every action pinned to a full commit SHA (tag in a comment, all on Node 24); runners pinned (`ubuntu-24.04`, `macos-15`, `windows-2025`); a unit test checks both |
-| `build` | after `check` + `msrv` | Bare release executables for Linux x86_64, macOS arm64 and Windows x86_64, uploaded as artifacts |
-| `package` | `v*` tags and manual runs, after `check` + `msrv` | Per OS: fetch the pinned ffmpeg, build, `scripts/package.sh` (with the ffmpeg smoke test; on Linux it also refuses an executable needing glibc newer than 2.39), the third-party source archive on Linux; artifacts; on tags the five release assets are attached to the GitHub release |
-
-## Integration test files
-
-| File | What it runs with the real ffmpeg |
-|---|---|
-| `tests/ffmpeg_integration/v20.rs` | 2.0.2: a paused frame inside and near the end of a fade is a picture (REQ-144); a format 8 project with whole-video and clip LUTs is read (REQ-137, no ffmpeg needed); `libmp3lame` and the frame, LUT and 360 filters are present (REQ-121) |
-| `tests/ffmpeg_integration.rs` | The shared `Env` (fixtures, `job`, `export`, `frame_rgb`) and the basics: stream copy, letterbox, fades, cancel, preview frames, `hvc1`, 200 pieces of one file, music, burn-in, proxies, memory |
-| `ffmpeg_integration/v12.rs` | A whole-video fade starts and ends in black (also after cutting the first clip); a muted clip is silent and a 50 % clip is a quarter of the level; a positioned subtitle is burned in within 2 % of the frame height (measured 0.5 px off at 320x180) and the preview uses the same document; the exported SRT is read back; MKV + SRT and MP4 + timed text tracks with their language, also with time stamps starting at 5 s |
-| `ffmpeg_integration/v126.rs` | 360° video: a generated 2048x1024 sphere with a white meridian and parallel (an 8K file is generated at test time, never committed); camera paths in preview and export (see [code-360.md](code-360.md)) |
-| `ffmpeg_integration/v13.rs` | Texts: black clips with a raised bit rate so the text is not blurred away, a 2048x1024 black sphere, texts and subtitle lines fixed to the sphere (see [code-text.md](code-text.md)) |
-| `ffmpeg_integration/v14.rs` | Export dialog and Clean audio with its own pink-noise and speech-like clips; the Clean audio gate compares the export with and without the effect through the same encoding pass, because a mono source that becomes stereo lowers the measured level by itself (see [code-export.md](code-export.md)) |
-| `ffmpeg_integration/v15.rs` | Change aspect, Scale, Move: flat colour clips so pixels can be sampled with a small tolerance (see [code-frame.md](code-frame.md)) |
-| `ffmpeg_integration/v16.rs` | Apply LUT: flat colour clips and 2x2x2 cubes that move whole colours (channel swaps, inversion) (see [code-lut.md](code-lut.md)) |
-| `ffmpeg_integration/hw.rs` | Hardware export with simulated vendors; the exports of one test that do not depend on each other run on parallel threads (`in_parallel`) (see [code-hardware.md](code-hardware.md)) |
-| `player/tests/ffmpeg.rs` | The player: play, pause, seek, volume, an embedded track, an `.srt`, a 360 drag; the video's folder is compared before and after |
-
-The golden argv files of 1.1.0 and 1.2.5 still pass: a project without the effects added later
-exports as before. The 1.2.5 file `tests/fixtures/export-argv-1.2.5.txt` was written by the
-ignored test `write_golden_1_2_5`, run only with the 1.2.5 code.
-
-The alignment fixture `tests/fixtures/align/` is committed: `speech.mkv` (synthetic speech,
-Opus, with an English SRT track that has one misspelt word), `reference.json` (where each word
-really starts) and `track.srt`. `make.sh` rebuilds them (development only; needs espeak-ng and
-ffmpeg). Two tests use it when `VIDEOLORE_STT_MODEL` points to the Fast speech file (as in CI):
-`alignment_keeps_the_track_and_times_its_words_from_real_speech` (text and cue times kept,
-every word timed inside its line, at least half of the words found) and the accuracy target
-`alignment_matches_real_speech`, which is `#[ignore]`d because it is not met yet (see
-[code-effects.md](code-effects.md)).
-
-## Other test notes
-
-- The four responsiveness gates in `src/ui/tests.rs` run one at a time (`one_gate_at_a_time`)
-  because each keeps every core busy. Under a heavily loaded machine (or the instrumented
-  coverage run) a frame can pass the 200 ms limit; the gates are not relaxed for it.
-- Timing tests with fake processes use limits long enough for a busy machine (the hardware
-  check repeat test uses 200/400 ms per try). Wall-clock product gates of the logic tests
-  (`project` fifo load 1 s, `media` stuck probe 5 s, `machine` detection 3 s) pass on the best
-  of up to five samples (`base::testing::best_of`, `#[cfg(test)]`, std only; all samples are
-  printed when every one is over), the limits are unchanged; waits for results (preview
-  frames, hardware checks) are harness timeouts of 120 s. The four UI frame gates are sampled
-  the same way (`sampled` in `ui/tests.rs`: the scenario runs up to five times and passes at the
-  first run within its limit, 200 ms for a frame, or at most two frames over 200 ms and none over a second for the
-  responsiveness test; a real slowdown makes every run slow). Load check of 2.0.2: with 8 busy-loop processes on 8 threads the library tests passed except `stays_responsive_while_exporting_and_transcribing` (a frame over 200 ms), before the gates were sampled.
-- Player: `player/src/tests.rs` uses a scripted `Runner` (ffprobe answers by file name, ffmpeg
-  writes a subtitle track, spawned processes hold their output until killed). The UI test
-  harnesses of both programs read egui's accessibility tree; the editor's strips the leading
-  icon from labels (`Node::label`, with the raw one in `Node::raw`).
-- Splash: `src/splash.rs` tests both programs (`check_program`: size, rectangle inside the
-  picture, one to five summary lines, colour), `fit_summary` and the 64 MiB cap
-  (`decode_capped`); `src/ui/splash_ux_tests.rs` measures that the summary fits its panel
-  (`SplashRects::summary_used` against `summary_room`; REQ-154: both programs' summaries fit at the 7 px floor, `summary_fits_at_floor`, an over-long summary does not, a long one is fitted between 15 and 7 px; the player's rendered fit is in `player/src/ui_tests.rs`); the player's start screen tests
-  (REQ-150) are in `player/src/ui_tests.rs` and `player/src/tests.rs` (`real_app`).
+| `check` | every push / PR, `ubuntu-24.04` | the pinned ffmpeg of `packaging/ffmpeg.lock` (`scripts/fetch-ffmpeg.sh`, cached by the lock hash; `VIDEOLORE_FFMPEG`/`VIDEOLORE_FFPROBE`/`PATH`; QG-07, QG-08); `cargo about --version` 0.9.3; apt `libasound2-dev pkg-config cmake libclang-dev`; the three speech files (SHA-256); fmt; clippy with default, no and all features; the tests once instrumented (`cargo llvm-cov`, ≥ 85 %) with `VIDEOLORE_REQUIRE_FFMPEG=1`; `cargo deny check`; notices up to date; version check; feature coverage; frozen release docs; the player's `cargo tree` has no network or speech crate |
+| (all jobs) | | `Swatinem/rust-cache` with `prefix-key: v2-rust-ggml-portable` (bump when the whisper.cpp flags change) |
+| (test steps) | | output saved; on failure `scripts/test-annotations.sh` makes GitHub error annotations (test, file/line, panic, compiler errors, crashed binaries) |
+| `package-config` | every push / PR | `package.sh <windows-x86_64\|macos-aarch64> <editor\|player> --config-only`, `package.sh linux-x86_64 <editor\|player> --stub` (QG-10) |
+| `msrv` | every push / PR | builds all targets with exactly `rust-version` |
+| (security) | | read-only token by default (`contents: write` only in `package`); actions pinned to full SHAs; runners pinned (`ubuntu-24.04`, `macos-15`, `windows-2025`); a unit test checks both |
+| `build` | after `check` + `msrv` | bare release executables for Linux x86_64, macOS arm64, Windows x86_64 (artifacts) |
+| `package` | `v*` tags and manual runs | per OS: pinned ffmpeg, build, `scripts/package.sh` (ffmpeg smoke test; Linux refuses glibc newer than 2.39), third-party source archive; on tags the release assets |
+| `advisories.yml` | Mondays | `cargo deny check advisories` |
 
 ## Suite size and time
-
-Measured on the development machine (8 threads, 15 GiB, ffmpeg 6.1.1) for 1.6.3: 563 library
-tests (2 ignored), 62 integration tests (3 ignored), 33 player tests, 3 player integration
-tests; 13-16 s for the library tests, 45-62 s for the integration tests and 72-99 s for the whole `cargo test --workspace` (they use about
-270 s of processor time, so the run is bound by the processor, not by waiting). The slowest
-tests export 1920x1080 views of 360° videos (about 25 s each).
-
-## 2.0.3 additions
-
-- `tests/ffmpeg_integration/v21.rs`: the text size against the drawn pixels (measure, cap, preview = export), readability pixels on a white frame, blink, an installed font (a copy of the bundled font under another name and another `usWinAscent`, `tests/support/patched_font.rs`, never installed in the system, so only the copy in the work `fonts/` lets the renderer find it), a missing font, the centre of a line after a second line. `v20` has the paused picture at the end of a clip.
-- Unit and interface tests: `measure::tests`, `placement::tests`, `app::placing_tests`, `ui::placing_ux_tests`, `fonts::tests`; `stt::tests` has the recognition pieces (a fake transcriber that hears what lies in the audio it is given, fragments at its ends).
-- `VIDEOLORE_REQUIRE_STT=1` (CI): a missing speech model fails the speech tests instead of skipping them; the speech fixture is checked by SHA-256 (`v12::check_fixture`).
-- The speech tests use the committed `speech.mkv`; no speech synthesiser is needed to run them (QG-14).
-- Load-sensitive gates: `hw::the_real_hardware_check_is_quick_and_stable` tries a slow pair of checks up to four times; `ui::tests::stays_responsive_while_exporting_and_transcribing` allows at most two frames over 200 ms and none over a second (each run, best of up to five).
-
-## 2.0.4 additions (stages 0 to 3)
-
-- New unit and interface files: `app/subs_import_tests.rs`, `app/recovery_tests.rs`, `app/clarity_tests.rs`, `ui/script_ux_tests.rs`, `ui/gesture_ux_tests.rs`, `ui/clarity_ux_tests.rs`; `tests/ffmpeg_integration/v204.rs` (real ffmpeg: a separate subtitle track in MP4 and MKV, glyphs of the bundled Arabic and Devanagari faces against a reference render; the render runs with an empty fontconfig file so no installed font can help).
-- The interface harness (`ui/ux_tests.rs:Harness`) counts the shapes of the last frame (`shapes`), which the safe-area test compares with and without the option. Pointer drags use `Harness::drag` and `press_and_move`; a drag moves in five steps, so a test that needs an exact distance reads the state during the drag (`cache.edge_drag`) or allows a frame.
-- Autosave tests pass a time (`tick(now + two minutes)`) instead of waiting; `AppState::finish_autosave` joins the worker. The copy and the project file are compared by modification time, so a test sets the project's time in the past.
-- `fonts::with_coverage` (test only) sets which scripts an installed font covers, one test at a time, so the note for missing CJK fonts is tested without a CJK font on the machine.
-- Test counts after stage 3: 688 library tests (2 ignored), 76 integration tests (3 ignored), 7 module-cycle tests, 34 player tests, 3 player integration tests.
-
-
-## 2.0.4 additions (stages 4 to 7)
-
-- New files: `hwdec/tests.rs` (decode probe with a fake ffmpeg), `instance/tests.rs` (lock, heartbeat, inbox limits, with real files in a temporary folder), `app/speed_tests.rs`; new cases in `hwenc/tests.rs` (a runner whose processes write after a delay and report processor time classifies busy and hanging tries; times are scaled to a hundredth of the 1 s and 4 s limits), `app/hw_tests.rs` (pause, session skip, device choice, decoders and the fallback, repeat text), `export/hw_tests.rs` (the compare runs of the check are counted and read), `preview.rs` (ten Scale changes draw the background once), `packaging.rs` (workflow texts, `package.sh tool` with a local file and a wrong hash, the licence file bytes, the launcher run through `sh`), `desktop.rs` (the menu data).
-- `tests/ffmpeg_integration/hw.rs`: the simulated hardware stands in with SVT-AV1 and libvpx-vp9 (AV1 presets drop `-maxrate`, which SVT-AV1 refuses); AV1 and VP9 projects use 1 s clips (the software encoders are slow); the 60-cut project of `the_check_accepts_correct_files_of_rich_projects` is what showed that a short check cannot rely on the plan's frame count (it falls back to the whole graph). `v204.rs` compares the preview with a kept background with the whole render of the same picture (mean difference below 2 of 255).
-- The `cpu_message` test name is a contract with CI: `cargo test … cpu_message` must run at least one test.
-- Test counts after stage 7: 735 library tests (2 ignored), 80 integration tests (3 ignored), 7 module-cycle tests, 34 player tests, 3 player integration tests; the workspace run takes about 70 s on this computer.
-
-## 2.0.4 additions (stages 8 to 14)
-
-- Spatial sound: `spatial::tests` (rotation, cardioid pair, camera path, WAV header, pre-pass with a fake runner including the partial-frame carry, failure and cancel), `render::tests` (the graph input and offsets, the 360 video export and the preview cap), `export::tests` (pre-pass before the export, failure, cancel), and the real-ffmpeg tests in `tests/ffmpeg_integration/v204b.rs` (a 4-channel clip made by `pan=quad`: the export and the preview put a left sound in front when the camera turns left, behind it on the other side, and a 360 video export keeps the sound; `the_pre_pass_runs_far_faster_than_real_time` prints the speed).
-- Picture subtitles: `media::tests` (stream numbers and kinds, caps, sanitising), `render::tests` (the overlay and the split), the player menu tests, and `player/tests/ffmpeg.rs` with a hand-written PGS stream (`pgs`).
-- Quality items: golden argv of formats 4 and 5 (`render/golden_tests.rs`), the large-picture memory test (`memory_stays_small_with_a_large_picture`), pointer tests of the colour picker and the Export dropdowns, and the notices test for the bundled fonts. The speech tests read `tests/fixtures/align/speech.mkv`; the 360 test sphere of `v126.rs` is 1024 x 512.
-- Measured on the development machine: the cycle check (`tests/module_cycles.rs`) runs in 1.7 s; the pinned ffmpeg and ffprobe are 173 MB each unpacked; the pre-pass of 120 s of 4-channel sound takes 1.7 s in the test profile. The size of the download and the CI times (QG-06) are read from the first CI run.
+2.3.0 release (development machine, 8 threads, pinned ffmpeg 9.0.2): 997 library tests (3 ignored), 118 integration tests (5 ignored), 7 module-cycle tests, 2 page tests, 44 player tests, 4 player integration tests. `cargo test --workspace` (built) takes 119-127 s (139 s before the release clean-up): library 32-37 s, integration 75-77 s; the run is bound by the processor. Slowest: `hw::av1_and_vp9_presets_use_the_hardware_and_match_best_quality` (55 s before its codecs ran in parallel), `v16::a_144_point_lut_…` (34 s), the two `v13` sphere tests (30 s each); in the library the LUT parser tests of a 144-point table (18-19 s, debug build) and, only where the maintainer's folder exists, `the_maintainers_luts_are_read_when_the_folder_exists` (34 s). Per-test times: `RUSTC_BOOTSTRAP=1 <test binary> -Z unstable-options --report-time`.

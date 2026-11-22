@@ -642,31 +642,8 @@ impl Command {
             Command::RetimeSubtitle { .. } => "Change subtitle timing",
             Command::SetPreset(_) | Command::SetSubtitleStyle(_) => "Subtitle style",
             Command::SetLanguage(_) => "Subtitle language",
-            Command::ApplyEffect {
-                effect: EffectKind::Fade,
-                ..
-            } => "Fade IN/OUT",
-            Command::ApplyEffect {
-                effect: EffectKind::Subtitles,
-                ..
-            } => "Create subtitles",
-            Command::ApplyEffect {
-                effect: EffectKind::CleanAudio,
-                ..
-            } => "Clean audio",
-            Command::ApplyEffect {
-                effect: EffectKind::ChangeAspect,
-                ..
-            }
-            | Command::SetAspect(_) => "Change aspect",
-            Command::ApplyEffect {
-                effect: EffectKind::Scale,
-                ..
-            } => "Scale",
-            Command::ApplyEffect {
-                effect: EffectKind::Move,
-                ..
-            } => "Move",
+            Command::ApplyEffect { effect, .. } => effect.undo_name(),
+            Command::SetAspect(_) => "Change aspect",
             Command::MoveRow { row, mv, .. } => super::applied::move_label(*row, *mv),
             Command::SetLut { .. } => "Apply LUT",
             Command::RemoveLut(_) => "Remove LUT",
@@ -679,7 +656,6 @@ impl Command {
                 ..
             }) => "Scale",
             Command::SetPicture(_) => "Move",
-            Command::ApplyEffect { .. } => "Volume",
             Command::SetClipVolume { .. } => "Clip volume",
             Command::SetCleanStrength { .. } => "Clean audio strength",
             Command::SetSpeechEnhance { on: true, .. } => "Normalise speech",

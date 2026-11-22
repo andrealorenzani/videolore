@@ -6,7 +6,7 @@ Back to the [index](code.md). Requirements REQ-135, REQ-136, REQ-137.
 
 | Where | What |
 |---|---|
-| `src/lut/mod.rs`, `lut/parse.rs`, `lut/store.rs` | the `Lut` table (16-bit values + hash), the streamed `.cube` parser (`parse`, `parse_reader`), `.3dl`/`.csp`, the cache, `Load`, Work copies (2.1.0, [code-2.1.0.md](code-2.1.0.md)) |
+| `src/lut/mod.rs`, `lut/parse.rs`, `lut/store.rs` | the `Lut` table (16-bit values + hash), the streamed `.cube` parser (`parse`, `parse_reader`), `.3dl`/`.csp`, the cache, `Load`, Work copies (2.1.0, [code-layers.md](code-layers.md)) |
 | `src/timeline.rs` | `clip_luts: Vec<ClipLut>` (since 1.6.1 there is no whole-video LUT: `FrameTarget::Whole` writes every clip's entry); `lut_of`, `set_lut`, `any_lut`; split/merge/remove rules; `DIFFERENT_LUTS` |
 | `src/project.rs` | schema 8; `validate_luts` (damaged entries removed with a note, missing files named) |
 | `src/render/` | `Segment.lut_whole` / `lut_clip`, `lut_for`, `lut_chain` (graph), `RenderError::Lut`, `FrameKey.luts`, the re-encode rule in `plan_export_choice` |

@@ -41,51 +41,56 @@ pub enum Row {
     Unknown,
 }
 
+/// The names of the rows without an id, as written in the project file: the single list
+/// read by [`Row::name`] and [`Row::parse`] (a new kind of row is one entry here).
+const NAMED: [(Row, &str); 10] = [
+    (Row::Lut, "lut"),
+    (Row::Subtitles, "subtitles"),
+    (Row::Volume, "volume"),
+    (Row::Clean, "clean"),
+    (Row::Crop, "crop"),
+    (Row::Frame, "frame"),
+    (Row::Scale, "scale"),
+    (Row::Move, "move"),
+    (Row::Fade, "fade"),
+    (Row::Unknown, "unknown"),
+];
+
+/// The prefixes of the rows with an id (`text:<id>`…), and how each row is made from its id.
+type MakeRow = fn(u64) -> Row;
+const WITH_ID: [(&str, MakeRow); 3] = [
+    ("text:", Row::Text),
+    ("picture:", Row::Picture),
+    ("overlap:", Row::Overlap),
+];
+
 impl Row {
     /// The name written in the project file: `lut`, `subtitles`, `text:<id>`, `picture:<id>`.
     pub fn name(self) -> String {
-        match self {
-            Row::Lut => "lut".into(),
-            Row::Subtitles => "subtitles".into(),
-            Row::Volume => "volume".into(),
-            Row::Clean => "clean".into(),
-            Row::Crop => "crop".into(),
-            Row::Frame => "frame".into(),
-            Row::Scale => "scale".into(),
-            Row::Move => "move".into(),
-            Row::Fade => "fade".into(),
-            Row::Text(i) => format!("text:{i}"),
-            Row::Picture(i) => format!("picture:{i}"),
-            Row::Overlap(i) => format!("overlap:{i}"),
-            Row::Unknown => "unknown".into(),
-        }
+        let (prefix, id) = match self {
+            Row::Text(i) => ("text:", i),
+            Row::Picture(i) => ("picture:", i),
+            Row::Overlap(i) => ("overlap:", i),
+            _ => {
+                let named = NAMED.iter().find(|(r, _)| *r == self);
+                return named.map_or("unknown", |(_, n)| n).into();
+            }
+        };
+        format!("{prefix}{id}")
     }
 
     /// The row of a name written by [`Row::name`]; anything else is [`Row::Unknown`].
     pub fn parse(s: &str) -> Row {
-        match s {
-            "lut" => Row::Lut,
-            "subtitles" => Row::Subtitles,
-            "volume" => Row::Volume,
-            "clean" => Row::Clean,
-            "crop" => Row::Crop,
-            "frame" => Row::Frame,
-            "scale" => Row::Scale,
-            "move" => Row::Move,
-            "fade" => Row::Fade,
-            _ => {
-                let id = |rest: &str| rest.parse::<u64>().ok();
-                if let Some(i) = s.strip_prefix("text:").and_then(id) {
-                    Row::Text(i)
-                } else if let Some(i) = s.strip_prefix("picture:").and_then(id) {
-                    Row::Picture(i)
-                } else if let Some(i) = s.strip_prefix("overlap:").and_then(id) {
-                    Row::Overlap(i)
-                } else {
-                    Row::Unknown
-                }
-            }
+        if let Some((r, _)) = NAMED.iter().find(|(_, n)| *n == s) {
+            return *r;
         }
+        WITH_ID
+            .iter()
+            .find_map(|(prefix, make)| {
+                let id = s.strip_prefix(prefix)?.parse::<u64>().ok()?;
+                Some(make(id))
+            })
+            .unwrap_or(Row::Unknown)
     }
 }
 

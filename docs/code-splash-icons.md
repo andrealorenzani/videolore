@@ -49,25 +49,7 @@ How icons reach the controls: `ActionId::icon()` (exhaustive `match`, so a new a
 `effects::effect_icon` the Effects rows; `markers::icon_of` the timeline markers (drawn on the marker's shape);
 `popups::popup_icon` the popup titles; the modal headings and the Export dialog have their own constants.
 
-| Control | Icon | Control | Icon |
-|---|---|---|---|
-| New / Open / Save / Save as | file-plus / folder-open / floppy-disk / floppy-disk-back | Import / Export / Export subtitles | download-simple / export / subtitles |
-| Quit | sign-out | Undo / Redo | arrow-u-up-left / arrow-u-up-right |
-| Cut / Copy / Paste / Delete | scissors / copy / clipboard / trash | Split / Merge | split-horizontal / arrows-merge |
-| Move left / right | arrow-left / arrow-right | Add to timeline / Add music | film-strip / music-note |
-| Clip details | sliders | Settings | gear |
-| Play / Pause | play / pause | Go to start / end | skip-back / skip-forward |
-| Previous / next frame | caret-left / caret-right | Fade IN/OUT (row, marker, popup) | circle-half |
-| Subtitles (row, marker, popup, lines) | subtitles | Volume | speaker-high |
-| Clean audio | waveform | Change aspect | frame-corners |
-| Scale | arrows-out | Move | arrows-out-cardinal |
-| Apply LUT | palette | Generate subtitles | magic-wand |
-| Add text / Text popup | text-t | Align horizontally / vertically | align-center-horizontal / -vertical |
-| Reset | arrow-counter-clockwise | Set POV (marker, popup) | crosshair / video-camera |
-| Show boxes | bounding-box | Zoom in / out / fit | magnifying-glass-plus / -minus / corners-out |
-| Reset layout | sidebar | Keyboard shortcuts | keyboard |
-| About, notices | info | Warnings (ffmpeg missing, replace) | warning |
-| Splash window / Close | info / x | Add-fade handle | plus |
+Which icon each control has is read from the code: `ActionId::icon` (menus and toolbar; an effect action takes its effect's icon), `ui::effects::effect_icon` (Fade circle-half, Subtitles subtitles, Volume speaker-high, Clean audio waveform, Change aspect frame-corners, Scale arrows-out, Move arrows-out-cardinal, Apply LUT palette, Change speed sliders), `markers::icon_of`, `popups::popup_icon`; warnings use warning, the splash info and x.
 
 videolore player has its own short list (`player/src/ui.rs`, module `icon`): Open (folder-open), Quit (sign-out), Full screen
 (corners-out), Subtitles and each track (subtitles), None (x), Open .srt (file-video), About (info), Play/Pause, Start

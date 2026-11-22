@@ -3,175 +3,108 @@
 The [roadmap](roadmap.md) split into suggested versions and batches, in the order of implementation. This is a suggestion, not a commitment: Andrea chooses what is built and when.
 
 ## Version numbers
-- Each development gets one new version: the last number goes up by one (the release of 1.6.3 opened 2.0.0). Batch N ships as 2.0.(N+1): batch 1 is 2.0.2, batch 15 is 2.0.16, except batches 2 to 4. 2.0.1 was the module-cycles refactor and is delivered.
-- Batches 2, 3 and 4 (Readable text, Subtitle placement, Subtitle accuracy) are all built in 2.0.3 (one development).
-- **All remaining batches (5 to 15 and the continuous items) are built together as version 2.0.4** (one development, REQ-180 to REQ-299, planned in the business plan). The per-batch headings below keep their planned versions as the record of the batch split; the roadmap items stay open until their status is recorded.
-- **The next development is 2.1.0** (built, awaiting release): large LUT import, Applied effects and their order, shadows, word highlight colours, Enlarge word and Typewriter. It is a development of its own, not a batch; see its section below.
-- What is left from 2.0.4 (manual checks and follow-up items) is not a version and not a batch: see "Finish 2.0.4" below. The number 2.0.5 is not used for it.
-- Andrea can name a minor version (for example 2.1.0) for any batch.
-- A batch may need more than one development; a development should not mix batches unless the items share code.
+- Each development gets one new version: the last number goes up by one. After the release of 2.3.0 the next version is 3.0.0; the batches below are the developments 3.0.1 to 3.0.10 in that order.
+- A batch may need more than one development. Andrea can name a minor version (for example 3.1.0) for any batch.
+- Format changes (project file) are grouped where possible, because each one makes older versions refuse the newer file.
 
 ## Summary
 
 | Version | Batch | Goal |
 |---|---|---|
-| 2.0.1 | delivered | Module-cycles refactor: shared helpers in one module, no module cycle, automatic cycle check |
-| 2.0.2 | 1. Verify the release (delivered) | A green suite on the current code, the checks of the bundled ffmpeg 9.x and the splash files confirmed |
-| 2.0.3 | 2. Readable text (built in 2.0.3) | Text stays readable on any picture and fits its box predictably |
-| 2.0.3 | 3. Subtitle placement (built in 2.0.3) | Moved subtitle lines and text items stay inside the picture and are easy to find |
-| 2.0.3 | 4. Subtitle accuracy (built in 2.0.3) | Reused and generated subtitles reach the accuracy target (the target decision REQ-177 is open) |
-| 2.0.4 | 5. Subtitle files and fonts (built in 2.0.4) | Import and more export formats for subtitles; subtitle fonts for more scripts |
-| 2.0.4 | 6. Editing gestures and safety (built in 2.0.4) | Autosave, timeline gestures and keyboard use |
-| 2.0.4 | 7. Whole-video and keyframe clarity (built in 2.0.4) | Whole-video copies and keyframes are clear and easy to edit |
-| 2.0.4 | 8. Faster hardware export (built in 2.0.4) | Faster really faster, and fewer wasted checks on busy computers |
-| 2.0.4 | 9. Hardware reach (built in 2.0.4) | Hardware export verified on more systems and for more cases |
-| 2.0.4 | 10. Export and preview speed (built in 2.0.4) | Measured speed of large frames, 4K, blurred fill and preview |
-| 2.0.4 | 11. Platforms and installers (built in 2.0.4) | One window, file managers, Wayland, menu bar, installer checks |
-| 2.0.4 | 12. Interface (built in 2.0.4) | Remembered windows, toolbar and shortcuts choice, accessibility |
-| 2.0.4 | 13. Video player (built in 2.0.4) | Opening from the file manager, session positions, preferences |
-| 2.0.4 | 14. 360 video (built in 2.0.4) | Anchored subtitles, 360 export details and camera |
-| 2.0.4 | 15. Effects and frame (built in 2.0.4) | New effects and LUT options, each with its own requirements |
-| 2.1.0 | Next development (built, awaiting release) | Large LUT import, Applied effects and their order, shadows, word highlight colours, Enlarge word and Typewriter |
-| not a version | Finish 2.0.4 | Manual checks and future work left from 2.0.4 |
-| continuous | Quality and measurements | Measurements and architecture debt, done alongside any batch |
+| not a version | Release checks (Priority 1) | Manual checks, measurements and the decisions Andrea must make |
+| 3.0.1 | Text and editing fixes | Texts stay useful when the picture or the video moves; safer editing |
+| 3.0.2 | Overlap media follow-up | Overlaps are easier to edit and the large-file limits are settled; the one project format change of the batch |
+| 3.0.3 | Subtitle accuracy | Reused subtitles reach the accuracy target, or the decision is recorded |
+| 3.0.4 | Export and hardware speed | Measured and faster Faster, export of large frames and blurred fill |
+| 3.0.5 | Hardware reach | Hardware export verified on more systems and cases |
+| 3.0.6 | Platforms, installers and interface | Platform behaviour, Quit item, Wayland drops, ruler and multi-selection |
+| 3.0.7 | Video player | Picture subtitles and a lighter player package |
+| 3.0.8 | 360 video | 360 export details, sound and sphere-fixed items |
+| 3.0.9 | Effects, frame and LUT | Clean audio default, effect order copies, LUT safety |
+| 3.0.10 | Quality and project page | Shared keyframe module, split of the large modules, CI times, release notes |
+| continuous | Measurements | Done with the batch they measure |
 
-## 2.1.0 — Applied effects, subtitle styles and LUT import (next development, built)
-- **Goal**: the maintainer's three 144-point LUT files can be chosen; the effects of a clip are listed in the Applied effects widget and their order can be chosen; texts get a shadow; subtitles get two highlight colours and two word styles (Enlarge word, Typewriter).
-- **Status**: built in 2.1.0; REQ-300 to REQ-311 are implemented, each with a test. The release follows the development (STATUS done in the business documents).
-- **Manual checks** (by hand, see [release verification](business-verification.md)): the three maintainer LUTs chosen on a clip on a real computer, with the preview and export compared by eye (REQ-300); the preview start with a 256-point LUT on a real computer (roadmap, "Binary input for 256-point LUTs").
-- **Depends on**: nothing open. It is the next version after 2.0.4 and is not a batch of the roadmap.
-- **Postponed to later versions** (no order yet, see the [roadmap](roadmap.md)): binary input and a smaller preview table for 256-point LUTs; the 360 sphere-fixed items in the order; keyframes for the text shadow; a user order for the fixed effects; a separate place for each subtitle line in the widget; Enlarge word and Typewriter in the subtitle files; the Typewriter caret and typing sound.
+## Not a version — Release checks (Priority 1)
+- **Goal**: the checks that need real systems, hardware and ears, and the decisions the maintainer makes.
+- **Items**: manual checks of 2.0.4; measurements of 2.0.3; the REQ-177 decision and the second speech clip; the REQ-315 decision on integrated graphics; player builds on real systems; the 1.5.x format 8 check; Clean audio and MP3 by ear; Windows and macOS test runs; the moving-camera measurement on 9.0.2; one release run to review the process.
+- **Depends on**: Andrea. The results go to [release verification](business-verification.md).
 
-## Finish 2.0.4 (manual checks and future work; not a version, not a batch)
-- **Goal**: the checks that need real systems, hardware and ears, and the follow-up items of the 2.0.4 build. Every 2.0.4 requirement is built except REQ-177 (open decision, see the list); no implementation batch is left from 2.0.4.
-- **Manual checks** (by hand, see [release verification](business-verification.md)): items 26, 29 and 30 (screen readers, Windows "Open with", window places); items 31 to 35 (clip speed, picture items, off-view arrows, per-clip camera paths, picture subtitles in the player).
-- **Future work from the 2.0.4 build** (no order yet):
-  1. Asynchronous pre-pass for the spatial sound (REQ-273): the preview and the export prepare the turned sound synchronously now.
-  2. Earlier display of picture subtitles: one already on screen when a run starts appears at its next change (REQ-253).
-  3. Picture subtitles on 360 clips and on paused stills (REQ-253).
-  4. Camera roll in the ambisonic rotation (REQ-273; the roll is not applied now).
-  5. Measure the CI times (QG-06) from the first CI run after the QG-14 change.
-  6. REQ-177: decide the accuracy target (see the [subtitle accuracy](business-subtitle-accuracy.md) document).
-  7. REQ-206: skeleton render of the hardware check.
-  8. Blurred fill in playback.
-  9. macOS Quit item in the application menu (Cmd+Q stays with the prompt).
-  10. Not built, no batch yet (from QG-16 and QG-17): one keyframe module for the 360 camera and the picture; smaller project page images; the player's package list (only if it is published).
-- **Depends on**: items 1 to 9 are independent; the manual checks need real Windows, macOS and Linux systems, a 360 player, a Blu-ray rip and a DVD rip, and ears.
+## 3.0.1 — Text and editing fixes
+- **Goal**: texts stay useful when the picture or video moves; editing protects the user.
+- **Items**: text follows the picture (or a warning); text follows video edits (decision); font scan repaint; longer text times (decision); migrated text sizes (only if asked); double-click on a clip with the LUT; keyframe popup usability; time-based LUT progress; undo steps when a media file is removed.
+- **Why together**: all change text placement or editing behaviour in the same screens.
+- **Order inside**: the decisions first (text follows edits, text in .srt); then the fixes.
 
-## 2.0.1 — Module cycles (delivered)
-- **Status**: delivered in 2.0.1. The shared helpers are in `src/base/`, the top-level modules form no cycle, and `tests/module_cycles.rs` fails `cargo test` when a cycle is added. Not a batch; see the [changelog](changelog.md).
+## 3.0.2 — Overlap media follow-up
+- **Goal**: overlaps are easy to edit, and the limits and the large-file cost are settled.
+- **Items**: drawn handles on the overlap box; re-probe MOV at use; lane zoom; full-size preview of large overlays (after measuring); memory and time of large overlay files; alpha in hardware decoders (software path cost); MOV sound (decision); number of overlaps per clip (decision); split keeps overlaps per half (check); default place of new picture rows (check); picture item limits (decision); removal of old picture items (format change, only when no project needs it); overlay keyframes and rotation (format change, only if asked); overlap in 360 export (decision).
+- **Why together**: all are overlap and picture-item behaviour; the format changes go into one development.
+- **Order inside**: measurements and decisions first; then handles and lane; the format changes last, with the project format test.
+- **Depends on**: the 16 MP limit and the overlay format of 2.3.0; a 2.3.0 project fixture for the format test.
 
-## 2.0.2 — Verify the release (delivered)
-- **Status**: delivered in 2.0.2; see the [changelog](changelog.md). The automated checks run in the test suite and in the automatic builds. The manual checks stay in [release verification](business-verification.md) until the maintainer records their results there.
-- **Left over, placed in the roadmap**: the Windows and macOS test runs, the moving-camera measurement on 9.0.2, the UI frame gates under load, the hardware probe success fakes, the notices script after each version bump (Priority 1, 11 and 12 of the [roadmap](roadmap.md)). The paused-picture defect is the first item of 2.0.3.
+## 3.0.3 — Subtitle accuracy
+- **Goal**: reused and generated subtitles reach the 90% and 0.3 s target, or the decision is recorded and the strict test is set.
+- **Items**: meet the accuracy target (REQ-177); pace-aware method judged on the second clip; five-minute real-speech test (REQ-178); gated alignment test on CI's versions; larger speech levels measured; replaced files re-checked; subtitle fonts for other scripts (licence check of each font); Enlarge word and Typewriter in subtitle files (decision).
+- **Why together**: all change the alignment and subtitle export code.
+- **Depends on**: Andrea's decision on the target and the second clip `tests/fixtures/align/second-clip-30s.wav`. Without them the batch is only the measurements and the font licence checks.
 
-## 2.0.3 — Readable text (batch 2, delivered in 2.0.3)
-- **Status**: delivered in 2.0.3; see the [changelog](changelog.md). The remaining checks are in the [roadmap](roadmap.md), Priority 1 (font names and the cost of an installed font on macOS and Windows, REQ-165 and REQ-166).
+## 3.0.4 — Export and hardware speed
+- **Goal**: Faster is quicker than Best quality on common computers, and export of large material is measured and faster.
+- **Items**: make Faster really faster on integrated graphics (cheaper check, or a target per kind of graphics); decode and upload speed; busy-or-hanging test and skip rule; 4K and HEVC preset speed; large-frame export (warn or limit); blurred fill export time; playback of the blurred fill and Scale in the preview; Clean audio cost in the preview.
+- **Why together**: all change the export and preview pipelines and their timing.
+- **Order inside**: measure first (iGPU, 4K, large frames, blurred fill); then the check; then the preview.
+- **Depends on**: Andrea's decision on REQ-315 and a QG-05 baseline on an Intel laptop.
 
-## 2.0.3 — Subtitle placement (batch 3, delivered in 2.0.3)
-- **Status**: delivered in 2.0.3; see the [changelog](changelog.md). Still open in the [roadmap](roadmap.md), Priority 2: text items and picture moves, and the libass checks on macOS and Windows.
+## 3.0.5 — Hardware reach
+- **Goal**: hardware export works on more systems and cases, and each system is verified.
+- **Items**: verify on Windows (NVIDIA, Intel, AMD), Linux (NVIDIA, AMD) and macOS (Apple); Ubuntu 24.04 with the included ffmpeg (decision: ffmpeg build or libva); Fedora note; Intel HEVC with newer drivers; choice of the graphics card; hardware check of 360 export with texts; hardware export with frame effects; alpha decoding on real graphics (with 3.0.2).
+- **Why together**: all need the same QG-05 checklist and test hardware.
+- **Depends on**: 3.0.4 (the check is the base); real hardware of Andrea or testers.
 
-## 2.0.3 — Subtitle accuracy (batch 4, delivered in 2.0.3 except the target)
-- **Status**: delivered in 2.0.3 except REQ-177, the accuracy target of reused subtitles, which is planned and open: see the [roadmap](roadmap.md), Priority 1 (decision point) and Priority 3.
-- **Still open in the roadmap**: the gated alignment test on CI's versions, the five-minute real-speech test, and the larger speech levels.
+## 3.0.6 — Platforms, installers and interface
+- **Goal**: the programs behave like normal windows on each system.
+- **Items**: Wayland drag and drop (when the library supports it); macOS Quit item; idle heartbeat for the one-window lock; detection during installation (decision); builds of 1.2.0 on real systems; sub-second ruler labels; multi-selection lost (report needed).
+- **Why together**: window, menu and lock behaviour.
+- **Depends on**: the windowing library's support for Wayland drops.
 
-## 2.0.6 — Subtitle files and fonts
-- **Goal**: subtitles can be imported and exported in more formats, and scripts other than Latin, Greek and Cyrillic look right.
-- **Items**: import .srt and .vtt files (with optional re-timing); WebVTT export; ASS export with positions; switchable subtitle track in MP4 and MKV; re-check the tracks of replaced files; subtitle fonts for other scripts; text from picture-based tracks (OCR, decide later).
-- **Why together**: all are subtitle file work and touch the same export code.
-- **Order inside**: WebVTT export, then ASS (needs positions), then import (re-timing uses batch 4); fonts need the licence check of each font, and can run in parallel.
-- **Depends on**: batch 4 for import re-timing; the font licences are Andrea's check.
+## 3.0.7 — Video player
+- **Goal**: the player shows every subtitle and is smaller.
+- **Items**: picture subtitles on 360 clips; picture subtitles at a start or a pause; lighter ffmpeg build for the player (measure first).
+- **Depends on**: nothing open; the 360 subtitles follow 3.0.8 if they share its code.
 
-## 2.0.7 — Editing gestures and safety
-- **Goal**: work is saved automatically, and the timeline can be edited with the mouse and the keyboard faster.
-- **Items**: autosave and crash recovery (first); drag clip edges to trim; drag subtitle markers; drag fade markers; keyboard navigation of timeline markers; Ctrl/Cmd+V for clips; keep undo history when a file is removed; group actions on selected lines; snap and safe-area guides.
-- **Why together**: all change the timeline's gestures and selection; autosave is independent and goes first because it protects work.
-- **Depends on**: autosave must not change the project format (the project file is saved as it is); the gestures share the timeline hit code with batch 3.
+## 3.0.8 — 360 video
+- **Goal**: 360 export is clear about what it keeps, and the sound and the sphere-fixed items are right.
+- **Items**: faster 360 export and moving-camera export; GPU or SIMD path for reprojection (if the look-around target is missed); instant look-around; roll in the spatial sound; four-channel sound order check; spatial sound pre-pass in the background; spherical information check in real players; video format presets and frame effects in 360 export (decision); mixed 360 and flat clips; movable order of sphere-fixed items; Enlarge word and Typewriter on 360 clips; stereo 3D, cube maps and 180° (scope decision, last).
+- **Why together**: all are 360 behaviour and its camera.
+- **Order inside**: subtitle and text items first (most visible); then export details; then the camera.
+- **Depends on**: 3.0.10 (the shared keyframe module) before the camera items.
 
-## 2.0.8 — Whole-video and keyframe clarity
-- **Goal**: a whole-video effect and its keyframes are clear, and clips added later are not a surprise.
-- **Items**: whole-video copies diverge (show the copies apart, as decided by Andrea on 2026-11-20); message when clips are added after a whole-video effect; picture handles for every effect; keyframe popup usability; copy keyframes between clips; double-click on a clip that already has the LUT.
-- **Why together**: all change how the whole-video copies and the popups behave.
-- **Depends on**: none open. The picture handles follow the decision to show the copies apart.
+## 3.0.9 — Effects, frame and LUT
+- **Goal**: new effect choices are safe for existing projects; LUT work keeps the colours the user expects.
+- **Items**: Clean audio default on quiet speech; keyframes for the text shadow; remove several whole-video copies at once; per-line order in the Applied effects widget; copy the order between clips; audio fades after the sound group (check); LUT colour management (decision); LUT loading cancelled on close; Find the LUT file read in the background; exact conversion of combined Scale and Move (only if a user reports a change); more effect types (each with its own requirements first).
+- **Why together**: all change the effect model and the order of effects.
+- **Order inside**: requirements first for any new effect; the small fixes (cancel on close, background read) first.
+- **Depends on**: requirements in the business documents before any new effect.
 
-## 2.0.9 — Faster hardware export
-- **Goal**: Faster is quicker than Best quality on the common computers, and the check wastes less time on busy computers.
-- **Items**: make Faster really faster on integrated graphics (cheaper check or per-kind target); limit the background work of the check; skip a candidate that timed out twice; tell a busy computer from a hanging candidate; show the repeat in Settings > Advanced; under extreme load the check can still find no hardware (accepted until measured).
-- **Why together**: all change the check and its timing; the skip rule needs the busy-or-hanging test first.
-- **Order inside**: measure the iGPU case first (the QG-05 target may change); then the busy-or-hanging test; then the skip rule and the background limit; then the Settings message.
-- **Depends on**: Andrea's Intel laptop for the measurement; a new QG-05 baseline; the architecture plan of the check and of the failure memory rules.
-
-## 2.0.10 — Hardware reach
-- **Goal**: hardware export works on more systems and for more cases, and each system is verified.
-- **Items**: verify hardware export on every system (Windows NVIDIA, Intel, AMD; Linux NVIDIA, AMD; macOS Apple); Ubuntu 24.04 with the included ffmpeg (libva 2.20); Fedora RPM Fusion note; Intel HEVC with newer drivers; constant-quality mode for Quick Sync; choose the graphics card; hardware for AV1 and VP9 and hardware decoding (in scope, decided by Andrea on 2026-11-20); hardware check of 360 export with texts; hardware export with frame effects.
-- **Why together**: all need the same QG-05 checklist and the same test hardware.
-- **Depends on**: batch 8 (the check is the base); real hardware of Andrea or of testers; the Ubuntu option (rebuild of ffmpeg or a shipped libva) is a decision for Andrea.
-
-## 2.0.11 — Export and preview speed
-- **Goal**: measured and, where needed, faster export and preview for large material.
-- **Items**: export speed for 4K and HEVC presets; export speed of large frames (warn or limit, the 4096 px cap is an assumption); export time of blurred fill; faster blurred fill and Scale in the preview; hardware decoding for preview (if batch 9 allows); playback and export without waiting; measure Clean audio in the preview on weak computers (lighter values only if needed); codec names for non-experts.
-- **Why together**: all are speed of picture processing and the export settings.
-- **Order inside**: measure the cases first (4K, large frames, blurred fill), then decide on the warning or limit; the codec names are independent and can go in a separate development.
-- **Depends on**: the measurements.
-
-## 2.0.12 — Platforms and installers
-- **Goal**: the programs behave like a normal window on each system; installers stay unsigned (decided by Andrea on 2026-11-20).
-- **Items**: run the installer job before each release; one window for double-clicked projects (Windows and Linux); Linux file managers and the archive; native macOS menu bar with Hide and Minimize; drag and drop on Linux Wayland (depends on the library); pin the Windows installer toolchain; licence page encoding; detection in the installers (open question); builds of 1.2.0 on real systems; other systems (scope decision); old-processor check in CI; weekly security-advisory check; legal review of source offers (Andrea, outside code).
-- **Why together**: all are installer or platform behaviour and CI checks.
-- **Order inside**: CI checks first (installer job, advisories, old-processor check); then the platform items.
-- **Depends on**: batch 1 (the installer configuration check); the legal review is Andrea's decision.
-
-## 2.0.13 — Interface
-- **Goal**: the window, popups and toolbar remember their state and suit each user; the program works with a screen reader.
-- **Items**: remember window size, position and popup positions; better default popup positions; hide, collapse and dock sections; saved workspaces; customisable and icon toolbar; rebindable shortcuts; light and system theme; interface text size; translated interface; screen-reader support; group the Edit menu; multi-selection lost (report needed).
-- **Why together**: all change the window's layout and settings; remembered positions come before better defaults.
-- **Order inside**: remembered positions, then default positions; the rest by Andrea's choice; the screen reader depends on the toolkit's accessibility support.
-- **Depends on**: the program settings rules (layout and window are program settings, never project).
-
-## 2.0.14 — Video player
-- **Goal**: the player opens videos from the file manager and remembers what is useful, without writing files next to the video.
-- **Items**: file association for the player (installers); opening between the editor and the player (scope decision); subtitle positions kept in the player (session or a settings file); player preferences in a settings file; bitmap subtitle tracks (decoder work); playlist; the player's own third-party list; a lighter ffmpeg for the player (measure first); player sound for very large videos (preview copy with sound).
-- **Why together**: all are player behaviour; the file association and the list come first because they are the most used.
-- **Depends on**: batch 11 (file association needs the installers); the third-party list is needed before any player release with a new bundled component.
-
-## 2.0.15 — 360 video
-- **Goal**: 360 subtitles and texts stay where they were put, and 360 export is clear about what it keeps.
-- **Items**: preset box and word highlight for 360 subtitles; 360 subtitles anchored to the sphere; automatic subtitles keep their preset place (anchor or choose); indicator for off-view items; 360 marker in Matroska and WebM; spherical check on real players; 360 files without spherical information (ask at import or mark); video format presets for 360 (decide); frame effects in 360 export (apply or say so); faster 360 export and moving-camera export; GPU or SIMD path for reprojection; instant look-around; separate points of view per clip; starting direction; camera roll; easing between points of view; keyboard control; spatial sound that follows the camera; stereo 3D, cube maps and 180° video (scope decision).
-- **Why together**: all are 360 video behaviour and its camera.
-- **Order inside**: the subtitle and text items first (most visible); then the export details; then the camera; the large camera items wait for measurements.
-- **Depends on**: the camera items share the keyframe code with batch 15 (the 360 camera and the picture share rules; see the continuous quality items). The 360 export prioritises speed (decided 2026-11-20); its speed requirement is written when this batch is planned.
-
-## 2.0.16 — Effects and frame
-- **Goal**: new effects and LUT options, each with its own requirements written first.
-- **Items**: length of each fade; one-sided boundary fades; effects on music clips; clean the music track; Clean audio strength; speech enhancement; volume over time; more effect types; keyframes for other effects; easing curves; crop tool; blur strength; free aspect ratios; aspect ratio per clip; other objects on the picture; Change aspect tooltip and drag; LUT strength; other LUT formats (.3dl, .csp); LUT input ranges other than 0 to 1; missing LUT file on export; LUT copied into the project; colour management for LUTs; LUT order with the frame effect; LUT libraries; exact conversion of combined Scale and Move.
-- **Why together**: all are new effect scope; each one needs requirements and tests before code.
-- **Order inside**: small LUT and Change aspect items first; the missing-file and copy items protect projects (they come before the others); the new effects wait for their requirements.
-- **Depends on**: the requirements of each item (business documents) before the architecture plan is written.
-
-## Continuous: quality and measurements
-- **Items**: measured quality goals; measure the Apply LUT cost; record 4K and 8K frame times; headless frame-time baseline; faster test suite; shorter check job on push (QG-06); speech fixture for CI tests; preview copies with a lighter preset; regenerate cleared preview copies at once; preview copies for 720p sources; limit the preview copy cache; large-file memory test; stable computer identity on virtual machines; interface tests with a test harness; pointer tests of the colour picker and keyframe timeline; click the Export dialog's dropdowns in UI tests; golden argument tests for format 4 and 5; split the application module (with dispatch_inner); smaller 360 pictures in the integration tests; one keyframe module for the 360 camera and the picture; shared core crate (only if a third program is planned); the Mac and Windows builds of 1.2.0; test memory cap as a project rule; package list for the player on crates.io (only if published); splash picture size in the programs; clearer message for a missing splash summary; measure the cycle check's CI cost; cycle check limits; wording of the leaves layer; player notice file version line.
-- **Splash, project page and release items**: animated splash image (decision on REQ-134 wording first); do not show again; splash summary from the changelog; missing splash picture or summary (build without the splash or not); smaller project page images; social preview image; Content-Security-Policy for the project page.
-- **How to use**: the measurements go with the batch they measure (for example the 4K frame times with batch 10); the architecture items go when the code they touch is changed.
+## 3.0.10 — Quality and project page
+- **Goal**: the code stays healthy, the largest modules are split, and the project page and release notes are right.
+- **Items**: one keyframe module for the 360 camera and the picture; split the application module and the graph module, with `dispatch_inner` split by area; smaller 360 pictures in tests; faster test suite; CI time measurements (QG-06); cycle check cost and limits; interface tests with a test harness (only if the helper grows); preview copies with a lighter preset and copies for 720p sources; cache cleanup on a worker; large-file memory test; stable computer identity; splash items (animated picture decision, summary from the changelog, missing-file behaviour, picture size); project page images and Content-Security-Policy hashes; notices after each version bump; release notes of the format changes; test memory cap as a workflow rule; player package list (only if published); shared core crate (only if a third program is planned).
+- **Why together**: all are code health and release process; they go alongside the batches that touch the same code.
+- **Order inside**: the keyframe module before 3.0.8's camera items; the splits when the code they touch changes.
 
 ## Dependencies between batches (short)
-- 2.0.2 (batch 1) before everything (the release checks and the test reliability).
-- 2.0.3 (batches 2 to 4) delivered: the text box and its width are used by the placement rules.
-- Batch 4 (delivered in 2.0.3) before the subtitle import re-timing in 2.0.6 (batch 5).
-- 2.1.0 follows 2.0.4 and is built; it depends on nothing open.
-- The finish-2.0.4 items (manual checks and follow-ups) are not a batch; they are independent of 2.1.0.
-- 2.0.9 (batch 8) before 2.0.10 (batch 9): the hardware reach uses the check.
-- 2.0.12 (batch 11) before 2.0.14 (batch 13): the file association needs the installers.
-- 2.0.15 (batch 14) and 2.0.16 (batch 15) share the camera and keyframe code: the camera items wait for the shared module.
+- Release checks (decisions) before 3.0.3 and 3.0.4 (Andrea's decision on REQ-177 and REQ-315).
+- 3.0.2 (overlay format) before any other format change; format changes are kept in 3.0.2 and 3.0.9 only, with one fixture test each.
+- 3.0.4 before 3.0.5: the hardware reach uses the check.
+- 3.0.10 (keyframe module) before 3.0.8 camera items.
+- 3.0.7's picture subtitles on 360 clips follow 3.0.8 when both change the same 360 subtitle code.
 
 ## Decisions Andrea needs to make
-- Accuracy target of reused subtitles (REQ-177, 2.0.3): a larger speech model, or keep the target with its known limitation (default: keep planned).
-- The Ubuntu 24.04 hardware export: a different ffmpeg build or a shipped libva (2.0.10).
-- Scope of the 360 video export: presets and frame effects (2.0.15).
-
-## Decided by Andrea (2026-11-20)
-- Installers stay unsigned; code signing and notarisation are not planned (2.0.12). See [Not planned](roadmap.md#not-planned).
-- The copies of whole-video keyframes are shown apart, one per clip (2.0.8).
-- AV1 and VP9 encoding and hardware decoding are in scope (2.0.10).
-- The Export dialog keeps its presets; custom resolutions, frame rates and bitrates are not planned (2.0.11). See [Not planned](roadmap.md#not-planned).
-- Hardware export always goes through ffmpeg (no separate vendor pipeline).
-- The 360 video export always prioritises speed (2.0.15).
+- REQ-177: a larger speech model, or keep the target with its known limitation.
+- REQ-315: accept the 9% on integrated graphics, or keep the 20% target open.
+- Ubuntu 24.04 hardware export: an ffmpeg build or a shipped libva (3.0.5).
+- Text follows the picture and the video edits (3.0.1).
+- Scope of 360 export presets and frame effects (3.0.8).
+- Sound of MOV overlaps, and the overlap limits (3.0.2).
+- LUT colour management (3.0.9).
+- Clean audio default on quiet speech (3.0.9).

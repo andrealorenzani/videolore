@@ -238,6 +238,18 @@ impl AppState {
                         Ok(())
                     })
                 }
+                Command::PickExportSrt => {
+                    if !self.has_shown_subtitles() {
+                        return Err(effects::NO_SUBTITLES.into());
+                    }
+                    let name = self.srt_name();
+                    match self.dialogs.pick_subtitles_save(&name) {
+                        Some(p) => self.export_srt(p),
+                        None => Ok(()),
+                    }
+                }
+                Command::ExportSrt(p) => self.export_srt(p),
+                Command::ChooseSubtitleSource(c) => self.choose_subtitle_source(c),
                 other => {
                     pass = Some(other);
                     Ok(())

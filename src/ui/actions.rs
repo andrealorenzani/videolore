@@ -554,8 +554,11 @@ pub const CLOSE_POPUP: KeyboardShortcut = plain(Key::Escape);
 pub const CLOSE_POPUP_LABEL: &str =
     "Close the topmost popup (none open: clear the selected subtitle lines)";
 
-fn apply(effect: EffectKind, target: Target) -> Command {
-    Command::ApplyEffect { effect, target }
+/// What an effect action does: open the effect's popup, or apply it to a target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectUse {
+    Open,
+    Apply(Target),
 }
 
 /// The table entry of `id`.
@@ -577,9 +580,57 @@ impl ActionId {
         ACTIONS.iter().map(|a| a.id).find(|id| id.name() == name)
     }
 
+    /// The effect of an effect action and what the action does with it: the single place
+    /// that ties these actions to their effect (their command and icon follow from it).
+    pub fn effect(self) -> Option<(EffectKind, EffectUse)> {
+        use ActionId::*;
+        use EffectKind as E;
+        let (clip, whole) = (
+            EffectUse::Apply(Target::Selected),
+            EffectUse::Apply(Target::WholeVideo),
+        );
+        Some(match self {
+            Fades => (E::Fade, EffectUse::Open),
+            Subtitles => (E::Subtitles, EffectUse::Open),
+            Volume => (E::Volume, EffectUse::Open),
+            CleanAudio => (E::CleanAudio, EffectUse::Open),
+            ChangeAspect => (E::ChangeAspect, EffectUse::Open),
+            Scale => (E::Scale, EffectUse::Open),
+            Move => (E::Move, EffectUse::Open),
+            ApplyLut => (E::ApplyLut, EffectUse::Open),
+            ApplyClipFade => (E::Fade, clip),
+            ApplyClipSubtitles => (E::Subtitles, clip),
+            ApplyClipVolume => (E::Volume, clip),
+            ApplyClipCleanAudio => (E::CleanAudio, clip),
+            ApplyClipScale => (E::Scale, clip),
+            ApplyClipMove => (E::Move, clip),
+            ApplyClipLut => (E::ApplyLut, clip),
+            ApplyWholeFade => (E::Fade, whole),
+            ApplyWholeSubtitles => (E::Subtitles, whole),
+            ApplyWholeVolume => (E::Volume, whole),
+            ApplyWholeCleanAudio => (E::CleanAudio, whole),
+            ApplyWholeChangeAspect => (E::ChangeAspect, whole),
+            ApplyWholeScale => (E::Scale, whole),
+            ApplyWholeMove => (E::Move, whole),
+            ApplyWholeLut => (E::ApplyLut, whole),
+            _ => return None,
+        })
+    }
+
     /// The command this action runs now (Export becomes Cancel export while exporting).
     pub fn command(self, app: &AppState) -> Command {
         use ActionId::*;
+        match self.effect() {
+            // a frame effect opens its instance popup; the others open their own popup
+            Some((effect, EffectUse::Open)) if effect.is_frame() => {
+                return Command::OpenFrameEffect(effect);
+            }
+            Some((effect, EffectUse::Open)) => return Command::OpenPopup(effect.popup()),
+            Some((effect, EffectUse::Apply(target))) => {
+                return Command::ApplyEffect { effect, target };
+            }
+            None => {}
+        }
         match self {
             New => Command::NewProject,
             Open => Command::PickOpenProject,
@@ -616,34 +667,11 @@ impl ActionId {
             GoEnd => Command::Seek(app.project.timeline.duration()),
             PrevFrame => Command::StepFrames(-1),
             NextFrame => Command::StepFrames(1),
-            Fades => Command::OpenPopup(Popup::Fades),
-            Subtitles => Command::OpenPopup(Popup::Subtitles),
-            Volume => Command::OpenPopup(Popup::Volume),
-            CleanAudio => Command::OpenPopup(Popup::CleanAudio),
-            ChangeAspect => Command::OpenFrameEffect(EffectKind::ChangeAspect),
-            Scale => Command::OpenFrameEffect(EffectKind::Scale),
-            Move => Command::OpenFrameEffect(EffectKind::Move),
-            ApplyLut => Command::OpenFrameEffect(EffectKind::ApplyLut),
             ToggleFadeAtPlayhead => Command::ToggleFadeAtPlayhead,
             GenerateSubtitles => Command::GenerateSubtitles,
             AddSubtitleLine => Command::AddSubtitle,
             AddText => Command::OpenNewText,
             AddOverlap => Command::AddOverlap(None),
-            ApplyClipFade => apply(EffectKind::Fade, Target::Selected),
-            ApplyClipSubtitles => apply(EffectKind::Subtitles, Target::Selected),
-            ApplyClipVolume => apply(EffectKind::Volume, Target::Selected),
-            ApplyClipCleanAudio => apply(EffectKind::CleanAudio, Target::Selected),
-            ApplyClipScale => apply(EffectKind::Scale, Target::Selected),
-            ApplyClipMove => apply(EffectKind::Move, Target::Selected),
-            ApplyClipLut => apply(EffectKind::ApplyLut, Target::Selected),
-            ApplyWholeLut => apply(EffectKind::ApplyLut, Target::WholeVideo),
-            ApplyWholeChangeAspect => apply(EffectKind::ChangeAspect, Target::WholeVideo),
-            ApplyWholeScale => apply(EffectKind::Scale, Target::WholeVideo),
-            ApplyWholeMove => apply(EffectKind::Move, Target::WholeVideo),
-            ApplyWholeFade => apply(EffectKind::Fade, Target::WholeVideo),
-            ApplyWholeSubtitles => apply(EffectKind::Subtitles, Target::WholeVideo),
-            ApplyWholeVolume => apply(EffectKind::Volume, Target::WholeVideo),
-            ApplyWholeCleanAudio => apply(EffectKind::CleanAudio, Target::WholeVideo),
             AlignHorizontal => Command::AlignSelected(Axis::Horizontal),
             AlignVertical => Command::AlignSelected(Axis::Vertical),
             MoveInside => Command::MoveInside,
@@ -669,12 +697,40 @@ impl ActionId {
             ResetLayout => Command::ResetLayout,
             Shortcuts => Command::OpenPopup(Popup::Shortcuts),
             About => Command::ShowAbout,
+            // the effect actions are answered above from `effect` (checked by
+            // `every_effect_action_has_its_effect`); listed so the match stays exhaustive
+            Fades
+            | Subtitles
+            | Volume
+            | CleanAudio
+            | ChangeAspect
+            | Scale
+            | Move
+            | ApplyLut
+            | ApplyClipFade
+            | ApplyClipSubtitles
+            | ApplyClipVolume
+            | ApplyClipCleanAudio
+            | ApplyClipScale
+            | ApplyClipMove
+            | ApplyClipLut
+            | ApplyWholeFade
+            | ApplyWholeSubtitles
+            | ApplyWholeVolume
+            | ApplyWholeCleanAudio
+            | ApplyWholeChangeAspect
+            | ApplyWholeScale
+            | ApplyWholeMove
+            | ApplyWholeLut => {
+                unreachable!("effect actions are answered by ActionId::effect")
+            }
         }
     }
 
     /// The icon of the action (REQ-142): every action has one, so the menus and the toolbar
     /// never show an item without it (the match is exhaustive).
     pub fn icon(self) -> &'static str {
+        use super::effects;
         use super::icons as i;
         use ActionId::*;
         match self {
@@ -707,14 +763,34 @@ impl ActionId {
             GoEnd => i::SKIP_FORWARD,
             PrevFrame => i::CARET_LEFT,
             NextFrame => i::CARET_RIGHT,
-            Fades | ApplyClipFade | ApplyWholeFade | ToggleFadeAtPlayhead => i::CIRCLE_HALF,
-            Subtitles | ApplyClipSubtitles | ApplyWholeSubtitles | AddSubtitleLine => i::SUBTITLES,
-            Volume | ApplyClipVolume | ApplyWholeVolume => i::SPEAKER_HIGH,
-            CleanAudio | ApplyClipCleanAudio | ApplyWholeCleanAudio => i::WAVEFORM,
-            ChangeAspect | ApplyWholeChangeAspect => i::FRAME_CORNERS,
-            Scale | ApplyClipScale | ApplyWholeScale => i::ARROWS_OUT,
-            Move | ApplyClipMove | ApplyWholeMove => i::ARROWS_OUT_CARDINAL,
-            ApplyLut | ApplyClipLut | ApplyWholeLut => i::PALETTE,
+            ToggleFadeAtPlayhead => effects::effect_icon(EffectKind::Fade),
+            AddSubtitleLine => effects::effect_icon(EffectKind::Subtitles),
+            // the effect actions take the icon of their effect
+            Fades
+            | Subtitles
+            | Volume
+            | CleanAudio
+            | ChangeAspect
+            | Scale
+            | Move
+            | ApplyLut
+            | ApplyClipFade
+            | ApplyClipSubtitles
+            | ApplyClipVolume
+            | ApplyClipCleanAudio
+            | ApplyClipScale
+            | ApplyClipMove
+            | ApplyClipLut
+            | ApplyWholeFade
+            | ApplyWholeSubtitles
+            | ApplyWholeVolume
+            | ApplyWholeCleanAudio
+            | ApplyWholeChangeAspect
+            | ApplyWholeScale
+            | ApplyWholeMove
+            | ApplyWholeLut => {
+                effects::effect_icon(self.effect().map_or(EffectKind::Fade, |(e, _)| e))
+            }
             GenerateSubtitles => i::MAGIC_WAND,
             AddText => i::TEXT_T,
             AddOverlap => i::IMAGE,
@@ -766,6 +842,60 @@ impl ActionId {
             }
             ActionId::ToggleSafeAreas => "The safe areas are hidden: click to draw them".into(),
             _ => action(self).tooltip.into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::tests::{FakeDialogs, state};
+
+    #[test]
+    fn every_effect_action_has_its_effect() {
+        use ActionId::*;
+        let app = state(FakeDialogs::default());
+        let open = |e: EffectKind| Command::OpenFrameEffect(e);
+        let apply = |effect, target| Command::ApplyEffect { effect, target };
+        let (clip, whole) = (Target::Selected, Target::WholeVideo);
+        let want = [
+            (Fades, Command::OpenPopup(Popup::Fades)),
+            (Subtitles, Command::OpenPopup(Popup::Subtitles)),
+            (Volume, Command::OpenPopup(Popup::Volume)),
+            (CleanAudio, Command::OpenPopup(Popup::CleanAudio)),
+            (ChangeAspect, open(EffectKind::ChangeAspect)),
+            (Scale, open(EffectKind::Scale)),
+            (Move, open(EffectKind::Move)),
+            (ApplyLut, open(EffectKind::ApplyLut)),
+            (ApplyClipFade, apply(EffectKind::Fade, clip)),
+            (ApplyClipSubtitles, apply(EffectKind::Subtitles, clip)),
+            (ApplyClipVolume, apply(EffectKind::Volume, clip)),
+            (ApplyClipCleanAudio, apply(EffectKind::CleanAudio, clip)),
+            (ApplyClipScale, apply(EffectKind::Scale, clip)),
+            (ApplyClipMove, apply(EffectKind::Move, clip)),
+            (ApplyClipLut, apply(EffectKind::ApplyLut, clip)),
+            (ApplyWholeFade, apply(EffectKind::Fade, whole)),
+            (ApplyWholeSubtitles, apply(EffectKind::Subtitles, whole)),
+            (ApplyWholeVolume, apply(EffectKind::Volume, whole)),
+            (ApplyWholeCleanAudio, apply(EffectKind::CleanAudio, whole)),
+            (
+                ApplyWholeChangeAspect,
+                apply(EffectKind::ChangeAspect, whole),
+            ),
+            (ApplyWholeScale, apply(EffectKind::Scale, whole)),
+            (ApplyWholeMove, apply(EffectKind::Move, whole)),
+            (ApplyWholeLut, apply(EffectKind::ApplyLut, whole)),
+        ];
+        let effects = want.clone().map(|(id, _)| id);
+        for (id, cmd) in want {
+            let (effect, _) = id.effect().expect("an effect action");
+            assert_eq!(id.command(&app), cmd, "{id:?}");
+            assert_eq!(id.icon(), crate::ui::effects::effect_icon(effect), "{id:?}");
+        }
+        // every other action has a command of its own and no effect
+        for a in ACTIONS.iter().filter(|a| !effects.contains(&a.id)) {
+            assert_eq!(a.id.effect(), None, "{:?}", a.id);
+            let _ = a.id.command(&app);
         }
     }
 }

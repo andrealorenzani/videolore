@@ -104,11 +104,7 @@ check ends uses the normal method. The hardware is also never used when the ffmp
 
 ### Changes of 2.0.4 (REQ-206 to 219)
 
-- Every working candidate is kept (`HwStatus.working`, best first), so Settings > Advanced can list the devices by name and the user can choose one (`Settings.graphics_card`, `HwStatus::chosen`); Automatic is the first of each format. The probe covers the four formats; its limits (1 s, retry 4 s, 10 s in total) are the same.
-- The probe command prints its progress on stdout. A try that runs out of time is classified by `hwenc::classify`: output or 20 ms of processor time (`Process::cpu_ms`) is busy and gets the retry; neither is hanging and is skipped after its first try (`Reason::Hanging`); no reading is unknown (retry). A candidate that hangs, or runs out of time twice when it is not busy, is remembered for the session (`AppState.hw_slow`, never saved) and not tried by the next checks (`Reason::SkippedSlow`); a restart, "Try video hardware again" and the automatic repeat of an inconclusive check try it again.
-- The check waits for an export or a subtitle job (`pause_or_resume_hw_probe`): it is stopped and started again when the last one ends.
-- After the encoders, `hwdec::probe_all` finds the decoders (a probe clip made by the bundled software encoder, decoded with `-hwaccel <method>`; all 15 frames and no message about falling back). With Faster the preview and the preview copies decode with the decoder of the chosen device; a failed run goes on without it, at the playhead, silently.
-- An old system libva (`Platform.libva_version`, from the library's file name) gives `HwStatus.libva_note` with both versions.
+The probe covers the four formats (H.264, HEVC, AV1, VP9) with the same limits (1 s, retry 4 s, 10 s in total) and keeps every working candidate (Automatic is the first of each format). Busy or hanging tries, the session memory, the pause during jobs, the decoders, the graphics card and the libva note: [code-features.md](code-features.md) § Hardware export and decoding.
 
 ## The export
 
@@ -155,37 +151,10 @@ new hardware. A cancelled export is never a problem. The settings file stays at 
 
 ## Tests
 
-- `render/golden_tests.rs`: the Best quality argv of 6 export plans is compared with
-  `tests/fixtures/export-argv-0.3.0.txt`, captured from 0.3.0 before any change (QG-01: Best
-  quality runs exactly the same commands); every method changes only the video encoding.
-- `hwenc/tests.rs`: order per system, encoder filtering, render-device enumeration, the 10
-  argument sets and the constant-quality ones (golden), the second-run quantiser, the
-  constant-quality fallback of the probe, the old-libva skip (pure rule and file scan across
-  read boundaries), the probe with a fake ffmpeg (first working method, notes and reasons,
-  per-candidate, retry and total time limits with processes that never end, a candidate that
-  does not answer in time once and then works (also the constant-quality variant), inconclusive
-  answers, cancel, chosen ffmpeg).
-- `outcheck/tests.rs`: metadata rules on ffprobe JSON, sample selection, PSNR log parsing and the
-  neighbour rule.
-- `export/hw_tests.rs`: a simulated ffmpeg for each of the 5 methods × error exit, crash, stall,
-  green frames, dropped frames; cancel during the run, the check and the redo; a failing redo;
-  constant quality growing too big (one restart with a coarser quantiser; still too big: the
-  normal method).
-- `app/hw_tests.rs` and `ui/tests.rs`: when the check runs, Best quality never touching the
-  hardware, the failure memory and its resets, the automatic single repeat of an inconclusive
-  check (first answer kept meanwhile, time-outs never remembered as problems), the Settings
-  window texts, and the
-  responsiveness harness with a hardware export running.
-- `tests/ffmpeg_integration/hw.rs` (real ffmpeg): a test runner stands in for each vendor by
-  running the real command with libx264/libx265 (vendor options and device setup removed,
-  `hwupload` replaced by `null`) and then damages the file on request. All 5 methods × H.264 and
-  HEVC give the Best quality format; empty, truncated, missing-frame, wrong-size, green and
-  garbage files are each caught by the step meant for them on the NVENC and VA-API paths;
-  a rich project (60 uneven cuts, two frame rates, fades, letterbox, music, subtitles) passes
-  the check; stream copy is byte-identical with either choice; the real check of the machine,
-  run twice while the other tests keep the CPU busy, stays within its 10 s bound (+1.5 s for
-  process start-up), both runs pick the same methods, and it finds nothing on CI. With `VIDEOLORE_REAL_HW=1`, every
-  method the check finds on the machine is exported for real and must pass the check.
+- `render/golden_tests.rs`: Best quality runs exactly the argv of 0.3.0 (`export-argv-0.3.0.txt`, QG-01); every method changes only the video encoding.
+- `hwenc/tests.rs`: order per system, encoder filtering, device enumeration, the argument sets (golden), the second-run quantiser, constant-quality fallback, old-libva skip, the probe with a fake ffmpeg (limits with processes that never end, late answers, cancel). `outcheck/tests.rs`: metadata rules, sample selection, PSNR parsing, the neighbour rule.
+- `export/hw_tests.rs`: a simulated ffmpeg per method × error exit, crash, stall, green and dropped frames; cancel in the run, the check and the redo; a failing redo; constant quality too big. `app/hw_tests.rs`, `ui/tests.rs`: when the check runs, Best quality never touching the hardware, the failure memory, the single repeat, the Settings texts, responsiveness during a hardware export.
+- `tests/ffmpeg_integration/hw.rs` (real ffmpeg): a runner stands in for each vendor with libx264/libx265 (vendor options removed, `hwupload` → `null`) and damages files on request; every method × H.264/HEVC gives the Best quality format; empty, truncated, missing-frame, wrong-size, green and garbage files are caught by their step; a rich project (60 uneven cuts, two frame rates, fades, letterbox, music, subtitles) passes; stream copy is byte-identical; the real check of the machine stays within 10 s (+1.5 s start-up) twice under load with the same picks and finds nothing on CI. `VIDEOLORE_REAL_HW=1` exports every method found for real.
 
 ## Real-hardware verification
 

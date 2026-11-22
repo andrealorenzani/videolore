@@ -1,99 +1,59 @@
 # Architecture: 360 video
 
-Part of [Architecture](architecture.md). Built in 1.2.6 (requirements REQ-100..105, see [business](business-picture.md)); the code is described in [code-360](code-360.md). Boxes, resizing and the align/reset commands are in [boxes](architecture-boxes.md). Anchored text and subtitle lines on the sphere, and export as 360 video, were built in 1.3.0 (REQ-103, REQ-112). Stage 10 and 13 of 2.0.4 (camera roll and easing, per-clip paths, anchored lines as text items, re-anchor, off-view arrows, the marker in MKV and WebM) are in the last section.
+Part of [Architecture](architecture.md). Requirements: [360 picture](business-picture.md) (REQ-100 to 105), [text](business-text.md), [export](business-export.md). Handles: [UI](architecture-ui.md#boxes-on-the-picture-126-140-161). Built in 1.2.6, 1.3.0, 1.4.0 and 2.0.4 (stages 10 and 13).
 
-## Approach
-- A 360 clip (equirectangular, one picture) is shown and exported through a **virtual camera**: yaw (left/right), pitch (up/down) and zoom (horizontal field of view). The output is always a normal flat picture.
-- **One engine for preview and export:** the `ffmpeg` `v360` filter turns the sphere into the flat view. The preview graph and the export graph are built by the same code, so what you see is what you export, with fades, subtitles and music already working. Alternatives rejected: own CPU reprojection for the preview (two implementations that must agree within 1°, and subtitles would be distorted or need their own overlay) and a GPU shader (cannot be tested headless, the same two-implementation problem).
-- Consequence: a camera change in the preview is a new still-frame request (latest request only, short delay), not an instant redraw. Measured latency on small test clips is about 125-155 ms; an instant in-process view stays a roadmap option.
+## Approach and recognition
+- A 360 clip (equirectangular) is shown and exported through a **virtual camera**: yaw, pitch and zoom (horizontal field of view). The output is a flat picture.
+- **One engine for preview and export:** the ffmpeg `v360` filter; preview and export graphs come from the same code, so fades, subtitles and music work unchanged. Rejected: own CPU reprojection (two implementations to agree within 1°) and a GPU shader (untestable headless).
+- A camera change in the preview is a new still request (latest only): about 125 to 155 ms on tiny clips; an in-process view is a roadmap option.
+- **Detection:** `ffprobe` spherical information; a video is 360 when it says equirectangular with no cropped bounds and no stereo layout; only these fixed values are read. Stored with the media; older media are checked again in the background (no change mark).
+- **1.4.0: no switch.** A source is 360 exactly when its file says so (REQ-100). The 1.3.0 "Treat as 360° video" switch is dropped on opening (a 360-tagged clip with the switch off becomes 360). A file without spherical information stays flat (product risk).
+- The initial orientation of the file is ignored ("front" is the middle). 2.0.4: a clip can be marked as 360 explicitly (format 11).
 
-## Recognising a 360 video
-- `ffprobe` already prints the stream's spherical information. A video is 360 when it says equirectangular projection, with no cropped bounds and no stereo layout. Only these fixed values are read; no text from the file is shown or used.
-- The result is stored with the media information (not recognised yet for media imported earlier: they are checked again in the background when the project opens, like the subtitle tracks of 1.2.0, without marking the project as changed).
-- Until 1.3.0 the user's switch "Treat as 360° video" in Clip details was stored per source in the project and won over the detection. **Since 1.4.0 there is no switch**: a source is 360 exactly when its file says so (REQ-100). The switch of 1.3.0 projects is dropped when they open (a flat clip stays flat; a 360-tagged clip with the switch off becomes 360). The 360° tag and the camera view use the detection only.
-- The initial orientation written in the file is ignored: "front" is the middle of the picture.
-
-## Camera and POVs
-- A POV is a time in the **source** file with yaw, pitch and zoom, kept per source in the project (whole hundredths of a degree, so values compare exactly). Because the time is the source's, the path stays continuous after a split, trim or cut and POVs outside the kept part are hidden, not lost, exactly like subtitles. Consequence: two copies of the same part of one source share their POVs.
-- The camera at a time: before the first POV and after the last it stays on them; between two it moves linearly with time, yaw the short way round (350° to 10° passes through 0°), pitch and zoom directly. No POV at all: the live view (below), or front, level, 90° if the user never looked around. Up to 200 POVs per source; setting one at an existing time replaces it.
-- The maths lives in a pure `camera` module: limits (pitch ±90°, zoom 30°–110°, yaw wrapped), interpolation, mapping a drag of N pixels to an angle (`angle = pixels × zoom ÷ preview width`, the same in preview and playback), and wheel/pinch zoom.
-- **Live view:** the camera you drag is window state (one per source), not saved and not in the undo history. With POVs, a drag overrides the path until seek, play or Reset; without POVs it simply stays. **Set POV** stores the camera shown at the playhead.
-- A subtitle box under the pointer is dragged instead of the camera.
+## Camera and points of view
+- A **POV** is a time in the **source** file with yaw, pitch, zoom and roll (2.0.4; centi-degrees, ±180°, default 0), stored per source in whole hundredths of a degree. POVs outside the kept part are hidden, not lost; two copies of one part share their POVs. Up to 200 per source; setting one at an existing time replaces it.
+- Between two POVs the camera moves linearly in time; yaw the short way round (350° to 10° passes 0°); pitch and zoom directly; before the first and after the last it stays. Segments can be **eased** (2.0.4: smoothstep, exact at both ends; `ease` flag per POV). With no POV: the live view, or front, level, 90°.
+- Maths in the pure `camera` module: limits (pitch ±90°, zoom 30° to 110°, yaw wrapped), interpolation, drag mapping `angle = pixels × zoom ÷ preview width` (same in preview and playback), wheel and pinch zoom, projection between sphere and view (rectilinear, the field of `v360`).
+- **Live view:** the dragged camera is window state (one per source): not saved, not in undo. With POVs a drag overrides the path until seek, play or Reset. **Set POV** stores the camera at the playhead. A subtitle box under the pointer is dragged instead of the camera.
+- **Per-clip paths (2.0.4, REQ-268):** `CameraPaths` keeps each source's path and, per clip, its own (`clips`, keyed by clip id). A clip follows its source's path until its path is first changed; then it is copy on write (`set_in_clip`, `edit_in_clip`, `remove_in_clip`). Copied, pasted (`clipboard_camera`) and split clips get a copy. `AppState::clip_for` finds a POV's clip. Saved with a `clip` field; entries of clips not in the project are dropped on opening.
 
 ## Preview and export graph
-- The segment of a 360 clip gets, after the usual trim and frame-rate steps, a `sendcmd` filter and a `v360` filter named `v360@cN` (N = segment number; equirectangular in, flat out, `reset_rot=1`) whose output size is the output picture. Subtitles, fades and the rest follow unchanged. A still camera needs no command file: its values are the filter's initial values.
-- A moving camera is written to a small command file in the private work folder: numbers only, from checked values, so nothing from a project can reach the command. Commands are **absolute** (`reset_rot=1`; without it `v360` adds each command to the current rotation). Each command has its own time interval of **half a frame either side** of its frame, because a command at a single instant is missed when no frame has exactly that time. Only the **values that changed** since the previous frame are sent. The size is bounded (steps are doubled if a very long path would exceed it).
-- The camera view **fills the output picture** (output aspect, no black bars). The zoom is sent as one command, `d_fov` (the diagonal field of view); `v360` derives the horizontal and vertical ones from the output aspect, and the result equals the horizontal zoom to one grey level.
-- For the automatic output format (REQ-022) a 360 clip counts as 1920x1080 with the source's frame rate. A 360 clip is never stream-copied (REQ-023). Projects without 360 clips produce exactly the same commands as 1.2.5 (golden test).
-- Faster export and the output check work as before: the camera filter runs in software before the encoder; the check compares sample frames with the normal render.
-- **Preview copies:** a 360 source wider than 4096 pixels gets a 4096x2048 copy (the normal rule would give 1280 pixels for a whole sphere, only about 320 across a 90° view). Export always uses the original.
-- **Size limit:** above 16384x8192 the preview shows "This 360° video is too large to show here. It is still exported." and nothing is decoded; the export still runs.
+- A 360 segment gets, after trim and frame-rate steps, a `sendcmd` filter and `v360@cN` (equirectangular in, flat out, `reset_rot=1`) whose output is the output picture. A still camera needs no command file.
+- A moving camera is a command file in the private work folder: numbers only, from checked values. Commands are **absolute** (`reset_rot=1`). Each has its own interval of **half a frame either side** (a single instant is missed); only **changed values** are sent; the size is bounded (steps doubled for very long paths).
+- The view **fills the output picture** (no black bars). Zoom is one command, `d_fov` (diagonal field); `v360` derives the horizontal and vertical fields from the output aspect.
+- Automatic output format: a 360 clip counts as 1920x1080 at the source's frame rate; never stream copied (REQ-023). Projects without 360 clips give the same commands as 1.2.5 (golden).
+- Faster export and the output check apply as usual (camera filter in software before the encoder).
+- **Preview copies:** a 360 source wider than 4096 px gets a 4096x2048 copy (the normal rule would give 1280 px, about 320 across a 90° view); export uses the original. Above 16384x8192 the preview shows "This 360° video is too large to show here. It is still exported." and decodes nothing.
+- **Command rate (REQ-266):** at most 10 updates per second of video; during a drag the view is half size and returns to full size within 200 ms of release (REQ-267).
+- **Speed:** a moving camera exports at about one third of real time or less at 1080p (ffmpeg 6.1.1; the target of half real time not met; accepted). Each command makes `v360` recompute its mapping (75 to 100 ms at 1080p); a path that only turns is cheapest. Memory: no frame kept by videolore; writing the command file for a 10-minute 30 fps path takes under 100 ms; path lookup is a binary search.
 
-## Performance and limits
-- Camera still latency: targets of 400 ms (4K source) and 700 ms (8K preview copy) are **estimates, not gates**; measured about 125 ms and 155 ms on tiny test clips (ffmpeg start-up included). The only gate: the interface stays under 200 ms per frame while looking around during an export and subtitle generation (automated test, 4K x 2K and 8K x 4K files).
-- **Export of a moving camera is slow: about one third of real time or less at 1080p** (measured with `ffmpeg` 6.1.1; the earlier target of half real time was not met). Each command makes `v360` recompute its whole mapping (75-100 ms at 1080p), so one changed value per frame costs about 0.3x real time and three would cost 0.1x; hence only changed values are sent and zoom is one command. A path that only turns (yaw) is cheapest; a still camera has no extra cost. Accepted for 1.2.6; speed work (fewer commands per second, an in-process projection) is on the [roadmap](roadmap.md). The bundled `ffmpeg` 9.x was not measured; the same behaviour is assumed.
-- Memory: no frame is kept by `videolore`; `ffmpeg` holds a few frames (an 8K frame is about 100 MB at 8 bits).
-- Path lookup is a binary search; writing the command file for a 10-minute 30 fps path takes under 100 ms (unit test).
+## Performance targets
+- Camera still latency: 400 ms (4K source) and 700 ms (8K preview copy) are **estimates**; measured about 125 ms and 155 ms on tiny clips. Gate: the interface stays under 200 ms per frame while looking around during an export and subtitle generation (4K x 2K and 8K x 4K).
+
+## Anchored text and subtitles (1.3.0, 2.0.4)
+- A text item or subtitle line added at the playhead on a 360 clip gets an **anchor**: the sphere point at the view centre, in hundredths of a degree (yaw, pitch), with its size (default height 5 % of the view's vertical field at add time; wrap 60 % of the horizontal field; assumption). The flat place is kept and used on flat clips.
+- **Burn-in in the sphere:** in preview and camera exports anchored items are written into the equirectangular frame of their segment **before** `v360`, at x = (yaw/360 + ½)·width and y = (½ − pitch/180)·height; a box across ±180° is written twice. `v360` projects them like the picture: no per-frame update, no second projection.
+- **Box (1.4.0):** width 10 to 360° (hundredths of a degree), height 20 % of the view's vertical field at add time; size = best fit in the frame ([text](architecture-text.md#box-size-and-place)).
+- **Consequence (Andrea's decision):** text far from the equator is drawn flat on the sphere, narrower towards the poles, as in any flat picture in a 360 video.
+- **Slide in** of an anchored text moves in the plane of the sphere picture, not across the view.
+- **Automatic subtitle lines** on a 360 clip have no anchor (view-fixed, drawn after the projection). Lines generated on a 360 source are anchored at the view centre when created (`AppState::generation_anchors`, `finish_create`); lines created without a 360 view keep the view-fixed place.
+- **2.0.4 (ADR-188, REQ-257, 258):** an anchored line is a text item in the sphere frame with the preset's outline or box and the word highlight (karaoke `ass::highlight_chunks`; the highlight state is not saved; `render/segments.rs` `anchored_line_items`). This supersedes the plain white of 1.3.0 (DEV-3).
+- **Re-anchor (2.0.4, REQ-259):** `Command::ReAnchor` (`texts.rs` `re_anchor_plan`) moves selected anchors to the current view, one undo step; in Edit > Subtitles, the picture's right-click menu and the Context Menu group (a selected line and the playhead on a 360 clip).
+- **Off-view arrows (2.0.4, REQ-260):** `ui/placement.rs` `off_view_arrow` gives the nearest picture edge and direction; `ui/picture.rs` `off_view_arrows` draws them; a click sends `TurnCamera`.
+
+## Export as 360 video
+- Only for projects with 360 clips. Since 1.4.0 the choice **360 video** or **Flat camera view** is in the Export dialog, shown only when all video clips are 360; a mixed project is exported flat without a message ([export](architecture-export.md#video-and-audio-formats)). 1.3.0 asked each time (REQ-103).
+- **360 video** keeps the whole sphere: no `v360`, no camera commands; each segment equirectangular at the 360 clips' size (the automatic rule with the lowest pixel count). Anchored items at their anchors; automatic subtitle lines at their preset place (Andrea's decision: the lower third, about 30 degrees below the front). It ignores Change aspect, Scale, Move, the render order, pictures and overlaps.
+- **Spherical marker:** ffmpeg 6.1.1 drops the source's spherical information on re-encode (measured). videolore writes the Spherical Video V1 marker into MP4 and MOV (`spherical` module: only the small movie box is rewritten; the rest copied). **MKV and WebM (2.0.4, REQ-261, ADR-187):** the Projection element of the Matroska video track is written in place: the Void padding between SeekHead and Info shrinks by the bytes Tracks grows, so nothing after Tracks moves; pose elements use IDs 0x7673 to 0x7675 (0x7672 is ProjectionPrivate). Checked with ffprobe; the real-player check is manual.
+- A mixed project: 1.3.0 refused the 360 video with a message; 1.4.0 exports a flat camera view silently.
+- The live camera and camera path are not applied; the output check and Export: Faster apply; the speed-first preset (2.0.4, Q-5): the fastest encoder preset within 1.5 times the Best-quality size.
+- **Spatial sound (2.0.4, REQ-273):** a 360 clip with four channels has its sound turned by the camera (see [engine](architecture-engine.md#export-pipeline-common-part)); the stereo pair does not follow the roll; the 360 video export keeps the sound as recorded.
 
 ## Tests
-- Pure: path interpolation (45° at the middle of 0°→90°, short arc, hold before and after, single POV, replace, 200 limit), clamps, drag and zoom mapping, edge views after a split.
-- Real `ffmpeg` (`tests/ffmpeg_integration/v126.rs`): a generated equirectangular test picture with coloured longitude and latitude bands; the view at several angles must show the expected bands (this fixes the yaw and pitch signs and proves 1° accuracy); preview and export of the same time agree; command-file timing frame by frame; a committed tiny file with spherical information (under 100 KB) for detection; the same file without it is flat until the switch is on.
-- Project: format version 4 round trip, limits and hostile values (see [project files](architecture-projects.md)).
+- Pure: path interpolation (45° at the middle of 0° to 90°; short arc; hold; single POV; replace; 200 limit); clamps; drag and zoom mapping; edge views after a split; projection and inverse (behind the camera; pitch clamp); seam duplication; anchor from the view; flat fallback.
+- Real ffmpeg (`tests/ffmpeg_integration/v126.rs`): a generated equirectangular picture with coloured bands; the view shows the expected bands (yaw and pitch signs; 1°); preview and export agree; command timing frame by frame; a committed tiny file with spherical information (under 100 KB) is detected. Test sphere 1024 x 512 (2.0.4).
+- Anchored text at yaw 30°, pitch 10° is 40° left of centre after a 40° right turn (±1°) and returns; in the 360 video it is at yaw 30° (±1°) at three sample times; the output carries the spherical information.
+- Interface frames under 200 ms while looking around with texts during export and subtitle generation (4K x 2K and 8K x 4K). Project format 4 round trip and hostile values ([projects](architecture-projects.md)).
 
 ## Risks
-- Checked and resolved by the spike: `v360` accepts run-time changes of yaw, pitch and zoom (`d_fov`); positive yaw looks right, positive pitch looks up, in degrees. The cost per command is the export-speed limit above.
-- Remaining: `reset_rot` and command behaviour were measured only on `ffmpeg` 6.1.1, not on the bundled 9.x; the real-`ffmpeg` picture tests guard sign, unit and timing conventions on whatever version runs them.
-- Camera stills from large sources may feel slow while dragging; possibly an instant in-process view (roadmap).
-- Spherical information is read only from what `ffprobe` reports; some cameras write none. Until 1.3.0 the switch covered them; since 1.4.0 such a file stays flat (documented product risk, roadmap: a choice at import).
-
-## Anchored text and subtitles (1.3.0)
-- A text item or a subtitle line added at the playhead on a 360 clip gets an **anchor**: the point of the sphere at the centre of the view at that moment, in hundredths of a degree (yaw, pitch), plus its world size (the default text height is 5% of the view's vertical field of view at add time, stored in degrees; wrap width 60% of the horizontal field, assumption). The anchor is stored in the project; the flat place is kept too and is used on flat clips.
-- **Burn-in in the sphere:** in the preview and in the camera exports, anchored items are written into the equirectangular frame of their 360 segment **before** the `v360` filter, at the frame position of their point (x = (yaw/360 + ½)·width, y = (½ − pitch/180)·height; a box across the seam at ±180° is written twice). `v360` then projects them like the picture, so they stay put when the camera turns, with no per-frame update and no second projection. Fades and music are unchanged.
-- **Projection math:** a pure `camera` function projects a sphere point into the view (rectilinear, same field of view as `v360`) and back. It draws the boxes and drags in the look-around view; a test compares it with real `ffmpeg` output within 1°.
-- **Flat clips:** an anchored item shown while a flat clip plays is drawn at its flat place. A text that spans a flat and a 360 clip is cut per segment.
-- **Consequence (decided by Andrea):** a text far from the equator is drawn flat on the sphere, so it looks narrower towards the poles, as any flat picture in a 360 video does. Text that is only seen while looking straight ahead is unaffected.
-- **Automatic subtitle lines** on a 360 clip have no anchor: they keep the view-fixed place of 1.2.x (drawn after the projection in the camera views).
-- **Slide in** of an anchored text moves in the plane of the sphere picture (its direction is that of the frame), not across the view, because a moving position per frame would need a second renderer.
-- **Built differently from the plan (1.3.0):** an anchored subtitle line was drawn as plain white text, without its preset style (no box, no word highlight). Superseded in 2.0.4 (below).
-- **1.4.0:** an anchored text has a box of width 10–360° and a height of 20% of the view's vertical field at the time it was added; its size is the best fit in the equirectangular frame (see [text](architecture-text.md#box-best-fit-and-place-140)). Anchors store the width and height in hundredths of a degree.
-
-## Export as 360 video (1.3.0)
-- Only for a project with 360 clips, Export asks **360 video** or **Flat camera view** each time (REQ-103); the answer is not saved. Projects without 360 clips do not ask. **Since 1.4.0** the question is a choice in the Export dialog, shown only when all video clips are 360 clips; a mixed project is exported flat without a message (see [export dialog](architecture-export-dialog.md#360-choice)).
-- **360 video** keeps the whole sphere: the graph has no `v360` and no camera commands; every segment is equirectangular at the 360 clips' own size (the automatic format rule with lowest pixel count). Anchored items are at their anchors; automatic subtitle lines are at their preset place in the frame (decided by Andrea: the lower third of the frame, about 30 degrees below the front). The output carries the Spherical Video V1 marker so players show a sphere. ffmpeg 6.1.1 drops the source's spherical information when it re-encodes (measured), so `videolore` writes the marker itself into MP4 and MOV files: only the small movie box is rewritten, and the rest of the file is copied unchanged (module `spherical`). MKV and WebM 360 exports carried no marker in 1.3.0, so players showed them as flat video (since 2.0.4 they carry one, see below).
-- A project mixing 360 and flat clips is refused for a 360 video with a message; nothing is exported. (1.4.0: such a project offers no 360 choice and is exported as a flat camera view, silently.)
-- The live camera and the camera path are not applied. Export speed has no target (accepted: slow).
-- The output check (REQ-063) and "Export: Faster" apply as for any re-encode.
-
-## Tests for 1.3.0
-- Pure: projection and its inverse (edge cases behind the camera, pitch clamp), seam duplication, anchor from the view at the playhead, flat fallback.
-- Real `ffmpeg`: a text anchored at yaw 30°, pitch 10° is 40° left of the centre after the camera turns 40° right (±1°) and returns to its first place; in the 360 video the text is at yaw 30° (±1°) at three sample times; the output has the spherical information.
-- Performance: interface frames stay under 200 ms while looking around with texts during an export and subtitle generation (4K×2K and 8K×4K).
-
-## Anchored lines and camera paths (2.0.4)
-Built in 2.0.4 (REQ-257 to REQ-272; details in the [2.0.4 overview](architecture-2.0.4-overview.md)).
-
-### Camera (stage 10)
-- A point of view stores its **roll** (centi-degrees, ±180°, default 0; `Camera`, the view is turned by it in the `v360` command). A segment can be **eased**: smoothstep between its two points of view, exact at both ends (`ease` flag per point of view).
-- The camera commands to ffmpeg run at **at most 10 updates per second** of video (REQ-266: a 10 s moving camera makes at most 100 updates). While a drag is in progress the view is drawn at **half size** and returns to full size within 200 ms after release (REQ-267).
-- The export of a 360 video uses the speed-first rule: the fastest encoder preset whose file stays within 1.5 times the Best-quality size (Q-5, decided by Andrea). The preset chosen is not recorded by name in the notes (open).
-
-### Per-clip camera paths (2.0.4)
-- `CameraPaths` keeps the path of each source (as before) and, per clip, its own path (`clips`, keyed by the clip id and holding the source it plays).
-- A clip without its own path follows its source's path **until its path is first changed**; then it has its own, and a change (set, edit, remove) alters that clip only (**copy on write**: `set_in_clip`, `edit_in_clip`, `remove_in_clip`). A copied, pasted (`clipboard_camera`) or split clip receives a copy of its path.
-- `AppState::clip_for` finds the clip that a point of view's time belongs to. Saved as path entries with a `clip` field; entries of clips that are not in the project are dropped on opening.
-- Consequence: two clips of one source with different paths no longer share their points of view after a change. Source-level paths of projects from 2.0.3 open unchanged.
-
-### Anchored lines as text items (REQ-257, REQ-258, stage 13)
-- An anchored subtitle line on a 360 clip is drawn as a **text item** in the sphere frame, before the camera projection (as anchored texts are), with the **preset's outline or box** and the **word highlight** (karaoke: `ass::highlight_chunks`; the highlight state is not saved). Built in `render/segments.rs` (`anchored_line_items`); it supersedes the plain white of 1.3.0 and amends REQ-112.
-- Lines generated on a 360 source are anchored at the centre of the view when they are created (`AppState::generation_anchors`, applied in `finish_create`), so they stay where the user was looking. Lines generated with no 360 view keep their view-fixed place.
-
-### Re-anchor and off-view arrows (REQ-259, REQ-260, stage 13)
-- **Re-anchor** (`Command::ReAnchor`; `texts.rs` `re_anchor_plan`) moves the anchor of the selected lines and texts to the current view, as one undo step. It is in Edit > Subtitles, in the picture's right-click menu and in the Context Menu group when a line is selected and the playhead is on a 360 clip.
-- **Off-view arrows:** a pure function (`ui/placement.rs` `off_view_arrow`) gives, for an item outside the view, the nearest picture edge and the direction to it; `ui/picture.rs` `off_view_arrows` draws them. A click sends `TurnCamera` with the turn needed to bring the item into view.
-
-### Marker in MKV and WebM (REQ-261, ADR-187, stage 10)
-- `spherical.rs` writes the Projection element of the Matroska video track in place: the Void padding that ffmpeg leaves between SeekHead and Info is shrunk by the bytes the Tracks element grows, so nothing after Tracks moves and no second copy of the file is made. The pose elements use the Matroska IDs 0x7673 to 0x7675 (0x7672 is ProjectionPrivate). The check is ffprobe; the real-player check is manual item 23.
-
-### Limits of the 2.0.4 designs
-- A picture item (REQ-287) is not drawn on a 360 video export (the sphere mode skips pictures) and text effects do not apply to pictures.
-- Spatial sound (REQ-273): a 360 clip with a 360 picture and four audio channels has its sound turned by the camera; see [media pipeline](architecture-media-pipeline.md#spatial-sound-pre-pass-204). The stereo pair does not follow the roll.
+Listed in [risks](architecture-risks.md#technical-risks): `reset_rot` and the commands measured on 6.1.1 only; camera stills from large sources may feel slow; files without spherical information stay flat.
