@@ -21,6 +21,15 @@ fn saved_app(dir: &Path) -> (AppState, PathBuf, PathBuf) {
     let proj = dir.join("p.vlproj");
     app.dispatch(Command::SaveProjectAs(proj.clone()), now)
         .unwrap();
+    // the saved file is an hour old, so a copy written now is newer even on file systems
+    // with coarse time stamps (the test runs in far less than their resolution)
+    let old = std::time::SystemTime::now() - Duration::from_secs(3600);
+    std::fs::File::options()
+        .write(true)
+        .open(&proj)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
     let cache = dir.join("autosave");
     app.autosave_dir = Some(cache.clone());
     (app, proj, cache)
