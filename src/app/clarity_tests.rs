@@ -49,25 +49,34 @@ fn scale_of(app: &AppState, i: usize) -> Vec<u16> {
         .collect()
 }
 
-// covers: REQ-200
+// covers: REQ-200, REQ-148
 #[test]
-fn the_whole_video_popup_edits_the_selected_copy_only_and_remove_effect_removes_them_all() {
+fn a_whole_video_scale_is_one_copy_per_clip_each_edited_and_removed_in_its_own_popup() {
     let (_d, mut app) = three();
+    let n0 = app.history.undo_len();
     apply_whole_scale(&mut app);
+    assert_eq!(
+        app.history.undo_len(),
+        n0 + 1,
+        "one undo step for all copies"
+    );
     for i in 0..3 {
         assert_eq!(scale_of(&app, i), [1000], "one copy per clip");
     }
-    // by default the first copy is shown; selecting clip 2 shows that one
-    assert_eq!(app.selected_copy(FrameFx::Scale), Some(clip(&app, 0)));
-    app.dispatch(Command::SelectCopy(clip(&app, 1)), now())
-        .unwrap();
-    assert_eq!(app.selected_copy(FrameFx::Scale), Some(clip(&app, 1)));
+    // the popup that opens is the one of the clip under the playhead, not a whole-video one
     assert_eq!(
-        app.playhead,
-        Micros(5_000_000),
-        "the playhead goes to that clip"
+        app.popups.instance,
+        Some(Instance::Scale(FrameTarget::Clip(clip(&app, 0))))
     );
-    // a change of the selected copy leaves clips 1 and 3 as they were
+    assert!(
+        !app.popup_title(Popup::Instance).contains("whole video"),
+        "{}",
+        app.popup_title(Popup::Instance)
+    );
+    // a second double-click adds no copy and no undo step
+    apply_whole_scale(&mut app);
+    assert_eq!(app.history.undo_len(), n0 + 1);
+    // a change of clip 2's copy leaves clips 1 and 3 as they were
     let c2 = FrameTarget::Clip(clip(&app, 1));
     let n = app.history.undo_len();
     app.dispatch(
@@ -100,37 +109,49 @@ fn the_whole_video_popup_edits_the_selected_copy_only_and_remove_effect_removes_
     assert_eq!(app.project.timeline.scale_keys(c2).len(), 2);
     assert_eq!(scale_of(&app, 0).len(), 1);
     assert_eq!(scale_of(&app, 2).len(), 1);
-    // a selected row that loses the effect falls back to the first copy
-    // Remove effect removes the three copies, one undo restores them
+    // there is no whole-video Remove effect: it is refused and nothing changes
+    assert!(
+        app.dispatch(
+            Command::RemoveFrameEffect {
+                target: FrameTarget::Whole,
+                effect: FrameFx::Scale,
+            },
+            now(),
+        )
+        .is_err()
+    );
+    assert_eq!(scale_of(&app, 1).len(), 2);
+    // Remove effect of clip 2 removes its copy only, one undo restores it
     let before = app.history.undo_len();
     app.dispatch(
         Command::RemoveFrameEffect {
-            target: FrameTarget::Whole,
+            target: c2,
             effect: FrameFx::Scale,
         },
         now(),
     )
     .unwrap();
-    assert!((0..3).all(|i| scale_of(&app, i).is_empty()));
+    assert_eq!(
+        (scale_of(&app, 0), scale_of(&app, 1), scale_of(&app, 2)),
+        (vec![1000], vec![], vec![1000])
+    );
     assert_eq!(app.history.undo_len(), before + 1);
     app.dispatch(Command::Undo, now()).unwrap();
+    assert_eq!(scale_of(&app, 1).len(), 2);
+    // deleting a clip deletes its copy only
+    app.dispatch(Command::SelectClip(Some(clip(&app, 2))), now())
+        .unwrap();
+    app.dispatch(Command::Delete, now()).unwrap();
+    assert_eq!(app.project.timeline.clips.len(), 2);
     assert_eq!(
-        (
-            scale_of(&app, 0),
-            scale_of(&app, 1).len(),
-            scale_of(&app, 2)
-        ),
-        (vec![1000], 2, vec![1000])
-    );
-    assert!(
-        app.dispatch(Command::SelectCopy(ClipId(99)), now())
-            .is_err()
+        (scale_of(&app, 0), scale_of(&app, 1).len()),
+        (vec![1000], 2)
     );
 }
 
-// covers: REQ-201
+// covers: REQ-201, REQ-147
 #[test]
-fn an_appended_clip_without_the_whole_video_volume_is_offered_it_and_gets_it_only_by_the_button() {
+fn an_appended_clip_gets_no_whole_video_volume_and_no_notice_says_so() {
     let (_d, mut app) = three();
     for i in 0..3 {
         let c = clip(&app, i);
@@ -144,35 +165,22 @@ fn an_appended_clip_without_the_whole_video_volume_is_offered_it_and_gets_it_onl
         )
         .unwrap();
     }
-    assert!(app.new_clip_offer_text().is_none(), "no clip was added yet");
     let m = app.project.media[0].id;
     app.dispatch(Command::Append(Some(m)), now()).unwrap();
-    assert_eq!(
-        app.new_clip_offer_text().as_deref(),
-        Some("The new clip has no Volume")
+    // no notice and no button (the offer of 2.0.4 is removed); the new clip has no Volume
+    assert!(
+        !app.status.contains("The new clip has no"),
+        "{}",
+        app.status
     );
-    assert!(app.is_enabled(&Command::ApplyWholeToNew));
-    // without the button the new clip has no Volume
     let new = clip(&app, 3);
     assert!(!app.project.timeline.get(new).unwrap().has_volume());
-    // the button sets it to 50 % and changes no other clip; one undo step
-    let n = app.history.undo_len();
-    app.dispatch(Command::ApplyWholeToNew, now()).unwrap();
-    assert_eq!(app.project.timeline.get(new).unwrap().volume, 50);
-    assert_eq!(app.history.undo_len(), n + 1);
     assert!((0..3).all(|i| app.project.timeline.clips[i].volume == 50));
-    assert!(app.new_clip_offer_text().is_none());
-    app.dispatch(Command::Undo, now()).unwrap();
-    assert!(!app.project.timeline.get(new).unwrap().has_volume());
-    assert!((0..3).all(|i| app.project.timeline.clips[i].volume == 50));
-    // the offer is gone with an undone append
-    app.dispatch(Command::Undo, now()).unwrap();
-    assert!(app.new_clip_offer_text().is_none());
 }
 
-// covers: REQ-201
+// covers: REQ-201, REQ-147
 #[test]
-fn pasted_and_split_off_clips_are_offered_too_and_every_shared_effect_is_named() {
+fn pasted_and_split_off_clips_are_not_given_the_effects_of_the_others() {
     let (_d, mut app) = three();
     apply_whole_scale(&mut app);
     for i in 0..3 {
@@ -195,48 +203,39 @@ fn pasted_and_split_off_clips_are_offered_too_and_every_shared_effect_is_named()
     ));
     app.dispatch(Command::Seek(Micros(2_000_000)), now())
         .unwrap();
+    let before: Vec<ClipId> = app.project.timeline.clips.iter().map(|c| c.id).collect();
     app.dispatch(Command::Paste, now()).unwrap();
-    let t = app.new_clip_offer_text().expect("an offer after the paste");
     assert!(
-        t.starts_with("The new clip has no ") && t.contains("Clean audio") && t.contains("Scale"),
-        "{t}"
+        !app.status.contains("The new clip has no"),
+        "{}",
+        app.status
     );
-    app.dispatch(Command::ApplyWholeToNew, now()).unwrap();
-    let new = app.new_clip_offer.is_none();
-    assert!(new);
+    // the pasted clip (new, made from the clipboard clip) has neither effect
     let pasted = app
         .project
         .timeline
         .clips
         .iter()
-        .find(|c| c.clean_audio && c.src_out == Micros(2_000_000))
+        .find(|c| {
+            !before.contains(&c.id) && c.src_in == Micros::ZERO && c.src_out == Micros(2_000_000)
+        })
         .copied()
         .unwrap();
+    assert!(!pasted.clean_audio);
     assert!(
-        !app.project
+        app.project
             .timeline
             .scale_keys(FrameTarget::Clip(pasted.id))
             .is_empty()
     );
-    // a split keeps the effects on both halves: nothing is offered
+    // a split keeps the effects of the clip on both halves, as a clip's own effects do
     app.dispatch(Command::Seek(Micros(1_000_000)), now())
         .unwrap();
     app.dispatch(Command::Split, now()).unwrap();
-    assert!(app.new_clip_offer_text().is_none());
-    // the effect the others do not all share is not offered
-    app.dispatch(
-        Command::RemoveFrameEffect {
-            target: FrameTarget::Clip(clip(&app, 0)),
-            effect: FrameFx::Scale,
-        },
-        now(),
-    )
-    .unwrap();
-    let m = app.project.media[1].id;
-    app.dispatch(Command::Append(Some(m)), now()).unwrap();
-    assert_eq!(
-        app.new_clip_offer_text().as_deref(),
-        Some("The new clip has no Clean audio")
+    assert!(
+        !app.status.contains("The new clip has no"),
+        "{}",
+        app.status
     );
 }
 

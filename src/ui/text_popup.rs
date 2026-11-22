@@ -9,13 +9,17 @@ use super::UiCache;
 use super::strings::tr;
 use crate::app::{AppState, Command, Popup};
 use crate::text::{
-    EFFECT_DEFAULT, EFFECT_MAX, EFFECT_MIN, MIN_TTL, Readability, SlideDir, TextId, TextItem,
+    EFFECT_DEFAULT, EFFECT_MAX, EFFECT_MIN, MAX_SIZE_REFUSED, MIN_TTL, Readability, SlideDir,
+    TextId, TextItem, parse_max_size, show_max_size,
 };
 use crate::time::Micros;
 use eframe::egui::{self, Ui};
 
 /// The note under the font choice when its font is not installed (REQ-164).
 pub const FONT_MISSING: &str = "Font not installed: the bundled font is used";
+
+/// The unit after the Maximum size field.
+const PERCENT: &str = "%";
 
 /// The label of the "Add" button.
 pub const ADD: &str = "Add";
@@ -80,7 +84,13 @@ fn slide_row(ui: &mut Ui, v: &mut Option<(SlideDir, Micros)>) -> bool {
 
 /// The fields common to a new text and an existing one. True when a change is ready to be
 /// stored.
-fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String) -> bool {
+fn fields(
+    ui: &mut Ui,
+    app: &AppState,
+    item: &mut TextItem,
+    buffer: &mut String,
+    max_text: &mut Option<(u64, String)>,
+) -> bool {
     let mut done = false;
     ui.label(tr!(TextEnterStartsANew));
     let r = ui.add(
@@ -155,7 +165,8 @@ fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String)
                 }
             });
     });
-    ui.horizontal(|ui| {
+    // the shadow and the maximum size share a row (the popup must stay short, REQ-068)
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr!(ShadowLabel));
         let r = ui.add(
             egui::DragValue::new(&mut item.shadow.px)
@@ -167,7 +178,46 @@ fn fields(ui: &mut Ui, app: &AppState, item: &mut TextItem, buffer: &mut String)
         let c = egui::color_picker::color_edit_button_srgb(ui, &mut item.shadow.colour);
         done |= item.shadow.colour != before && !ui.input(|i| i.pointer.any_down())
             || c.clicked_elsewhere() && item.shadow.colour != before;
+        ui.add_space(8.0);
+        done |= max_size_field(ui, item, max_text);
     });
+    if let Some((_, text)) = max_text
+        && parse_max_size(text).is_err()
+    {
+        ui.colored_label(ui.visuals().error_fg_color, MAX_SIZE_REFUSED);
+    }
+    done
+}
+
+/// The optional Maximum size of the text (REQ-323): empty is the default cap. A value that
+/// is refused shows the message and leaves the stored value as it was.
+fn max_size_field(ui: &mut Ui, item: &mut TextItem, typed: &mut Option<(u64, String)>) -> bool {
+    let key = item.id.0;
+    if typed.as_ref().is_none_or(|(k, _)| *k != key) {
+        *typed = Some((key, show_max_size(item.max_size)));
+    }
+    let Some((_, text)) = typed.as_mut() else {
+        return false;
+    };
+    let mut done = false;
+    ui.label(tr!(MaximumSize));
+    let r = ui.add(
+        egui::TextEdit::singleline(text)
+            .desired_width(48.0)
+            .hint_text("10"),
+    );
+    ui.label(PERCENT);
+    if r.lost_focus()
+        && let Ok(v) = parse_max_size(text)
+        && v != item.max_size
+    {
+        item.max_size = v;
+        done = true;
+    }
+    // the stored value is shown again when it changed (an undo) and nothing is being typed
+    if !r.has_focus() && parse_max_size(text).is_ok_and(|v| v != item.max_size) {
+        *text = show_max_size(item.max_size);
+    }
     done
 }
 
@@ -191,7 +241,7 @@ fn new_text(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Com
         "It starts at the playhead ({}).",
         crate::time::timecode(app.playhead)
     ));
-    fields(ui, app, draft, buffer);
+    fields(ui, app, draft, buffer, &mut cache.max_text);
     ui.separator();
     ui.horizontal(|ui| {
         let cmd = Command::AddText(draft.clone());
@@ -231,7 +281,7 @@ fn existing(ui: &mut Ui, app: &AppState, cache: &mut UiCache, id: TextId, cmds: 
         Some((x, t)) if *x == id => t.clone(),
         _ => stored.text.clone(),
     };
-    let done = fields(ui, app, &mut item, &mut buffer);
+    let done = fields(ui, app, &mut item, &mut buffer, &mut cache.max_text);
     // the text is kept while it is being typed; the stored one shows otherwise
     let typing = ui.memory(|m| m.focused().is_some());
     cache.text_edit = typing.then(|| (id, buffer.clone()));

@@ -19,7 +19,10 @@ pub mod parse;
 pub mod store;
 
 pub use parse::{parse, parse_reader};
-pub use store::{Load, LoadMsg, cached, cached_with, embed, has_embedded, peek, read, read_with};
+pub use store::{
+    Load, LoadMsg, Prep, PrepMsg, cached, cached_with, embed, has_embedded, is_prepared, peek,
+    read, read_with,
+};
 
 /// Largest `.cube` file read (512 MiB; a 256-point cube is about 450 MB).
 pub const MAX_BYTES: u64 = 512 * 1024 * 1024;

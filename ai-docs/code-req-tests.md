@@ -1,127 +1,134 @@
 # ai-notes: code — requirement -> test files (generated)
-<!-- AI-only. Owner: principal-engineer. Regenerate: for f in $(grep -rlE 'covers: *REQ' src tests player | sort); do list the REQ numbers of its covers: lines; done. Test names: grep -rn 'covers:.*REQ-NNN' src tests player. Generated 2.0.4 stage 7 (REQ-180..233 are planned until the Product Manager marks them; each has a covers: line). -->
+<!-- AI-only. Owner: principal-engineer. Regenerate: for f in $(grep -rlE 'covers: *REQ' src tests player | sort); do list the REQ numbers of its covers: lines; done. Test names: grep -rn 'covers:.*REQ-NNN' src tests player. Regenerated 2026-11-22 (2.2.0 second pass; REQ-177, 315, 320..323 are planned until the Product Manager marks them; each has a covers: line except REQ-315, measured by the ignored hw::req315_phase_times). -->
 
 - player/src/fullscreen.rs: 141
 - player/src/playlist.rs: 254
 - player/src/settings.rs: 252
 - player/src/subs.rs: 140
-- player/src/tests.rs: 138, 139, 140, 141, 150, 250, 251, 252, 254, 295
-- player/src/ui_tests.rs: 138, 139, 140, 141, 142, 150, 154, 250, 254
-- player/tests/ffmpeg.rs: 138, 139, 140
-- src/align.rs: 95, 184
+- player/src/tests.rs: 138, 139, 140, 141, 150, 250, 251, 252, 253, 254, 295
+- player/src/ui_tests.rs: 138, 139, 140, 141, 142, 150, 154, 250, 253, 254
+- player/tests/ffmpeg.rs: 138, 139, 140, 253
+- src/align.rs: 095, 177, 184
+- src/app/applied_tests.rs: 147, 302, 303, 304, 313, 320, 321
 - src/app/cache_tests.rs: 295, 296, 297
-- src/app/clarity_tests.rs: 200, 201, 203, 204, 205
-- src/app/effects_tests.rs: 8, 11, 14, 15, 16, 20, 44, 52, 54, 78, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 95, 114, 147, 148, 274, 275, 276, 277
-- src/app/frame_tests.rs: 124, 127, 128, 129, 130, 282
-- src/app/hw_tests.rs: 55, 60, 61, 64, 207, 208, 209, 211, 214, 216, 217
-- src/app/lut_tests.rs: 57, 135, 136, 137, 289, 292, 293
+- src/app/clarity_tests.rs: 147, 148, 200, 201, 203, 204, 205
+- src/app/effects_tests.rs: 008, 011, 014, 015, 016, 020, 044, 052, 054, 078, 082, 083, 084, 085, 086, 087, 088, 089, 090, 091, 092, 095, 114, 147, 148, 274, 275, 276, 277
+- src/app/frame_tests.rs: 076, 124, 127, 128, 129, 130, 281, 282, 286, 288
+- src/app/hw_tests.rs: 055, 060, 061, 064, 207, 208, 209, 211, 214, 216, 217
+- src/app/lut_tests.rs: 057, 135, 136, 137, 289, 292, 293, 300, 301, 312
 - src/app/placing_tests.rs: 168, 169, 172, 174, 175, 176
 - src/app/player_link_tests.rs: 249, 250
 - src/app/recovery_tests.rs: 189, 190, 196
-- src/app/settings_tests.rs: 44, 45, 46, 47, 48, 50, 51, 52, 53, 54, 59, 227
+- src/app/settings_tests.rs: 044, 045, 046, 047, 048, 050, 051, 052, 053, 054, 059, 227
 - src/app/speed_tests.rs: 220, 221, 224
-- src/app/sphere_tests.rs: 57, 89, 96, 97, 98, 99, 100, 101, 102, 105, 123, 173, 263, 267, 270, 271
+- src/app/sphere_tests.rs: 057, 089, 096, 097, 098, 099, 100, 101, 102, 105, 123, 173, 263, 267, 268, 270, 271
+- src/app/style_tests.rs: 306, 307, 308, 309
 - src/app/subs_import_tests.rs: 180, 183, 184, 185, 186
-- src/app/tests.rs: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 16, 19, 20, 21, 25, 26, 27, 28, 32, 33, 38, 41, 43, 44, 45, 49, 230
-- src/app/text_tests.rs: 90, 91, 92, 103, 106, 108, 109, 110, 111, 112, 113, 115, 116, 117, 118, 119, 122, 158, 159, 161, 167
-- src/app/ux_tests.rs: 28, 67, 72, 73, 74, 76, 77, 80, 81
-- src/ass.rs: 17, 31, 89, 97, 181, 187
+- src/app/tests.rs: 001, 002, 003, 004, 005, 006, 007, 008, 009, 010, 011, 014, 015, 016, 019, 020, 021, 025, 026, 027, 028, 032, 033, 038, 041, 043, 044, 045, 049, 230
+- src/app/text_tests.rs: 090, 091, 092, 103, 106, 108, 109, 110, 111, 112, 113, 115, 116, 117, 118, 119, 122, 158, 159, 161, 167, 258, 259, 287
+- src/app/ux_tests.rs: 028, 067, 072, 073, 074, 076, 077, 080, 081
+- src/ass.rs: 017, 031, 089, 097, 181, 187
+- src/ass/style_tests.rs: 306, 307, 308, 309, 310
 - src/autosave.rs: 189, 190
 - src/base/font.rs: 108, 187
 - src/base/names.rs: 189
 - src/camera.rs: 101, 102, 112, 266, 270, 271
-- src/desktop.rs: 41, 232
+- src/desktop.rs: 041, 232
+- src/effect_order.rs: 304, 305, 311, 320, 321, 322
 - src/export/choice.rs: 118, 119, 122, 182, 264, 265
-- src/export/hw_tests.rs: 21, 55, 63, 103, 206, 215
-- src/export.rs: 17, 21, 23
-- src/ffmpeg.rs: 30
+- src/export/hw_tests.rs: 021, 055, 063, 103, 206, 215
+- src/export.rs: 017, 021, 023, 273
+- src/ffmpeg.rs: 030
 - src/fonts.rs: 108, 163, 165, 166, 187, 188
-- src/format.rs: 22, 120, 121, 212, 213, 220
+- src/format.rs: 022, 120, 121, 212, 213, 220
 - src/frame.rs: 125, 129, 131, 132, 284, 285
-- src/history.rs: 4, 74, 196
+- src/history.rs: 004, 074, 196
 - src/hwdec/tests.rs: 214, 216
-- src/hwenc/tests.rs: 61, 62, 207, 209, 210, 215, 216, 217
-- src/instance/tests.rs: 81, 230
-- src/jobs.rs: 33, 50
+- src/hwenc/tests.rs: 061, 062, 207, 209, 210, 215, 216, 217
+- src/instance/tests.rs: 081, 230
+- src/jobs.rs: 033, 050
 - src/keyframes.rs: 129, 132, 203, 204, 282
-- src/lut.rs: 136, 289, 290, 291
-- src/machine.rs: 45, 54
+- src/lut/mod.rs: 136, 289, 290, 291
+- src/lut/parse.rs: 300
+- src/lut/store.rs: 300, 312
+- src/machine.rs: 045, 054
 - src/measure.rs: 116, 156, 157, 159, 163
-- src/media.rs: 2, 57, 86, 100, 269
+- src/media.rs: 002, 057, 086, 100, 253, 269
 - src/mp4tracks.rs: 182
-- src/music.rs: 2, 19, 20
-- src/notices.rs: 31, 143, 255
-- src/outcheck/tests.rs: 63, 206
-- src/packaging.rs: 30, 40, 41, 42, 138, 225, 226, 227, 228, 229, 231, 248
+- src/music.rs: 002, 019, 020
+- src/notices.rs: 031, 143, 187, 255
+- src/order_chain.rs: 320, 321, 322
+- src/outcheck/tests.rs: 063, 206
+- src/packaging.rs: 030, 040, 041, 042, 138, 225, 226, 227, 228, 229, 231, 248
+- src/picture.rs: 287, 316
 - src/placement.rs: 168, 169, 174, 175, 176
-- src/preview.rs: 13, 34, 35, 39, 144, 223
-- src/project.rs: 3, 16, 19, 20, 29, 57, 94, 105, 113, 123, 132, 136, 137, 151, 152, 158, 167
+- src/preview.rs: 013, 034, 035, 039, 144, 223
+- src/project/order_tests.rs: 057, 302, 304, 311, 320, 321, 322
+- src/project.rs: 003, 016, 019, 020, 029, 057, 094, 105, 113, 123, 132, 136, 137, 151, 152, 158, 167
+- src/project/v12_tests.rs: 311
+- src/project/v13_tests.rs: 029, 322, 323
 - src/project/v9.rs: 149
-- src/proxy.rs: 33, 38, 104, 214
-- src/render/golden_tests.rs: 29, 62, 94, 97, 105
-- src/render/tests.rs: 11, 13, 17, 19, 20, 22, 23, 34, 36, 37, 38, 43, 83, 84, 101, 102, 103, 104, 111, 112, 114, 119, 120, 121, 125, 126, 127, 128, 131, 135, 136, 155, 182, 222, 265, 266, 269, 276, 277, 278, 279, 283, 284
-- src/scratch.rs: 59, 151, 152
-- src/selection.rs: 90, 91, 92
+- src/proxy.rs: 033, 038, 104, 214
+- src/render/golden_tests.rs: 029, 062, 094, 097, 105, 123
+- src/render/overlay_tests.rs: 304, 305, 311, 320, 321
+- src/render/tests.rs: 011, 013, 017, 019, 020, 022, 023, 034, 036, 037, 038, 043, 083, 084, 101, 102, 103, 104, 111, 112, 114, 119, 120, 121, 125, 126, 127, 128, 131, 135, 136, 155, 182, 222, 253, 257, 265, 266, 269, 273, 276, 277, 278, 279, 280, 281, 283, 284, 286, 287, 316, 320, 321
+- src/scratch.rs: 059, 151, 152
+- src/selection.rs: 090, 091, 092
 - src/settings/interface.rs: 234, 235, 237, 238, 239, 240, 241, 242, 243, 244
-- src/settings/tests.rs: 45, 46, 47, 48, 49, 50, 52, 54, 57, 60, 64, 65, 67, 80, 96, 151, 152
+- src/settings/tests.rs: 045, 046, 047, 048, 049, 050, 052, 054, 057, 060, 064, 065, 067, 080, 096, 151, 152
 - src/siblings.rs: 249, 250
+- src/spatial.rs: 273
+- src/speech_regions.rs: 177
 - src/spherical.rs: 103, 261
 - src/splash.rs: 134, 150, 295
-- src/srt.rs: 57, 87, 88, 180, 183
-- src/stt.rs: 14, 15, 52, 53, 54, 58, 85, 87, 95, 178, 179
-- src/subtitles.rs: 16, 18, 44, 85, 89, 92, 97, 99, 192, 197
+- src/srt.rs: 057, 087, 088, 180, 183
+- src/stt.rs: 014, 015, 052, 053, 054, 058, 085, 087, 095, 177, 178, 179
+- src/subtitles.rs: 016, 018, 044, 085, 089, 092, 097, 099, 192, 197
 - src/text.rs: 108, 109, 110, 111, 113, 116, 123, 156, 158, 163, 164
-- src/timeline.rs: 2, 5, 6, 7, 8, 9, 10, 11, 20, 83, 84, 94, 114, 124, 129, 130, 131, 132, 135, 147, 148, 191, 193, 274, 275
-- src/ui/boxes.rs: 96, 97, 98, 116, 146
-- src/ui/clarity_ux_tests.rs: 200, 201, 202, 203, 204
+- src/text/size_tests.rs: 318, 319, 323
+- src/timeline.rs: 002, 005, 006, 007, 008, 009, 010, 011, 020, 083, 084, 094, 114, 124, 129, 130, 131, 132, 135, 147, 148, 191, 193, 274, 275, 281
+- src/ui/applied_ux_tests.rs: 068, 302, 303, 304, 317, 320, 321
+- src/ui/boxes.rs: 096, 097, 098, 116, 146
+- src/ui/clarity_ux_tests.rs: 148, 200, 201, 202, 203, 204
 - src/ui/frame_handles.rs: 127, 128, 145
 - src/ui/frame_ux_tests.rs: 124, 127, 128, 129, 130
 - src/ui/gesture_ux_tests.rs: 191, 192, 193, 194, 195, 197, 198, 199
 - src/ui/icons.rs: 142, 143
 - src/ui/icon_ux_tests.rs: 142
 - src/ui/interface_ux_tests.rs: 235, 237, 238, 239, 240, 241, 242, 243, 244, 246
-- src/ui/keymap.rs: 25, 26, 28, 71
-- src/ui/layout.rs: 24, 66, 67, 237, 238
-- src/ui/lut_ux_tests.rs: 69, 75, 135, 142, 294
-- src/ui/markers.rs: 77, 83, 84, 90, 114
-- src/ui/menu.rs: 69, 75, 247
-- src/ui/placement.rs: 89, 117
+- src/ui/keymap.rs: 025, 026, 028, 071
+- src/ui/layout.rs: 024, 066, 067, 237, 238, 317
+- src/ui/lut_ux_tests.rs: 069, 075, 135, 142, 288, 294
+- src/ui/markers.rs: 077, 083, 084, 090, 114
+- src/ui/menu.rs: 069, 075, 247
+- src/ui/placement.rs: 089, 117, 260
 - src/ui/place.rs: 234, 235, 236
 - src/ui/placing_ux_tests.rs: 169, 170, 171, 172, 175, 176
-- src/ui/ruler.rs: 93
+- src/ui/ruler.rs: 093
 - src/ui/script_ux_tests.rs: 182, 183, 184, 185, 188
-- src/ui/sphere_ux_tests.rs: 69, 70, 72, 89, 92, 96, 97, 98, 99, 100, 101, 102, 112, 272
+- src/ui/sphere_ux_tests.rs: 069, 070, 072, 089, 092, 096, 097, 098, 099, 100, 101, 102, 112, 272
 - src/ui/splash_ux_tests.rs: 133, 134, 154
 - src/ui/strings.rs: 245
-- src/ui/tests.rs: 12, 16, 17, 19, 20, 21, 24, 25, 26, 28, 32, 38, 45, 46, 48, 52, 56, 60, 64, 66, 73, 76, 82, 89, 95, 97, 101, 104
-- src/ui/text_ux_tests.rs: 75, 90, 92, 96, 103, 106, 107, 108, 110, 111, 118, 122, 158, 159, 160, 161, 162, 164
+- src/ui/tests.rs: 012, 016, 017, 019, 020, 021, 024, 025, 026, 028, 032, 038, 045, 046, 048, 052, 056, 060, 064, 066, 073, 076, 082, 089, 095, 097, 101, 104
+- src/ui/text_ux_tests.rs: 075, 090, 092, 096, 103, 106, 107, 108, 110, 111, 118, 122, 158, 159, 160, 161, 162, 164, 319, 323
 - src/ui/theme.rs: 243, 244
-- src/ui/toolbar.rs: 70, 106
-- src/ui/ux_tests.rs: 9, 11, 19, 25, 28, 66, 67, 68, 69, 70, 71, 72, 75, 76, 77, 78, 79, 81, 82, 83, 89, 90, 91, 92, 114, 233
-- src/ui/zoom.rs: 12
-- tests/ffmpeg_integration/hw.rs: 55, 61, 62, 63, 206, 212, 213, 218, 219
-- tests/ffmpeg_integration.rs: 1, 2, 11, 13, 14, 15, 17, 19, 20, 21, 22, 23, 36, 37, 38, 39, 43, 52
-- tests/ffmpeg_integration/v126.rs: 22, 23, 97, 100, 101, 102, 103, 104
-- tests/ffmpeg_integration/v12.rs: 11, 17, 20, 83, 84, 86, 87, 88, 89, 95, 177
-- tests/ffmpeg_integration/v13.rs: 23, 103, 109, 111, 112, 116, 117
-- tests/ffmpeg_integration/v14.rs: 114, 119, 120, 121
-- tests/ffmpeg_integration/v15.rs: 125, 126, 127, 128, 129, 131
-- tests/ffmpeg_integration/v16.rs: 135, 136, 147
-- tests/ffmpeg_integration/v204.rs: 182, 187, 223, 256, 261, 262, 269, 270, 278, 279, 283
+- src/ui/toolbar.rs: 070, 106
+- src/ui/ux_tests.rs: 009, 011, 019, 025, 028, 066, 067, 068, 069, 070, 071, 072, 075, 076, 077, 078, 079, 081, 082, 083, 089, 090, 091, 092, 114, 233
+- src/ui/zoom.rs: 012
+- src/word_styles.rs: 309, 310
+- tests/ffmpeg_integration/hw.rs: 055, 061, 062, 063, 206, 212, 213, 218, 219
+- tests/ffmpeg_integration.rs: 001, 002, 011, 013, 014, 015, 017, 019, 020, 021, 022, 023, 036, 037, 038, 039, 043, 052
+- tests/ffmpeg_integration/v126.rs: 022, 023, 097, 100, 101, 102, 103, 104
+- tests/ffmpeg_integration/v12.rs: 011, 017, 020, 083, 084, 086, 087, 088, 089, 095, 177
+- tests/ffmpeg_integration/v13.rs: 023, 103, 109, 111, 112, 116, 117
+- tests/ffmpeg_integration/v14.rs: 114, 119, 120, 121, 320
+- tests/ffmpeg_integration/v15.rs: 125, 126, 127, 128, 129, 131, 286
+- tests/ffmpeg_integration/v16.rs: 135, 136, 147, 300
+- tests/ffmpeg_integration/v204b.rs: 273, 281, 287
+- tests/ffmpeg_integration/v204.rs: 182, 187, 223, 256, 261, 262, 269, 270, 278, 279, 280, 283
 - tests/ffmpeg_integration/v20.rs: 121, 137, 144, 155
-- tests/ffmpeg_integration/v21.rs: 156, 157, 158, 162, 163, 164, 165, 174
+- tests/ffmpeg_integration/v21.rs: 156, 157, 158, 162, 163, 164, 165, 174, 304, 305, 306, 309, 310, 311
+- tests/ffmpeg_integration/v22order.rs: 320, 321
+- tests/ffmpeg_integration/v22.rs: 177, 314
 - tests/module_cycles.rs: 153
 - tests/page.rs: 298, 299
-
-## 2.1.0 (first part)
-- src/lut/parse.rs, src/lut/store.rs, src/app/lut_tests.rs, tests/ffmpeg_integration/v16.rs: 300; src/app/lut_tests.rs: 301
-- src/ass/style_tests.rs: 306, 307, 308, 309, 310; src/word_styles.rs: 309, 310; src/app/style_tests.rs: 306, 307, 308, 309; tests/ffmpeg_integration/v21.rs: 306, 309, 310
-- src/project/v12_tests.rs: 311
-
-## 2.1.0 (second part: Applied effects, overlay stage, order in the project)
-- REQ-302: src/app/applied_tests.rs, src/ui/applied_ux_tests.rs, src/project/order_tests.rs
-- REQ-303: src/app/applied_tests.rs, src/ui/applied_ux_tests.rs
-- REQ-304: src/effect_order.rs, src/app/applied_tests.rs, src/ui/applied_ux_tests.rs, src/render/overlay_tests.rs, src/project/order_tests.rs, tests/ffmpeg_integration/v21.rs
-- REQ-305: src/effect_order.rs, src/render/overlay_tests.rs, tests/ffmpeg_integration/v21.rs
-- REQ-311: src/effect_order.rs, src/project/order_tests.rs, src/project/v12_tests.rs, src/render/overlay_tests.rs, tests/ffmpeg_integration/v21.rs
-- Gates: QG-20 (overlay parity, preview and export agree) = tests/ffmpeg_integration/v21.rs (3 tests); QG-21 (legacy argv unchanged) = render/overlay_tests.rs `a_clip_with_the_old_order_keeps...` + the frozen golden files in render/golden_tests.rs (unchanged).

@@ -5,7 +5,7 @@
 //! the effects of the selected clip, or of the clip at the playhead. The movable rows come
 //! first, the one drawn on top at the top; they move by drag or with Move up and Move down (the
 //! keyboard: Alt+Up and Alt+Down on the focused or hovered row). The fixed rows follow, in the order the
-//! picture is built. An effect applied to the whole video carries a "whole video" mark.
+//! picture is built. A whole-video effect is a copy on each clip: its row has no mark (REQ-303).
 
 use super::strings::tr;
 use super::{UiCache, scroll_body};
@@ -79,8 +79,20 @@ fn one_row(
         } else {
             Sense::click()
         };
+        // the name shortens to leave room for the two Move buttons of a movable row (the
+        // column is narrow, REQ-317)
+        let moves_w = if row.row.is_some() {
+            2.0 * (ui.spacing().interact_size.y + ui.spacing().item_spacing.x)
+        } else {
+            0.0
+        };
+        let name_w = (ui.available_width() - moves_w).max(40.0);
         let r = ui
-            .add(Button::new(text).sense(sense))
+            .scope(|ui| {
+                ui.set_max_width(name_w);
+                ui.add(Button::new(text).sense(sense).truncate())
+            })
+            .inner
             .on_hover_text(tr!(AppliedRowHint));
         // the screen reader says "Applied effect: Volume", not the name of the Effects list
         let spoken = format!("{} {}", tr!(AppliedEffectLabel), row.name);
@@ -88,11 +100,9 @@ fn one_row(
         if r.clicked() {
             cmds.extend(row.open.iter().cloned());
         }
-        if row.whole {
-            ui.weak(tr!(WholeVideoMark));
-        }
         let Some(kind) = row.row else { return };
-        if r.drag_stopped()
+        if !kind.is_sound()
+            && r.drag_stopped()
             && let Some(p) = r.interact_pointer_pos()
         {
             // the row ends where the pointer is, counted in rows of this height

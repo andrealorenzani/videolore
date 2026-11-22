@@ -707,3 +707,81 @@ fn the_export_dialog_dropdowns_open_on_a_click_and_a_choice_is_kept() {
     assert!(n > 10, "the list is open: {:#?}", h.labels());
     h.key(Key::Escape, Modifiers::NONE);
 }
+
+/// Types `value` into the Maximum size field of the open text popup and presses Enter.
+fn type_max(h: &mut Harness, value: &str) {
+    let field = h
+        .nodes
+        .iter()
+        .find(|n| n.role == Role::TextInput)
+        .cloned()
+        .unwrap_or_else(|| panic!("no size field: {:#?}", h.labels()));
+    h.click(field.rect.center());
+    h.key(Key::A, Modifiers::COMMAND);
+    if value.is_empty() {
+        h.key(Key::Delete, Modifiers::NONE);
+    } else {
+        h.frame(vec![Event::Text(value.into())]);
+    }
+    h.key(Key::Enter, Modifiers::NONE);
+    h.idle(2);
+}
+
+// covers: REQ-323
+// covers: REQ-319
+#[test]
+fn the_maximum_size_field_refuses_wrong_values_and_each_change_is_one_undo_step() {
+    use crate::text::MAX_SIZE_REFUSED;
+    let (_d, mut app) = loaded();
+    let id = text_at(&mut app, "Hi", 1);
+    let mut h = Harness::new(app, 1280.0, 900.0);
+    h.app
+        .dispatch(Command::OpenText(id), Instant::now())
+        .unwrap();
+    h.idle(3);
+    // there is no size field besides the maximum (REQ-319)
+    assert!(h.has("Maximum size"), "{:#?}", h.labels());
+    assert_eq!(
+        h.nodes.iter().filter(|n| n.role == Role::TextInput).count(),
+        1
+    );
+    let n = h.app.history.undo_len();
+    // 1 is below 2: refused in the field, nothing changes
+    type_max(&mut h, "1");
+    assert!(h.has(MAX_SIZE_REFUSED), "{:#?}", h.labels());
+    assert_eq!(h.app.project.texts.get(id).unwrap().max_size, None);
+    assert_eq!(h.app.history.undo_len(), n);
+    // 20 sets the maximum: 200 thousandths, one undo step
+    type_max(&mut h, "20");
+    assert!(!h.has(MAX_SIZE_REFUSED));
+    assert_eq!(h.app.project.texts.get(id).unwrap().max_size, Some(200));
+    assert_eq!(h.app.history.undo_len(), n + 1);
+    // an empty field gives the default cap back, one more step
+    type_max(&mut h, "");
+    assert_eq!(h.app.project.texts.get(id).unwrap().max_size, None);
+    assert_eq!(h.app.history.undo_len(), n + 2);
+    // one undo restores 20
+    h.key(Key::Z, Modifiers::COMMAND);
+    assert_eq!(h.app.project.texts.get(id).unwrap().max_size, Some(200));
+    // a subtitle line keeps its style size: the maximum is of text items only
+    assert!(h.app.project.subtitles.lines.is_empty());
+}
+
+// covers: REQ-323
+#[test]
+fn the_maximum_size_is_read_as_percent_with_one_decimal_and_a_wrong_one_is_refused() {
+    use crate::text::{parse_max_size, show_max_size};
+    assert_eq!(parse_max_size(""), Ok(None));
+    assert_eq!(parse_max_size("  "), Ok(None));
+    assert_eq!(parse_max_size("20"), Ok(Some(200)));
+    assert_eq!(parse_max_size("2"), Ok(Some(20)));
+    assert_eq!(parse_max_size("50"), Ok(Some(500)));
+    assert_eq!(parse_max_size("12.5"), Ok(Some(125)));
+    assert_eq!(parse_max_size("12,5%"), Ok(Some(125)));
+    for bad in ["1", "1.9", "50.1", "abc", "12.55", "-5", "NaN", "inf"] {
+        assert!(parse_max_size(bad).is_err(), "{bad}");
+    }
+    assert_eq!(show_max_size(None), "");
+    assert_eq!(show_max_size(Some(100)), "10");
+    assert_eq!(show_max_size(Some(125)), "12.5");
+}

@@ -890,6 +890,11 @@ impl Preview {
         }
     }
 
+    /// The folders the preview's ffmpeg runs in (a LUT copy is written into each, REQ-312).
+    pub fn work_dirs(&self) -> Vec<PathBuf> {
+        vec![self.dir("play"), self.dir("still")]
+    }
+
     fn dir(&self, sub: &str) -> PathBuf {
         let d = self
             .scratch
@@ -1497,7 +1502,7 @@ mod tests {
         let scale = |proj: &mut Project, permille: u16| {
             proj.timeline
                 .set_scale_key(
-                    FrameTarget::Whole,
+                    FrameTarget::Clip(proj.timeline.clips[0].id),
                     Micros::ZERO,
                     Scale {
                         permille,

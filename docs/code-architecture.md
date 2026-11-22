@@ -12,7 +12,7 @@ in [code-modules.md](code-modules.md).
 |---|---|
 | Programs | `src/main.rs` → `lib.rs` (`real_app`, `native_options`, `prepare_desktop`); `player/src/main.rs` → `player/src/lib.rs` |
 | Interface | `ui` (and its sub-modules, among them `scripts`: the interface fonts of the subtitle scripts), `dialogs`, `splash`; the player's `ui`, `fullscreen` |
-| Application | `app` (`AppState`, `Command`, `dispatch`; sub-modules `command`, `dispatch_project`, `dispatch_subtitles`, `dispatch_settings`, `dispatch_playback`, `dispatch_view` (one area of the dispatcher each), `enabled` (which commands can run), `tick` (once per frame), `effects`, `export_flow`, `frame`, `lut`, `offer` (new clip), `placing`, `recovery` (autosave in the app), `sphere`, `stops` (the keys [ and ]), `subs_create`, `subs_import`, `texts`); the player's `app`, `subs` |
+| Application | `app` (`AppState`, `Command`, `dispatch`; sub-modules `command`, `dispatch_project`, `dispatch_subtitles`, `dispatch_settings`, `dispatch_playback`, `dispatch_view` (one area of the dispatcher each), `enabled` (which commands can run), `tick` (once per frame), `effects`, `export_flow`, `frame`, `lut` (the preparation of a LUT, `tick_lut_prep`), `placing`, `recovery` (autosave in the app), `sphere`, `stops` (the keys [ and ]), `subs_create`, `subs_import`, `texts`); the player's `app`, `subs` |
 | Engine (threads, processes) | `export` (+ `export::choice`), `outcheck`, `hwenc`, `hwdec` (hardware decoders of the preview), `preview`, `proxy`, `stt`, `jobs`, `ffmpeg`, `scratch` (work-folder root and start-up cleanup), `autosave` (copies of the open project in the cache, written on a worker) |
 | Rendering (pure) | `render` (filter graphs and argv; sub-modules `segments`, `inputs`, `graph`, `plan`, `args`), `spatial` (ambisonic sound turned by the camera: rotation, the pre-pass and its WAV file; uses `ffmpeg` only to run the decoder), `format`, `ass`, `camera`, `frame`, `keyframes`, `lut`, `spherical`, `mp4tracks` (switches a subtitle track of an MP4 off by default) |
 | Model (pure) | `project` (+ `project::v9`), `timeline`, `music`, `subtitles`, `text` (+ `text::timing`, `text::layout`, `text::events`), `selection`, `history`, `media`, `srt` (SRT and WebVTT), `align`, `measure` (text measured with the font's tables), `placement` (boxes of lines and texts, least move, overlaps) |
@@ -257,4 +257,51 @@ flowchart LR
 ```
 
 New edges, all downwards (checked by `tests/module_cycles.rs`): `media` reads the initial view of a file with `spherical::read_pose`; the start camera function lives in `camera` (not in `media`, which would make a cycle); `keyframes` owns `Ease`, shared by `camera` and `frame`; `project` embeds LUT copies through `lut`; the player uses `videolore::siblings` to start the editor.
+
+## 2.2.0 additions
+
+```mermaid
+flowchart LR
+  order_chain --> effect_order
+  project --> order_chain
+  project --> effect_order
+  render --> project
+  app --> order_chain
+  app --> lut
+  app --> preview
+  preview -. "work_dirs" .-> app
+  lut_prep["lut::Prep thread"] --> lut_store["lut::store cache and copies"]
+  ui_col["ui preview_panel (column)"] --> ui_layout["ui/layout applied_width"] --> settings
+  speech_regions --> time
+  align --> speech_regions
+  stt --> align
+  render_steps["render/steps"] --> render_overlay["render/overlay"]
+  render_graph["render/graph"] --> render_steps
+  render_overlay --> project
+  export --> outcheck
+```
+
+`order_chain` (pure) knows only the row names of `effect_order`; `project` stores the order of every row through them and `render/segments` reads
+`Project::sound_swapped` into `Segment.volume_first`. The preparation of a LUT is a thread of its own (`lut::Prep`, like `lut::Load`) that
+the tick of `app` follows; the preview's folders are given by `Preview::work_dirs`, and the preview never reads a table on the UI thread
+(`shown_project` leaves out a LUT that is not prepared). `speech_regions` is pure; `align::align_with` places the words of a matched cue over
+its regions and `stt` makes the levels, but only when `speech_regions::FROZEN` holds a setting (it is `None`: the target was not reached).
+
+### The order of the picture rows (REQ-320)
+
+```mermaid
+flowchart LR
+  p["project/order clip_rows: Present"] --> e["effect_order: legacy, resolve, overlay_form"]
+  e -->|default| g1["render/graph legacy chain (2.1.0 argv)"]
+  e -->|"overlay form (2.1.0 stored order)"| o["render/overlay attach: OverlayStep list"]
+  e -->|"any other order"| s["render/overlay attach: Step list"]
+  o --> g2["graph overlay_chain"]
+  s --> st["render/steps chain: source, layer, frame"]
+  g1 & g2 & st --> f["one filter graph: preview, export, output check"]
+```
+
+A clip has one of three builds, decided by its resolved order and nothing else: the default order keeps the arguments of the older
+versions; the order of a 2.1.0 project (movable rows above the rest, in the default sequence) keeps the 2.1.0 overlay stage; every other
+order is built by `render/steps.rs`. The preview and the export call the same `build_graph`, so they agree; the preview does not use the cache of
+the blurred background for such a clip (`FrameKey::background_name`).
 

@@ -42,6 +42,42 @@ pub const DEFAULT_HEIGHT: u16 = 200;
 pub const MIN_FIT: u32 = measure::MIN_SIZE;
 /// Largest text height, in thousandths of the picture height (REQ-157: 10%).
 pub const MAX_FIT: u32 = measure::MAX_SIZE;
+/// Range of a text's own maximum size, in thousandths of the picture height: 2% to 50%
+/// (REQ-323; 2% is the smallest size of the fit).
+pub const MAX_SIZE_MIN: u16 = 20;
+pub const MAX_SIZE_MAX: u16 = 500;
+/// What the Maximum size field says when its value is refused (REQ-323).
+pub const MAX_SIZE_REFUSED: &str = "Enter a size from 2 to 50, or leave it empty";
+
+/// A text's maximum size as typed in its field, in percent of the picture height: empty is
+/// no maximum (`None`, the default cap); else a number from 2 to 50 with at most one decimal.
+/// The value is returned in thousandths of the picture height.
+pub fn parse_max_size(typed: &str) -> Result<Option<u16>, &'static str> {
+    let t = typed.trim().trim_end_matches('%').trim();
+    if t.is_empty() {
+        return Ok(None);
+    }
+    let v: f64 = t.replace(',', ".").parse().map_err(|_| MAX_SIZE_REFUSED)?;
+    let tenths = (v * 10.0).round();
+    if !v.is_finite() || (v * 10.0 - tenths).abs() > 1e-6 {
+        return Err(MAX_SIZE_REFUSED);
+    }
+    let p = tenths as i64;
+    if (i64::from(MAX_SIZE_MIN)..=i64::from(MAX_SIZE_MAX)).contains(&p) {
+        Ok(Some(p as u16))
+    } else {
+        Err(MAX_SIZE_REFUSED)
+    }
+}
+
+/// A maximum size as shown in its field: percent with at most one decimal, empty for none.
+pub fn show_max_size(m: Option<u16>) -> String {
+    match m {
+        None => String::new(),
+        Some(p) if p % 10 == 0 => format!("{}", p / 10),
+        Some(p) => format!("{}.{}", p / 10, p % 10),
+    }
+}
 /// Limits of the ASS events of one item and of a project.
 pub const MAX_EVENTS_ITEM: usize = 2000;
 pub const MAX_EVENTS_TOTAL: usize = 20_000;
@@ -179,6 +215,11 @@ pub struct TextItem {
     pub shadow: crate::base::shadow::Shadow,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<Anchor360>,
+    /// The text's own maximum size, thousandths of the picture height in
+    /// `MAX_SIZE_MIN..=MAX_SIZE_MAX` (2.2.0, REQ-323); `None`: the default cap
+    /// ([`MAX_FIT`]). Project format 13.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_size: Option<u16>,
     /// A picture item (2.0.4, REQ-287): the image is drawn in the box instead of text; the
     /// text is its file name, shown on the timeline.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -225,9 +266,16 @@ impl TextItem {
             readability: Readability::Outline,
             shadow: crate::base::shadow::Shadow::default(),
             anchor: None,
+            max_size: None,
             picture: None,
             karaoke: Vec::new(),
         }
+    }
+
+    /// The largest size the text may have, thousandths of the picture height: its own
+    /// maximum, or the default cap (REQ-157, REQ-323).
+    pub fn cap(&self) -> u32 {
+        self.max_size.map_or(MAX_FIT, u32::from)
     }
 
     /// A new picture item at `start`: 3 s, a box with the picture's proportions in the
@@ -274,6 +322,12 @@ impl TextItem {
         }
         if !valid_font(&self.font) {
             return Err("text item with an invalid font name".into());
+        }
+        if self
+            .max_size
+            .is_some_and(|m| !(MAX_SIZE_MIN..=MAX_SIZE_MAX).contains(&m))
+        {
+            return Err("text item with a maximum size outside 2 to 50".into());
         }
         if !self.place.is_valid()
             || !(WIDTH_MIN..=WIDTH_MAX).contains(&self.width)
@@ -413,6 +467,8 @@ pub use events::*;
 pub use layout::*;
 pub use timing::*;
 
+#[cfg(test)]
+mod size_tests;
 #[cfg(test)]
 mod tests {
     use super::*;

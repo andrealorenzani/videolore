@@ -124,3 +124,22 @@ Gates are marked GATE; everything else is an estimate or target. Grouped by area
 - Event caps: ASS 2000 events per document and 20000 per file (ADR-067) kept; Typewriter and Enlarge use about two events per word; shadow copies only for boxed items.
 - Limits (Q-1 = B): LUT edge 2..=256, file 512 MiB, line 256 bytes; shadow 0..=20 px at 1080; enlarge 1..=40 px at 1080; project format 12 read cap 96 MiB unchanged.
 - Platforms: unchanged (Linux, macOS, Windows); no new platform code.
+
+## 2.2.0 (built 2026-11-22; targets as planned, outcome in the BUILT block below; plan § 7 and § 14)
+- REQ-312 (route D, D63): start of a 256-point LUT (choose to first graded frame) not gated, about 12 s kept; MEASURED `.cube` 12.4-13.0 s, 144 points 2.26 s. Record only: `.m3d` integer 3.4-3.6 s, float 5.1 s, HALD 0.36 s (rejected alternatives, ADR-214). ffmpeg RSS about 225 MB at 256 points (measured).
+- REQ-312 progress: percentage changes at least once per second while preparing (GATE); during the ffmpeg start the percentage is time-based (ESTIMATE, capped at 95%).
+- REQ-312 responsiveness: menu and popup response <= 200 ms while preparing (GATE); no parse or write on the UI thread (GATE by call path); playback first frame <= 200 ms with the unprocessed fallback (REQ-224 GATE).
+- REQ-312 colours: preview = export within 2 levels (GATE, same `.cube` route as 2.1.0).
+- REQ-312 preparation budgets (2.1.0 estimates, PE measures): read and parse 256 points <= 6 s; Work copy write <= 3 s (about 450 MB).
+- REQ-313 rows: 0 builds over 60 frames without a change, 1 after one change (GATE).
+- REQ-314 blur: proxy (no decode, ffmpeg 9.0.2, 300 frames) +3.2 ms per frame at 1080p, +1.8 ms at 4K; ASSUMPTION 1% dropped frames at 1080p in 60 s and 4K median step <= 40 ms; the real preview is measured in S0b.
+- REQ-315 Faster on the Iris Plus G7: ASSUMPTION at least 20% quicker than Best (median of 3, with the check); 2.0.4 measured -14% to +41%; phases measured in S0c.
+- REQ-316 picture: 16,000,000 pixels exact (GATE 4000x4000 accepted, 4001x4000 refused), header read only.
+- REQ-177: GATE at least 90% of matched words within 0.3 s, reference and second clip, frozen setting; other levels measured.
+- Format 13 (ADR-222): 2.1.0 files open with the same look and export (GATE on the 2.1.0 fixtures); 13 round trip (GATE); 2.1.0 and older refuse 13 (REQ-029).
+- Order (REQ-320..322): default argv byte-identical (GATE golden); a non-default clip adds about one filter per extra row: ASSUMPTION at most 10% more time per frame with six extra steps (MEASURED by the PE); each swap pair differs where expected, preview = export within 2 levels (GATE); Volume and Clean audio swap changes the sound (GATE).
+- Widget (REQ-320, REQ-321): 0 row builds over 60 frames without a change; one move = one undo step; moves only inside a group (GATE).
+- Text size (REQ-318, 319, 323): a text with maximum 20 in a box fitting 15% of the picture height is drawn at 15% in preview and export (GATE); the 2.0.4 example exports the same frame (GATE); maximum validation 2..50 (GATE).
+- Layout (REQ-317): column 15% of the section width with min 180 px (GATE at 1280 x 800 and at the minimum window); the saved share survives a restart (GATE).
+- BUILT 2026-11-22 (measured by the PE): REQ-315 Iris Plus G7, median of three: Best 12.3 s, Faster 11.3 s with the concurrent check (8.7% lower; target 20% NOT MET). REQ-314 blur about 2 ms a frame at 1080p and 4K (target met, no change). REQ-177 best 10 of 23 within 0.3 s (43%; NOT MET; FROZEN None). REQ-317 column 180 px at 1280 x 800 (about 20%). Format 13, order, text size: gates green in the PE suite (lib 884 earlier; the 2.2.0 totals are in docs/code-2.2.0.md).
+- Coverage and feature coverage: as 2.1.0 (line >= 85%, every implemented REQ tested).

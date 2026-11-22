@@ -707,6 +707,36 @@ fn recognise(
     cancel: &Arc<AtomicBool>,
     progress: &mut dyn FnMut(f32),
 ) -> Result<Vec<Word>, SttError> {
+    recognise_with_level(
+        job,
+        runner,
+        transcriber,
+        work,
+        r,
+        language,
+        cancel,
+        progress,
+        false,
+    )
+    .map(|(words, _)| words)
+}
+
+/// [`recognise`] that also gives the level of every 10 ms of the speech in dB (from the start
+/// of the range) when `level` is set: what the speech regions of REQ-177 are made from. The
+/// samples are the ones the recogniser already has (no second decode); only the part each piece
+/// owns is measured, so the levels are in time order and none is counted twice.
+#[allow(clippy::too_many_arguments)]
+fn recognise_with_level(
+    job: &SttJob,
+    runner: &dyn Runner,
+    transcriber: &mut dyn Transcriber,
+    work: &Path,
+    r: &RangeJob,
+    language: &mut Option<String>,
+    cancel: &Arc<AtomicBool>,
+    progress: &mut dyn FnMut(f32),
+    level: bool,
+) -> Result<(Vec<Word>, Vec<f32>), SttError> {
     let audio = work.join("audio.f32");
     let name = crate::media::display_name(&r.path);
     let out = runner
@@ -726,6 +756,7 @@ fn recognise(
     let chunks = total.div_ceil(piece).max(1);
     let mut f = std::fs::File::open(&audio).map_err(io_err)?;
     let mut words = Vec::new();
+    let mut db: Vec<f32> = Vec::new();
     for c in 0..chunks {
         if cancel.load(Ordering::SeqCst) {
             return Err(SttError::Cancelled);
@@ -747,6 +778,17 @@ fn recognise(
         }
         let (samples, _) = buf[..got - got % 4].as_chunks::<4>();
         let pcm: Vec<f32> = samples.iter().map(|b| f32::from_le_bytes(*b)).collect();
+        if level {
+            // the piece owns [c * piece, (c + 1) * piece), counted from the start of `pcm`
+            let own_from = (c * piece).saturating_sub(from).min(pcm.len());
+            let own_to = (((c + 1) * piece).min(total))
+                .saturating_sub(from)
+                .min(pcm.len());
+            db.extend(crate::speech_regions::envelope_db(
+                &pcm[own_from..own_to.max(own_from)],
+                SAMPLE_RATE,
+            ));
+        }
         let offset = base + Micros((from as u64 * 1_000_000 / rate) as i64);
         let t = transcriber.transcribe(&pcm, offset, language.as_deref(), cancel)?;
         if language.is_none() {
@@ -765,7 +807,15 @@ fn recognise(
         progress((c + 1) as f32 / chunks as f32);
     }
     let _ = std::fs::remove_file(&audio);
-    Ok(words)
+    Ok((words, db))
+}
+
+/// The speech regions of a recognised range, with the setting the program uses
+/// ([`crate::speech_regions::FROZEN`]); `None` when there is no such setting (the recognised
+/// times are used) or no level.
+fn speech_of(db: &[f32], start: Micros) -> Option<crate::align::SpeechRegions> {
+    let params = crate::speech_regions::FROZEN?;
+    (!db.is_empty()).then(|| crate::align::SpeechRegions::new(db, start, params))
 }
 
 /// Runs a creation (synchronous, testable). `transcriber` is `None` when the speech
@@ -828,7 +878,7 @@ pub fn run(
                 let t = transcriber
                     .as_deref_mut()
                     .ok_or_else(|| why.cloned().unwrap_or(SttError::NotAvailable))?;
-                let words = recognise(
+                let (words, db) = recognise_with_level(
                     job,
                     runner,
                     t,
@@ -837,11 +887,14 @@ pub fn run(
                     &mut language,
                     cancel,
                     &mut progress,
+                    crate::speech_regions::FROZEN.is_some(),
                 )?;
                 if detected.is_none() {
                     detected = language;
                 }
-                let a = crate::align::retime(r.media, &cues, &words);
+                let start = r.range.map_or(Micros::ZERO, |(from, _)| from);
+                let speech = speech_of(&db, start);
+                let a = crate::align::retime_with(r.media, &cues, &words, speech.as_ref());
                 result.unmatched.0 += a.unmatched;
                 a.lines
             }
@@ -856,7 +909,7 @@ pub fn run(
                 });
                 let words = match transcriber.as_deref_mut() {
                     None => Err(why.cloned().unwrap_or(SttError::NotAvailable)),
-                    Some(t) => recognise(
+                    Some(t) => recognise_with_level(
                         job,
                         runner,
                         t,
@@ -865,11 +918,14 @@ pub fn run(
                         &mut language,
                         cancel,
                         &mut progress,
+                        crate::speech_regions::FROZEN.is_some(),
                     ),
                 };
                 match words {
-                    Ok(words) => {
-                        let a = crate::align::align(r.media, &cues, &words);
+                    Ok((words, db)) => {
+                        let start = r.range.map_or(Micros::ZERO, |(from, _)| from);
+                        let speech = speech_of(&db, start);
+                        let a = crate::align::align_with(r.media, &cues, &words, speech.as_ref());
                         result.unmatched.0 += a.unmatched;
                         a.lines
                     }
@@ -1698,6 +1754,51 @@ pub(crate) mod tests {
         assert!(
             !extraction_args(Path::new("/a.mp4"), Path::new("/o"), None).contains(&"-ss".into())
         );
+    }
+
+    // covers: REQ-177
+    #[test]
+    fn the_levels_of_the_speech_are_measured_once_in_time_order_when_asked() {
+        // 130 s of silence: two pieces of 120 s that hear 2 s more on each side; every 10 ms of
+        // the audio is counted once, from the start of the range
+        let runner = extractor(130);
+        let mut t = FakeTranscriber::default();
+        let work = tempfile::tempdir().unwrap();
+        let j = job(1);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut language = None;
+        let (words, db) = recognise_with_level(
+            &j,
+            &runner,
+            &mut t,
+            work.path(),
+            &j.ranges[0],
+            &mut language,
+            &cancel,
+            &mut |_| {},
+            true,
+        )
+        .unwrap();
+        assert_eq!(words.len(), 130);
+        assert_eq!(db.len(), 13_000);
+        assert!(db.iter().all(|d| *d <= -100.0), "silence");
+        // not asked for: no level
+        let (_, none) = recognise_with_level(
+            &j,
+            &runner,
+            &mut FakeTranscriber::default(),
+            work.path(),
+            &j.ranges[0],
+            &mut language,
+            &cancel,
+            &mut |_| {},
+            false,
+        )
+        .unwrap();
+        assert!(none.is_empty());
+        // no setting is chosen yet: the speech regions are not used (the recognised times are)
+        assert!(crate::speech_regions::FROZEN.is_none());
+        assert!(speech_of(&db, Micros::ZERO).is_none());
     }
 
     // covers: REQ-087, REQ-095, REQ-015

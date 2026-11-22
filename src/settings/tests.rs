@@ -673,6 +673,7 @@ fn files_of_1_0_load_silently_and_1_1_values_round_trip() {
         top: 0.5,
         media: 0.25,
         timeline: 0.6,
+        applied: 0.15,
     });
     let root = if cfg!(windows) { "C:\\p" } else { "/p" };
     for i in 0..3 {

@@ -630,6 +630,68 @@ fn other_containers_stream_copy_muxers() {
     }
 }
 
+// covers: REQ-320, REQ-321
+#[test]
+fn volume_above_clean_audio_raises_the_level_before_the_noise_reduction_and_preview_agrees() {
+    use crate::effect_order::Row;
+    let mut p = project(&[(4, 640, 360, 25)]);
+    let a = p.timeline.clips[0].id;
+    p.timeline.set_clean_audio(&[a], true).unwrap();
+    p.timeline.set_clip_volume(a, 50, false).unwrap();
+    let chain = |p: &Project| {
+        let g = build_graph(
+            &segments(p, Micros::ZERO, Source::Export).unwrap(),
+            None,
+            &spec(true, true),
+        )
+        .graph;
+        g.split(';')
+            .find(|x| x.ends_with("[a0]"))
+            .unwrap()
+            .to_string()
+    };
+    // the default order is the 2.1.0 one: the noise reduction, then the level
+    let default = chain(&p);
+    assert!(default.find(CLEAN_AUDIO).unwrap() < default.find("volume=").unwrap());
+    // Volume moved above Clean audio: the level first (and the stored order says so)
+    p.set_sound_order(a, &[Row::Volume, Row::Clean]);
+    assert!(p.sound_swapped(a));
+    let swapped = chain(&p);
+    assert!(swapped.find("volume=").unwrap() < swapped.find(CLEAN_AUDIO).unwrap());
+    assert_ne!(default, swapped);
+    // a half-mixed Clean audio takes its dry branch after the level
+    p.timeline.set_clean_strength(&[a], 50).unwrap();
+    let mixed = build_graph(
+        &segments(&p, Micros::ZERO, Source::Export).unwrap(),
+        None,
+        &spec(true, true),
+    )
+    .graph;
+    let split = mixed.find("asplit=2[cd0][cw0]").unwrap();
+    assert!(mixed[..split].contains("volume="), "{mixed}");
+    // the preview uses the same chain
+    let dir = tempfile::tempdir().unwrap();
+    let args = preview_audio_args(
+        &p,
+        Micros::ZERO,
+        44_100,
+        2,
+        FfVersion::Dev,
+        &dir.path().join("g"),
+        Source::Export,
+    )
+    .unwrap();
+    let text = strs(&args).join(" ");
+    assert!(
+        text.find("volume=").unwrap() < text.find("asplit=2[cd0][cw0]").unwrap(),
+        "{text}"
+    );
+    // moving it back stores nothing again
+    p.set_sound_order(a, &crate::order_chain::DEFAULT_SOUND);
+    assert!(!p.sound_swapped(a));
+    assert!(p.timeline.order_of(a).is_empty());
+}
+
 // covers: REQ-114, REQ-023
 #[test]
 fn clean_audio_is_applied_before_the_volume_and_the_fades_and_forces_a_reencode() {
@@ -1709,9 +1771,10 @@ fn the_frame_key_changes_with_the_picture_state_only() {
     let key = |p: &Project, at: i64| frame_key(p, s(at), Source::Export, &eg).unwrap();
     assert!(key(&p, 1).placement.is_none());
     p.timeline.add_scale(FrameTarget::Whole).unwrap();
+    let one = FrameTarget::Clip(p.timeline.clips[0].id);
     p.timeline
         .add_scale_key(
-            FrameTarget::Whole,
+            one,
             s(4),
             Scale {
                 permille: 2000,
@@ -1723,9 +1786,7 @@ fn the_frame_key_changes_with_the_picture_state_only() {
     let k1 = key(&p, 1);
     assert_ne!(k1, key(&p, 2));
     // a still position in the same clip with the same state has the same key
-    p.timeline
-        .remove_scale_key(FrameTarget::Whole, s(4))
-        .unwrap();
+    p.timeline.remove_scale_key(one, s(4)).unwrap();
     assert_eq!(key(&p, 1).placement, key(&p, 2).placement);
     assert_ne!(key(&p, 1), k1);
 }
@@ -2386,6 +2447,7 @@ fn a_subtitle_line_stays_with_its_speech_when_the_clip_is_sped_up() {
 }
 
 // covers: REQ-287
+// covers: REQ-316
 #[test]
 fn a_picture_item_is_overlaid_for_its_time_and_forces_a_re_encode() {
     let dir = tempfile::tempdir().unwrap();
@@ -2451,6 +2513,13 @@ fn a_picture_item_is_overlaid_for_its_time_and_forces_a_re_encode() {
     let g = build_graph_with(&segs, None, &spec, &o).graph;
     assert!(g.contains("[cv]subtitles"), "{g}");
     assert!(g.contains("format=yuv420p[cv]"), "{g}");
+    // a file replaced by one of more than 16 megapixels is a missing picture: the export
+    // stops with its message and the preview leaves it out (REQ-316, REQ-287)
+    std::fs::write(&png, crate::picture::tests::header(4001, 4000)).unwrap();
+    assert_eq!(
+        plan_export(&p, &enc(), |_, _| true).unwrap_err(),
+        RenderError::Picture("logo.png".into())
+    );
     // a file that is gone stops an export and is left out of a preview
     std::fs::remove_file(&png).unwrap();
     assert_eq!(

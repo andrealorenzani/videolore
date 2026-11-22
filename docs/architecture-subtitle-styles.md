@@ -1,4 +1,4 @@
-# Architecture: shadows, highlight colours and new subtitle styles (planned, 2.1.0)
+# Architecture: shadows, highlight colours and new subtitle styles (built 2.1.0, not released)
 
 Part of [Architecture](architecture.md) and [2.1.0 overview](architecture-2.1.0-overview.md). Requirements REQ-306 to REQ-310 ([business](business-subtitle-styles.md)). Status: planned.
 

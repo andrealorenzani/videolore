@@ -508,6 +508,14 @@ struct Attempt<'a> {
     shown: AtomicU32,
 }
 
+/// How far the strict decode (thousandths) and the sample comparisons (how many are done) of
+/// the output check have got: they run at the same time (REQ-315).
+#[derive(Default)]
+struct CheckProgress {
+    decode: AtomicU32,
+    ranges: AtomicU32,
+}
+
 /// Outcome of a watched process.
 enum Watched {
     Done(CmdOutput),
@@ -802,13 +810,56 @@ impl Attempt<'_> {
         }
         let measured = outcheck::check_metadata(&meta.stdout, &exp)?;
         let packets = measured.packets;
-        // (b) strict full decode: every packet gives a frame, no error
+        // (b) the strict full decode and (c) the normal method's graph next to the file run at
+        // the same time (REQ-315, ADR-218): the samples need the frame count of the metadata
+        // only, and every process still goes through the runner's slots (the cap of three).
+        // When the file has the frame count of the plan, only three short runs around the
+        // samples are compared (REQ-206); if a sample does not match that way (or the count
+        // differs: clips got a frame more from the rounding of the graph) the whole graph is
+        // rendered once, which is exact.
+        let samples = outcheck::sample_indices(packets);
+        let groups = outcheck::neighbours(packets, &samples);
+        let expected = render::expected_frames(&self.job.project, s.fps);
+        let planned_us =
+            (expected as i128 * 1_000_000 * s.fps.den as i128 / s.fps.num as i128) as i64;
+        let shares = CheckProgress::default();
+        let (decoded, ranges) = std::thread::scope(|scope| {
+            let decode = scope.spawn(|| self.strict_decode(partial, packets, &shares));
+            let ranges = outcheck::counts_match(packets, expected)
+                .then(|| self.check_ranges(partial, s, &groups, planned_us, &measured, &shares));
+            (decode.join().unwrap_or(Err(CheckFailure::Decode)), ranges)
+        });
+        // a file that does not decode is judged first, as when the decode ran first
+        decoded?;
+        if let Some(Ok(())) = ranges {
+            if let Some(bps) = size_of {
+                let bytes = std::fs::metadata(partial)
+                    .map(|m| m.len())
+                    .unwrap_or(u64::MAX);
+                outcheck::check_size(bytes, bps + self.audio_bps(), planned_us)?;
+            }
+            return Ok(());
+        }
+        self.check_whole(partial, s, packets, &measured, &groups, size_of)
+    }
+
+    /// The strict full decode of the file: every packet gives a frame, no error.
+    fn strict_decode(
+        &self,
+        partial: &Path,
+        packets: u64,
+        shares: &CheckProgress,
+    ) -> Result<(), CheckFailure> {
         let mut decoded = None;
         let args = outcheck::decode_args(partial, self.job.threads);
         let watched = self.watch(&args, None, |line| {
             if let Some(n) = outcheck::last_frame(&[line.to_string()]) {
                 decoded = Some(n);
-                self.progress(HW_SHARE + 0.05 * (n as f64 / packets as f64).min(1.0));
+                let done = (n as f64 / packets.max(1) as f64).min(1.0);
+                shares
+                    .decode
+                    .store((done * 1000.0) as u32, Ordering::SeqCst);
+                self.report(shares);
             }
         });
         match watched {
@@ -824,34 +875,21 @@ impl Attempt<'_> {
                 got: decoded.unwrap_or(0),
             });
         }
-        // (c) the normal method's graph next to the file. When the file has the frame count
-        // of the plan, only three short runs around the samples are compared (REQ-206); if
-        // a sample does not match that way (or the count differs: clips got a frame more
-        // from the rounding of the graph) the whole graph is rendered once, which is exact.
-        let samples = outcheck::sample_indices(packets);
-        let groups = outcheck::neighbours(packets, &samples);
-        let expected = render::expected_frames(&self.job.project, s.fps);
-        if outcheck::counts_match(packets, expected) {
-            let planned_us =
-                (expected as i128 * 1_000_000 * s.fps.den as i128 / s.fps.num as i128) as i64;
-            if self
-                .check_ranges(partial, s, &groups, planned_us, &measured)
-                .is_ok()
-            {
-                if let Some(bps) = size_of {
-                    let bytes = std::fs::metadata(partial)
-                        .map(|m| m.len())
-                        .unwrap_or(u64::MAX);
-                    outcheck::check_size(bytes, bps + self.audio_bps(), planned_us)?;
-                }
-                return Ok(());
-            }
-        }
-        self.check_whole(partial, s, packets, &measured, &groups, size_of)
+        shares.decode.store(1000, Ordering::SeqCst);
+        self.report(shares);
+        Ok(())
     }
 
-    /// The three short comparisons (REQ-206): the duration is the plan's and every sample
-    /// matches its range of the normal method.
+    /// Shows the progress of the check: the strict decode is 5% of the whole export and the
+    /// three samples 10%, whichever ends first.
+    fn report(&self, shares: &CheckProgress) {
+        let decode = f64::from(shares.decode.load(Ordering::SeqCst)) / 1000.0;
+        let ranges = f64::from(shares.ranges.load(Ordering::SeqCst)) / 3.0;
+        self.progress(HW_SHARE + 0.05 * decode + 0.1 * ranges.min(1.0));
+    }
+
+    /// The three short comparisons (REQ-206), run at the same time: the duration is the plan's
+    /// and every sample matches its range of the normal method.
     fn check_ranges(
         &self,
         partial: &Path,
@@ -859,14 +897,32 @@ impl Attempt<'_> {
         groups: &[Vec<u64>; 3],
         planned_us: i64,
         measured: &outcheck::Measured,
+        shares: &CheckProgress,
     ) -> Result<(), CheckFailure> {
         outcheck::check_duration(measured, planned_us, s.fps)?;
         let geometry = render::Geometry::of(s);
         let ranges = outcheck::sample_ranges(groups, s.fps);
-        for (index, range) in ranges.iter().enumerate() {
-            let scores = self.compare(partial, s, &geometry, range, index)?;
-            self.progress(HW_SHARE + 0.05 + 0.1 * ((index + 1) as f64 / ranges.len() as f64));
-            outcheck::judge_sample(index, &scores)?;
+        let scores: Vec<Result<Vec<[f64; 3]>, CheckFailure>> = std::thread::scope(|scope| {
+            let runs: Vec<_> = ranges
+                .iter()
+                .enumerate()
+                .map(|(index, range)| {
+                    let geometry = &geometry;
+                    scope.spawn(move || {
+                        let scores = self.compare(partial, s, geometry, range, index);
+                        shares.ranges.fetch_add(1, Ordering::SeqCst);
+                        self.report(shares);
+                        scores
+                    })
+                })
+                .collect();
+            runs.into_iter()
+                .map(|run| run.join().unwrap_or(Err(CheckFailure::Decode)))
+                .collect()
+        });
+        // the first sample that fails, in the order of the samples
+        for (index, scores) in scores.into_iter().enumerate() {
+            outcheck::judge_sample(index, &scores?)?;
         }
         Ok(())
     }

@@ -111,4 +111,20 @@ Nothing slow runs on UI thread; cancellation = Arc<AtomicBool> per job + Limited
 - word_styles (pure): Typewriter, Enlarge and Highlight word plans (ADR-213); ass.rs writes the dialogue lines.
 - render/overlay (render area): per-clip overlay stage for changed orders; legacy graph unchanged (ADR-208); preview and export use the same builder.
 - ui/applied_effects (interface): the widget in the Preview section, rows from effect_order, Move up and down as commands (ADR-207).
-- Flows: LUT choose -> store (Loading) -> job -> Ready -> preview redraw; export -> store Ready -> Work copy by hash -> lut3d; applied order -> overlay stage per clip -> one ASS per clip for texts and lines.
+- Flows: LUT choose -> store (Loading) -> job -> Ready -> preview redraw; export -> store Ready -> Work copy by hash -> lut3d; applied order -> overlay stage per clip -> one ASS per clip for texts and
+
+## 2.2.0 PLAN (roles and flows; plan § 4, § 5, § 6)
+- lut/store.rs (route D): the preparation job (read with progress, parse, Work copy written once with progress) is started by the app's LUT choice; the graph builder reads the store only through `peek`; no new module.
+- speech_regions.rs (new, pure, std and time only): regions from the recogniser's 10 ms energy frames and the per-cue placement; align.rs calls it in retime.
+- picture.rs: MAX_PICTURE_PIXELS check on the header (add, preview, export).
+- Whole video: the whole-video popup, `FrameTarget::Whole` keyframe routes, `SelectCopy`, `ApplyWholeToNew` and app/offer.rs, the widget mark, dashed handles are removed (ADR-215); the double-click copy routine stays.
+- app/applied.rs and ui/applied_effects.rs: rows cache with a revision (ADR-216).
+- Blur (render/graph.rs) and the output check (outcheck.rs, export) change only as measured (ADR-217, ADR-218).
+- Flows: LUT choice -> store preparation (Loading with progress, Ready) -> Work copy `lut-<hash16>.cube` -> graph includes the row when Ready, otherwise the row is omitted; applied commands -> revision -> rows rebuilt once; REQ-177 samples -> regions -> placement -> one undo step.
+- BUILT 2026-11-22: the modules are order_chain.rs, speech_regions.rs, render/steps.rs, effect_order.rs (extended), lut/store.rs (Prep), picture.rs (limit), ui/layout.rs (applied_width, drag_applied). Module-cycle result for 2.2.0 not recorded by the PE: to confirm at VERIFY.
+- order_chain.rs (new, pure): row groups (picture, sound), default sequences (the 2.1.0 build order), expansion of 2.1.0 stored orders, resolve, moves and drags inside a group, new rows and copies on top of their group (ADR-223, ADR-229); effect_order.rs keeps the 2.1.0 row names.
+- render/steps.rs (new; generalises render/overlay.rs): the step builder for non-default orders (picture layer RGBA; Crop, Frame, Scale, Move, Fade, LUT, overlays; sound chain); the 2.1.0 legacy path stays for default orders (ADR-224, ADR-225).
+- project format 13 (ADR-222): TextItem.max_size; 12 migrates in memory.
+- text/layout.rs: the cap is the text's maximum or the default (ADR-227); slide and block placement unchanged unless S0f says otherwise.
+- ui/layout.rs splitter and settings SavedLayout `applied_share` (ADR-226): the Applied column beside the picture in the Preview section.
+- Cycle rules: order_chain imports timeline ids and effect_order only; render/steps imports order_chain, not app or ui; speech_regions never imports align, app or ui; align imports speech_regions; render does not import app or ui; the graph builder uses the store only through `peek`. lines.

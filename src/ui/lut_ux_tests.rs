@@ -153,8 +153,16 @@ fn a_double_click_gives_each_clip_its_own_lut_and_its_marker() {
         .count();
     assert_eq!(luts, n);
     assert_eq!(h.app.project.timeline.clip_luts.len(), n);
-    // the popup title says what it applies to, with an icon
-    assert!(h.app.popup_title(Popup::Instance).contains("whole video"));
+    // the popup follows to the clip under the playhead and says so, not "whole video"
+    let title = h.app.popup_title(Popup::Instance);
+    assert!(
+        title.starts_with("Apply LUT") && !title.contains("whole video"),
+        "{title}"
+    );
+    assert!(matches!(
+        h.app.popups.instance,
+        Some(Instance::Lut(FrameTarget::Clip(_)))
+    ));
 }
 
 // covers: REQ-069

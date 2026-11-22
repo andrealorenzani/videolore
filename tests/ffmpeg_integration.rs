@@ -1160,3 +1160,7 @@ fn word_error_rate_is_computed_on_words() {
 }
 #[path = "ffmpeg_integration/v21.rs"]
 mod v21;
+#[path = "ffmpeg_integration/v22.rs"]
+mod v22;
+#[path = "ffmpeg_integration/v22order.rs"]
+mod v22order;

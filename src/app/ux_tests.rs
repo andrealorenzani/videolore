@@ -520,6 +520,7 @@ fn the_layout_is_a_program_setting_restored_at_start() {
         top: 0.55,
         media: 0.2,
         timeline: 0.8,
+        applied: 0.2,
     };
     app.dispatch(Command::SetLayout(l), now).unwrap();
     assert_eq!(read_settings(&settings_file).layout, Some(l));

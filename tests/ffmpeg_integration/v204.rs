@@ -279,9 +279,10 @@ fn the_kept_blurred_background_gives_the_same_picture_as_the_whole_render() {
         .unwrap();
     p.timeline.add_scale(FrameTarget::Whole).unwrap();
     let scale = |p: &mut Project, permille: u16| {
+        let c0 = FrameTarget::Clip(p.timeline.clips[0].id);
         p.timeline
             .set_scale_key(
-                FrameTarget::Whole,
+                c0,
                 Micros::ZERO,
                 Scale {
                     permille,

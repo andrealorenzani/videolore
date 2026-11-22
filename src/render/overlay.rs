@@ -8,6 +8,7 @@
 //! step: its LUT stays in the clip chain and its texts, lines and pictures are drawn after the
 //! concat, so the arguments of an old project do not change.
 
+use super::steps::Step;
 use super::*;
 use crate::effect_order::Row;
 use crate::text::Window;
@@ -83,12 +84,24 @@ pub fn attach(
             continue;
         }
         let shift = rows.start.max(from);
+        // the documents of a clip built step by step are in the clip's own time (its chain
+        // keeps the clock of the clip until its last filter); those of the overlay stage start
+        // at the first rendered instant, after the chain has restarted its clock
+        let by_steps = crate::effect_order::needs_steps(&order);
+        let doc_shift = if by_steps { rows.start } else { shift };
         let win = [(rows.start, rows.end)];
         let end_all = project.timeline.duration();
         let mut out = Vec::new();
+        let mut seq: Vec<Step> = Vec::new();
         let mut lines: Option<Vec<crate::subtitles::ShownLine>> = None;
         for row in order.iter().rev() {
+            let before = out.len();
             match *row {
+                Row::Crop if by_steps => seq.push(Step::Crop),
+                Row::Frame if by_steps => seq.push(Step::Frame),
+                Row::Scale if by_steps => seq.push(Step::Scale),
+                Row::Move if by_steps => seq.push(Step::Move),
+                Row::Fade if by_steps => seq.push(Step::Fade),
                 Row::Lut => out.extend(lut.clone().map(OverlayStep::Lut)),
                 Row::Text(id) => {
                     let Some(t) = project.texts.items.iter().find(|t| t.id.0 == id) else {
@@ -103,7 +116,7 @@ pub fn attach(
                             &project.subtitles.style,
                             g.width,
                             g.height,
-                            shift,
+                            doc_shift,
                             &events,
                         );
                         out.push(OverlayStep::Ass {
@@ -122,7 +135,7 @@ pub fn attach(
                         continue;
                     }
                     let path = PathBuf::from(&pic.path);
-                    if !path.is_file() {
+                    if !crate::picture::usable(&path) {
                         if matches!(src, Source::Preview { .. }) {
                             continue;
                         }
@@ -135,8 +148,8 @@ pub fn attach(
                         y,
                         w,
                         h,
-                        start: a - shift,
-                        end: b - shift,
+                        start: a - doc_shift,
+                        end: b - doc_shift,
                         pieces: Vec::new(),
                     }));
                 }
@@ -157,7 +170,7 @@ pub fn attach(
                             &project.subtitles.style,
                             g.width,
                             g.height,
-                            shift,
+                            doc_shift,
                             &[],
                         );
                         out.push(OverlayStep::Ass {
@@ -166,10 +179,25 @@ pub fn attach(
                         });
                     }
                 }
-                Row::Subtitles | Row::Unknown => {}
+                Row::Subtitles
+                | Row::Volume
+                | Row::Clean
+                | Row::Unknown
+                | Row::Crop
+                | Row::Frame
+                | Row::Scale
+                | Row::Move
+                | Row::Fade => {}
+            }
+            // what a row drew is the step of its place (a row that drew nothing has none)
+            if by_steps && out.len() > before {
+                seq.push(Step::Over(before));
             }
         }
         seg.overlay = out;
+        if by_steps {
+            seg.steps = seq;
+        }
     }
     Ok(())
 }

@@ -156,6 +156,32 @@ fn clean_audio_lowers_the_noise_and_keeps_the_speech() {
     );
 }
 
+// covers: REQ-320
+#[test]
+fn volume_above_clean_audio_gives_another_sound_in_the_export_than_the_default_order() {
+    use videolore::effect_order::Row;
+    let Some(env) = setup() else { return };
+    let file = noisy_speech(&env);
+    let mut p = project_with(&env, &file);
+    p.media[0].format.audio_bit_rate = Some(192_000);
+    let id = p.timeline.clips[0].id;
+    p.timeline.set_clean_audio(&[id], true).unwrap();
+    // a half-strength Clean audio and a low level: the dry branch makes the order audible
+    p.timeline.set_clean_strength(&[id], 50).unwrap();
+    p.timeline.set_clip_volume(id, 30, false).unwrap();
+    let a = env.dir.path().join("clean-then-volume.mp4");
+    env.export(&p, &a).0.unwrap();
+    // Volume above Clean audio: the level is raised or lowered before the noise reduction
+    p.set_sound_order(id, &[Row::Volume, Row::Clean]);
+    assert!(p.sound_swapped(id));
+    let b = env.dir.path().join("volume-then-clean.mp4");
+    env.export(&p, &b).0.unwrap();
+    // the noise-only part is not the same: afftdn works on another level (its noise floor
+    // is fixed in dB), so the two exports differ by more than the encoder's noise
+    let (la, lb) = (level(&env, &a, 0.3, 1.5), level(&env, &b, 0.3, 1.5));
+    assert!((la - lb).abs() > 0.3, "{la} dB and {lb} dB");
+}
+
 // covers: REQ-119, REQ-114
 #[test]
 fn only_audio_has_the_length_of_the_timeline_and_the_music_at_its_volume() {

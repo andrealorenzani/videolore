@@ -338,16 +338,114 @@ fn alignment_keeps_the_track_and_times_its_words_from_real_speech() {
 /// matched words within 0.3 s (mean 0.45 s, largest 1.13 s): the model's own word times (token
 /// times, contiguous segments) are off by up to 1.1 s in both directions, so no one-sided window
 /// finds the right onset; the nearest onset within 0.5 s or 1.0 s gives 8 of 23. Placing the words
-/// in the speech regions of the envelope (dynamic programming on word length) gave 12 of 23, or
-/// 21 to 22 of 23 only with 4 of 120 tuned settings (not built). It stays
-/// ignored; run it with
+/// in the speech regions of the envelope (dynamic programming on word length, built as
+/// `align::align_with`) gives at most 10 of 23 over the 81 frozen settings
+/// (`speech_region_grid_on_the_reference_clip`, 2026-11-22): the clip's speech has no pauses the
+/// envelope can see, so no setting reaches the 75% that makes one eligible
+/// (`speech_regions::FROZEN` is `None`) and the recognised times stay the default. This test
+/// stays ignored; it still runs the old path, and `strict` would fail. Run it with
 /// `cargo test --test ffmpeg_integration alignment_matches_real_speech -- --ignored`.
 // covers: REQ-095, REQ-177
 #[cfg(feature = "stt")]
 #[test]
-#[ignore = "REQ-177: the onset snap does not reach 90% of the matched words within 0.3 s on the Fast file (see the roadmap)"]
+#[ignore = "REQ-177: neither the onset snap nor the speech regions reach 90% of the matched words within 0.3 s on the Fast file (see the roadmap)"]
 fn alignment_matches_real_speech() {
     alignment_with_real_speech(true);
+}
+
+/// The 16 kHz mono samples of `video` (what the recogniser hears).
+#[cfg(feature = "stt")]
+fn speech_samples(env: &Env, video: &Path) -> Vec<f32> {
+    let o = Command::new(&env.info.ffmpeg)
+        .args(["-hide_banner", "-loglevel", "error", "-i"])
+        .arg(video)
+        .args(["-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"])
+        .output()
+        .unwrap();
+    assert!(o.status.success());
+    let (b, _) = o.stdout.as_chunks::<4>();
+    b.iter().map(|b| f32::from_le_bytes(*b)).collect()
+}
+
+/// Measurement of REQ-177 (manual, `--ignored`): for each of the 81 settings of the frozen grid
+/// the matched words within 0.3 s of the reference on the reference clip.
+#[cfg(feature = "stt")]
+#[test]
+#[ignore]
+fn speech_region_grid_on_the_reference_clip() {
+    let Some(env) = setup() else { return };
+    let Some(model) = speech_model() else { return };
+    check_fixture();
+    let video = align_fixture().join("speech.mkv");
+    let reference: Vec<f64> = serde_json::from_str::<serde_json::Value>(
+        &std::fs::read_to_string(align_fixture().join("reference.json")).unwrap(),
+    )
+    .unwrap()
+    .as_array()
+    .unwrap()
+    .iter()
+    .map(|w| w["start"].as_f64().unwrap())
+    .collect();
+    let mut job = spread_job(&env, &video, 0, None);
+    job.ranges[0].mode = Mode::Recognise;
+    job.model = model.clone().into();
+    job.threads = 2;
+    let mut t = videolore::stt::whisper::WhisperTranscriber::load(&job.model, 2).unwrap();
+    let (tx, _rx) = channel();
+    let runner = limited(Priority::Background);
+    let heard: Vec<videolore::subtitles::Word> = videolore::stt::run(
+        &job,
+        &runner as &dyn videolore::ffmpeg::Runner,
+        Some(&mut t),
+        None,
+        &Arc::new(AtomicBool::new(false)),
+        &tx,
+    )
+    .unwrap()
+    .lines()
+    .into_iter()
+    .flat_map(|l| l.words)
+    .collect();
+    let cues: Vec<videolore::srt::Cue> = track_lines(&env, &video, None)
+        .into_iter()
+        .map(|l| videolore::srt::Cue {
+            start: l.start,
+            end: l.end,
+            text: l.text,
+        })
+        .collect();
+    let db = videolore::speech_regions::envelope_db(&speech_samples(&env, &video), 16_000);
+    let measure = |speech: Option<&videolore::align::SpeechRegions>| {
+        let a = videolore::align::align_with(media::MediaId(1), &cues, &heard, speech);
+        let (mut found, mut within, mut sum) = (0, 0, 0.0);
+        let mut i = 0;
+        for (l, f) in a.lines.iter().zip(&a.found) {
+            for (w, was) in l.words.iter().zip(f) {
+                let err = (w.start.as_secs_f64() - reference[i]).abs();
+                i += 1;
+                if *was {
+                    found += 1;
+                    sum += err;
+                    within += u32::from(err <= 0.3);
+                }
+            }
+        }
+        (within, found, sum / f64::from(found.max(1)))
+    };
+    eprintln!("REQ-177 old path: {:?}", measure(None));
+    let mut best = (0, 0);
+    for (n, p) in videolore::speech_regions::grid().into_iter().enumerate() {
+        let sp = videolore::align::SpeechRegions::new(&db, Micros::ZERO, p);
+        let m = measure(Some(&sp));
+        if m.0 > best.0 {
+            best = (m.0, n);
+        }
+        eprintln!(
+            "REQ-177 setting {n:2} {p:?}: {} of {} within 0.3 s, mean error {:.3} s",
+            m.0, m.1, m.2
+        );
+    }
+    eprintln!("REQ-177 best: setting {} with {} words", best.1, best.0);
 }
 
 /// The speech fixture is checked byte for byte, so a changed fixture fails (REQ-177).

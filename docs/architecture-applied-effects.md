@@ -1,11 +1,13 @@
-# Architecture: Applied effects widget and order (planned, 2.1.0)
+# Architecture: Applied effects widget and order (built 2.1.0, not released)
 
 Part of [Architecture](architecture.md) and [2.1.0 overview](architecture-2.1.0-overview.md). Requirements REQ-302 to REQ-305 and REQ-311 ([business](business-applied-effects.md)). Status: planned.
 
 ## Widget
+- Built 2.2.0 (REQ-317): a column on the right of the Preview section, beside the picture ([layout](architecture-2.2.0-layout.md)); the rows of all effects, in two groups, are reordered inside their group ([order](architecture-2.2.0-order.md)). The text below describes 2.1.0.
 - A strip of about 15% of the Preview section, below the picture; the picture shrinks first. It shows the effects of the selected clip, or of the clip under the playhead when none is selected.
 - Rows from the top: the movable rows in their order (Apply LUT, each text item and picture item that overlaps the clip in time, the clip's subtitle lines as one row "Subtitles"), then the fixed rows in build order (Crop, Scale, Move, Change aspect, Fade IN/OUT, Volume, Clean audio, Speed).
-- A whole-video effect is shown on each clip it affects with a "whole video" mark (REQ-303).
+- Built 2.2.0 (REQ-303 amended): no "whole video" mark. A whole-video effect is a copy on each clip (REQ-147) and shows as that clip's ordinary row. The 2.1.0 mark, inferred from equal settings on two or more clips, is removed.
+- Built 2.2.0 (REQ-313): the rows are kept and rebuilt only when the selected clip, its order or its effects change (ADR-216); 0 rebuilds over 60 frames without a change.
 - Click opens the row's popup. Movable rows move by drag, by Move up and Move down buttons, and from the keyboard. Each move is one undo step named after it, for example "Move LUT down".
 - With no clip: "Select a clip to see its effects". The strip scrolls when its rows do not fit.
 

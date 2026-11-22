@@ -45,9 +45,15 @@ Professional editors needing multitrack video, color grading or advanced effects
 - Not built in 2.0.4: REQ-177, the subtitle accuracy target (open decision for Andrea, see [Subtitle accuracy](business-subtitle-accuracy.md)). The manual checks and future work left from 2.0.4 are in the [roadmap tasks](roadmap_tasks.md).
 
 ### 2.1.0
-- [Applied effects](business-applied-effects.md) — the Applied effects widget (about 15% of the preview) listing the effects of the selected clip in order of application, reorder of LUTs, texts, picture items and subtitles, whole-video marks, project format 12.
+- [Applied effects](business-applied-effects.md) — the Applied effects widget (about 15% of the preview) listing the effects of the selected clip in order of application, reorder of LUTs, texts, picture items and subtitles, project format 12 (the whole-video mark listed here was removed in 2.2.0).
 - [Subtitle and text styles](business-subtitle-styles.md) — shadow for texts and subtitles, the two word-highlight colours, the Enlarge word and Typewriter styles.
-- [Apply LUT](business-lut.md) (section "Importing the user's LUT files") — the maintainer's 144-point `.cube` LUT files import (up to 256 points); LUTs above 20 MB keep only their path in the project.
+- [Apply LUT](business-lut.md) (section "Importing the user's LUT files") — the maintainer's 144-point `.cube` LUT files import (up to 256 points); LUTs above 20 MB keep only their path in the project; `.3dl` and `.csp` files also import (REQ-300).
+
+### 2.2.0 (theme: speed)
+- [Speed](business-speed.md) — a 256-point LUT preview that shows its preparation progress and keeps the interface responsive (no faster colours route, D63), the Applied effects rows kept between frames, the blurred fill in playback, Faster export that is quicker on integrated graphics, a 16 megapixel limit for picture items, and the build of the reused-subtitle timing (REQ-177).
+- [Applied effects](business-applied-effects.md) (2.2.0): the widget becomes a column on the right of the preview (REQ-317); every effect except Speed can be reordered inside its group (REQ-320, REQ-321, REQ-322).
+- [Text](business-text.md) (2.2.0): the text box governs the text size; each text may set an optional maximum size (default cap 10%, REQ-323, D64); old projects keep their sizes (REQ-318, REQ-319).
+- Whole-video effects (planned): a whole-video effect is a copy on each clip (for Fade IN/OUT, the first clip's start and the last clip's end, as today) that then behaves as a clip effect; the whole-video mark and the whole-video popup are removed. Amended in [Effects](business-effects.md) (REQ-147), [Editing](business-editing.md) (REQ-083), [Frame](business-frame.md) (REQ-129, REQ-148), [Whole-video and keyframe clarity](business-keyframes.md) (REQ-200 to REQ-202) and [Applied effects](business-applied-effects.md) (REQ-303).
 
 ## Constraints
 - **ffmpeg is bundled** in every installer (since 0.2.0; before, it had to be installed by the user). A user-chosen ffmpeg can still be configured instead.
@@ -84,6 +90,9 @@ Professional editors needing multitrack video, color grading or advanced effects
 
 - (2.0.4, Andrea and the development) Hardware export always goes through ffmpeg; the Export presets stay fixed (AV1 and VP9 presets are added); the whole-video keyframe copies are shown apart; the 360 export prioritises speed; installers stay unsigned. Project format 11 (one change for the development) is refused by 2.0.3 and older. Details in each planned document.
 - (2.1.0, Andrea's request, built) The order of LUTs, texts and subtitles on a clip is chosen by the user and stored per clip; the other effects keep their fixed place. New effects of the same kind (shadow, highlight colours, two word styles) keep the 2.0.4 look by default. Details in [Applied effects](business-applied-effects.md) and [Subtitle and text styles](business-subtitle-styles.md).
+- (2.2.0, D64) A text may set its own maximum size (REQ-323); the 10% cap stays the default. This overrides the 1.4.0 rule of no size field for this one field.
+- (2.2.0, Andrea) Every effect can be reordered inside its group, except Speed, which stays fixed and applied first; today's order is the default (REQ-320).
+- (2.2.0, Andrea 2026-11-21) An effect applied to the whole video is distributed as copies on the clips (on every clip; Fade IN/OUT only on the first and last clip, as today) and then behaves as a clip effect (no whole-video mark, no whole-video popup); Change aspect stays the project frame. This removes the mark asked for in the 2.1.0 request.
 
 Topic-specific decisions are in each document.
 

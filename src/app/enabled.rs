@@ -82,7 +82,6 @@ impl AppState {
             Command::TrimEdge { clip, .. } => tl.get(*clip).is_some(),
             Command::MoveFade { from, .. } => tl.fades.contains(from),
             Command::StepMarker { .. } => !tl.clips.is_empty(),
-            Command::ApplyWholeToNew => self.new_clip_offer_text().is_some(),
             Command::PasteKeys { clip, .. } => {
                 self.clipboard_keys.is_some() && tl.get(*clip).is_some()
             }

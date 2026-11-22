@@ -86,6 +86,7 @@ No new crate. The `ffmpeg` filters used (`color`, `split`, `scale`, `boxblur`, `
 - Pure geometry in `ui/frame_handles` (`Hit` gets an edge variant; `scale_to` takes the axis of the edge). Subtitle and text boxes use the same visible-part rule (see [boxes](architecture-boxes.md#visible-edges-161-req-145-req-146)).
 
 ## Whole-video Scale and Move (1.6.1)
+- Built 2.2.0 (REQ-148, REQ-200..202): the whole-video Scale and Move popup, its clip rows and the dashed handles of a whole-video copy are removed; each copy is edited in its own clip's popup and on the picture, with its own Remove effect.
 - There is no whole-video Scale or Move in the format any more (REQ-148). A double-click gives each clip its own copy: its keyframes are in the source time of the clip, from the clip's start on, like the clip's own keys, so a trim or cut never moves a copy (its keys stay on the same part of the source). The whole-video popup shows the first clip's keyframes on a timeline as long as the longest clip, and each change in it is applied to every copy at the same clip time (add where the copy is long enough, set, or remove keeping each copy's last key).
 - A change in one clip's popup or on the picture changes that clip only. A later whole-video change sets all copies again. The popup shows only the first clip's keys after one clip was changed alone (known limit).
 - A clip has at most one Scale and one Move, so the stacking of the whole video and the clip is gone: the composition uses the clip's own values only.

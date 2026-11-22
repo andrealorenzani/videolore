@@ -26,9 +26,21 @@
 - ai-docs/roadmap-2_0-checkpoint.md § Principal Engineer — checkpoint to resume the 2.0.4 roadmap work (temporary, shared file: edit only my section)
 - ai-docs/code-modules.md § ai-notes: code — module facts (dense, per module) — L1-4 (4 lines)
 - ai-docs/code-modules.md § Module facts — L5-48 (44 lines)
-- ai-docs/code-req-tests.md § ai-notes: code — requirement -> test files (generated) — L1-101 (101 lines)
+- ai-docs/code-req-tests.md § ai-notes: code — requirement -> test files (generated 2026-11-22) — L1-134 (134 lines)
 
 ## Index of docs/code*.md
+- docs/code-2.2.0.md § Code — 2.2.0 (whole video as copies, picture limit, LUT preparation, project format 13, text maximum, order of all effects, Applied column) — L1-8 (8 lines)
+- docs/code-2.2.0.md § Measured before the code (spikes) — L9-33 (25 lines)
+- docs/code-2.2.0.md § Whole video as copies (REQ-083, 129, 131, 147, 148, 200 to 202, 303, 076) — L34-47 (14 lines)
+- docs/code-2.2.0.md § Picture limit (REQ-316) and the preparation of a LUT (REQ-312) — L48-63 (16 lines)
+- docs/code-2.2.0.md § Project format 13 and the text size (REQ-318, 319, 323, 322, 029) — L64-74 (11 lines)
+- docs/code-2.2.0.md § The order of the sound group (REQ-320, REQ-321, REQ-322) — L75-88 (14 lines)
+- docs/code-2.2.0.md § The order of the picture group (REQ-320, REQ-321, REQ-322) — L89-112 (24 lines)
+- docs/code-2.2.0.md § The step builder (`render/steps.rs`, ADR-224) — L113-135 (23 lines)
+- docs/code-2.2.0.md § Rows cache (REQ-313) and the column (REQ-317) — L136-144 (9 lines)
+- docs/code-2.2.0.md § Measured, not met (REQ-315 phases and levers; REQ-177 grid, FROZEN) — L145-189 (45 lines)
+- docs/code-2.2.0.md § Not built — L190-196 (7 lines)
+- docs/code-2.2.0.md § Tests — L197-207 (11 lines)
 - docs/code-2.1.0.md § Code — 2.1.0 (large LUTs, Applied effects, shadows, word styles, project format 12) — L1-6 (6 lines)
 - docs/code-2.1.0.md § Why the 80 MB LUT was refused (measured) — L7-15 (9 lines)
 - docs/code-2.1.0.md § Large LUTs (REQ-300, REQ-301) — L16-37 (22 lines)
@@ -67,6 +79,8 @@
 - docs/code-architecture.md § videolore player — L177-195 (19 lines)
 - docs/code-architecture.md § Dependencies of each module — L196-242 (47 lines)
 - docs/code-architecture.md § 2.0.4 additions (batches 12 to 15) — L243-260 (18 lines)
+- docs/code-architecture.md § 2.2.0 additions — L261-289 (29 lines)
+- docs/code-architecture.md § The order of the picture rows (REQ-320) (mermaid: three builds) — L290-307 (18 lines)
 - docs/code-effects.md § Code — effects on clips, the video's own subtitles, positions, SRT (1.2.0) — L1-4 (4 lines)
 - docs/code-effects.md § Applying an effect — L5-27 (23 lines)
 - docs/code-effects.md § Fades at the video's edges — L28-41 (14 lines)
@@ -131,7 +145,7 @@
 - docs/code-index.md § Hardware reach (2.0.4, batch 9) — L172-180 (9 lines)
 - docs/code-index.md § Export and preview speed (2.0.4, batch 10) — L181-188 (8 lines)
 - docs/code-index.md § Platforms and installers (2.0.4, batch 11) — L189-197 (9 lines)
-- docs/code-index.md § Interface, player, 360 video, effects, quality (2.0.4, batches 12 to 15) — L198-212 (15 lines)
+- docs/code-index.md § Interface, player, 360 video, effects, quality (2.0.4, batches 12 to 15; 2.2.0 areas: copies, limit, LUT preparation, format 13, sound and picture order, Faster check, speech regions) — L198-221 (24 lines)
 - docs/code-lut.md § Code — Apply LUT (1.6.0) — L1-4 (4 lines)
 - docs/code-lut.md § Where things are — L5-18 (14 lines)
 - docs/code-lut.md § The LUT file — L19-29 (11 lines)
@@ -211,6 +225,14 @@
 - docs/code.md § Cargo features — L82-92 (11 lines)
 - docs/code.md § Finding ffmpeg — L93-100 (8 lines)
 - docs/code.md § Dependencies — L101-126 (26 lines)
+
+## State (2.2.0, one pass; doc docs/code-2.2.0.md; no REQ marked implemented)
+- Built with `// covers:`: REQ-076, 083, 129, 131, 147, 148, 200, 201, 202, 303 (whole video as copies), 312 (Prep, status, unready LUTs out of `shown_project`), 313 (cache), 314 (measured, v22.rs), 316, 317, 318, 319, 320 + 321 + 322 (sound group AND picture group: `Row::{Crop,Frame,Scale,Move,Fade}`, `effect_order::legacy/resolve/overlay_form/needs_steps`, `render/steps.rs`, format 13), 323, 029 (13 refused), 177 (built and measured NOT met: `align::align_with`, `stt::recognise_with_level`, `FROZEN = None`; check skipped without the second clip), 315 (concurrent check built; measured 8.7% lower, target 20% NOT met).
+- Second pass (2026-11-22): picture-group reorder + REQ-315 + REQ-177 done as above. Deviation: a new Crop/Frame/Scale/Move/Fade takes its DEFAULT place (not the top; same decision as the sound group), a new text/picture/LUT goes on top of the other movable rows only. Tests replaced: `applied_tests::the_widget_lists_the_movable_rows_top_first_then_the_fixed_rows` (Crop movable). New: `tests/ffmpeg_integration/v22order.rs` (8, preview = export), `effect_order::tests`, `project/order_tests` (3), `render/overlay_tests` (2), `app/applied_tests` (2), `ui/applied_ux_tests` (1), `align::tests` (2), `stt::tests` (1). Ignored measurements: `hw::req315_phase_times`, `v12::speech_region_grid_on_the_reference_clip`.
+- Traps (picture order): libass leaves the alpha of an RGBA frame alone (text on a transparent layer is invisible: use the matte); `Chain::push` drops the comma after a label; a popup left open in a UI test covers the column (clear `popups.open` and `instance`); the second-pass docs: default order has Apply LUT between Scale and Crop; `put_on_top` counts only movable rows; ASS docs of a step-built clip are in the clip's time (`doc_shift = rows.start`), those of the 2.1.0 overlay in rendered time; `FrameKey::background_name` is `None` for a step-built clip; REQ-315 measurements need the SYSTEM ffmpeg (`scratchpad/run-sys.sh`; the pinned one cannot use VA-API here).
+- Left (not built): REQ-315 levers (b) 0.1 s and (c) weaker check; the 20% target; REQ-177 pace-aware method; 360 whole-sphere export ignores the order (by design).
+- Gotchas: `FrameTarget::Whole` only applies (reads are empty, edits fail); Instance::Scale/Move always Clip; `Instance::Lut(Whole)` is the chooser and retargets after `apply_lut_file`; an `Edit` can only be replaced through `replace_edit` (increments `rows_serial`); the Preview column border keeps a 2 px seam (a handle on the picture's edge was taken by the border); sound list top = applied first; `SavedLayout` has `applied` (serde default 0.15; valid 0.05..0.5); `ui.label("literal")` is refused by `strings::tests` (use tr! or a const); the schema tests were changed 12 -> 13 and newer 13 -> 14; unit tests that dispatch `SetLut` must tick (`tick_lut_prep`) before a preview shows the LUT; shell `cat >>` and one `sed -i` were used by mistake for test appends.
+- Local env: scratchpad env.sh, run.sh, s0e/ (spikes), p*.log; REQUIRE_FFMPEG=1 with the pinned ffmpeg.
 
 ## State (2.1.0, REQ-300..311 all built, none marked implemented; plan ai-docs/architecture-plan-2.1.0.md; doc docs/code-2.1.0.md)
 - Built (all with `// covers:`, none marked implemented): REQ-300, 301 (src/lut/{mod,parse,store}.rs, Graph.lut_files, app background load), 306, 307 (design A, spike S0d), 308, 309, 310 (src/word_styles.rs; Enlarge uses two events per word, no measured centre), 311 (format 12: shadow + style fields + clip_order + repair note). Second part: REQ-302..305 (src/effect_order.rs, Timeline.clip_order, project/order.rs, render/overlay.rs, app/applied.rs, ui/applied_effects.rs).

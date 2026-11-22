@@ -67,17 +67,12 @@ impl KeyBar {
     }
 }
 
-/// The range of key times a popup shows: the kept part of a clip (source time) or, for the
-/// whole video, the first clip's keys over the longest clip; and the timeline time of the range's start (to place the playhead).
+/// The range of key times a popup shows: the kept part of a clip (source time), and the
+/// timeline time of the range's start (to place the playhead). None for `Whole`.
 pub fn key_range(app: &AppState, t: FrameTarget) -> Option<(Micros, Micros, Micros)> {
     let tl = &app.project.timeline;
     match t {
-        // the first clip with keys, on a timeline as long as the longest clip (REQ-148)
-        FrameTarget::Whole => {
-            let from = tl.frame_start(FrameTarget::Whole);
-            let longest = tl.clips.iter().map(|c| c.src_len()).max()?;
-            Some((from, from + longest, Micros::ZERO))
-        }
+        FrameTarget::Whole => None,
         FrameTarget::Clip(id) => {
             let i = tl.index_of(id)?;
             let c = &tl.clips[i];
@@ -197,47 +192,8 @@ fn custom_ratio(ui: &mut Ui, a: &mut crate::frame::FrameAspect) {
     ui.data_mut(|d| d.insert_temp(id, (w, h)));
 }
 
-/// The rows of the whole-video Scale or Move popup: one per clip that has its own copy of
-/// the keyframes (REQ-200). A click selects the row; what the popup shows and edits is that
-/// copy only.
-fn copy_rows(ui: &mut Ui, app: &AppState, fx: FrameFx, cmds: &mut Vec<Command>) {
-    let tl = &app.project.timeline;
-    let selected = app.selected_copy(fx);
-    ui.label(tr!(OneCopyPerClipSelect));
-    for (i, c) in tl.clips.iter().enumerate() {
-        let has = match fx {
-            FrameFx::Scale => !tl.scale_keys(FrameTarget::Clip(c.id)).is_empty(),
-            FrameFx::Move => !tl.move_keys(FrameTarget::Clip(c.id)).is_empty(),
-        };
-        if !has {
-            continue;
-        }
-        let name = app
-            .project
-            .media(c.media)
-            .map(|m| m.name.clone())
-            .unwrap_or_else(|| "?".into());
-        let n = match fx {
-            FrameFx::Scale => tl.scale_keys(FrameTarget::Clip(c.id)).len(),
-            FrameFx::Move => tl.move_keys(FrameTarget::Clip(c.id)).len(),
-        };
-        let label = format!(
-            "{}. {name} ({n} keyframe{})",
-            i + 1,
-            if n == 1 { "" } else { "s" }
-        );
-        if ui
-            .add(egui::Button::selectable(selected == Some(c.id), label).truncate())
-            .clicked()
-        {
-            cmds.push(Command::SelectCopy(c.id));
-        }
-    }
-    ui.separator();
-}
-
-/// The body of the Scale or Move popup of `target`. For the whole video it lists one row per
-/// clip and edits the selected copy only (REQ-200); Remove effect removes every copy.
+/// The body of the Scale or Move popup of one clip: its own copy of the effect, edited and
+/// removed on that clip only (REQ-148, REQ-200).
 pub fn key_body(
     ui: &mut Ui,
     app: &AppState,
@@ -246,20 +202,7 @@ pub fn key_body(
     fx: FrameFx,
     cmds: &mut Vec<Command>,
 ) {
-    let remove_target = target;
     let tl = &app.project.timeline;
-    let any = match fx {
-        FrameFx::Scale => !tl.scale_keys(target).is_empty(),
-        FrameFx::Move => !tl.move_keys(target).is_empty(),
-    };
-    let target = match (target, any) {
-        (FrameTarget::Whole, true) => {
-            copy_rows(ui, app, fx, cmds);
-            app.selected_copy(fx)
-                .map_or(FrameTarget::Whole, FrameTarget::Clip)
-        }
-        (t, _) => t,
-    };
     let keys: Vec<Micros> = match fx {
         FrameFx::Scale => tl.scale_keys(target).iter().map(|k| k.t).collect(),
         FrameFx::Move => tl.move_keys(target).iter().map(|k| k.t).collect(),
@@ -268,7 +211,7 @@ pub fn key_body(
         FrameFx::Scale => EffectKind::Scale,
         FrameFx::Move => EffectKind::Move,
     };
-    let Some((from, to, start)) = key_range(app, target) else {
+    let (Some((from, to, start)), FrameTarget::Clip(own)) = (key_range(app, target), target) else {
         ui.label(tr!(ThisClipNoLongerExists));
         return;
     };
@@ -280,10 +223,7 @@ pub fn key_body(
             "Apply",
             Command::ApplyEffect {
                 effect,
-                target: match remove_target {
-                    FrameTarget::Whole => Target::WholeVideo,
-                    FrameTarget::Clip(c) => Target::Clip(c),
-                },
+                target: Target::Clip(own),
             },
             cmds,
         );
@@ -351,12 +291,12 @@ pub fn key_body(
     let pass = ui.ctx().cumulative_pass_nr();
     ui.ctx()
         .data_mut(|d| d.insert_temp(bar_focus_id(), (pass, focused)));
-    if focused && let (Some(k), FrameTarget::Clip(clip)) = (selected, target) {
+    if focused && let Some(k) = selected {
         let frame = app.frame_len();
         for (key, dir) in [(egui::Key::ArrowLeft, -1), (egui::Key::ArrowRight, 1)] {
             if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key)) {
                 cmds.push(Command::MoveKey {
-                    clip,
+                    clip: own,
                     effect: fx,
                     from: k,
                     to: k + Micros(frame.0 * dir),
@@ -406,19 +346,14 @@ pub fn key_body(
             }
         }
     });
-    if let FrameTarget::Clip(clip) = target {
-        key_time_field(ui, app, clip, fx, selected, from, to, cmds);
-        copy_paste(ui, app, clip, fx, cmds);
-    }
+    key_time_field(ui, app, own, fx, selected, from, to, cmds);
+    copy_paste(ui, app, own, fx, cmds);
     values(ui, app, cache, target, fx, selected, cmds);
     button(
         ui,
         app,
         "Remove effect",
-        Command::RemoveFrameEffect {
-            target: remove_target,
-            effect: fx,
-        },
+        Command::RemoveFrameEffect { target, effect: fx },
         cmds,
     );
 }

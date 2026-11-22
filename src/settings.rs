@@ -140,22 +140,35 @@ pub struct SavedLayout {
     pub top: f32,
     pub media: f32,
     pub timeline: f32,
+    /// The Applied effects column of the Preview section, as a share of the section's width
+    /// (2.2.0, REQ-317); a file saved before has the default 15%. The column is never
+    /// narrower than 180 px, whatever this says.
+    #[serde(default = "default_applied")]
+    pub applied: f32,
+}
+
+fn default_applied() -> f32 {
+    0.15
 }
 
 impl SavedLayout {
     /// The REQ-024 layout: top row 2/3 (Media 30% | Preview 70%), bottom row 1/3
-    /// (Timeline 70% | Effects 30%).
+    /// (Timeline 70% | Effects 30%); the Applied effects column 15% of the Preview.
     pub const DEFAULT: SavedLayout = SavedLayout {
         top: 2.0 / 3.0,
         media: 0.30,
         timeline: 0.70,
+        applied: 0.15,
     };
 
-    /// Every share is a finite number strictly between 0 and 1.
+    /// Every share is a finite number strictly between 0 and 1; the column's between 5% and
+    /// 50%.
     pub fn is_valid(&self) -> bool {
         [self.top, self.media, self.timeline]
             .iter()
             .all(|v| v.is_finite() && *v > 0.0 && *v < 1.0)
+            && self.applied.is_finite()
+            && (0.05..=0.5).contains(&self.applied)
     }
 }
 

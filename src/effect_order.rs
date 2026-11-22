@@ -18,6 +18,20 @@ pub enum Row {
     Picture(u64),
     /// The subtitle lines of the clip, as one row.
     Subtitles,
+    /// The clip's Volume: a row of the sound group (2.2.0, REQ-320), see [`crate::order_chain`].
+    Volume,
+    /// The clip's Clean audio: a row of the sound group (2.2.0).
+    Clean,
+    /// The clip's Crop: a row of the picture group (2.2.0, REQ-320).
+    Crop,
+    /// Change aspect (the clip's frame: the fit and the background), a row of the picture group.
+    Frame,
+    /// The clip's Scale, a row of the picture group.
+    Scale,
+    /// The clip's Move, a row of the picture group.
+    Move,
+    /// The clip's Fade IN/OUT (every fade the clip has), a row of the picture group.
+    Fade,
     /// A row read from a damaged file: never made by the program, removed when a project is
     /// opened (with a note).
     Unknown,
@@ -29,6 +43,13 @@ impl Row {
         match self {
             Row::Lut => "lut".into(),
             Row::Subtitles => "subtitles".into(),
+            Row::Volume => "volume".into(),
+            Row::Clean => "clean".into(),
+            Row::Crop => "crop".into(),
+            Row::Frame => "frame".into(),
+            Row::Scale => "scale".into(),
+            Row::Move => "move".into(),
+            Row::Fade => "fade".into(),
             Row::Text(i) => format!("text:{i}"),
             Row::Picture(i) => format!("picture:{i}"),
             Row::Unknown => "unknown".into(),
@@ -40,6 +61,13 @@ impl Row {
         match s {
             "lut" => Row::Lut,
             "subtitles" => Row::Subtitles,
+            "volume" => Row::Volume,
+            "clean" => Row::Clean,
+            "crop" => Row::Crop,
+            "frame" => Row::Frame,
+            "scale" => Row::Scale,
+            "move" => Row::Move,
+            "fade" => Row::Fade,
             _ => {
                 let id = |rest: &str| rest.parse::<u64>().ok();
                 if let Some(i) = s.strip_prefix("text:").and_then(id) {
@@ -85,10 +113,18 @@ pub struct Present {
     /// Picture items, in item order.
     pub pictures: Vec<u64>,
     pub subtitles: bool,
+    /// The clip has a Crop (2.2.0).
+    pub crop: bool,
+    /// The clip has a Change aspect, its own or the project's.
+    pub frame: bool,
+    pub scale: bool,
+    pub moved: bool,
+    /// The clip has a fade (at the start, at the end or with a neighbour).
+    pub fade: bool,
 }
 
 impl Present {
-    /// Whether the clip has no movable row.
+    /// Whether the clip has no movable row of the 2.1.0 kind (Apply LUT, texts, pictures, lines).
     pub fn is_empty(&self) -> bool {
         !self.lut && !self.subtitles && self.texts.is_empty() && self.pictures.is_empty()
     }
@@ -100,29 +136,76 @@ impl Present {
             Row::Subtitles => self.subtitles,
             Row::Text(i) => self.texts.contains(&i),
             Row::Picture(i) => self.pictures.contains(&i),
-            Row::Unknown => false,
+            Row::Crop => self.crop,
+            Row::Frame => self.frame,
+            Row::Scale => self.scale,
+            Row::Move => self.moved,
+            Row::Fade => self.fade,
+            // the sound rows are ordered apart from the picture rows
+            Row::Volume | Row::Clean | Row::Unknown => false,
         }
     }
 }
 
-/// The order projects saved before 2.1.0 have, top first: the flat texts (the later item on
-/// top), then the subtitle lines, then the picture items (the later on top), the Apply LUT at
-/// the bottom (it is in the clip's own chain, under everything drawn after the clips).
+impl Row {
+    /// True for the rows of the sound group (Volume, Clean audio).
+    pub fn is_sound(self) -> bool {
+        matches!(self, Row::Volume | Row::Clean)
+    }
+
+    /// True for the picture rows that act on the picture itself (Crop, Change aspect, Scale,
+    /// Move, Fade): they have a place in the default sequence, see [`FIXED`].
+    pub fn is_fixed(self) -> bool {
+        FIXED.contains(&self)
+    }
+
+    /// True for a row drawn on the frame (a text, a picture item, the subtitle lines).
+    pub fn is_drawn(self) -> bool {
+        matches!(self, Row::Text(_) | Row::Picture(_) | Row::Subtitles)
+    }
+}
+
+/// The picture rows that act on the picture, top first, in the order the picture has been built
+/// since 1.5.0: the fade is applied last, then the frame (the background under the picture), the
+/// picture is moved, scaled, and cropped first (Apply LUT sits between Scale and Crop, see
+/// [`legacy`]).
+pub const FIXED: [Row; 5] = [Row::Fade, Row::Frame, Row::Move, Row::Scale, Row::Crop];
+
+/// The place of a fixed row in [`FIXED`] (0 = the top).
+fn rank(r: Row) -> Option<usize> {
+    FIXED.iter().position(|x| *x == r)
+}
+
+/// The default order of the picture group, top first: the flat texts (the later item on top),
+/// then the subtitle lines, then the picture items (the later on top) as the order of 2.0.4 and
+/// before, then the picture rows in [`FIXED`] order with the Apply LUT between Scale and Crop (it
+/// is in the clip's own chain, under the frame, Scale and Move and over the Crop). A clip with
+/// this order is drawn exactly as in the older versions.
 pub fn legacy(p: &Present) -> Vec<Row> {
     let mut v: Vec<Row> = p.texts.iter().rev().map(|i| Row::Text(*i)).collect();
     if p.subtitles {
         v.push(Row::Subtitles);
     }
     v.extend(p.pictures.iter().rev().map(|i| Row::Picture(*i)));
-    if p.lut {
+    for r in FIXED {
+        if r == Row::Crop && p.lut {
+            v.push(Row::Lut);
+        }
+        if p.has(r) {
+            v.push(r);
+        }
+    }
+    if p.lut && !v.contains(&Row::Lut) {
         v.push(Row::Lut);
     }
     v
 }
 
-/// The order of a clip: `stored` (what the user chose) restricted to the rows the clip has,
-/// and the rows it has that are not stored (new ones) on top, in the legacy order. With nothing
-/// stored it is the legacy order.
+/// The order of a clip: `stored` (what the user chose) restricted to the rows the clip has;
+/// the Apply LUT, texts, pictures and lines it has that are not stored (new ones) go on top, in
+/// the legacy order, and a Crop, Change aspect, Scale, Move or Fade that is not stored takes its
+/// place in the default sequence (a new effect never changes how the others are drawn). With
+/// nothing stored it is the legacy order.
 pub fn resolve(stored: &[Row], p: &Present) -> Vec<Row> {
     if stored.is_empty() {
         return legacy(p);
@@ -135,10 +218,37 @@ pub fn resolve(stored: &[Row], p: &Present) -> Vec<Row> {
     }
     let mut out: Vec<Row> = legacy(p)
         .into_iter()
-        .filter(|r| !kept.contains(r))
+        .filter(|r| !r.is_fixed() && !kept.contains(r))
         .collect();
     out.extend(kept);
+    for r in FIXED {
+        if !p.has(r) || out.contains(&r) {
+            continue;
+        }
+        let k = rank(r);
+        // above the first fixed row that the default sequence puts lower; else at the bottom
+        match out.iter().position(|x| rank(*x) > k) {
+            Some(i) => out.insert(i, r),
+            None => out.push(r),
+        }
+    }
     out
+}
+
+/// Whether `order` is the form of the 2.1.0 overlay stage: the rows that act on the picture
+/// are in the default sequence at the bottom and everything above them is a movable row. Such a
+/// clip is drawn by the 2.1.0 overlay stage; any other order that is not the default one is
+/// built step by step (`render/steps.rs`, ADR-224).
+pub fn overlay_form(order: &[Row]) -> bool {
+    let first = order.iter().position(|r| r.is_fixed());
+    let Some(first) = first else { return true };
+    let tail = &order[first..];
+    tail.iter().all(|r| r.is_fixed()) && tail.windows(2).all(|w| rank(w[0]) < rank(w[1]))
+}
+
+/// Whether a clip with this (not default) order needs the step builder.
+pub fn needs_steps(order: &[Row]) -> bool {
+    !order.is_empty() && !overlay_form(order)
 }
 
 /// What to store for `order`: nothing when it is the legacy order (such a clip is drawn
@@ -187,6 +297,13 @@ pub fn noun(r: Row) -> &'static str {
         Row::Text(_) => "text",
         Row::Picture(_) => "picture",
         Row::Subtitles => "subtitles",
+        Row::Volume => "Volume",
+        Row::Clean => "Clean audio",
+        Row::Crop => "Crop",
+        Row::Frame => "Change aspect",
+        Row::Scale => "Scale",
+        Row::Move => "Move effect",
+        Row::Fade => "Fade",
         Row::Unknown => "row",
     }
 }
@@ -201,7 +318,109 @@ mod tests {
             texts: vec![1, 2],
             pictures: vec![5],
             subtitles: true,
+            ..Default::default()
         }
+    }
+
+    fn all() -> Present {
+        Present {
+            lut: true,
+            texts: vec![1],
+            pictures: vec![5],
+            subtitles: true,
+            crop: true,
+            frame: true,
+            scale: true,
+            moved: true,
+            fade: true,
+        }
+    }
+
+    // covers: REQ-320
+    #[test]
+    fn the_default_order_is_the_build_of_the_older_versions() {
+        use Row::*;
+        assert_eq!(
+            legacy(&all()),
+            vec![
+                Text(1),
+                Subtitles,
+                Picture(5),
+                Fade,
+                Frame,
+                Move,
+                Scale,
+                Lut,
+                Crop
+            ]
+        );
+        // Apply LUT is above Crop and below Scale; with no Crop it is the last row
+        let no_crop = Present {
+            crop: false,
+            ..all()
+        };
+        assert_eq!(legacy(&no_crop).last(), Some(&Lut));
+        let only_crop = Present {
+            crop: true,
+            ..Default::default()
+        };
+        assert_eq!(legacy(&only_crop), vec![Crop]);
+        // nothing stored: the default, never "changed"
+        assert_eq!(resolve(&[], &all()), legacy(&all()));
+        assert!(!is_changed(&legacy(&all()), &all()));
+        assert!(to_store(legacy(&all()), &all()).is_empty());
+    }
+
+    // covers: REQ-320, REQ-321
+    #[test]
+    fn a_new_picture_row_takes_its_place_in_the_default_sequence_and_a_2_1_0_order_keeps_its_look()
+    {
+        use Row::*;
+        // 2.1.0 stored a LUT above a text: the rows that act on the picture stay below them
+        let stored = [Lut, Text(1)];
+        let present = Present {
+            lut: true,
+            texts: vec![1],
+            crop: true,
+            scale: true,
+            fade: true,
+            ..Default::default()
+        };
+        let o = resolve(&stored, &present);
+        assert_eq!(o, vec![Lut, Text(1), Fade, Scale, Crop]);
+        assert!(overlay_form(&o) && !needs_steps(&o));
+        // a Move added later goes between Fade... and Scale, not on top
+        let more = Present {
+            moved: true,
+            ..present.clone()
+        };
+        assert_eq!(
+            resolve(&o, &more),
+            vec![Lut, Text(1), Fade, Move, Scale, Crop]
+        );
+        // a stored Crop above Scale is a built order of its own (not the 2.1.0 overlay form)
+        let swapped = vec![Text(1), Crop, Scale];
+        assert!(needs_steps(&swapped) && !overlay_form(&swapped));
+        assert!(needs_steps(&[Scale, Fade]));
+        assert!(!needs_steps(&[]) && !needs_steps(&[Text(1), Lut]));
+        // a drawn row below a fixed one is not the overlay form
+        assert!(needs_steps(&[Fade, Text(1)]));
+        assert!(Text(1).is_drawn() && Subtitles.is_drawn() && !Lut.is_drawn());
+        assert!(Crop.is_fixed() && !Lut.is_fixed());
+    }
+
+    // covers: REQ-322
+    #[test]
+    fn the_new_rows_have_names_in_the_file() {
+        for r in [Row::Crop, Row::Frame, Row::Scale, Row::Move, Row::Fade] {
+            assert_eq!(Row::parse(&r.name()), r);
+        }
+        assert_eq!(Row::Crop.name(), "crop");
+        assert_eq!(noun(Row::Frame), "Change aspect");
+        assert_eq!(noun(Row::Fade), "Fade");
+        assert_eq!(noun(Row::Scale), "Scale");
+        assert_eq!(noun(Row::Crop), "Crop");
+        assert_eq!(noun(Row::Move), "Move effect");
     }
 
     #[test]

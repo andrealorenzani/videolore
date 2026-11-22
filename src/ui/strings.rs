@@ -29,7 +29,6 @@ pub enum Key {
     Fit,
     EmptySpace,
     Colour,
-    OneCopyPerClipSelect,
     ClickAKeyframeToSelect,
     KeyframeTime,
     PasteKeyframesTo,
@@ -77,7 +76,6 @@ pub enum Key {
     End2,
     CloseMark,
     CloseTheSplashScreenEsc,
-    GiveTheNewClipThe,
     For,
     In,
     TextEnterStartsANew,
@@ -168,12 +166,13 @@ pub enum Key {
     SpeedPercent,
     ClickToTurnTheView,
     ShadowLabel,
+    MaximumSize,
+    DragToResizeTheAppliedEffects,
     EnlargeBy,
     AppliedEffects,
     SelectAClipToSeeItsEffects,
     MoveUp,
     MoveDown,
-    WholeVideoMark,
     AppliedRowHint,
     AppliedEffectLabel,
 }
@@ -217,10 +216,6 @@ pub const ENGLISH: &[(Key, &str)] = &[
     (Key::Fit, "Fit"),
     (Key::EmptySpace, "Empty space"),
     (Key::Colour, "Colour"),
-    (
-        Key::OneCopyPerClipSelect,
-        "One copy per clip; select the one to edit:",
-    ),
     (
         Key::ClickAKeyframeToSelect,
         "Click a keyframe to select it; click elsewhere to move the playhead",
@@ -294,10 +289,6 @@ pub const ENGLISH: &[(Key, &str)] = &[
     (
         Key::CloseTheSplashScreenEsc,
         "Close the splash screen (Esc)",
-    ),
-    (
-        Key::GiveTheNewClipThe,
-        "Give the new clip the same effect as the other clips",
     ),
     (Key::For, "for"),
     (Key::In, "in"),
@@ -407,6 +398,11 @@ pub const ENGLISH: &[(Key, &str)] = &[
         "Click to turn the view to this item",
     ),
     (Key::ShadowLabel, "Shadow"),
+    (Key::MaximumSize, "Maximum size"),
+    (
+        Key::DragToResizeTheAppliedEffects,
+        "Drag to resize the Applied effects",
+    ),
     (Key::EnlargeBy, "Enlarge by"),
     (Key::AppliedEffects, "Applied effects"),
     (
@@ -415,7 +411,6 @@ pub const ENGLISH: &[(Key, &str)] = &[
     ),
     (Key::MoveUp, "Move up"),
     (Key::MoveDown, "Move down"),
-    (Key::WholeVideoMark, "whole video"),
     (
         Key::AppliedRowHint,
         "Click to open its settings. Drag, or Alt+Up and Alt+Down, to move it: a row higher up is drawn over the rows below it",

@@ -80,6 +80,7 @@ mod inputs;
 pub mod overlay;
 mod plan;
 mod segments;
+pub mod steps;
 
 pub use self::args::*;
 pub use self::graph::*;

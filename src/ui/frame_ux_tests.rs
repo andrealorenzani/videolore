@@ -60,18 +60,18 @@ fn apply(app: &mut AppState, effect: EffectKind, target: Target) {
 #[test]
 fn the_scale_row_opens_a_popup_that_offers_apply_then_the_keyframe_buttons() {
     let (_d, app) = loaded();
+    let c0 = FrameTarget::Clip(app.project.timeline.clips[0].id);
     let mut h = Harness::new(app, 1280.0, 800.0);
+    // a click on the row of a clip without Scale opens nothing and says why (no whole popup)
     h.click_label("Scale");
-    assert_eq!(
-        h.app.popups.instance,
-        Some(Instance::Scale(FrameTarget::Whole))
-    );
+    assert!(h.app.status.contains("has no Scale"), "{}", h.app.status);
+    // the popup of a clip whose Scale was removed offers Apply
+    h.app.popups.instance = Some(Instance::Scale(c0));
+    h.app.popups.show(Popup::Instance);
+    h.idle(2);
     assert!(h.has("Scale is not applied here."), "{:#?}", h.labels());
     h.click_label("Apply");
-    assert_eq!(
-        h.app.project.timeline.scale_keys(FrameTarget::Whole).len(),
-        1
-    );
+    assert_eq!(h.app.project.timeline.scale_keys(c0).len(), 1);
     h.idle(2);
     for l in ["Add keyframe", "Remove keyframe", "Remove effect"] {
         assert!(h.has(l), "{l} in {:#?}", h.labels());
@@ -83,25 +83,13 @@ fn the_scale_row_opens_a_popup_that_offers_apply_then_the_keyframe_buttons() {
     // Add keyframe at the playhead, then Remove keyframe (selected by the add)
     let n = h.app.history.undo_len();
     h.click_label("Add keyframe");
-    assert_eq!(
-        h.app.project.timeline.scale_keys(FrameTarget::Whole).len(),
-        2
-    );
+    assert_eq!(h.app.project.timeline.scale_keys(c0).len(), 2);
     assert_eq!(h.app.history.undo_len(), n + 1);
     h.click_label("Remove keyframe");
-    assert_eq!(
-        h.app.project.timeline.scale_keys(FrameTarget::Whole).len(),
-        1
-    );
+    assert_eq!(h.app.project.timeline.scale_keys(c0).len(), 1);
     // Remove effect
     h.click_label("Remove effect");
-    assert!(
-        h.app
-            .project
-            .timeline
-            .scale_keys(FrameTarget::Whole)
-            .is_empty()
-    );
+    assert!(h.app.project.timeline.scale_keys(c0).is_empty());
     assert!(!h.app.popups.is_open(Popup::Instance));
 }
 
@@ -161,7 +149,8 @@ fn a_corner_handle_scales_around_the_opposite_corner_in_one_undo_step() {
     let n = h.app.history.undo_len();
     // the bottom right corner to the middle of the picture: half size
     h.drag(at(pic, 1.0, 1.0), at(pic, 0.5, 0.5));
-    let keys = h.app.project.timeline.scale_keys(FrameTarget::Whole);
+    let c0 = FrameTarget::Clip(h.app.project.timeline.clips[0].id);
+    let keys = h.app.project.timeline.scale_keys(c0);
     assert_eq!(keys.len(), 1);
     assert!(
         (keys[0].v.permille as i32 - 500).abs() <= 10,
@@ -174,12 +163,7 @@ fn a_corner_handle_scales_around_the_opposite_corner_in_one_undo_step() {
     assert!(r.0.abs() < 0.02 && r.1.abs() < 0.02, "{r:?}");
     assert!((r.2 - 0.5).abs() < 0.02, "{r:?}");
     h.key(Key::Z, Modifiers::COMMAND);
-    assert_eq!(
-        h.app.project.timeline.scale_keys(FrameTarget::Whole)[0]
-            .v
-            .permille,
-        1000
-    );
+    assert_eq!(h.app.project.timeline.scale_keys(c0)[0].v.permille, 1000);
 }
 
 // covers: REQ-128
@@ -192,17 +176,15 @@ fn the_target_moves_the_picture_by_the_dragged_fraction_and_stops_at_the_edge() 
     let pic = picture(&h);
     let n = h.app.history.undo_len();
     h.drag(at(pic, 0.5, 0.5), at(pic, 0.6, 0.5));
-    let p = h.app.project.timeline.move_keys(FrameTarget::Whole)[0].v;
+    let c0 = FrameTarget::Clip(h.app.project.timeline.clips[0].id);
+    let p = h.app.project.timeline.move_keys(c0)[0].v;
     assert!((i32::from(p.x) - 6000).abs() <= 100, "{p:?}");
     assert!((i32::from(p.y) - 5000).abs() <= 100, "{p:?}");
     assert_eq!(h.app.history.undo_len(), n + 1);
     // past the edge: stops at the edge of the frame
     let c = at(pic, 0.6, 0.5);
     h.drag(c, c + eframe::egui::vec2(5000.0, 0.0));
-    assert_eq!(
-        h.app.project.timeline.move_keys(FrameTarget::Whole)[0].v.x,
-        10_000
-    );
+    assert_eq!(h.app.project.timeline.move_keys(c0)[0].v.x, 10_000);
 }
 
 // covers: REQ-128
@@ -236,8 +218,9 @@ fn text_boxes_come_before_the_handles_and_the_handles_before_the_picture() {
         Some(true),
         "the text moved"
     );
+    let c0 = FrameTarget::Clip(h.app.project.timeline.clips[0].id);
     assert_eq!(
-        h.app.project.timeline.move_keys(FrameTarget::Whole)[0].v,
+        h.app.project.timeline.move_keys(c0)[0].v,
         crate::frame::CENTRE,
         "the picture stayed"
     );
@@ -320,11 +303,8 @@ fn the_key_timeline_fills_the_popup_width_at_any_clip_length() {
 fn the_range_of_a_clip_popup_is_its_kept_part() {
     let (_d, app) = loaded();
     let c1 = app.project.timeline.clips[1].id;
-    assert_eq!(
-        // the whole-video popup: the first clip's keys on a timeline as long as the longest clip
-        key_range(&app, FrameTarget::Whole),
-        Some((s(0), s(5), s(0)))
-    );
+    // there is no whole-video range any more (REQ-200)
+    assert_eq!(key_range(&app, FrameTarget::Whole), None);
     assert_eq!(
         key_range(&app, FrameTarget::Clip(c1)),
         Some((s(0), s(5), s(5)))

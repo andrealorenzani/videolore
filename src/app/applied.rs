@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! The Applied effects of a clip (REQ-302 to REQ-304): the rows the widget lists, whether each
-//! is an effect of the whole video, and moving a movable row (one undo step).
+//! The Applied effects of a clip (REQ-302 to REQ-304): the rows the widget lists (a whole-video
+//! effect is a copy on each clip and has no mark, REQ-303), and moving a movable row (one undo
+//! step).
 
 use super::*;
 use crate::effect_order::{self, Row};
@@ -24,8 +25,6 @@ pub struct AppliedRow {
     pub range: Option<(Micros, Micros)>,
     /// The movable row it stands for; `None` for a fixed row.
     pub row: Option<Row>,
-    /// The effect was applied to the whole video (REQ-303).
-    pub whole: bool,
     /// What a click does: select the clip and open the popup of the effect.
     pub open: Vec<Command>,
 }
@@ -34,14 +33,17 @@ pub struct AppliedRow {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Applied {
     pub clip: ClipId,
-    /// The movable rows, top first, then the fixed rows in the order the picture is built.
+    /// The picture group, top first (every row moves inside it), then the rows fixed to the
+    /// sphere, the sound group and Speed.
     pub rows: Vec<AppliedRow>,
+    /// How many rows the picture group has (they come first).
+    pub picture: usize,
 }
 
 impl Applied {
-    /// How many movable rows there are (they come first).
+    /// How many rows of the picture group there are (they come first): a drag ends among them.
     pub fn movable(&self) -> usize {
-        self.rows.iter().take_while(|r| r.row.is_some()).count()
+        self.picture
     }
 }
 
@@ -57,6 +59,20 @@ pub(super) fn move_label(row: Row, mv: RowMove) -> &'static str {
         ("picture", RowMove::Down) => "Move picture down",
         ("subtitles", RowMove::Up) => "Move subtitles up",
         ("subtitles", RowMove::Down) => "Move subtitles down",
+        ("Volume", RowMove::Up) => "Move Volume up",
+        ("Volume", RowMove::Down) => "Move Volume down",
+        ("Clean audio", RowMove::Up) => "Move Clean audio up",
+        ("Clean audio", RowMove::Down) => "Move Clean audio down",
+        ("Crop", RowMove::Up) => "Move Crop up",
+        ("Crop", RowMove::Down) => "Move Crop down",
+        ("Change aspect", RowMove::Up) => "Move Change aspect up",
+        ("Change aspect", RowMove::Down) => "Move Change aspect down",
+        ("Scale", RowMove::Up) => "Move Scale up",
+        ("Scale", RowMove::Down) => "Move Scale down",
+        ("Move effect", RowMove::Up) => "Move the Move effect up",
+        ("Move effect", RowMove::Down) => "Move the Move effect down",
+        ("Fade", RowMove::Up) => "Move Fade up",
+        ("Fade", RowMove::Down) => "Move Fade down",
         _ => "Move effect",
     }
 }
@@ -71,41 +87,117 @@ fn short(text: &str) -> String {
     out
 }
 
+/// What the rows of the widget were built from: the clip and the state of the project (REQ-313).
+pub(super) type AppliedKey = (ClipId, u64, usize, usize, usize);
+
 impl AppState {
     /// The effects of the selected clip, or of the clip at the playhead (REQ-302); `None`
-    /// with no clip there.
+    /// with no clip there. The rows are kept and built again only when the clip, its order
+    /// or its effects change: every edit, undo and redo count (REQ-313).
     pub fn applied(&self) -> Option<Applied> {
         let id = self.target_clip()?;
+        let key: AppliedKey = (
+            id,
+            self.rows_serial,
+            self.project.timeline.clips.len(),
+            self.project.texts.items.len(),
+            self.project.subtitles.lines.len(),
+        );
+        let mut cache = self.applied_cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((k, rows)) = cache.as_ref()
+            && *k == key
+        {
+            return rows.clone();
+        }
+        self.applied_builds
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let rows = self.build_applied(id);
+        *cache = Some((key, rows.clone()));
+        rows
+    }
+
+    /// How many times the rows were built (for the test of REQ-313).
+    pub fn applied_builds(&self) -> u32 {
+        self.applied_builds
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn build_applied(&self, id: ClipId) -> Option<Applied> {
         let tl = &self.project.timeline;
         let i = tl.index_of(id)?;
         let c = tl.clips[i];
         let rows = self.project.rows_of(id)?;
         let order = effect_order::resolve(tl.order_of(id), &rows.present);
-        let many = tl.clips.len() > 1;
-        let all = |same: &dyn Fn(&crate::timeline::Clip) -> bool| many && tl.clips.iter().all(same);
         let open_instance =
             |i: Instance| vec![Command::SelectClip(Some(id)), Command::OpenInstance(i)];
         let open_popup = |p: Popup| vec![Command::SelectClip(Some(id)), Command::OpenPopup(p)];
         let mut out = Vec::new();
-        // the movable rows, top first
+        // the fades of the clip: at the start and at the end of the video (REQ-083), and with
+        // the previous and the next clip; they are one row, "Fade IN/OUT" when there are several
+        let mut fades: Vec<(&str, Vec<Command>)> = Vec::new();
+        if c.fade_in && i == 0 {
+            fades.push(("Fade IN", open_instance(Instance::FadeStart)));
+        }
+        if i > 0 && tl.has_fade(i - 1) {
+            let prev = tl.clips[i - 1].id;
+            fades.push((
+                "Fade IN/OUT with the previous clip",
+                open_instance(Instance::Fade(prev, id)),
+            ));
+        }
+        if tl.has_fade(i) {
+            let next = tl.clips[i + 1].id;
+            fades.push((
+                "Fade IN/OUT with the next clip",
+                open_instance(Instance::Fade(id, next)),
+            ));
+        }
+        if c.fade_out && i + 1 == tl.clips.len() {
+            fades.push(("Fade OUT", open_instance(Instance::FadeEnd)));
+        }
+        // the picture group, top first (REQ-320): every row can move inside it
         for row in order {
-            let (name, range, open, whole) = match row {
+            let (name, range, open) = match row {
+                Row::Crop => ("Crop".to_string(), None, open_popup(Popup::ClipDetails)),
+                Row::Frame => {
+                    let open = if tl.own_aspect(id).is_some() {
+                        open_popup(Popup::ClipDetails)
+                    } else {
+                        open_instance(Instance::Aspect)
+                    };
+                    ("Change aspect".to_string(), None, open)
+                }
+                Row::Scale => (
+                    "Scale".to_string(),
+                    None,
+                    open_instance(Instance::Scale(FrameTarget::Clip(id))),
+                ),
+                Row::Move => (
+                    "Move".to_string(),
+                    None,
+                    open_instance(Instance::Move(FrameTarget::Clip(id))),
+                ),
+                Row::Fade => {
+                    let Some((first, open)) = fades.first() else {
+                        continue;
+                    };
+                    let name = if fades.len() == 1 {
+                        (*first).to_string()
+                    } else {
+                        "Fade IN/OUT".to_string()
+                    };
+                    (name, None, open.clone())
+                }
                 Row::Lut => {
                     let path = tl.lut_of(FrameTarget::Clip(id));
                     let name = path.map_or_else(
                         || "Apply LUT".to_string(),
                         |p| format!("Apply LUT: {}", crate::lut::display_name(p)),
                     );
-                    let same = all(&|k| {
-                        tl.lut_of(FrameTarget::Clip(k.id)) == path
-                            && tl.lut_strength_of(FrameTarget::Clip(k.id))
-                                == tl.lut_strength_of(FrameTarget::Clip(id))
-                    });
                     (
                         name,
                         None,
                         open_instance(Instance::Lut(FrameTarget::Clip(id))),
-                        path.is_some() && same,
                     )
                 }
                 Row::Text(t) | Row::Picture(t) => {
@@ -120,31 +212,24 @@ impl AppState {
                         name,
                         Some((item.start, item.end())),
                         vec![Command::OpenText(item.id)],
-                        false,
                     )
                 }
-                Row::Subtitles => (
-                    "Subtitles".to_string(),
-                    None,
-                    open_popup(Popup::Subtitles),
-                    false,
-                ),
-                Row::Unknown => continue,
+                Row::Subtitles => ("Subtitles".to_string(), None, open_popup(Popup::Subtitles)),
+                Row::Volume | Row::Clean | Row::Unknown => continue,
             };
             out.push(AppliedRow {
                 name,
                 range,
                 row: Some(row),
-                whole,
                 open,
             });
         }
-        let mut fixed = |name: &str, open: Vec<Command>, whole: bool| {
+        let picture = out.len();
+        let mut fixed = |name: &str, open: Vec<Command>| {
             out.push(AppliedRow {
                 name: name.to_string(),
                 range: None,
                 row: None,
-                whole,
                 open,
             });
         };
@@ -157,91 +242,46 @@ impl AppState {
                 .map_or_else(String::new, |x| {
                     format!("Text fixed to the sphere: {}", short(&x.text))
                 });
-            fixed(
-                &name,
-                vec![Command::OpenText(crate::text::TextId(*t))],
-                false,
-            );
+            fixed(&name, vec![Command::OpenText(crate::text::TextId(*t))]);
         }
         if rows.sphere_lines {
             fixed(
                 "Subtitles fixed to the sphere",
                 open_popup(Popup::Subtitles),
-                false,
             );
         }
-        if !c.crop.is_none() {
-            fixed("Crop", open_popup(Popup::ClipDetails), false);
-        }
-        for (name, keys) in [
-            ("Scale", !tl.scale_keys(FrameTarget::Clip(id)).is_empty()),
-            ("Move", !tl.move_keys(FrameTarget::Clip(id)).is_empty()),
-        ] {
-            if keys {
-                let (instance, same) = if name == "Scale" {
-                    let mine = tl.scale_keys(FrameTarget::Clip(id));
-                    (
-                        Instance::Scale(FrameTarget::Clip(id)),
-                        all(&|k| tl.scale_keys(FrameTarget::Clip(k.id)) == mine),
-                    )
-                } else {
-                    let mine = tl.move_keys(FrameTarget::Clip(id));
-                    (
-                        Instance::Move(FrameTarget::Clip(id)),
-                        all(&|k| tl.move_keys(FrameTarget::Clip(k.id)) == mine),
-                    )
-                };
-                fixed(name, open_instance(instance), same);
-            }
-        }
-        if tl.own_aspect(id).is_some() {
-            fixed("Change aspect", open_popup(Popup::ClipDetails), false);
-        }
-        if tl.frame_aspect.is_some() {
-            fixed("Change aspect", open_instance(Instance::Aspect), true);
-        }
-        // the fade at the start and at the end of the video belong to the first and last
-        // clip (REQ-083); the fades between two clips are shown on both
-        if c.fade_in && i == 0 {
-            fixed("Fade IN", open_instance(Instance::FadeStart), true);
-        }
-        if i > 0 && tl.has_fade(i - 1) {
-            let prev = tl.clips[i - 1].id;
-            fixed(
-                "Fade IN/OUT with the previous clip",
-                open_instance(Instance::Fade(prev, id)),
-                false,
-            );
-        }
-        if tl.has_fade(i) {
-            let next = tl.clips[i + 1].id;
-            fixed(
-                "Fade IN/OUT with the next clip",
-                open_instance(Instance::Fade(id, next)),
-                false,
-            );
-        }
-        if c.fade_out && i + 1 == tl.clips.len() {
-            fixed("Fade OUT", open_instance(Instance::FadeEnd), true);
-        }
-        if c.has_volume() || !tl.volume_keys(id).is_empty() {
-            let same = all(&|k| {
-                (k.volume, k.muted) == (c.volume, c.muted)
-                    && tl.volume_keys(k.id) == tl.volume_keys(id)
+        // the sound group, in the order of the sound build (top = applied first, REQ-320);
+        // each of its rows moves inside the group only
+        let sound: Vec<(Row, &str, Instance)> = self
+            .project
+            .sound_order(id)
+            .into_iter()
+            .map(|r| match r {
+                Row::Volume => (r, "Volume", Instance::ClipVolume(id)),
+                _ => (r, "Clean audio", Instance::CleanAudio(id)),
+            })
+            .collect();
+        drop(fixed);
+        for (row, name, instance) in sound {
+            out.push(AppliedRow {
+                name: name.to_string(),
+                range: None,
+                row: Some(row),
+                open: open_instance(instance),
             });
-            fixed("Volume", open_instance(Instance::ClipVolume(id)), same);
-        }
-        if c.clean_audio {
-            let same = all(&|k| k.clean_audio && k.clean_strength == c.clean_strength);
-            fixed("Clean audio", open_instance(Instance::CleanAudio(id)), same);
         }
         if c.speed != crate::timeline::NORMAL_SPEED {
-            let same = all(&|k| k.speed == c.speed);
-            fixed("Speed", open_popup(Popup::ClipDetails), same);
+            out.push(AppliedRow {
+                name: "Speed".to_string(),
+                range: None,
+                row: None,
+                open: open_popup(Popup::ClipDetails),
+            });
         }
         Some(Applied {
             clip: id,
             rows: out,
+            picture,
         })
     }
 
@@ -254,6 +294,24 @@ impl AppState {
         mv: RowMove,
         now: Instant,
     ) -> Result<(), String> {
+        if row.is_sound() {
+            // the sound group moves inside itself only (REQ-320, REQ-321)
+            let order = self.project.sound_order(clip);
+            if !order.contains(&row) {
+                return Err("That effect is no longer on the clip".into());
+            }
+            let moved = match mv {
+                RowMove::Up => crate::order_chain::moved_sound(&order, row, true),
+                RowMove::Down => crate::order_chain::moved_sound(&order, row, false),
+                RowMove::To(_) => None,
+            };
+            let Some(moved) = moved else { return Ok(()) };
+            let rows = crate::order_chain::with_sound(self.project.timeline.order_of(clip), &moved);
+            return self.edit(now, move_label(row, mv), |e| {
+                e.timeline.set_order(clip, rows);
+                Ok(())
+            });
+        }
         let rows = self
             .project
             .rows_of(clip)
@@ -271,7 +329,9 @@ impl AppState {
                 Err("That effect is no longer on the clip".into())
             };
         };
+        // the sound group keeps its stored order (a move of a picture row never touches it)
         let store = effect_order::to_store(moved, &rows.present);
+        let store = crate::order_chain::with_picture(self.project.timeline.order_of(clip), store);
         self.edit(now, move_label(row, mv), |e| {
             e.timeline.set_order(clip, store);
             Ok(())
@@ -285,6 +345,20 @@ impl AppState {
         row: Row,
         mv: RowMove,
     ) -> Option<&'static str> {
+        if row.is_sound() {
+            let order = self.project.sound_order(clip);
+            let Some(i) = order.iter().position(|r| *r == row) else {
+                return Some("That effect is no longer on the clip");
+            };
+            return match mv {
+                RowMove::Up if i == 0 => Some("It is already the top row of its group"),
+                RowMove::Down if i + 1 == order.len() => {
+                    Some("It is already the bottom row of its group")
+                }
+                RowMove::To(_) => Some("A sound row moves with the buttons"),
+                _ => None,
+            };
+        }
         let Some(rows) = self.project.rows_of(clip) else {
             return Some("That clip no longer exists");
         };

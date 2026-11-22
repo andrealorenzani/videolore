@@ -329,3 +329,69 @@ fn the_windows_of_the_old_clips_join_and_leave_the_changed_ones_out() {
     let o = picture_overlays(&p, &geometry(), Micros::ZERO, Source::Export).unwrap();
     assert_eq!(o[0].pieces, vec![(s(0), s(2)), (s(4), s(6))]);
 }
+
+/// A clip with a Scale and a Move (both kept at the default keys), an 8 s clip at 640 x 360.
+fn scaled_and_moved() -> (Project, crate::timeline::ClipId) {
+    let mut p = project(&[(8, 640, 360, 25)]);
+    let c = p.timeline.clips[0].id;
+    p.timeline.add_scale(FrameTarget::Clip(c)).unwrap();
+    p.timeline.add_move(FrameTarget::Clip(c)).unwrap();
+    (p, c)
+}
+
+// covers: REQ-320, REQ-321
+#[test]
+fn a_clip_with_the_default_order_keeps_its_arguments_and_another_order_is_built_by_steps() {
+    let (mut p, c) = scaled_and_moved();
+    let (old, _) = reencode(&p);
+    // the default order is drawn by the frame effect of the older versions: no layer, no step
+    assert!(!old.graph.contains("0x00000000"), "{}", old.graph);
+    assert!(old.graph.contains("[pm0]"), "{}", old.graph);
+    // Scale above Move: the chain is built row by row on a transparent layer
+    p.set_order(c, vec![Row::Scale, Row::Move]);
+    assert!(crate::effect_order::needs_steps(&p.changed_orders()[0].1));
+    let (new, doc) = reencode(&p);
+    let g = &new.graph;
+    assert!(doc.is_none() && new.command_files.is_empty());
+    assert!(g.contains("color=c=0x00000000"), "{g}");
+    // Move first (the offset only), then Scale; the chain ends on the clock of the clip
+    let mv = g.find("eval=frame:format=auto:shortest=1").expect(g);
+    let sc = g.find("scale=w='max(2,trunc(iw*").expect(g);
+    assert!(mv < sc, "the Move is built before the Scale: {g}");
+    assert!(g.contains("setpts=PTS-STARTPTS[v0]"), "{g}");
+    // back to the default order: the same arguments as before
+    p.set_order(c, vec![Row::Move, Row::Scale]);
+    let (same, _) = reencode(&p);
+    assert_eq!(same, old);
+}
+
+// covers: REQ-320
+#[test]
+fn a_text_below_change_aspect_is_drawn_by_a_matte_and_above_it_on_the_frame() {
+    let mut p = project(&[(8, 640, 360, 25)]);
+    let c = p.timeline.clips[0].id;
+    p.timeline
+        .set_frame_aspect(Some(crate::frame::FrameAspect::default()))
+        .unwrap();
+    p.timeline.add_scale(FrameTarget::Clip(c)).unwrap();
+    let t = add_text(&mut p, "Hello", s(2), s(3));
+    // the text above the frame: drawn on the composed frame
+    p.set_order(c, vec![Row::Text(t), Row::Scale, Row::Frame]);
+    let (g, _) = reencode(&p);
+    assert!(g.graph.contains("subtitles=f=ov1-t1.ass"), "{}", g.graph);
+    assert!(!g.graph.contains("alphamerge"), "{}", g.graph);
+    // the frame above the text: the text is drawn on the layer, apart from the picture, on black
+    // and on white, and laid over the layer with its own transparency
+    p.set_order(c, vec![Row::Frame, Row::Scale, Row::Text(t)]);
+    let (g, _) = reencode(&p);
+    for want in [
+        "color=c=black",
+        "color=c=white",
+        "blend=all_expr='255-(A-B)'",
+        "alphamerge",
+    ] {
+        assert!(g.graph.contains(want), "{want} in {}", g.graph);
+    }
+    // the document is written in the clip's own time (the text shows 2 s to 5 s)
+    assert!(g.command_files[0].1.contains("0:00:02.00,0:00:05.00"));
+}

@@ -257,7 +257,102 @@ pub fn effective(f: Fractions, area: Rect, m: Mins) -> Fractions {
             first_len(area.width(), f.timeline, m.timeline, m.effects),
             area.width(),
         ),
+        applied: f.applied,
     }
+}
+
+/// The column of the Applied effects is never narrower than this (REQ-317: an icon, a name
+/// and a time range fit).
+pub const APPLIED_MIN: f32 = 180.0;
+
+/// The least width the picture of the Preview section is given when the column can leave it.
+pub const PICTURE_MIN: f32 = 60.0;
+
+/// The width of the Applied effects column in a Preview section `section_w` wide (REQ-317):
+/// its share of the width, at least [`APPLIED_MIN`]; it keeps that minimum when the section
+/// is narrow (the picture shrinks first, REQ-068) and never takes more than the section.
+pub fn applied_width(section_w: f32, share: f32) -> f32 {
+    if !section_w.is_finite() || section_w <= 0.0 {
+        return 0.0;
+    }
+    let share = if share.is_finite() { share } else { 0.15 };
+    (section_w * share)
+        .max(APPLIED_MIN)
+        .min((section_w - GAP).max(0.0))
+}
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod applied_tests {
+    use super::*;
+
+    // covers: REQ-317
+    #[test]
+    fn the_column_is_its_share_of_the_section_and_never_under_180_px() {
+        // 15% of 1200 is 180: wider sections give the share, narrower the minimum
+        assert_eq!(applied_width(1200.0, 0.15), 180.0);
+        assert_eq!(applied_width(2000.0, 0.15), 300.0);
+        assert_eq!(applied_width(885.0, 0.15), APPLIED_MIN);
+        // a section narrower than the minimum plus the picture's minimum: the picture
+        // shrinks first, the column keeps its minimum; never more than the section
+        assert_eq!(applied_width(300.0, 0.15), APPLIED_MIN);
+        assert_eq!(applied_width(100.0, 0.15), 100.0 - GAP);
+        assert_eq!(applied_width(0.0, 0.15), 0.0);
+        assert_eq!(applied_width(f32::NAN, 0.15), 0.0);
+        assert_eq!(applied_width(2000.0, f32::NAN), 300.0);
+    }
+
+    // covers: REQ-317
+    #[test]
+    fn dragging_the_border_left_widens_the_column_inside_its_limits() {
+        let f = Fractions::DEFAULT;
+        let wider = drag_applied(f, 2000.0, -100.0);
+        assert!((wider.applied * 2000.0 - 400.0).abs() < 1.0, "{wider:?}");
+        let narrower = drag_applied(wider, 2000.0, 1000.0);
+        assert!((narrower.applied * 2000.0 - APPLIED_MIN).abs() < 1.0);
+        // the picture keeps its minimum
+        let most = drag_applied(f, 2000.0, -5000.0);
+        assert!(most.applied * 2000.0 <= 2000.0 - GAP - PICTURE_MIN + 1.0);
+        // a section too small to move anything, or a bad delta: unchanged
+        assert_eq!(drag_applied(f, 200.0, -50.0), f);
+        assert_eq!(drag_applied(f, 2000.0, f32::NAN), f);
+        // the other shares are not touched
+        assert_eq!(
+            (wider.top, wider.media, wider.timeline),
+            (f.top, f.media, f.timeline)
+        );
+    }
+
+    // covers: REQ-317
+    #[test]
+    fn a_settings_file_without_the_share_has_15_percent_and_a_bad_share_is_refused() {
+        let old = r#"{"top":0.5,"media":0.3,"timeline":0.7}"#;
+        let l: Fractions = serde_json::from_str(old).unwrap();
+        assert_eq!(l.applied, 0.15);
+        assert!(l.is_valid());
+        for bad in [0.0f32, 0.01, 0.6, f32::NAN] {
+            assert!(!Fractions { applied: bad, ..l }.is_valid(), "{bad}");
+        }
+        let kept: Fractions = serde_json::from_str(
+            &serde_json::to_string(&Fractions { applied: 0.22, ..l }).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(kept.applied, 0.22);
+    }
+}
+
+/// The layout after dragging the border between the picture and the column by `delta` pixels
+/// (to the left widens the column) in a section `section_w` wide.
+pub fn drag_applied(f: Fractions, section_w: f32, delta: f32) -> Fractions {
+    if !delta.is_finite() || section_w <= APPLIED_MIN + PICTURE_MIN + GAP {
+        return f;
+    }
+    let wide = (applied_width(section_w, f.applied) - delta)
+        .round()
+        .clamp(APPLIED_MIN, section_w - GAP - PICTURE_MIN);
+    let mut out = f;
+    out.applied = (wide / section_w).clamp(0.05, 0.5);
+    out
 }
 
 /// Moves one border by `delta` pixels (right or down is positive). Only the two sections
@@ -448,6 +543,7 @@ mod tests {
             top: 0.99,
             media: 0.99,
             timeline: 0.01,
+            applied: 0.15,
         };
         let r = sections(area(800.0, 420.0), squeezed, MINS);
         assert_eq!(r.preview.width(), MINS.preview);
@@ -465,6 +561,7 @@ mod tests {
                     top: f32::NAN,
                     media: f32::INFINITY,
                     timeline: -1.0,
+                    applied: f32::NAN,
                 },
             ] {
                 let a = area(w, h);

@@ -254,7 +254,7 @@ pub fn picture_overlays(
             }
         };
         let path = PathBuf::from(&pic.path);
-        if !path.is_file() {
+        if !crate::picture::usable(&path) {
             if matches!(src, Source::Preview { .. }) {
                 continue;
             }

@@ -1,6 +1,6 @@
-# Architecture: 2.1.0 overview (planned)
+# Architecture: 2.1.0 overview (built, not released)
 
-Part of [Architecture](architecture.md). Requirements REQ-300 to REQ-311 ([LUT](business-lut.md), [applied effects](business-applied-effects.md), [subtitle styles](business-subtitle-styles.md)). Status: planned; the decisions of the product owner are recorded below.
+Part of [Architecture](architecture.md). Requirements REQ-300 to REQ-311 ([LUT](business-lut.md), [applied effects](business-applied-effects.md), [subtitle styles](business-subtitle-styles.md)). Status: built (not released; format 12); the decisions of the product owner are recorded below.
 
 ## Overview
 Version 2.1.0 adds four things: LUT files up to 256 points per side (a 144-point `.cube` is about 80 MB, a 256-point one about 450 MB), a per-clip order of the colour and text effects shown in a new Applied effects widget, shadows for texts and subtitles, and three subtitle styles (highlight colours, Enlarge word, Typewriter). The project format becomes 12.

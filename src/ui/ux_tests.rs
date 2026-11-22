@@ -1052,11 +1052,13 @@ fn everything_is_reachable_at_the_smallest_window() {
         top: 0.01,
         media: 0.01,
         timeline: 0.01,
+        applied: 0.05,
     };
     let huge = layout::Fractions {
         top: 0.99,
         media: 0.99,
         timeline: 0.99,
+        applied: 0.5,
     };
     for f in [tiny, huge, layout::Fractions::DEFAULT] {
         h.app.settings.layout = Some(f);

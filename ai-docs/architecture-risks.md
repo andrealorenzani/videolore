@@ -129,3 +129,16 @@ Resolved items are removed (0.3.0 SEVERE defaults confirmed 2026-11-14; 1.2.6 ti
 - Golden argv of projects with LUTs changes (file name `lut-<hash16>.cube`); the PE updates only the fixtures that use a LUT and says so.
 - Boxed shadows (REQ-307 as written): design A needs libass to draw the box fill from OutlineColour (spike S0d); design B draws the box as a vector event, which must match the 2.0.4 box geometry at 1080 px. Event caps (2000/20000) re-checked on a long subtitle file.
 - The 2.0.4 stacking of overlapping texts is assumed (later items on top) and confirmed by reading; a test pins it before the overlay stage (S6).
+
+## 2.2.0 PLAN (open at the plan; plan § 12)
+- BUILT 2026-11-22: REQ-315 NOT MET (8.7% of 20%; the rest is the hardware encode phase); REQ-177 NOT MET (43% of 90%; no frozen setting; open decision for Andrea); deviation from REQ-321 for new rows (default place; reasons in docs/code-2.2.0.md); the 180 px column minimum (about 20% at 1280 x 800); module-cycle result of 2.2.0 to confirm at VERIFY.
+- [format 13, ADR-222] 2.1.0 (not released) refuses 13: developers testing 2.1.0 must update; release notes say so.
+- [order, ADR-224/225] pair formulations (Scale/Move, LUT alpha, Clean audio dry branch) may need more work than estimated; S0e decides before S4. A LUT below Frame grades only the layer, above it the fill (user choice, REQ-320).
+- [text, ADR-227] centring and slide distance to confirm (S0f); the column takes 180 px at the minimum window (business accepted).
+- [Q-1 answered 2026-11-21, route D] LUT start kept at about 12 s (`.cube`); the first graded frame comes after that, the picture is unprocessed meanwhile (D63). Alternatives measured and rejected (ADR-214): `.m3d` integer 3.4-3.6 s, float 5.1 s, HALD 0.36 s (trilinear, 16-bit path unverified).
+- The percentage during the ffmpeg start is time-based (estimate); not a measured progress.
+- Blur: proxy cost small (+3.2 ms per frame at 1080p); the real preview graph decides (S0b).
+- Faster on the Iris: the check (strict decode plus three renders) is the cost; REQ-315 may stay open if the scheduling levers do not reach 20%.
+- REQ-177: the prototype's success was on one synthetic clip with pauses; continuous speech may fail the frozen setting on the second clip (then REQ-177 stays planned).
+- Whole-video removal changes what 2.1.0 users see (accepted by Andrea; the release notes say it).
+- CI time (QG-06) with the 256-point timing test; disk 293 MB per 256-point LUT in the Work folder.

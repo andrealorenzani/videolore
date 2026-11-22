@@ -346,11 +346,13 @@ pub enum Instance {
     Pov(MediaId, Micros),
     /// Change aspect of the whole video (1.5.0).
     Aspect,
-    /// Scale of a clip or of the whole video (1.5.0).
+    /// Scale of one clip (1.5.0); always `FrameTarget::Clip` since 2.2.0: a whole-video
+    /// Scale is a copy on each clip (REQ-148).
     Scale(FrameTarget),
-    /// Move of a clip or of the whole video (1.5.0).
+    /// Move of one clip (1.5.0); always `FrameTarget::Clip` since 2.2.0.
     Move(FrameTarget),
-    /// Apply LUT of a clip or of the whole video (1.6.0).
+    /// Apply LUT of a clip, or its file chooser for every clip (`Whole`, until a file is
+    /// chosen, then the popup follows the copy on the clip under the playhead) (1.6.0).
     Lut(FrameTarget),
 }
 
@@ -389,9 +391,6 @@ pub struct Popups {
     pub targets: Vec<(Popup, Target)>,
     /// The keyframe selected in the Scale or Move popup (its key time).
     pub key: Option<Micros>,
-    /// The copy selected in the whole-video Scale or Move popup, one row per clip
-    /// (REQ-200); `None` = the first clip that has the effect.
-    pub copy: Option<ClipId>,
 }
 
 impl Popups {
@@ -608,8 +607,6 @@ pub struct AppState {
     changed_media: std::collections::BTreeSet<MediaId>,
     /// The names of the files analysed again, for the status line.
     reanalysed: Vec<String>,
-    /// The new clips that lack an effect all the other clips have (REQ-201).
-    pub new_clip_offer: Option<offer::NewClipOffer>,
     /// The Scale or Move keyframes of the last "Copy keyframes" (REQ-204).
     pub clipboard_keys: Option<crate::timeline::KeysClip>,
     /// Text the window puts on the system clipboard after Copy or Cut, so that Ctrl/Cmd+V
@@ -635,6 +632,17 @@ pub struct AppState {
     ffmpeg_check: Option<Receiver<Result<FfmpegInfo, String>>>,
     /// A large LUT file being read in the background (2.1.0, REQ-300).
     lut_load: Option<lut::PendingLut>,
+    /// Counts every change of the project (edit, undo, redo): the rows of the Applied
+    /// effects are kept until it changes (REQ-313).
+    rows_serial: u64,
+    applied_cache: std::sync::Mutex<Option<(applied::AppliedKey, Option<Applied>)>>,
+    applied_builds: std::sync::atomic::AtomicU32,
+    /// The LUT being prepared for the preview in the background (2.2.0, REQ-312).
+    lut_prep: Option<crate::lut::Prep>,
+    /// LUT files whose preparation failed (not tried again until the project changes).
+    lut_failed: Vec<String>,
+    /// The preview restarted with a prepared LUT, until its first picture.
+    lut_start: Option<lut::LutStart>,
     pub settings: Settings,
     pub(crate) settings_path: Option<PathBuf>,
     /// The floating windows (Settings, effect popups, clip details, shortcuts).
@@ -878,7 +886,6 @@ impl AppState {
             changed_media: Default::default(),
             reanalysed: Vec::new(),
             clipboard_text: None,
-            new_clip_offer: None,
             clipboard_keys: None,
             autosave_dir: None,
             autosave_last: Instant::now(),
@@ -892,6 +899,12 @@ impl AppState {
             ffmpeg_checking: false,
             ffmpeg_check: None,
             lut_load: None,
+            rows_serial: 0,
+            applied_cache: std::sync::Mutex::new(None),
+            applied_builds: std::sync::atomic::AtomicU32::new(0),
+            lut_prep: None,
+            lut_failed: Vec::new(),
+            lut_start: None,
             settings,
             settings_path: None,
             popups: Popups::default(),
@@ -1300,17 +1313,7 @@ impl AppState {
 
     /// Runs a command. Errors are also put in the status line.
     pub fn dispatch(&mut self, cmd: Command, now: Instant) -> Result<(), String> {
-        // a clip that is added may lack an effect all the others have (REQ-201)
-        let adds = matches!(cmd, Command::Append(_) | Command::Paste | Command::Split);
-        let before: Vec<ClipId> = if adds {
-            self.project.timeline.clips.iter().map(|c| c.id).collect()
-        } else {
-            Vec::new()
-        };
         let r = self.dispatch_inner(cmd, now);
-        if adds && r.is_ok() {
-            self.note_new_clips(&before);
-        }
         if let Err(e) = &r {
             self.status = e.clone();
         }
@@ -1502,8 +1505,6 @@ impl AppState {
             Command::EditPov { media, old_t, pov } => self.edit_pov(media, old_t, pov, now),
             Command::RemovePov { media, t } => self.remove_pov(media, t, now),
             Command::ToggleBoxes => self.toggle_boxes(),
-            Command::ApplyWholeToNew => self.apply_whole_to_new(now),
-            Command::SelectCopy(c) => self.select_copy(c, now),
             Command::CopyKeys { clip, effect } => self.copy_keys(clip, effect),
             Command::PasteKeys { clip, effect } => self.paste_keys(clip, effect, now),
             Command::MoveKey {
@@ -1589,10 +1590,10 @@ impl AppState {
                 tl.index_of(c).map(|i| tl.start_of(i))
             }
             Instance::Pov(m, t) => self.pov_position(m, t),
-            Instance::Aspect
-            | Instance::Scale(FrameTarget::Whole)
-            | Instance::Move(FrameTarget::Whole)
-            | Instance::Lut(FrameTarget::Whole) => (!tl.clips.is_empty()).then_some(Micros::ZERO),
+            Instance::Aspect | Instance::Lut(FrameTarget::Whole) => {
+                (!tl.clips.is_empty()).then_some(Micros::ZERO)
+            }
+            Instance::Scale(FrameTarget::Whole) | Instance::Move(FrameTarget::Whole) => None,
             Instance::Scale(FrameTarget::Clip(c))
             | Instance::Move(FrameTarget::Clip(c))
             | Instance::Lut(FrameTarget::Clip(c)) => tl.index_of(c).map(|i| tl.start_of(i)),
@@ -1803,6 +1804,7 @@ impl AppState {
         self.preview.forget_frame();
         self.saved = p.doc();
         self.project = p;
+        self.rows_serial += 1;
         self.project_path = path;
         self.history.clear();
         self.selected_clip = None;
@@ -2000,6 +2002,7 @@ impl AppState {
 
     fn replace_edit(&mut self, e: Edit, now: Instant) {
         self.project.set_edit(e);
+        self.rows_serial += 1;
         if let Some(id) = self.selected_clip
             && self.project.timeline.get(id).is_none()
         {
@@ -2107,7 +2110,6 @@ mod enabled;
 mod export_flow;
 mod frame;
 mod lut;
-pub mod offer;
 mod placing;
 mod recovery;
 mod sphere;

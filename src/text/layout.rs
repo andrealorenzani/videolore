@@ -182,7 +182,7 @@ pub fn layout(item: &TextItem, width: u32, height: u32) -> TextLayout {
     let (bw, bh) = box_px(item, width, height);
     let h = f64::from(height);
     let min = (h * f64::from(MIN_FIT) / 1000.0).max(6.0);
-    let max = h * f64::from(MAX_FIT) / 1000.0;
+    let max = h * f64::from(item.cap()) / 1000.0;
     layout_in(&item.text, &item.font, bw, bh, min, max.max(min))
 }
 

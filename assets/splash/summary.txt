@@ -1,6 +1,6 @@
 New in this version
-LUT files up to 256 points and 512 MiB now open; large ones load in the background with progress.
-Applied effects widget: move a LUT, text, picture or the subtitles up or down in the order they are applied.
-Shadows for texts and subtitles; two word highlight colours; Enlarge word and Typewriter subtitle styles.
-Projects are saved in format 12: 2.0.4 and older refuse them, and older projects open as before.
-A new LUT or picture goes on top of the effects order.
+The Applied effects column sits on the right of the Preview; every effect except Speed can be moved up or down in it.
+Whole-video Scale, Move and Apply LUT now give each clip its own copy; the whole-video popup is removed.
+A text's size follows its box, with an optional maximum per text; LUTs are prepared in the background with progress.
+Faster export checks its decode and samples at the same time; picture items are limited to 16 megapixels.
+Projects are saved in format 13: 2.1.0 and older refuse them, and older projects open as before.

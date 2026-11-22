@@ -18,7 +18,122 @@ pub(super) struct PendingLut {
     pub(super) path: PathBuf,
 }
 
+/// The preview restarted with a LUT that is ready, until its first graded picture arrives
+/// (REQ-312): ffmpeg reads the table itself, which takes a time known only by estimate.
+pub(super) struct LutStart {
+    pub(super) since: Instant,
+    pub(super) est: Duration,
+    pub(super) serial: u64,
+}
+
+/// Seconds ffmpeg's `lut3d` takes to read one table entry (measured 12.4 s for 256^3).
+const FFMPEG_READ_PER_ENTRY: f64 = 0.75e-6;
+
 impl AppState {
+    /// The LUT files of the clips whose Work copies are not ready for the preview yet
+    /// (and that did not fail): the preview shows the picture without them (REQ-312).
+    pub fn unready_luts(&self) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .project
+            .timeline
+            .clip_luts
+            .iter()
+            .filter(|l| !crate::lut::is_prepared(&l.path) && !self.lut_failed.contains(&l.path))
+            .map(|l| l.path.clone())
+            .collect();
+        v.sort();
+        v.dedup();
+        v
+    }
+
+    /// The preparation of the LUTs for the preview (the tick, REQ-312): one at a time in the
+    /// background, with "Preparing LUT N %" on the status line; when a table is ready the
+    /// preview starts again with it. A newer choice replaces the one in progress.
+    pub(super) fn tick_lut_prep(&mut self, now: Instant) {
+        let used: Vec<&str> = self
+            .project
+            .timeline
+            .clip_luts
+            .iter()
+            .map(|l| l.path.as_str())
+            .collect();
+        self.lut_failed.retain(|p| used.contains(&p.as_str()));
+        let pending = self.unready_luts();
+        if self
+            .lut_prep
+            .as_ref()
+            .is_some_and(|p| !pending.contains(&p.path))
+        {
+            self.lut_prep = None;
+        }
+        if self.lut_prep.is_none()
+            && self.lut_load.is_none()
+            && self.ffmpeg.is_ok()
+            && let Some(path) = pending.first()
+        {
+            let dirs = self.preview.work_dirs();
+            self.lut_prep = Some(crate::lut::Prep::start(path, dirs));
+        }
+        let mut finished = None;
+        let mut share = None;
+        if let Some(p) = &mut self.lut_prep {
+            while let Some(m) = p.poll() {
+                match m {
+                    crate::lut::PrepMsg::Progress(x) => share = Some(x),
+                    crate::lut::PrepMsg::Done(r) => {
+                        finished = Some((p.path.clone(), r));
+                        break;
+                    }
+                }
+            }
+        }
+        // reading and writing the copies are the first 60 %, the start of ffmpeg the rest
+        if let Some(x) = share {
+            self.status = format!("Preparing LUT {} %", u32::from(x) * 60 / 100);
+        }
+        if let Some((path, r)) = finished {
+            self.lut_prep = None;
+            match r {
+                Ok(lut) => {
+                    let entries = lut.size().pow(3) as f64;
+                    self.lut_start = Some(LutStart {
+                        since: now,
+                        est: Duration::from_secs_f64(entries * FFMPEG_READ_PER_ENTRY),
+                        serial: self.frame_serial,
+                    });
+                    self.restart_preview_for_lut(now);
+                }
+                Err(e) => {
+                    self.lut_failed.push(path.clone());
+                    self.status = format!("{}: {e}", crate::lut::display_name(&path));
+                }
+            }
+        }
+        if let Some(s) = &self.lut_start {
+            let elapsed = now.saturating_duration_since(s.since);
+            if self.frame_serial > s.serial || elapsed > s.est * 3 + Duration::from_secs(10) {
+                self.lut_start = None;
+                if self.status.starts_with("Preparing LUT") {
+                    self.status.clear();
+                }
+            } else {
+                let share = (elapsed.as_secs_f64() / s.est.as_secs_f64().max(0.5)).min(1.0);
+                self.status = format!("Preparing LUT {} %", (60.0 + 35.0 * share) as u32);
+            }
+        }
+    }
+
+    /// Draws the picture again, or plays on from the playhead, now that a LUT is ready.
+    fn restart_preview_for_lut(&mut self, now: Instant) {
+        if self.preview.is_playing() {
+            let at = self.preview.position(now);
+            let shown = self.shown_project().into_owned();
+            let _ = self.preview.play(&shown, at, now);
+        } else {
+            self.refresh_still(now);
+        }
+    }
+
     /// Follows the background read of a LUT file (the tick): shows its progress and applies
     /// the LUT when it is read, or says why it was refused (REQ-136). A newer choice
     /// replaces the pending one, which stops (ADR-205).
@@ -135,6 +250,15 @@ impl AppState {
             .filter(|c| !had.contains(c))
             .collect();
         self.project.put_on_top(Row::Lut, Some(&new));
+        // the file for every clip is chosen: from now on each copy is a clip's own, and the
+        // popup is the one of the clip under the playhead (REQ-147)
+        if target == FrameTarget::Whole
+            && self.popups.instance == Some(Instance::Lut(FrameTarget::Whole))
+            && let Some(id) = self.clip_at_playhead_or_first()
+        {
+            self.popups.instance = Some(Instance::Lut(FrameTarget::Clip(id)));
+            self.selected_clip = Some(id);
+        }
         self.status = format!(
             "{label}: {}",
             crate::lut::display_name(path.to_str().unwrap_or(""))

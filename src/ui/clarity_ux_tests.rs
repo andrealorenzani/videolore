@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! Interface tests of 2.0.4, batch 7: the rows of the whole-video popup (REQ-200), the offer
-//! in the status bar (REQ-201), the two sets of picture handles (REQ-202), the keyframe
-//! marker, its typed time and the arrow keys (REQ-203) and Copy and Paste keyframes
-//! (REQ-204).
+//! Interface tests of 2.0.4, batch 7, as amended in 2.2.0: the popup of a whole-video copy
+//! (REQ-200), no offer in the status bar (REQ-201), one set of picture handles (REQ-202),
+//! the keyframe marker, its typed time and the arrow keys (REQ-203) and Copy and Paste
+//! keyframes (REQ-204).
 
 use super::frame_popups::{KEY_MARKER, KEY_TOLERANCE, KeyBar};
 use super::ux_tests::Harness;
 use super::*;
 use crate::app::tests::{FakeDialogs, files, import, state};
-use crate::app::{EffectKind, FrameDrag, FrameFx, FrameValue, Instance, Popup, Target};
+use crate::app::{EffectKind, FrameDrag, FrameFx, FrameValue, Target};
 use crate::frame::Scale;
 use crate::timeline::FrameTarget;
 use eframe::egui::{Key, Modifiers, Rect, pos2};
@@ -60,9 +60,9 @@ fn permille(app: &AppState, i: usize) -> u16 {
         .permille
 }
 
-// covers: REQ-200
+// covers: REQ-200, REQ-148
 #[test]
-fn the_whole_video_popup_lists_one_row_per_clip_and_edits_the_selected_copy() {
+fn a_whole_video_scale_opens_the_popup_of_one_clip_without_a_list_of_copies() {
     let (_d, mut app) = loaded();
     app.dispatch(
         Command::ApplyEffect {
@@ -74,13 +74,12 @@ fn the_whole_video_popup_lists_one_row_per_clip_and_edits_the_selected_copy() {
     .unwrap();
     let mut h = Harness::new(app, 1280.0, 900.0);
     h.idle(2);
-    assert!(h.has("1. a.mp4 (1 keyframe)"), "{:#?}", h.labels());
-    assert!(h.has("2. b.mp4 (1 keyframe)"), "{:#?}", h.labels());
-    // select the second row: its copy is the one shown; a change leaves the first alone
-    h.click_label("2. b.mp4");
-    h.idle(2);
+    // the popup is the one of the clip under the playhead (clip 1): no row per clip
+    assert!(!h.has("1. a.mp4 (1 keyframe)"), "{:#?}", h.labels());
+    assert!(!h.has("2. b.mp4 (1 keyframe)"), "{:#?}", h.labels());
+    assert!(!h.has("One copy per clip; select the one to edit:"));
+    assert!(h.has("Remove effect"), "{:#?}", h.labels());
     let c2 = h.app.project.timeline.clips[1].id;
-    assert_eq!(h.app.selected_copy(FrameFx::Scale), Some(c2));
     h.app
         .dispatch(
             Command::SetPicture(FrameDrag {
@@ -94,17 +93,25 @@ fn the_whole_video_popup_lists_one_row_per_clip_and_edits_the_selected_copy() {
         )
         .unwrap();
     assert_eq!((permille(&h.app, 0), permille(&h.app, 1)), (1000, 1400));
-    // Remove effect removes both copies
+    // Remove effect in the open popup removes the copy of its own clip (clip 1) only
     h.idle(2);
     h.click_label("Remove effect");
-    assert!(h.app.project.timeline.clip_frames.is_empty());
+    let left: Vec<_> = h
+        .app
+        .project
+        .timeline
+        .clip_frames
+        .iter()
+        .map(|f| f.clip)
+        .collect();
+    assert_eq!(left, vec![c2]);
     h.app.dispatch(Command::Undo, Instant::now()).unwrap();
     assert_eq!((permille(&h.app, 0), permille(&h.app, 1)), (1000, 1400));
 }
 
 // covers: REQ-201
 #[test]
-fn the_status_bar_offers_the_whole_video_effect_to_a_new_clip_with_a_button() {
+fn the_status_bar_has_no_offer_and_no_button_for_a_new_clip() {
     let (_d, mut app) = loaded();
     for i in 0..2 {
         let c = app.project.timeline.clips[i].id;
@@ -123,18 +130,15 @@ fn the_status_bar_offers_the_whole_video_effect_to_a_new_clip_with_a_button() {
         .unwrap();
     let mut h = Harness::new(app, 1280.0, 900.0);
     h.idle(2);
-    assert!(h.has("The new clip has no Volume"), "{:#?}", h.labels());
-    assert!(h.has(status::APPLY_TO_NEW));
-    h.click_label(status::APPLY_TO_NEW);
-    h.idle(2);
-    assert_eq!(h.app.project.timeline.clips[2].volume, 50);
-    assert!(!h.has("The new clip has no Volume"));
-    assert!(!h.has(status::APPLY_TO_NEW));
+    assert!(!h.has("The new clip has no Volume"), "{:#?}", h.labels());
+    assert!(!h.has("Apply to new clips"), "{:#?}", h.labels());
+    assert!(!h.app.project.timeline.clips[2].has_volume());
+    assert_eq!(h.app.project.timeline.clips[0].volume, 50);
 }
 
 // covers: REQ-202
 #[test]
-fn two_sets_of_handles_a_drag_changes_only_the_effect_its_handle_belongs_to() {
+fn one_set_of_handles_a_drag_changes_only_the_clip_under_the_playhead() {
     let (_d, mut app) = loaded();
     let now = Instant::now();
     app.dispatch(
@@ -149,7 +153,9 @@ fn two_sets_of_handles_a_drag_changes_only_the_effect_its_handle_belongs_to() {
         app.project.timeline.clips[0].id,
         app.project.timeline.clips[1].id,
     );
-    // the copy of clip 1 is half size; the whole-video popup shows it, the playhead is in clip 2
+    // the copy of clip 1 is half size, the playhead is in clip 2: one box, clip 2's
+    app.dispatch(Command::SelectKey(Some(Micros::ZERO)), now)
+        .unwrap();
     app.dispatch(
         Command::SetPicture(FrameDrag {
             target: FrameTarget::Clip(c1),
@@ -161,15 +167,10 @@ fn two_sets_of_handles_a_drag_changes_only_the_effect_its_handle_belongs_to() {
         now,
     )
     .unwrap();
-    app.dispatch(Command::SelectCopy(c1), now).unwrap();
     app.dispatch(Command::Seek(s(6)), now).unwrap();
-    assert_eq!(app.whole_handle_clip(FrameFx::Scale), Some(c1));
-    assert_eq!(app.whole_handle_clip(FrameFx::Move), None);
-    let (own, _) = app.picture_rect().unwrap();
-    let (other, _) = app.picture_rect_of_copy(c1).unwrap();
-    assert!(
-        own.2 - own.0 > other.2 - other.0,
-        "two boxes of different sizes"
+    assert_eq!(
+        app.frame_target_at_playhead(FrameFx::Scale),
+        Some(FrameTarget::Clip(c2))
     );
     // the popups open at the left, so that they do not cover the picture being dragged
     app.settings
@@ -178,24 +179,18 @@ fn two_sets_of_handles_a_drag_changes_only_the_effect_its_handle_belongs_to() {
         .insert("Instance".into(), (10.0, 60.0));
     let mut h = Harness::new(app, 1280.0, 900.0);
     let pic = picture(&h);
-    let value = |h: &Harness, c| h.app.scale_at(FrameTarget::Clip(c)).unwrap().permille;
-    let dashed = |h: &Harness| h.app.scale_of_copy(c1).unwrap().permille;
-    assert_eq!((dashed(&h), value(&h, c2)), (500, 1000));
-    // the clip's own corner: clip 2 only
+    let value = |h: &Harness, c| {
+        h.app.project.timeline.scale_keys(FrameTarget::Clip(c))[0]
+            .v
+            .permille
+    };
+    assert_eq!((value(&h, c1), value(&h, c2)), (500, 1000));
+    // the clip's own corner: clip 2 only; the other copy is not drawn and cannot be grabbed
     h.drag(at(pic, 1.0, 1.0), at(pic, 0.9, 0.9));
-    assert_eq!(dashed(&h), 500, "the dashed copy is unchanged");
+    assert_eq!(value(&h, c1), 500, "the other copy is unchanged");
     assert!(value(&h, c2) < 1000, "{}", value(&h, c2));
-    // the dashed corner: clip 1 only
-    let before = value(&h, c2);
     h.drag(at(pic, 0.75, 0.75), at(pic, 0.6, 0.6));
-    assert_eq!(value(&h, c2), before, "the clip's own Scale is unchanged");
-    assert!(dashed(&h) < 500, "{}", dashed(&h));
-    // with no whole-video popup open there is one set
-    h.app
-        .dispatch(Command::ClosePopup(Popup::Instance), Instant::now())
-        .unwrap();
-    assert_eq!(h.app.whole_handle_clip(FrameFx::Scale), None);
-    let _ = Instance::Aspect;
+    assert_eq!(value(&h, c1), 500, "no dashed handle of the other copy");
 }
 
 // covers: REQ-203

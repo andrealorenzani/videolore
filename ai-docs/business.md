@@ -9,21 +9,22 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business.md § Documents — L16-34 (19 lines; verification L33)
 - docs/business.md § 2.0.4 — L35-46 (12 lines; links to all 2.0.4 sub-docs; REQ-177 not built note)
 - docs/business.md § 2.1.0 — L47-51 (5 lines; links to applied-effects, subtitle-styles, lut section)
-- docs/business.md § Constraints — L52-56 (5 lines)
-- docs/business.md § Key decisions (general) — L57-89 (33 lines; 2.0.4 bullet near L80; 2.1.0 bullet near L86)
-- docs/business.md § Known limitations (1.2.0 to 1.6.0) — L90-118 (29 lines; 1.3.0 360 items marked fixed in 2.0.4)
-- docs/business.md § Out of scope — L119-130 (12 lines; automatic updates only)
+- docs/business.md § 2.2.0 (theme: speed) — L52-57 (6 lines; speed, applied effects column and order, text box, whole-video amendments)
+- docs/business.md § Constraints — L58-62 (5 lines)
+- docs/business.md § Key decisions (general) — L63-98 (36 lines; 2.2.0 bullets: D64, order, whole-video; grep "2.2.0, planned")
+- docs/business.md § Known limitations (1.2.0 to 1.6.0) — L99-127 (29 lines)
+- docs/business.md § Out of scope — L128-139 (12 lines)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
 - docs/business-editing.md § Media and projects (REQ-001..004, 026..029, 094, 105, 113, 123, 149) — L17-31 (15 lines)
-- docs/business-editing.md § Timeline (REQ-005..012, 083) — L32-42 (11 lines)
+- docs/business-editing.md § Timeline (REQ-005..012, 083; 083 amended 2.2.0) — L32-42 (11 lines)
 - docs/business-editing.md § Preview (REQ-013, 034, 035, 144, 155) — L43-49 (7 lines)
 - docs/business-editing.md § Layout and commands — L50-52 (3 lines)
 - docs/business-editing.md § Responsiveness and performance (REQ-032, 033, 038, 039) — L53-58 (6 lines)
 - docs/business-editing.md § Key decisions — L59-77 (19 lines)
 - docs/business-editing.md § Known limitations — L78-85 (8 lines)
-- docs/business-editing.md § Out of scope — L86-88 (3 lines; 2.0.4 pointer)
+- docs/business-editing.md § Out of scope — L86-87 (2 lines; 2.0.4 pointer)
 - docs/business-ui.md § intro — L1-6 (6 lines)
 - docs/business-ui.md § Features — L7-23 (17 lines)
 - docs/business-ui.md § Requirements — L24-25 (2 lines)
@@ -34,17 +35,18 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-ui.md § Clips, context menus, recent projects, drag and drop (REQ-078..081) — L53-58 (6 lines)
 - docs/business-ui.md § Key decisions — L59-70 (12 lines)
 - docs/business-ui.md § Impact on existing features — L71-83 (13 lines)
-- docs/business-ui.md § Since 1.2.0 — L84-90 (7 lines)
+- docs/business-ui.md § Since 1.2.0 (REQ-076 amended 2.2.0) — L84-90 (7 lines)
 - docs/business-ui.md § Changed in 1.3.0 — L91-99 (9 lines)
 - docs/business-ui.md § Changed in 1.4.0 — L100-106 (7 lines)
 - docs/business-ui.md § Changed in 1.5.0 — L107-112 (6 lines)
 - docs/business-ui.md § Changed in 1.6.0 — L113-118 (6 lines)
 - docs/business-ui.md § Changed in 1.6.1 — L119-123 (5 lines)
-- docs/business-ui.md § Known limitations — L124-130 (7 lines; 2.0.4 items planned, removed at release)
+- docs/business-ui.md § Known limitations — L124-130 (7 lines)
 - docs/business-ui.md § Out of scope — L131-134 (4 lines; 2.0.4 pointers)
-- docs/business-effects.md § intro — L1-6 (6 lines)
+- docs/business-effects.md § intro — L1-6 (6 lines; whole-video copies 2.2.0)
 - docs/business-effects.md § Requirements — L7-8 (2 lines)
-- docs/business-effects.md § Effects (REQ-075, 107, 082, 147, 076, 077) — L9-26 (18 lines)
+- docs/business-effects.md § Effects (REQ-075, 107, 082, 147 amended 2.2.0, 076, 077) — L9-27 (19 lines)
+- docs/business-effects.md § Key decisions (whole video; fades first/last per REFINE) — L28-31 (4 lines)
 - docs/business-text.md § intro — L1-10 (10 lines)
 - docs/business-text.md § Features — L11-20 (10 lines)
 - docs/business-text.md § Requirements (REQ-108..111, 115, 116) — L21-22 (2 lines)
@@ -53,10 +55,11 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-text.md § On the timeline and on the picture (REQ-110, 111) — L29-32 (4 lines)
 - docs/business-text.md § Box, size and Context Menu (1.4.0) (REQ-115, 116) — L33-36 (4 lines)
 - docs/business-text.md § Readable text (2.0.3) (REQ-156..167) — L37-51 (15 lines)
-- docs/business-text.md § Key decisions — L52-61 (10 lines)
-- docs/business-text.md § Impact on existing features — L62-73 (12 lines)
-- docs/business-text.md § Known limitations — L74-80 (7 lines)
-- docs/business-text.md § Out of scope — L81-85 (5 lines)
+- docs/business-text.md § Text box and size (2.2.0; REQ-318, 319, 323 D64 built; amends 116, 156, 157; vocabulary) — L52-62 (11 lines)
+- docs/business-text.md § Key decisions (2.2.0 box governs size; D64; 1.4.0 rule amended) — L63-74 (12 lines)
+- docs/business-text.md § Impact on existing features — L75-86 (12 lines)
+- docs/business-text.md § Known limitations — L87-93 (7 lines)
+- docs/business-text.md § Out of scope — L94-98 (5 lines)
 - docs/business-picture.md § intro — L1-12 (12 lines)
 - docs/business-picture.md § Features — L13-21 (9 lines)
 - docs/business-picture.md § Requirements — L22-23 (2 lines)
@@ -70,14 +73,14 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-frame.md § Features — L7-13 (7 lines)
 - docs/business-frame.md § Requirements (intro) — L14-15 (2 lines)
 - docs/business-frame.md § Change aspect (REQ-124..126) — L16-20 (5 lines)
-- docs/business-frame.md § Scale and Move (REQ-127, 128, 129, 145, 148) — L21-27 (7 lines)
+- docs/business-frame.md § Scale and Move (REQ-127, 128, 129 amended 2.2.0, 145, 148 amended 2.2.0) — L21-27 (7 lines)
 - docs/business-frame.md § Effects list, menus and markers (REQ-130) — L28-30 (3 lines)
-- docs/business-frame.md § Picture rules and export (REQ-131) — L31-33 (3 lines)
+- docs/business-frame.md § Picture rules and export (REQ-131 amended 2.2.0) — L31-33 (3 lines)
 - docs/business-frame.md § Project file (REQ-132) — L34-36 (3 lines)
-- docs/business-frame.md § Key decisions — L37-47 (11 lines)
-- docs/business-frame.md § Impact on existing features — L48-56 (9 lines)
-- docs/business-frame.md § Known limitations — L57-67 (11 lines)
-- docs/business-frame.md § Out of scope — L68-71 (4 lines; 2.0.4 pointers)
+- docs/business-frame.md § Key decisions — L37-48 (12 lines; 2.2.0 whole-video bullet)
+- docs/business-frame.md § Impact on existing features — L49-57 (9 lines)
+- docs/business-frame.md § Known limitations — L58-68 (11 lines)
+- docs/business-frame.md § Out of scope — L69-72 (4 lines; 2.0.4 pointers)
 - docs/business-subtitles.md § intro — L1-4 (4 lines)
 - docs/business-subtitles.md § Features — L5-19 (15 lines)
 - docs/business-subtitles.md § Requirements — L20-21 (2 lines)
@@ -91,10 +94,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-subtitles.md § Out of scope — L87-95 (9 lines; 2.0.4 pointer)
 - docs/business-subtitle-accuracy.md § intro — L1-4 (4 lines)
 - docs/business-subtitle-accuracy.md § Status of the accuracy target (REQ-177) — L5-12 (8 lines)
-- docs/business-subtitle-accuracy.md § Requirements (REQ-177 planned; 178, 179 implemented) — L13-17 (5 lines)
-- docs/business-subtitle-accuracy.md § Key decisions (D56) — L18-22 (5 lines)
-- docs/business-subtitle-accuracy.md § Known limitations — L23-26 (4 lines)
-- docs/business-subtitle-accuracy.md § Out of scope — L27-31 (5 lines)
+- docs/business-subtitle-accuracy.md § Requirements (REQ-177 planned, amended 2.2.0; 178, 179 implemented) — L13-17 (5 lines)
+- docs/business-subtitle-accuracy.md § Key decisions (D56; 2.2.0 build and second-clip precondition) — L18-23 (6 lines)
+- docs/business-subtitle-accuracy.md § Known limitations — L24-27 (4 lines)
+- docs/business-subtitle-accuracy.md § Out of scope — L28-32 (5 lines)
 - docs/business-export.md § intro — L1-4 (4 lines)
 - docs/business-export.md § Features — L5-14 (10 lines)
 - docs/business-export.md § Requirements (REQ-021..023, 036, 037) — L15-21 (7 lines)
@@ -142,10 +145,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-lut.md § Requirements / Apply LUT (REQ-135) — L13-17 (5 lines)
 - docs/business-lut.md § LUT files and export (REQ-136) — L18-20 (3 lines)
 - docs/business-lut.md § Project file (REQ-137) — L21-23 (3 lines)
-- docs/business-lut.md § Importing the user's LUT files (2.1.0; REQ-300, 301) — L24-28 (5 lines)
-- docs/business-lut.md § Key decisions — L29-34 (6 lines; 2.1.0 REQ-301 option C bullet)
-- docs/business-lut.md § Known limitations — L35-40 (6 lines)
-- docs/business-lut.md § Out of scope — L41-44 (4 lines; 2.0.4 pointer)
+- docs/business-lut.md § Importing the user's LUT files (2.1.0; REQ-300 wording fixed 2.2.0, 301) — L24-28 (5 lines)
+- docs/business-lut.md § Key decisions (2.2.0 REQ-300 wording; 2.1.0 REQ-301 option C) — L29-35 (7 lines)
+- docs/business-lut.md § Known limitations — L36-41 (6 lines)
+- docs/business-lut.md § Out of scope — L42-45 (4 lines; 2.0.4 pointer)
 - docs/business-player.md § intro — L1-6 (6 lines)
 - docs/business-player.md § Features — L7-14 (8 lines)
 - docs/business-player.md § Requirements / The program (REQ-138) — L15-19 (5 lines) [heading ### The program L17-19]
@@ -179,10 +182,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-editing-gestures.md § Guides (REQ-198, 199) — L20-23 (4 lines)
 - docs/business-editing-gestures.md § Key decisions (2.0.4) — L24-29 (6 lines)
 - docs/business-editing-gestures.md § Out of scope (2.0.4) — L30-31 (2 lines)
-- docs/business-keyframes.md § intro — L1-4 (4 lines)
-- docs/business-keyframes.md § Requirements (REQ-200..205 implemented) — L5-12 (8 lines)
-- docs/business-keyframes.md § Key decisions (2.0.4) — L13-17 (5 lines)
-- docs/business-keyframes.md § Impact on existing features — L18-20 (3 lines)
+- docs/business-keyframes.md § intro — L1-3 (3 lines; whole-video popup removed 2.2.0)
+- docs/business-keyframes.md § Requirements (REQ-200..202 amended 2.2.0; 203..205 implemented) — L4-11 (8 lines)
+- docs/business-keyframes.md § Key decisions (2.0.4) — L12-16 (5 lines)
+- docs/business-keyframes.md § Impact on existing features — L17-19 (3 lines)
 - docs/business-hardware-export.md § intro — L1-4 (4 lines)
 - docs/business-hardware-export.md § Faster is quicker (batch 8; REQ-206..211) — L5-12 (8 lines)
 - docs/business-hardware-export.md § Hardware reach (batch 9; REQ-212..219) — L13-22 (10 lines)
@@ -209,7 +212,7 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-360-video.md § Out of scope (2.0.4) — L35-37 (3 lines)
 - docs/business-effects-frame.md § intro — L1-4 (4 lines)
 - docs/business-effects-frame.md § Fades, music and sound (REQ-274..280) — L5-13 (9 lines)
-- docs/business-effects-frame.md § Clip timing and picture (REQ-281..287) — L14-22 (9 lines)
+- docs/business-effects-frame.md § Clip timing and picture (REQ-281..287; 287 no change, 316 amends) — L14-22 (9 lines)
 - docs/business-effects-frame.md § Effects list and Change aspect (REQ-288) — L23-25 (3 lines)
 - docs/business-effects-frame.md § LUT options (REQ-289..294) — L26-33 (8 lines)
 - docs/business-effects-frame.md § Key decisions (2.0.4) — L34-42 (9 lines)
@@ -221,15 +224,18 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-quality.md § Key decisions (2.0.4) — L23-26 (4 lines)
 - docs/business-quality.md § Out of scope (2.0.4) — L27-28 (2 lines)
 - docs/business-applied-effects.md § intro — L1-6 (6 lines; built 2.1.0)
-- docs/business-applied-effects.md § Features — L7-12 (6 lines)
+- docs/business-applied-effects.md § Features — L7-12 (6 lines; whole-video mark removed 2.2.0)
 - docs/business-applied-effects.md § Requirements (intro) — L13-14 (2 lines)
-- docs/business-applied-effects.md § Applied effects widget (REQ-302, 303) — L15-19 (5 lines)
+- docs/business-applied-effects.md § Applied effects widget (REQ-302, 303 amended 2.2.0) — L15-19 (5 lines)
 - docs/business-applied-effects.md § Order and reorder (REQ-304, 305) — L20-24 (5 lines)
 - docs/business-applied-effects.md § Project file (REQ-311) — L25-27 (3 lines)
 - docs/business-applied-effects.md § Edge cases and rules for the builders — L28-37 (10 lines)
-- docs/business-applied-effects.md § Key decisions (2.1.0) — L38-43 (6 lines)
-- docs/business-applied-effects.md § Known limitations — L44-50 (7 lines)
-- docs/business-applied-effects.md § Out of scope (2.1.0) — L51-54 (4 lines)
+- docs/business-applied-effects.md § Layout and the order of all effects (2.2.0; REQ-317, 320 Q2/Q3 closed, 321, 322 built) — L38-47 (10 lines)
+- docs/business-applied-effects.md § Decisions of the layout and the order (2.2.0; Q2, Q3 closed) — L48-54 (7 lines)
+- docs/business-applied-effects.md § Key decisions (2.1.0) — L55-60 (6 lines)
+- docs/business-applied-effects.md § Key decisions (2.2.0 REQ-305 accepted) — L61-64 (4 lines)
+- docs/business-applied-effects.md § Known limitations — L65-71 (7 lines)
+- docs/business-applied-effects.md § Out of scope (2.1.0; 2.2.0 amended) — L72-75 (4 lines)
 - docs/business-subtitle-styles.md § intro — L1-6 (6 lines; built 2.1.0)
 - docs/business-subtitle-styles.md § Features — L7-12 (6 lines)
 - docs/business-subtitle-styles.md § Requirements (intro) — L13-14 (2 lines)
@@ -240,6 +246,18 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-subtitle-styles.md § Key decisions (2.1.0) — L37-41 (5 lines)
 - docs/business-subtitle-styles.md § Known limitations — L42-46 (5 lines)
 - docs/business-subtitle-styles.md § Out of scope (2.1.0) — L47-51 (5 lines)
+- docs/business-speed.md § title and intro — L1-6 (6 lines; built 2.2.0)
+- docs/business-speed.md § Features — L7-13 (7 lines)
+- docs/business-speed.md § Requirements (intro) — L14-15 (2 lines)
+- docs/business-speed.md § Large LUTs in the preview (REQ-312, D63) — L16-18 (3 lines)
+- docs/business-speed.md § Applied effects widget (REQ-313) — L19-21 (3 lines)
+- docs/business-speed.md § Blurred fill in playback (REQ-314) — L22-24 (3 lines)
+- docs/business-speed.md § Faster export on integrated graphics (REQ-315) — L25-27 (3 lines)
+- docs/business-speed.md § Picture items (REQ-316) — L28-30 (3 lines)
+- docs/business-speed.md § Reused subtitles (REQ-177 pointer) — L31-33 (3 lines)
+- docs/business-speed.md § Key decisions (2.2.0) — L34-39 (6 lines)
+- docs/business-speed.md § Scope — L40-43 (4 lines)
+- docs/business-speed.md § Known limitations (2.2.0) — L44-48 (5 lines)
 
 Line range convention: heading to the line before the next heading. Re-check after any edit.
 
@@ -255,20 +273,59 @@ Line range convention: heading to the line before the next heading. Re-check aft
   - § Product risks (current, 2.0.4) — L68-80 (13 lines)
   - § Open questions (deviations, REQ-177) — L81-92 (12 lines)
 
+## Checkpoint 2.2.0 (PLAN 2026-11-21, not built; target version 2.2.0, theme speed)
+- Source: the user's answers of 2026-11-21 (final). Requirements: REQ-312 to REQ-316 `(planned)` in docs/business-speed.md; REQ-177 amended in place (planned, subtitle-accuracy doc). Next free ID: REQ-317.
+- Whole-video rule (Andrea): an effect applied to the whole video is put on every clip as a copy, then an ordinary clip effect. Amended (planned): REQ-083 (editing), REQ-147 (effects), REQ-148 (frame; whole-video popup removed), REQ-129 (pointer), REQ-131 (picture order, read as the clip's own copies), REQ-200, REQ-201 (notice and button removed), REQ-202 (dashed handles removed), REQ-303 (mark removed), REQ-076 (ui title kept for Change aspect only). Old text kept as history in the Key decisions of each doc.
+- [MINOR, flagged to Andrea] Change aspect is not copied: double-click sets the project frame (REQ-124, REQ-286; the output size is one per project).
+- REFINE 2.2.0 (Andrea, 2026-11-21): whole-video Fade IN/OUT keeps first-start / last-end only (REQ-083 behaviour unchanged); the fades are copies that become ordinary clip fades. The copy on every clip applies to the other whole-video effects. REQ-083 and REQ-147 text rewritten to match; the earlier "every clip fade" reading is withdrawn.
+- [MINOR] Whole-video popup removed; a copy's Remove is in its own clip popup; multi-clip remove is not built (roadmap candidate).
+- [MINOR] The whole-video mark of the 2.1.0 request is removed (REQ-303): the user must see it (flagged in the return).
+- REQ-300 wording fixed (formats .cube, .3dl, .csp; 3D and 1D; 1D limit assumed = 256, to confirm). No status change. Read by the README-fixing Documenter: the README wording is the Documenter's.
+- REQ-305 accepted as built (Andrea): old projects keep stacking; new LUT/picture on top. Recorded in business-applied-effects Key decisions; line stays implemented.
+- REQ-312 (REFINE, D63): `.cube` route kept, no colour or graph change; progress "Preparing LUT" with percentage moving at least once per second; interface never blocked (menu/popup response <= 200 ms during preparation; playback/export not delayed, REQ-224); preview shows the unprocessed picture meanwhile (assumption); ~12 s for 256 points is measured, not gated; colours within 2 levels (REQ-300); newer choice replaces. Rejected: A integer .m3d 3.4 s, B float .m3d 5.1 s, C binary HALD 0.36 s (trilinear, colours change), smaller preview table (breaks colours). Binary input and smaller table moved back to the roadmap as not planned (Documenter/PM at release). The earlier 3 s target and .m3d wording are dropped.
+- REQ-313 (rows cache): test counts builds (0 idle over 60 frames, 1 per change).
+- REQ-314 (blur in playback): the REQ-223 cache does not help in playback (video changes each frame); measure first at 1080p and 4K; gates at 1% dropped frames 60 s (1080p, assumption) and 4K blur step <= one frame time (assumption). Scale changes stay on the roadmap.
+- REQ-315 (Faster on integrated graphics): Iris Plus G7, QG-05 reference project 1080p H.264, median of 3, Faster >= 20% quicker than Best quality (assumption, low end of QG-05 estimate); 40% stays measured; checks and fault tests unchanged; other computers recorded, not gated.
+- REQ-316 (picture limit): refuse PNG above 16,000,000 px; no other limit, no copy (ADR-192 parts rejected: count 20, 8 MiB). Roadmap item "Picture item limits" narrows to the rejected ones: resolve or close at release.
+- REQ-177 (planned, amended): speech-region method with one fixed parameter set, target 90% of matched words within 0.3 s on every clip of the check set (reference clip + one further clip); strict test enabled. "words" = matched words (D56, unchanged). Parameters tuned on the reference clip only. PRECONDITION (REFINE, Andrea): Andrea records and commits the further clip (about 30 s with transcript); the build asks him for it before reaching REQ-177; no build of REQ-177 without it.
+- Risks: R1 .m3d unsupported (see REQ-312). R2 no second real-speech clip in the repo; Andrea records and commits it (about 30 s, transcript) as a precondition of REQ-177 (asked at the build). R3 whole-video Fade stays first/last (no visible change). R4 test churn: tests of REQ-083, 129, 131, 147, 148, 200-202, 303, 076 change. R5 REQ-315 target may not be met on integrated graphics (reported, not a gate). R6 blur in playback may not reach the frame rate on 4K (measured first).
+- Open questions: none SEVERE. Flags to Andrea: the removed mark (2.1.0 request), Change aspect exception, the second clip for REQ-177 (precondition). Fade reading settled by REFINE (first/last).
+- Roadmap items affected (for RELEASE): Binary input for 256-point LUTs (REQ-312); Smaller preview table (fallback only); Cache Applied effects rows (REQ-313); Playback of a blurred fill (REQ-314; Scale part stays); Make Faster really faster (REQ-315); Export time of blurred fill (Priority 5, measurement, overlaps REQ-314); Meet accuracy target (REQ-177); Picture item limits (REQ-316 part); Decisions to confirm for 2.1.0 (a) REQ-305 accepted, (b) REQ-303 replaced, (c) REQ-300 wording fixed: all three to close; Keyframes/Scale-in-preview stays.
+- Impacts: REQ-075 (tooltips unchanged), REQ-082 (double-click unchanged), REQ-124 (Change aspect unchanged), REQ-286 (project frame), REQ-302 (rows unchanged), REQ-304 (unchanged), REQ-205 (unchanged).
+
+## Checkpoint 2.2.0 STATUS done (2026-11-22, version 2.2.0)
+- Marked `(implemented)` after a `// covers:` grep: REQ-076, 083, 129, 131, 147, 148, 200, 201, 202, 303, 312, 313, 314, 316, 317, 318, 319, 320, 321, 322, 323 (REQ-029 was already implemented). Also 302, 304, 311, 116, 156, 157: amended by the built rules and covered; marked implemented with the amendment in the text (the PM's addition, not in the coordinator's list; report to the user).
+- Kept `(planned)` with the measured result in the text: REQ-315 (Iris Plus G7: 12.2 s before, 11.3 s with the concurrent check, 8.7% lower against 20%: not met) and REQ-177 (speech-region method built and wired, 10 of 23 = 43% against 90%: not met; old path default; strict test ignored; second clip `tests/fixtures/align/second-clip-30s.wav` awaited from the user).
+- Measured: blur step about 2 ms a frame at 1080p and 4K against 40 ms (REQ-314 met).
+- Amendments as built: REQ-317 column 180 px min, about 20% at 1280x800 (15% from 1200 px); REQ-321 new Crop, Change aspect, Scale, Move or Fade takes its default place (not the top); new text, picture, LUT on top; new sound row keeps Clean audio then Volume; REQ-320 Fade row named "Fade IN/OUT" only with several fades, text on a reordered clip through a matte (slower); REQ-076 only Change aspect says "— whole video", LUT chooser "Apply LUT — every clip"; REQ-312 the preview shows a LUT only after its copies are written; REQ-322 format 13.
+- Counts: 27 requirement lines newly marked implemented (21 from the list and 6 amended ones), 2 kept planned (315, 177). Next free ID: REQ-324.
+- Roadmap for the Documenter: REQ-315 real cost is the decode and upload phase; REQ-177 needs a pace-aware method for continuous speech; step-built clips (reordered effects) are slower with texts and do not use the blurred-background cache.
+- For the user: accept the measured REQ-315 (8.7%) or keep the 20% target open; record `tests/fixtures/align/second-clip-30s.wav` for REQ-177.
+
+## Checkpoint 2.2.0 part 2 (PLAN 2026-11-21, GO: everything planned is built, plus three additions)
+- REQ-317 (planned, amends REQ-302): the Applied effects widget is a vertical column on the right of the Preview; about 15% of the section width, min 180 px (MINOR); scrolls; picture shrinks first (REQ-068); saved in the layout; popups not in the column. Docs: business-applied-effects.
+- REQ-318 (planned, amends REQ-116, REQ-156): the text box governs the size: largest size fitting the wrapped block in width and height; handles: right/left width, bottom height, corners nothing, move; no size field; centred; extra room used by Slide in (longer slide); ratio = block width:height at current wrap, computed not stored (MINOR); size cap REQ-157 10% pending SEVERE Q1.
+- REQ-319 (planned): old projects keep sizes (2.0.3 best fit = REQ-318 rule); no size control in the text popup; subtitle lines unaffected (style size). Vocabulary: text box (wrap box), text block, ratio, readability box (REQ-158, not dragged).
+- REQ-320 (planned, amends REQ-302, REQ-304): all effects reorderable inside groups: Picture group (Change aspect, Apply LUT, texts, picture items, subtitle lines, Fade IN/OUT, Crop, Scale, Move), Sound group (Clean audio, Volume), Speed fixed at the bottom (applied first, time base). No cross-group moves. Default = today's build order (Architect writes it from the code into golden tests). No order refused. Pending SEVERE Q2 (Speed) and Q3 (LUT vs frame fill and Fade).
+- REQ-321 (planned): undo labels per REQ-304 pattern; preview/export parity; new row on top of its group; whole-video copies: top of group on each clip, later changes do not reorder; 360 fixed rows, export ignores order (Q-3).
+- REQ-322 (planned, amends REQ-311): per-clip order of all movable rows; Speed not stored; old projects open with default order; Architect decides format 12 vs 13 (if 13: 2.1.0 and 2.0.4 refuse with newer-version message, file untouched, REQ-029); damaged entry repaired line.
+- Amended (planned) in human docs: REQ-116, REQ-156 (business-text); REQ-302, REQ-304, REQ-311 and Out of scope (business-applied-effects).
+- Next free ID: REQ-324 (REQ-323 = per-text maximum size, D64).
+- CLOSED by the user (REFINE): Q1 = option d: the 10% cap (REQ-157) stays the default; each text may set an optional maximum size, percent of picture height (same unit as the cap), range 2 to 50 (assumption), empty = cap; REQ-323 (planned, D64; amends REQ-157 and REQ-318; overrides the 1.4.0 no-size-field rule for this one field). Format decision (field in 12 or bump to 13) left to the Architect. Subtitle lines unaffected. Q2 = option a: Speed fixed, applied first; Fade IN/OUT ordinary movable picture rows on the clip's timeline time after Speed. Q3 = option a: today's order is the default for old projects and new clips; the LUT can move above Change aspect and then grades the fill; roadmap item "LUT order with the frame effect" closed as a user choice.
+
 ## Checkpoint 2.1.0 (PLAN 2026-11-21; STATUS done 2026-11-21, version 2.1.0)
 - STATUS 2.1.0 done: REQ-300..311 `(implemented)`, each with a `// covers:` test (grep-checked by the PM; no test run). Amended to the built behaviour from the PE's deviations (docs/code-2.1.0.md, ai-docs/roadmap-2_0-checkpoint.md § Principal Engineer 2.1.0). Human docs: business-lut (300, 301), business-applied-effects (302-305, 311), business-subtitle-styles (306-310); roadmap tasks: 2.1.0 is the next development, Finish 2.0.4 is not a version.
-- Amendments as built: 300 (edge 256, 512 MiB, background load above 1 MiB, .3dl/.csp whole up to 64 MiB, 16-bit); 301 (20 MB measured as the copy text); 303 (whole-video mark inferred: two or more clips with the same effect, Change aspect, first Fade IN, last Fade OUT; Speed added); 304 (new LUT or picture on top; Move up/down, Alt+Up/Down, drag); 305 (later text on top, assumption kept); 306-307 (out-of-range values clamped on load); 309 (Enlarge = two events per word, line centred, sphere-fixed lines plain); 310 (letter reveal, sphere-fixed plain); 311 (format 12, repair line "A damaged effect order was repaired").
+- Amendments as built: 300 (edge 256, 512 MiB, background load above 1 MiB, .3dl/.csp whole up to 64 MiB, 16-bit); 301 (20 MB measured as the copy text); 303 (whole-video mark inferred: now replaced in 2.2.0); 304 (new LUT or picture on top; Move up/down, Alt+Up/Down, drag); 305 (later text on top, accepted in 2.2.0); 306-307 (out-of-range values clamped on load); 309 (Enlarge = two events per word, line centred, sphere-fixed lines plain); 310 (letter reveal, sphere-fixed plain); 311 (format 12, repair line "A damaged effect order was repaired").
 - Known limits recorded in the human docs: a 360 sphere export ignores the order (the flat camera view keeps it); sphere-fixed texts and lines are not movable (Q-3).
-- Requests were: LUT import of the maintainer's 144^3 files; Applied effects widget and order; shadows; two highlight colours; Enlarge word; Typewriter. Next free ID REQ-312. 2.0.4 documents unchanged except the 2.1.0 pointers.
-- REQ-301 large LUT copies: CLOSED, Andrea chose option C (path only above 20 MB, REQ-292 choices); D62 in business-decisions.md § Open questions. REQ-301 text updated (REQ-300 "any size"; 64 MB total counts copies only; REQ-293 amended note). No open SEVERE question.
+- Requests were: LUT import of the maintainer's 144^3 files; Applied effects widget and order; shadows; two highlight colours; Enlarge word; Typewriter. 
+- Impacts (2.1.0): REQ-135 (colours of texts stay unless the order says otherwise), REQ-131 (stacking), REQ-293 (limits, amended by REQ-301), REQ-068 (widget in the small layout), REQ-181 (ASS shadow and colours), REQ-257 (360 anchored lines get the same styles), REQ-162 (blink hides shadow).
+- REQ-301 large LUT copies: CLOSED, Andrea chose option C (path only above 20 MB, REQ-292 choices); D62 in business-decisions.md § Open questions.
 - MINOR defaults: business-decisions.md § Open questions (2.1.0 lines). Project format 12 assumed.
-- Impacts: REQ-135 (colours of texts stay unless the order says otherwise), REQ-131 (stacking), REQ-293 (limits, amended by REQ-301), REQ-068 (widget in the small layout), REQ-181 (ASS shadow and colours), REQ-257 (360 anchored lines get the same styles), REQ-162 (blink hides shadow).
 
 ## Checkpoint 2.0.4 (STATUS done, all 2.0.4 REQs implemented except REQ-177; 2026-11-21, version 2.0.4)
 - Process state: `ai-docs/roadmap-2_0-checkpoint.md` § Product Manager.
-- STATUS done, all 2.0.4 REQs implemented except REQ-177 (2026-11-21). Requirements: REQ-180..299 all `(implemented)` (120 IDs, each with a `// covers:` test by grep; the 11 of the second call were marked then). REQ-177 stays `(planned)` (open decision). REQ-001..176 and 178..179 implemented. Next free ID: REQ-300.
-- Deviations written into the built REQ lines as built (Andrea's answer still open): REQ-202, 195, 222, 244, 248, 183, 182 (flag), 279 (speechnorm, D61), 293 (LUT limits); REQ-206 spec confirmed, no text change. Details: business-decisions.md § MINOR defaults and § Open questions.
-- Still open for Andrea: REQ-177; the deviations listed in business-decisions.md § Open questions.
+- STATUS done, all 2.0.4 REQs implemented except REQ-177 (2026-11-21). Requirements: REQ-180..299 all `(implemented)` (120 IDs, each with a `// covers:` test by grep). REQ-177 stays `(planned)`. REQ-001..176 and 178..179 implemented. Next free ID: REQ-300.
+- Deviations written into the built REQ lines as built: REQ-202, 195, 222, 244, 248, 183, 182 (flag), 279 (speechnorm, D61), 293 (LUT limits); REQ-206 spec confirmed, no text change. Details: business-decisions.md § MINOR defaults and § Open questions.
 - Decisions D57-D61 in `ai-docs/business-decisions.md` (standing rules). Feature coverage target 100%, line coverage target 85%.
-- Roadmap items not batched (stay on roadmap): Priority 2 text items, Priority 3 leftovers of batch 4 (gated CI alignment test, five-minute speech test, larger speech levels), ruler labels below 1 s, multi-selection report.
-- Product tension to watch: amended REQ tests (see business-requirements.md) and the format 11 downgrade refusal.
+- Roadmap items not batched (stay on roadmap): Priority 2 text items, Priority 3 leftovers of batch 4, ruler labels below 1 s, multi-selection report.
+- Still open for Andrea (2.0.4): REQ-177 (now planned in 2.2.0, see above); the deviations listed in business-decisions.md § Open questions. Product tension to watch: amended REQ tests and the format 11 downgrade refusal.

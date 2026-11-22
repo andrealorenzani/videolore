@@ -7,7 +7,7 @@ Apply LUT is a colour effect, one per clip and one for the whole video. The user
 
 ## Reading the file (`src/lut.rs`, pure)
 - Format: `.cube` only, UTF-8 text. Keywords `LUT_3D_SIZE` or `LUT_1D_SIZE`, `TITLE`, `DOMAIN_MIN`, `DOMAIN_MAX`; `#` starts a comment.
-- Read as a regular file. Up to 2.0.4: at most 16 MiB and 3D size 2 to 65. From 2.1.0 (planned): streamed up to 512 MiB, 3D size 2 to 256, see [large LUTs](#large-luts-210-planned).
+- Read as a regular file. Up to 2.0.4: at most 16 MiB and 3D size 2 to 65. From 2.1.0 (built): streamed up to 512 MiB, 3D size 2 to 256, see [large LUTs](#large-luts-210-planned).
 - 3D: exactly size^3 entries. 1D: size 2 to 4096, exactly size entries.
 - Every value must be a finite number; values outside 0 to 1 are clamped.
 - `DOMAIN_MIN`/`DOMAIN_MAX` other than 0 and 1 are refused with a message (support is later work).
@@ -35,7 +35,7 @@ Apply LUT is a colour effect, one per clip and one for the whole video. The user
 5. Fades to black.
 Then the segments are joined, and subtitles and text are drawn as before. In 360 video export the LUT is applied after the sphere is projected (colour, not geometry). The whole-video LUT always comes before the clip LUT.
 
-The cube is written by the program into the private work folder with a fixed name (`lut-whole.cube`, `lut-clip-<n>.cube`). No user text reaches the filter string; the file name is fixed. The filter uses `interp=tetrahedral` (the bundled `ffmpeg` build is checked for this option).
+The cube is written by the program into the private work folder with a fixed name (`lut-whole.cube`, `lut-clip-<n>.cube`; in 2.1.0 `lut-<hash16>.cube`, one per content). Built 2.2.0 (REQ-312, D63, [speed](architecture-speed.md)): the same `.cube` route; the preparation (read, parse, copy) runs in the background with a percentage, and the preview shows the unprocessed picture until the LUT is ready (about 12 s to the first graded frame, not gated). No user text reaches the filter string; the file name is fixed. The filter uses `interp=tetrahedral` (the bundled `ffmpeg` build is checked for this option).
 
 ## Export
 - Any LUT makes the export a re-encode, even at default settings.
@@ -48,7 +48,7 @@ The cube is written by the program into the private work folder with a fixed nam
 - **Copies in the project (REQ-293, ADR-191):** the project stores a copy of each LUT file it uses, as the normalised cube text (a JSON string in `lut_copies`, keyed by SHA-256). A copy is at most 20 MB, and at most 64 MiB per project; a copy over the limit keeps only the path. The project read cap is 96 MiB (see [projects](architecture-projects.md#format-11-204)).
 - **Favourites (REQ-294):** up to 20 LUT files in the popup, kept in the program settings (never in a project).
 
-## Large LUTs (2.1.0, planned)
+## Large LUTs (2.1.0, built, not released)
 - **Why 2.0.4 refused a 144-point `.cube` (about 80 MB):** the size limit was 65 points and the read limit 16 MiB. ffmpeg accepts 256 points, so the limit was in the program.
 - **Reading:** one streamed pass over the file (a 1 MiB buffer), with no whole-file or whole-text copy in memory. Lines are at most 256 bytes; the number of entries must be exactly size^3 and no numeric line may follow. Edge 2 to 256; file at most 512 MiB (a 256-point cube is about 450 MB).
 - **Memory:** a table takes 6 bytes per point, 16-bit per channel (100.7 MB at 256 points, 17.9 MB at 144). The cache keeps at most 192 MB of tables, least recently used first.

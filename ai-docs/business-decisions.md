@@ -64,6 +64,8 @@ Sub-document of [business index](business.md). Compacted in 1.6.3 RELEASE; 2.0.4
 - Accuracy methods measured in 2.0.3 and removed: DTW; one-sided onset snap; speech-region method (not built).
 - Stereo 3D, cube maps, 180 video (2.0.4: out of scope, MINOR; Andrea's scope decision in roadmap).
 - Translation languages beyond English (D60, Andrea 2.0.4): not added in 2.0.4.
+- 2.2.0 rejected (D63): integer `.m3d` (3.4 s), float `.m3d` (5.1 s), binary HALD (0.36 s, trilinear, colours change); binary input and smaller preview LUT table as the speed fix (not planned, roadmap); whole-video mark and whole-video popup (Andrea 2026-11-21, replaced by copies); picture item count limit (20), file size limit (8 MiB) and embedded picture copies (ADR-192 parts; Andrea: only the 16 MP limit); change-aspect copies per clip (MINOR: project frame).
+- 2.2.0 risks: R1 closed by D63 (ffmpeg 9.0.2 reads `.m3d` as text; the `.cube` route stays with progress; the preparation time of about 12 s remains); R2 REQ-177 needs a second real-speech clip (about 30 s, transcript) that Andrea records and commits, a precondition asked at the build; R3 whole-video Fade stays first/last (REFINE 2.2.0); R4 test churn of amended REQs; R5 REQ-315 may miss the target on integrated graphics (reported); R6 blur cost in playback unmeasured (4K).
 
 ## Product risks (current, 2.0.4)
 - Test churn: REQ-011, 020, 041, 083, 084, 101, 102, 103, 112, 120, 127, 128, 129, 133, 135, 136, 147, 148 are amended; their tests change with them. Keep old behaviour for projects that do not use the new data (rule: existing projects render unchanged).
@@ -79,6 +81,7 @@ Sub-document of [business index](business.md). Compacted in 1.6.3 RELEASE; 2.0.4
 - Earlier risks still open: stale splash summaries; Users expect new clips to get whole-video effects (now a notice, REQ-201); LUT colour differs from other tools; player scope creep (reduced by REQ-249..254); unsigned installers warning; Wayland drop; Faster can be slower on integrated graphics (REQ-207 explains it); REQ-177 not met (known limitation); manual checks of 2.0.3 not recorded (REQ-165, REQ-166).
 
 ## Open questions
+- CLOSED 2.2.0 (Andrea, REFINE): Q1 = D64 (10% default cap; optional per-text maximum, REQ-323, percent of picture height, 2 to 50). Q2 = Speed fixed first; fades movable in the picture group. Q3 = today's order default; LUT above Change aspect grades the fill (user choice). Details in ai-docs/business.md § Checkpoint 2.2.0 part 2.
 - CLOSED 2.0.4 (Andrea, REFINE): translated interface = option (a), English only. The text table is built; no other language in 2.0.4; REQ-245 reworded accordingly. Recorded as decision D60.
 - REQ-177 (for Andrea, untouched in 2.0.4): options (a) a timing method with a different speech model (consent, size, checksum; check D56), (b) restate the target, (c) keep planned with known limitation (default).
 - OPEN for Andrea (STATUS 2.0.4, deviations built and accepted as built by default; confirm or ask for a change, which goes to the roadmap): REQ-202 reading; REQ-195 marker text visible to other applications on paste; REQ-222 eighth instead of quarter; REQ-244 collapsed header instead of main section; REQ-248 Windows run stays a manual check (item 29).

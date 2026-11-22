@@ -189,9 +189,10 @@ fn scale_makes_the_picture_smaller_and_shows_the_background() {
     let file = flat(&env, "red");
     let mut p = project_of(&env, &file);
     p.timeline.add_scale(FrameTarget::Whole).unwrap();
+    let c0 = FrameTarget::Clip(p.timeline.clips[0].id);
     p.timeline
         .set_scale_key(
-            FrameTarget::Whole,
+            c0,
             Micros::ZERO,
             Scale {
                 permille: 500,
@@ -217,8 +218,9 @@ fn move_shifts_the_picture_by_the_fraction_of_the_frame() {
     let file = flat(&env, "red");
     let mut p = project_of(&env, &file);
     p.timeline.add_move(FrameTarget::Whole).unwrap();
+    let c0 = FrameTarget::Clip(p.timeline.clips[0].id);
     p.timeline
-        .set_move_key(FrameTarget::Whole, Micros::ZERO, Pos { x: 6000, y: 5000 })
+        .set_move_key(c0, Micros::ZERO, Pos { x: 6000, y: 5000 })
         .unwrap();
     let out = export(&env, &p, "moved.mp4");
     let f = env.frame_rgb(&out, 1.0);
@@ -266,9 +268,10 @@ fn the_picture_is_composed_under_the_fades_and_a_360_export_ignores_it() {
     let file = flat(&env, "red");
     let mut p = project_of(&env, &file);
     p.timeline.add_scale(FrameTarget::Whole).unwrap();
+    let c0 = FrameTarget::Clip(p.timeline.clips[0].id);
     p.timeline
         .set_scale_key(
-            FrameTarget::Whole,
+            c0,
             Micros::ZERO,
             Scale {
                 permille: 500,

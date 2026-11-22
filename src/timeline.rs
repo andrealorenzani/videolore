@@ -287,10 +287,10 @@ pub const DIFFERENT_FRAMES: &str = "The clips have different frame settings";
 pub const DIFFERENT_SPEEDS: &str = "The clips have different speeds";
 pub const DIFFERENT_LUTS: &str = "The clips have different colour effects";
 
-/// What a Scale, Move or Apply LUT is applied to (REQ-130). Since 1.6.1 `Whole` is not a
-/// state of its own: reading it gives the first clip's copy and a change reaches the copy of
-/// every clip (REQ-148); the time of a `Whole` key is clip time shifted by the first
-/// clip's source start.
+/// What a Scale, Move or Apply LUT is applied to (REQ-130). `Whole` is not a state of its
+/// own (since 1.6.1, and in 2.2.0 it has no popup either): it only means "a copy on every
+/// clip" when an effect is applied (`add_scale`, `add_move`, `set_lut`, REQ-147, REQ-148).
+/// Keys are read and edited on one clip (`Clip`); `Whole` reads as no keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FrameTarget {
     Whole,
@@ -1048,27 +1048,17 @@ impl Timeline {
         }
     }
 
-    /// The clip whose keys the whole-video popup shows (REQ-148): the first clip that has
-    /// a Scale or a Move.
-    fn whole_ref(&self) -> Option<&Clip> {
-        self.clips.iter().find(|c| {
-            let (s, m) = self.keys_of(c.id);
-            !s.is_empty() || !m.is_empty()
-        })
-    }
-
-    /// The Scale keys of a clip; for the whole video, those of the first clip that has
-    /// keys (source time of that clip).
+    /// The Scale keys of a clip (source time of its media); none for `Whole`.
     pub fn scale_keys(&self, t: FrameTarget) -> &[Key<Scale>] {
         match t {
-            FrameTarget::Whole => self.whole_ref().map_or(&[], |c| self.keys_of(c.id).0),
+            FrameTarget::Whole => &[],
             FrameTarget::Clip(id) => self.keys_of(id).0,
         }
     }
 
     pub fn move_keys(&self, t: FrameTarget) -> &[Key<Pos>] {
         match t {
-            FrameTarget::Whole => self.whole_ref().map_or(&[], |c| self.keys_of(c.id).1),
+            FrameTarget::Whole => &[],
             FrameTarget::Clip(id) => self.keys_of(id).1,
         }
     }
@@ -1079,38 +1069,6 @@ impl Timeline {
             FrameTarget::Clip(id) if self.get(id).is_none() => Err(EditError::NoSuchClip),
             _ => Ok(()),
         }
-    }
-
-    /// Runs `f` on the keys of every clip that has some of this kind, at the same clip
-    /// time as the reference clip's `at` (REQ-148). A clip that ends before that time is
-    /// left alone. The result is the one of the first clip handled; the other clips' keys
-    /// that cannot take the change (a key at that time, the last key) stay as they are.
-    fn whole_edit<T: Copy>(
-        &mut self,
-        pick: fn(&mut ClipFrames) -> &mut Vec<Key<T>>,
-        at: Micros,
-        mut f: impl FnMut(&mut Vec<Key<T>>, Micros) -> Result<(), keyframes::KeyError>,
-    ) -> Result<(), EditError> {
-        self.check_target(FrameTarget::Whole)?;
-        let ref_in = self.whole_ref().map_or(Micros::ZERO, |c| c.src_in);
-        let ct = (at - ref_in).max(Micros::ZERO);
-        let mut first: Option<Result<(), keyframes::KeyError>> = None;
-        for i in 0..self.clips.len() {
-            let c = self.clips[i];
-            let Some(mut e) = self.frames_of(c.id).cloned() else {
-                continue;
-            };
-            let at_i = c.src_at(ct);
-            if pick(&mut e).is_empty() || at_i > c.src_out {
-                continue;
-            }
-            let r = f(pick(&mut e), at_i);
-            first.get_or_insert(r);
-            if r.is_ok() {
-                self.put_frames(e);
-            }
-        }
-        first.unwrap_or(Ok(())).map_err(EditError::Key)
     }
 
     /// Runs `f` on the scale keys of `t` (an entry of a clip is made when missing and
@@ -1156,25 +1114,16 @@ impl Timeline {
     /// Where a new Scale or Move of a clip starts: its first source instant.
     pub fn frame_start(&self, t: FrameTarget) -> Micros {
         match t {
-            FrameTarget::Whole => self.whole_ref().map_or(Micros::ZERO, |c| c.src_in),
+            FrameTarget::Whole => Micros::ZERO,
             FrameTarget::Clip(id) => self.get(id).map_or(Micros::ZERO, |c| c.src_in),
         }
     }
 
-    /// The time of a key of `t` at timeline position `at`: the clip's source time; for the
-    /// whole video, the same clip time in the reference clip (REQ-148), so `at` is the clip
-    /// time of the clip under it.
+    /// The time of a key of a clip at timeline position `at`: the clip's source time; none
+    /// for `Whole`.
     pub fn key_time(&self, t: FrameTarget, at: Micros) -> Option<Micros> {
         match t {
-            FrameTarget::Whole => {
-                let (i, start) = self.locate(at).or_else(|| {
-                    let last = self.clips.len().checked_sub(1)?;
-                    Some((last, self.start_of(last)))
-                })?;
-                let c = &self.clips[i];
-                let local = (at - start).clamp(Micros::ZERO, c.len());
-                Some(self.whole_ref().map_or(local, |r| r.src_at(local)))
-            }
+            FrameTarget::Whole => None,
             FrameTarget::Clip(id) => {
                 let i = self.index_of(id)?;
                 let c = &self.clips[i];
@@ -1241,53 +1190,38 @@ impl Timeline {
         Ok(any)
     }
 
+    /// Removes the Scale of one clip (its copy, REQ-148); `Whole` has none.
     pub fn remove_scale(&mut self, t: FrameTarget) -> Result<(), EditError> {
-        if self.scale_keys(t).is_empty() && !self.any_keys(t, true) {
+        if self.scale_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
         self.remove_kind(t, true)
     }
 
     pub fn remove_move(&mut self, t: FrameTarget) -> Result<(), EditError> {
-        if self.move_keys(t).is_empty() && !self.any_keys(t, false) {
+        if self.move_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
         self.remove_kind(t, false)
     }
 
-    /// True when some clip of the target has keys of this kind.
-    fn any_keys(&self, t: FrameTarget, scale: bool) -> bool {
-        let has = |id: ClipId| {
-            let (s, m) = self.keys_of(id);
-            if scale { !s.is_empty() } else { !m.is_empty() }
-        };
-        match t {
-            FrameTarget::Whole => self.clips.iter().any(|c| has(c.id)),
-            FrameTarget::Clip(id) => has(id),
-        }
-    }
-
     fn remove_kind(&mut self, t: FrameTarget, scale: bool) -> Result<(), EditError> {
         self.check_target(t)?;
-        let ids: Vec<ClipId> = match t {
-            FrameTarget::Whole => self.clips.iter().map(|c| c.id).collect(),
-            FrameTarget::Clip(id) => vec![id],
+        let FrameTarget::Clip(id) = t else {
+            return Err(EditError::NoSuchClip);
         };
-        for id in ids {
-            if let Some(mut e) = self.frames_of(id).cloned() {
-                if scale {
-                    e.scale.clear();
-                } else {
-                    e.moved.clear();
-                }
-                self.put_frames(e);
+        if let Some(mut e) = self.frames_of(id).cloned() {
+            if scale {
+                e.scale.clear();
+            } else {
+                e.moved.clear();
             }
+            self.put_frames(e);
         }
         Ok(())
     }
 
-    /// Sets the Scale key at `at` (adds it when there is none); limits are applied. For the
-    /// whole video the key is set at the same clip time in every copy.
+    /// Sets the Scale key at `at` (adds it when there is none); limits are applied.
     pub fn set_scale_key(
         &mut self,
         t: FrameTarget,
@@ -1298,14 +1232,8 @@ impl Timeline {
         if self.scale_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
-        match t {
-            FrameTarget::Whole => {
-                self.whole_edit(|e| &mut e.scale, at, |k, t| keyframes::set(k, t, v))
-            }
-            FrameTarget::Clip(_) => self
-                .with_scale(t, |k| keyframes::set(k, at, v))?
-                .map_err(EditError::Key),
-        }
+        self.with_scale(t, |k| keyframes::set(k, at, v))?
+            .map_err(EditError::Key)
     }
 
     pub fn set_move_key(&mut self, t: FrameTarget, at: Micros, v: Pos) -> Result<(), EditError> {
@@ -1316,14 +1244,8 @@ impl Timeline {
         if self.move_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
-        match t {
-            FrameTarget::Whole => {
-                self.whole_edit(|e| &mut e.moved, at, |k, t| keyframes::set(k, t, v))
-            }
-            FrameTarget::Clip(_) => self
-                .with_move(t, |k| keyframes::set(k, at, v))?
-                .map_err(EditError::Key),
-        }
+        self.with_move(t, |k| keyframes::set(k, at, v))?
+            .map_err(EditError::Key)
     }
 
     /// Adds a Scale key (never replaces one).
@@ -1337,38 +1259,22 @@ impl Timeline {
         if self.scale_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
-        match t {
-            FrameTarget::Whole => {
-                self.whole_edit(|e| &mut e.scale, at, |k, t| keyframes::add(k, t, v))
-            }
-            FrameTarget::Clip(_) => self
-                .with_scale(t, |k| keyframes::add(k, at, v))?
-                .map_err(EditError::Key),
-        }
+        self.with_scale(t, |k| keyframes::add(k, at, v))?
+            .map_err(EditError::Key)
     }
 
     pub fn add_move_key(&mut self, t: FrameTarget, at: Micros, v: Pos) -> Result<(), EditError> {
         if self.move_keys(t).is_empty() {
             return Err(EditError::NoSuchEffect);
         }
-        match t {
-            FrameTarget::Whole => {
-                self.whole_edit(|e| &mut e.moved, at, |k, t| keyframes::add(k, t, v))
-            }
-            FrameTarget::Clip(_) => self
-                .with_move(t, |k| keyframes::add(k, at, v))?
-                .map_err(EditError::Key),
-        }
+        self.with_move(t, |k| keyframes::add(k, at, v))?
+            .map_err(EditError::Key)
     }
 
     /// Removes the Scale key at `at`; the last key stays.
     pub fn remove_scale_key(&mut self, t: FrameTarget, at: Micros) -> Result<(), EditError> {
-        match t {
-            FrameTarget::Whole => self.whole_edit(|e| &mut e.scale, at, keyframes::remove),
-            FrameTarget::Clip(_) => self
-                .with_scale(t, |k| keyframes::remove(k, at))?
-                .map_err(EditError::Key),
-        }
+        self.with_scale(t, |k| keyframes::remove(k, at))?
+            .map_err(EditError::Key)
     }
 
     /// Chooses how the Scale or Move value moves on from the key at `at` (REQ-282).
@@ -1379,24 +1285,12 @@ impl Timeline {
         at: Micros,
         ease: keyframes::Ease,
     ) -> Result<(), EditError> {
-        match (t, scale) {
-            (FrameTarget::Whole, true) => self.whole_edit(
-                |e| &mut e.scale,
-                at,
-                |k, at| keyframes::set_ease(k, at, ease),
-            ),
-            (FrameTarget::Whole, false) => self.whole_edit(
-                |e| &mut e.moved,
-                at,
-                |k, at| keyframes::set_ease(k, at, ease),
-            ),
-            (FrameTarget::Clip(_), true) => self
-                .with_scale(t, |k| keyframes::set_ease(k, at, ease))?
-                .map_err(EditError::Key),
-            (FrameTarget::Clip(_), false) => self
-                .with_move(t, |k| keyframes::set_ease(k, at, ease))?
-                .map_err(EditError::Key),
-        }
+        let done = if scale {
+            self.with_scale(t, |k| keyframes::set_ease(k, at, ease))?
+        } else {
+            self.with_move(t, |k| keyframes::set_ease(k, at, ease))?
+        };
+        done.map_err(EditError::Key)
     }
 
     /// The easing of the Scale or Move key at `at`.
@@ -1409,12 +1303,8 @@ impl Timeline {
     }
 
     pub fn remove_move_key(&mut self, t: FrameTarget, at: Micros) -> Result<(), EditError> {
-        match t {
-            FrameTarget::Whole => self.whole_edit(|e| &mut e.moved, at, keyframes::remove),
-            FrameTarget::Clip(_) => self
-                .with_move(t, |k| keyframes::remove(k, at))?
-                .map_err(EditError::Key),
-        }
+        self.with_move(t, |k| keyframes::remove(k, at))?
+            .map_err(EditError::Key)
     }
 
     /// The Scale keys of a clip in the clip's own time (REQ-204); `None` without any.
@@ -2213,11 +2103,17 @@ pub(crate) mod tests {
                 ease: Default::default(),
             }]
         );
-        assert_eq!(t.move_keys(FrameTarget::Whole).len(), 1);
+        // the copy is the clip's own (2.2.0): the whole video has no keys to read
+        assert_eq!(t.move_keys(c).len(), 1);
+        assert!(t.move_keys(FrameTarget::Whole).is_empty());
         assert!(t.has_frame_effect());
         t.remove_scale(c).unwrap();
         assert_eq!(t.remove_scale(c), Err(EditError::NoSuchEffect));
-        t.remove_move(FrameTarget::Whole).unwrap();
+        assert_eq!(
+            t.remove_move(FrameTarget::Whole),
+            Err(EditError::NoSuchEffect)
+        );
+        t.remove_move(c).unwrap();
         assert!(t.clip_frames.is_empty(), "empty entries are removed");
         assert_eq!(
             t.add_scale(FrameTarget::Clip(ClipId(99))),
@@ -2231,41 +2127,37 @@ pub(crate) mod tests {
 
     // covers: REQ-147, REQ-148
     #[test]
-    fn a_whole_video_scale_is_a_copy_on_each_clip_changed_together_and_alone() {
+    fn a_whole_video_scale_is_a_copy_on_each_clip_each_edited_alone() {
         let mut t = track(); // clips of 4 s and 6 s
         let (a, b) = (t.clips[0].id, t.clips[1].id);
+        let (ca, cb) = (FrameTarget::Clip(a), FrameTarget::Clip(b));
         let w = FrameTarget::Whole;
         assert!(t.add_scale(w).unwrap());
         assert!(!t.add_scale(w).unwrap(), "no second copy");
-        assert_eq!(t.scale_keys(FrameTarget::Clip(a)).len(), 1);
-        assert_eq!(t.scale_keys(FrameTarget::Clip(b)).len(), 1);
-        // a key at 5 s of clip time reaches only the clip that is long enough
-        t.add_scale_key(w, s(5), sc(2000)).unwrap();
-        assert_eq!(t.scale_keys(FrameTarget::Clip(a)).len(), 1);
-        assert_eq!(t.scale_keys(FrameTarget::Clip(b)).len(), 2);
-        // a key at 2 s: both copies; a value change sets it in each
-        t.add_scale_key(w, s(2), sc(1500)).unwrap();
-        t.set_scale_key(w, s(2), sc(1800)).unwrap();
-        for id in [a, b] {
-            let k = t.scale_keys(FrameTarget::Clip(id));
-            assert!(k.iter().any(|x| x.t == s(2) && x.v.permille == 1800));
-        }
-        // a clip's own copy changes that clip only; the popup shows the first clip's keys
-        t.set_scale_key(FrameTarget::Clip(b), s(2), sc(700))
-            .unwrap();
-        assert_eq!(t.scale_keys(FrameTarget::Clip(a))[1].v.permille, 1800);
-        assert_eq!(t.scale_keys(w), t.scale_keys(FrameTarget::Clip(a)));
-        // removing the key at 2 s removes it from each copy; the last key stays
-        t.remove_scale_key(w, s(2)).unwrap();
-        assert_eq!(t.scale_keys(FrameTarget::Clip(a)).len(), 1);
-        assert_eq!(t.scale_keys(FrameTarget::Clip(b)).len(), 2);
-        // deleting a clip takes its copy; a clip added later has none
+        assert_eq!(t.scale_keys(ca).len(), 1);
+        assert_eq!(t.scale_keys(cb).len(), 1);
+        // there is no whole-video state to read or edit any more (REQ-200)
+        assert!(t.scale_keys(w).is_empty());
+        assert_eq!(
+            t.add_scale_key(w, s(2), sc(1500)),
+            Err(EditError::NoSuchEffect)
+        );
+        // a key on clip 2 changes clip 2 only
+        t.add_scale_key(cb, s(5), sc(2000)).unwrap();
+        t.add_scale_key(cb, s(2), sc(1500)).unwrap();
+        t.set_scale_key(cb, s(2), sc(700)).unwrap();
+        assert_eq!(t.scale_keys(ca).len(), 1);
+        assert_eq!(t.scale_keys(cb).len(), 3);
+        assert_eq!(t.scale_keys(cb)[1].v.permille, 700);
+        // removing clip 2's copy leaves clip 1's
+        t.remove_scale(cb).unwrap();
+        assert_eq!(t.scale_keys(ca).len(), 1);
+        assert!(t.scale_keys(cb).is_empty());
+        // deleting a clip takes its copy; a clip added later has none (REQ-147)
         t.remove(a).unwrap();
         assert!(t.frames_of(a).is_none());
         let c = t.append(&media(9, 3, true)).unwrap();
         assert!(t.frames_of(c).is_none());
-        // Remove effect on the whole video: every clip's copy
-        t.remove_scale(w).unwrap();
         assert!(t.clip_frames.is_empty());
     }
 
@@ -2333,7 +2225,7 @@ pub(crate) mod tests {
             Err(EditError::NoSuchEffect)
         );
         assert_eq!(t.key_time(c, s(3)), Some(s(3)));
-        assert_eq!(t.key_time(FrameTarget::Whole, s(3)), Some(s(3)));
+        assert_eq!(t.key_time(FrameTarget::Whole, s(3)), None);
         assert_eq!(t.key_time(FrameTarget::Clip(ClipId(9)), s(3)), None);
     }
 

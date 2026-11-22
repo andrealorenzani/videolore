@@ -729,7 +729,7 @@ fn move_drag(
 pub fn readout(item: &crate::text::TextItem, rect: Rect, frame: (u32, u32)) -> String {
     let h = f64::from(frame.1);
     let min = (h * f64::from(crate::text::MIN_FIT) / 1000.0).max(6.0);
-    let max = (h * f64::from(crate::text::MAX_FIT) / 1000.0).max(min);
+    let max = (h * f64::from(item.cap()) / 1000.0).max(min);
     let l = crate::text::layout_in(
         &item.text,
         &item.font,
@@ -900,7 +900,7 @@ fn draw_safe_areas(ui: &Ui, app: &AppState, picture: Rect, frame: (u32, u32)) {
 }
 
 /// The box, corner handles and target of Scale and Move at the playhead (REQ-127, 128): the
-/// clip's own solid, and the copy selected in the whole-video popup dashed (REQ-202).
+/// clip's own handles, solid (REQ-202).
 fn draw_frame_handles(ui: &Ui, app: &AppState, picture: Rect, frame: (u32, u32)) {
     let (scale, moved) = (
         app.frame_target_at_playhead(FrameFx::Scale).is_some(),
@@ -909,20 +909,11 @@ fn draw_frame_handles(ui: &Ui, app: &AppState, picture: Rect, frame: (u32, u32))
     if (scale || moved)
         && let Some((fr, _)) = app.picture_rect()
     {
-        handle_set(ui, picture, frame, fr, scale, moved, false);
-    }
-    let (ws, wm) = (
-        app.whole_handle_clip(FrameFx::Scale),
-        app.whole_handle_clip(FrameFx::Move),
-    );
-    if let Some(copy) = ws.or(wm)
-        && let Some((fr, _)) = app.picture_rect_of_copy(copy)
-    {
-        handle_set(ui, picture, frame, fr, ws.is_some(), wm.is_some(), true);
+        handle_set(ui, picture, frame, fr, scale, moved);
     }
 }
 
-/// One set of handles on the rectangle `fr`: solid, or dashed for the whole video.
+/// One set of handles on the rectangle `fr`.
 fn handle_set(
     ui: &Ui,
     picture: Rect,
@@ -930,34 +921,13 @@ fn handle_set(
     fr: crate::frame::FractionRect,
     scale: bool,
     moved: bool,
-    dashed: bool,
 ) {
     let rect = frame_handles::to_rect(fr, frame);
     let s = placement::to_screen(rect, picture, frame);
     let painter = ui.painter_at(picture.expand(HANDLE_SIDE));
-    let (blue, red) = if dashed {
-        (
-            Color32::from_rgb(140, 170, 255),
-            Color32::from_rgb(255, 150, 150),
-        )
-    } else {
-        (Color32::LIGHT_BLUE, Color32::LIGHT_RED)
-    };
+    let (blue, red) = (Color32::LIGHT_BLUE, Color32::LIGHT_RED);
     if scale {
-        let stroke = Stroke::new(1.5, blue);
-        if dashed {
-            let o = s.expand(1.0);
-            let pts = [
-                o.left_top(),
-                o.right_top(),
-                o.right_bottom(),
-                o.left_bottom(),
-                o.left_top(),
-            ];
-            painter.extend(egui::Shape::dashed_line(&pts, stroke, 6.0, 4.0));
-        } else {
-            painter.rect_stroke(s, 0.0, stroke, StrokeKind::Outside);
-        }
+        painter.rect_stroke(s, 0.0, Stroke::new(1.5, blue), StrokeKind::Outside);
         let squares = boxes::handle_points(rect, frame, false)
             .into_iter()
             .map(|at| {
@@ -965,69 +935,39 @@ fn handle_set(
                 Rect::from_center_size(at.min, vec2(HANDLE_SIDE, HANDLE_SIDE))
             });
         for h in squares {
-            if dashed {
-                painter.rect_stroke(h, 0.0, Stroke::new(1.5, blue), StrokeKind::Outside);
-            } else {
-                painter.rect_filled(h, 0.0, blue);
-                painter.rect_stroke(
-                    h,
-                    0.0,
-                    Stroke::new(1.0, Color32::BLACK),
-                    StrokeKind::Outside,
-                );
-            }
+            painter.rect_filled(h, 0.0, blue);
+            painter.rect_stroke(
+                h,
+                0.0,
+                Stroke::new(1.0, Color32::BLACK),
+                StrokeKind::Outside,
+            );
         }
     }
     if moved {
         painter.circle(s.center(), 7.0, Color32::TRANSPARENT, Stroke::new(2.0, red));
-        if !dashed {
-            painter.circle_filled(s.center(), 2.0, red);
-        }
+        painter.circle_filled(s.center(), 2.0, red);
     }
 }
 
-/// The handle of Scale or Move under frame point `f`, as a drag to start: the clip's own
-/// handles first, then the dashed ones of the whole-video copy (REQ-202).
+/// The handle of Scale or Move under frame point `f`, as a drag to start: the handles of
+/// the clip under the playhead (REQ-202).
 fn grab_at(app: &AppState, f: Pos2, tol: f32, frame: (u32, u32)) -> Option<Grab> {
-    let own = app.picture_rect().and_then(|(fr, _)| {
-        let scale_t = app.frame_target_at_playhead(FrameFx::Scale);
-        let move_t = app.frame_target_at_playhead(FrameFx::Move);
-        let rect = frame_handles::to_rect(fr, frame);
-        let hit = frame_handles::hit(rect, frame, scale_t.is_some(), move_t.is_some(), f, tol)?;
-        let target = match hit {
-            frame_handles::Hit::Corner(_) | frame_handles::Hit::Edge(_) => scale_t?,
-            frame_handles::Hit::Target => move_t?,
-        };
-        Some(Grab {
-            target,
-            hit,
-            rect,
-            scale: app.scale_at(target).unwrap_or(crate::frame::Scale::NORMAL),
-            pos: app.move_at(target).unwrap_or(crate::frame::CENTRE),
-            grab: f - rect.center(),
-            frame,
-        })
-    });
-    if own.is_some() {
-        return own;
-    }
-    let (ws, wm) = (
-        app.whole_handle_clip(FrameFx::Scale),
-        app.whole_handle_clip(FrameFx::Move),
-    );
-    let copy = ws.or(wm)?;
-    let (fr, _) = app.picture_rect_of_copy(copy)?;
+    let (fr, _) = app.picture_rect()?;
+    let scale_t = app.frame_target_at_playhead(FrameFx::Scale);
+    let move_t = app.frame_target_at_playhead(FrameFx::Move);
     let rect = frame_handles::to_rect(fr, frame);
-    let hit = frame_handles::hit(rect, frame, ws.is_some(), wm.is_some(), f, tol)?;
-    let target = crate::timeline::FrameTarget::Clip(copy);
+    let hit = frame_handles::hit(rect, frame, scale_t.is_some(), move_t.is_some(), f, tol)?;
+    let target = match hit {
+        frame_handles::Hit::Corner(_) | frame_handles::Hit::Edge(_) => scale_t?,
+        frame_handles::Hit::Target => move_t?,
+    };
     Some(Grab {
         target,
         hit,
         rect,
-        scale: app
-            .scale_of_copy(copy)
-            .unwrap_or(crate::frame::Scale::NORMAL),
-        pos: app.move_of_copy(copy).unwrap_or(crate::frame::CENTRE),
+        scale: app.scale_at(target).unwrap_or(crate::frame::Scale::NORMAL),
+        pos: app.move_at(target).unwrap_or(crate::frame::CENTRE),
         grab: f - rect.center(),
         frame,
     })

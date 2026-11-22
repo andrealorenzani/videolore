@@ -32,6 +32,19 @@ pub enum PictureError {
     NotPng(String),
     #[error("the picture \"{0}\" is larger than 16384 pixels on a side")]
     TooLarge(String),
+    #[error("The picture is larger than 16 megapixels ({0} x {1}) and was not added.")]
+    TooManyPixels(u32, u32),
+}
+
+/// Most pixels (width times height) a picture item may have: 16 megapixels (REQ-316). The
+/// only limit: no count, no file size, no copy in the project.
+pub const MAX_PICTURE_PIXELS: u64 = 16_000_000;
+
+/// True when `path` is a PNG that can be drawn now: a file whose header gives a size within
+/// the limits. A picture file replaced by a larger one is not usable, like a missing one
+/// (REQ-316, REQ-287).
+pub fn usable(path: &Path) -> bool {
+    read(path).is_ok()
 }
 
 const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
@@ -58,6 +71,9 @@ pub fn read(path: &Path) -> Result<Picture, PictureError> {
         .map_err(|_| PictureError::Unreadable(name.clone()))?;
     let (width, height) =
         parse_png_size(&head).ok_or_else(|| PictureError::NotPng(name.clone()))?;
+    if u64::from(width) * u64::from(height) > MAX_PICTURE_PIXELS {
+        return Err(PictureError::TooManyPixels(width, height));
+    }
     if width > MAX_SIDE || height > MAX_SIDE {
         return Err(PictureError::TooLarge(name));
     }
@@ -184,6 +200,30 @@ pub(crate) mod tests {
         q.width = 5;
         q.path = "a\nb".into();
         assert!(!q.is_valid());
+    }
+
+    // covers: REQ-287
+    // covers: REQ-316
+    #[test]
+    fn a_picture_of_sixteen_megapixels_is_added_and_a_larger_one_is_refused_by_name_and_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("big.png");
+        std::fs::write(&png, header(4000, 4000)).unwrap();
+        assert_eq!(read(&png).map(|p| (p.width, p.height)), Ok((4000, 4000)));
+        assert!(usable(&png));
+        std::fs::write(&png, header(4001, 4000)).unwrap();
+        let e = read(&png).unwrap_err();
+        assert_eq!(e, PictureError::TooManyPixels(4001, 4000));
+        assert_eq!(
+            e.to_string(),
+            "The picture is larger than 16 megapixels (4001 x 4000) and was not added."
+        );
+        // a file replaced by a larger one, or gone, cannot be drawn (REQ-287)
+        assert!(!usable(&png));
+        assert!(!usable(&dir.path().join("none.png")));
+        // a long thin picture within the pixel limit but past the side limit keeps its message
+        std::fs::write(&png, header(20_000, 10)).unwrap();
+        assert!(matches!(read(&png), Err(PictureError::TooLarge(_))));
     }
 
     // covers: REQ-287

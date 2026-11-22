@@ -227,6 +227,120 @@ impl Drop for Load {
     }
 }
 
+/// Files whose Work copies were written by a [`Prep`] for the preview (REQ-312): the
+/// preview shows a LUT only once its copy is there, so the window never waits for the write.
+static PREPARED: Mutex<Vec<(String, Stamp)>> = Mutex::new(Vec::new());
+
+fn stamp_of(path: &str) -> Stamp {
+    std::fs::metadata(path).map_or((0, None), |m| (m.len(), m.modified().ok()))
+}
+
+/// True when the copies of the LUT at `path` are ready in the preview's folders and the file
+/// has not changed since.
+pub fn is_prepared(path: &str) -> bool {
+    let s = stamp_of(path);
+    PREPARED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|(p, st)| p == path && *st == s)
+}
+
+/// Forgets what is prepared (the preview's folders were removed).
+pub fn forget_prepared() {
+    PREPARED.lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
+/// What a [`Prep`] reports.
+pub enum PrepMsg {
+    /// Share done, 0..=100 (reading is the first half, writing the copies the second).
+    Progress(u8),
+    Done(Result<Arc<Lut>, LutError>),
+}
+
+/// The preparation of one LUT for the preview (REQ-312): its file is read and parsed, then
+/// the Work copy is written into each folder of the preview, all on a thread of its own with
+/// the share done reported. Dropping it stops the thread (a newer choice replaces it).
+pub struct Prep {
+    rx: Receiver<PrepMsg>,
+    cancel: Arc<AtomicBool>,
+    /// The latest share seen, 0..=100.
+    pub percent: u8,
+    /// The file being prepared.
+    pub path: String,
+}
+
+impl Prep {
+    /// Starts preparing `path` for the folders `dirs`.
+    pub fn start(path: &str, dirs: Vec<std::path::PathBuf>) -> Prep {
+        let (tx, rx) = channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (flag, p) = (cancel.clone(), path.to_string());
+        let failed = tx.clone();
+        let spawned = std::thread::Builder::new()
+            .name("lut-prep".into())
+            .spawn(move || {
+                let r = prepare(&p, &dirs, &flag, &tx);
+                let _ = tx.send(PrepMsg::Done(r));
+            });
+        if spawned.is_err() {
+            let _ = failed.send(PrepMsg::Done(Err(LutError::Read("no thread".into()))));
+        }
+        Prep {
+            rx,
+            cancel,
+            percent: 0,
+            path: path.to_string(),
+        }
+    }
+
+    /// The next message, if one is ready.
+    pub fn poll(&mut self) -> Option<PrepMsg> {
+        let m = self.rx.try_recv().ok()?;
+        if let PrepMsg::Progress(p) = &m {
+            self.percent = *p;
+        }
+        Some(m)
+    }
+}
+
+impl Drop for Prep {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+}
+
+fn prepare(
+    path: &str,
+    dirs: &[std::path::PathBuf],
+    cancel: &AtomicBool,
+    tx: &std::sync::mpsc::Sender<PrepMsg>,
+) -> Result<Arc<Lut>, LutError> {
+    let stamp = stamp_of(path);
+    let lut = cached_with(path, &mut |read, total| {
+        let p = (read.min(total) * 50).checked_div(total).unwrap_or(0) as u8;
+        let _ = tx.send(PrepMsg::Progress(p));
+        !cancel.load(Ordering::Relaxed)
+    })?;
+    for (i, d) in dirs.iter().enumerate() {
+        let base = 50 + 50 * i / dirs.len().max(1);
+        let span = 50 / dirs.len().max(1);
+        write_copy_with(d, &lut, &mut |n| {
+            let p = base + span * n.min(lut.size().pow(3)) / lut.size().pow(3).max(1);
+            let _ = tx.send(PrepMsg::Progress(p.min(99) as u8));
+            !cancel.load(Ordering::Relaxed)
+        })
+        .map_err(|e| LutError::Read(e.to_string()))?;
+    }
+    {
+        let mut done = PREPARED.lock().unwrap_or_else(|e| e.into_inner());
+        done.retain(|(p, _)| p != path);
+        done.push((path.to_string(), stamp));
+    }
+    let _ = tx.send(PrepMsg::Progress(100));
+    Ok(lut)
+}
+
 /// The name of the Work folder copy of `lut` (`lut-<hash>.cube`, fixed by code: no user
 /// text reaches a filter, ADR-206).
 pub fn copy_name(lut: &Lut) -> String {
@@ -236,6 +350,16 @@ pub fn copy_name(lut: &Lut) -> String {
 /// Writes the Work folder copy of `lut` into `dir` once per content: a streamed write to a
 /// temporary name, then a rename, so ffmpeg never reads half a file. Returns the file name.
 pub fn write_copy(dir: &Path, lut: &Lut) -> std::io::Result<String> {
+    write_copy_with(dir, lut, &mut |_| true)
+}
+
+/// [`write_copy`] with a progress report: `progress` gets the entries written so far and
+/// stops the write when it returns `false` (the partial file is removed).
+pub fn write_copy_with(
+    dir: &Path,
+    lut: &Lut,
+    progress: &mut dyn FnMut(usize) -> bool,
+) -> std::io::Result<String> {
     let name = copy_name(lut);
     let target = dir.join(&name);
     let want = lut.cube_len() as u64;
@@ -245,9 +369,7 @@ pub fn write_copy(dir: &Path, lut: &Lut) -> std::io::Result<String> {
     let tmp = dir.join(format!("{name}.part"));
     {
         let mut w = BufWriter::with_capacity(1 << 20, std::fs::File::create(&tmp)?);
-        let done = lut
-            .write_cube(&mut w, &mut |_| true)
-            .and_then(|()| w.flush());
+        let done = lut.write_cube(&mut w, progress).and_then(|()| w.flush());
         if let Err(e) = done {
             let _ = std::fs::remove_file(&tmp);
             return Err(e);
@@ -354,5 +476,57 @@ mod tests {
         };
         assert!(matches!(r, Err(LutError::Read(_))));
         drop(Load::start(p.to_str().unwrap()));
+    }
+}
+
+#[cfg(test)]
+mod prep_tests {
+    use super::*;
+
+    // covers: REQ-312
+    #[test]
+    fn a_preparation_reports_a_share_that_only_grows_and_leaves_the_copies_in_every_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("p.cube");
+        std::fs::write(&file, crate::lut::tests::identity(52)).unwrap();
+        let (a, b) = (dir.path().join("a"), dir.path().join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let path = file.to_str().unwrap();
+        assert!(!is_prepared(path));
+        let mut prep = Prep::start(path, vec![a.clone(), b.clone()]);
+        let mut seen = Vec::new();
+        let lut = loop {
+            match prep.poll() {
+                Some(PrepMsg::Progress(p)) => seen.push(p),
+                Some(PrepMsg::Done(r)) => break r.unwrap(),
+                None => std::thread::sleep(std::time::Duration::from_millis(1)),
+            }
+        };
+        assert!(seen.windows(2).all(|w| w[0] <= w[1]), "{seen:?}");
+        assert!(seen.len() >= 2 && *seen.last().unwrap() == 100, "{seen:?}");
+        assert_eq!(lut.size(), 52);
+        let name = copy_name(&lut);
+        for d in [&a, &b] {
+            assert_eq!(
+                std::fs::metadata(d.join(&name)).unwrap().len(),
+                lut.cube_len() as u64
+            );
+        }
+        assert!(is_prepared(path));
+        // the file changes: it is not prepared any more
+        std::fs::write(&file, crate::lut::tests::identity(3)).unwrap();
+        assert!(!is_prepared(path));
+        // a preparation of a file that is not a LUT fails with its reason
+        let bad = dir.path().join("bad.cube");
+        std::fs::write(&bad, "nope").unwrap();
+        let mut prep = Prep::start(bad.to_str().unwrap(), vec![a]);
+        let r = loop {
+            match prep.poll() {
+                Some(PrepMsg::Done(r)) => break r,
+                _ => std::thread::sleep(std::time::Duration::from_millis(1)),
+            }
+        };
+        assert!(r.is_err());
     }
 }

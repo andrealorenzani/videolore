@@ -109,8 +109,9 @@ impl AppState {
         self.popups.set_target(p, t);
     }
 
-    /// Title of a popup: the effect, and what it was applied to ("— whole video",
-    /// "— <clip name>").
+    /// Title of a popup: the effect, and the clip it was applied to ("— <clip name>").
+    /// Only Change aspect says "— whole video": every other whole-video effect is a copy on
+    /// each clip (REQ-076, REQ-147).
     pub fn popup_title(&self, p: Popup) -> String {
         let base = match (p, self.popups.instance) {
             (Popup::Instance, Some(Instance::ClipVolume(_))) => "Clip volume",
@@ -118,14 +119,15 @@ impl AppState {
             (Popup::Instance, Some(Instance::FadeStart)) => "Fade from black",
             (Popup::Instance, Some(Instance::FadeEnd)) => "Fade to black",
             (Popup::Instance, Some(Instance::Pov(..))) => "Point of view",
-            (Popup::Instance, Some(Instance::Aspect)) => "Change aspect",
+            (Popup::Instance, Some(Instance::Aspect)) => {
+                return "Change aspect — whole video".to_string();
+            }
             (Popup::Instance, Some(Instance::Scale(t))) => return self.frame_title("Scale", t),
             (Popup::Instance, Some(Instance::Move(t))) => return self.frame_title("Move", t),
             (Popup::Instance, Some(Instance::Lut(t))) => return self.frame_title("Apply LUT", t),
             _ => p.title(),
         };
         match self.popups.target(p) {
-            Some(Target::WholeVideo) => format!("{base} — whole video"),
             Some(Target::Clip(id)) => match self.clip_name(id) {
                 Some(n) => format!("{base} — {n}"),
                 None => base.to_string(),
@@ -136,7 +138,8 @@ impl AppState {
 
     fn frame_title(&self, base: &str, t: FrameTarget) -> String {
         match t {
-            FrameTarget::Whole => format!("{base} — whole video"),
+            // the file chooser that gives every clip its own copy
+            FrameTarget::Whole => format!("{base} — every clip"),
             FrameTarget::Clip(id) => match self.clip_name(id) {
                 Some(n) => format!("{base} — {n}"),
                 None => base.to_string(),
@@ -423,17 +426,21 @@ impl AppState {
     }
 
     /// The project as shown in the preview: with the lines being dragged at their new
-    /// place.
+    /// place, and without the LUTs that are still being prepared (the unprocessed picture
+    /// meanwhile, REQ-312).
     pub fn shown_project(&self) -> std::borrow::Cow<'_, Project> {
         let overlay = self.live_overlay();
+        let unready = self.unready_luts();
         if self.drag_pos.is_none()
             && self.resize_drag.is_none()
             && self.frame_drag.is_none()
             && overlay.is_empty()
+            && unready.is_empty()
         {
             return std::borrow::Cow::Borrowed(&self.project);
         }
         let mut q = self.project.clone();
+        q.timeline.clip_luts.retain(|l| !unready.contains(&l.path));
         if let Some((ids, p)) = &self.drag_pos {
             let _ = q.subtitles.set_position(ids, Some(*p));
         }

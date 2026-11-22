@@ -507,6 +507,44 @@ impl Stack {
         )
     }
 
+    /// The offset along x that the Scale keys alone leave (the corner handles), as an expression:
+    /// the Scale row of a clip built step by step places its picture with it (REQ-320).
+    pub fn scale_offset_x(&self) -> String {
+        self.terms(self.scale.iter().map(|tr| piecewise(tr, |s| frac(s.dx))))
+    }
+
+    /// [`Self::scale_offset_x`] along y.
+    pub fn scale_offset_y(&self) -> String {
+        self.terms(self.scale.iter().map(|tr| piecewise(tr, |s| frac(s.dy))))
+    }
+
+    /// The offset along x of the Move keys alone, as an expression.
+    pub fn move_offset_x(&self) -> String {
+        self.terms(
+            self.moved
+                .iter()
+                .map(|tr| piecewise(tr, |p| f64::from(p.x) / f64::from(POS_MAX) - 0.5)),
+        )
+    }
+
+    /// [`Self::move_offset_x`] along y.
+    pub fn move_offset_y(&self) -> String {
+        self.terms(
+            self.moved
+                .iter()
+                .map(|tr| piecewise(tr, |p| f64::from(p.y) / f64::from(POS_MAX) - 0.5)),
+        )
+    }
+
+    fn terms(&self, it: impl Iterator<Item = String>) -> String {
+        let terms: Vec<String> = it.collect();
+        if terms.is_empty() {
+            "0".into()
+        } else {
+            terms.join("+")
+        }
+    }
+
     fn offset(&self, s: impl Fn(&Scale) -> f64 + Copy, m: impl Fn(&Pos) -> f64 + Copy) -> String {
         let mut terms: Vec<String> = self.scale.iter().map(|tr| piecewise(tr, s)).collect();
         terms.extend(self.moved.iter().map(|tr| piecewise(tr, m)));

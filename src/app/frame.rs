@@ -46,34 +46,81 @@ impl AppState {
                 }
                 self.show_instance(Instance::Aspect);
             }
-            EffectKind::Scale => {
-                if tl.scale_keys(target).is_empty() {
-                    self.edit(now, "Scale", |e| {
-                        e.timeline.add_scale(target).map(|_| ()).map_err(err)
+            // a whole-video Scale or Move is a copy on each clip that lacks one (REQ-148);
+            // the popup that opens is the one of the clip under the playhead
+            EffectKind::Scale | EffectKind::Move => {
+                let scale = effect == EffectKind::Scale;
+                let lacks = |id: ClipId| {
+                    let t = FrameTarget::Clip(id);
+                    if scale {
+                        tl.scale_keys(t).is_empty()
+                    } else {
+                        tl.move_keys(t).is_empty()
+                    }
+                };
+                let needed = match clip {
+                    Some(id) => lacks(id),
+                    None => tl.clips.iter().any(|c| lacks(c.id)),
+                };
+                if needed {
+                    let label = if scale { "Scale" } else { "Move" };
+                    self.edit(now, label, |e| {
+                        let added = if scale {
+                            e.timeline.add_scale(target)
+                        } else {
+                            e.timeline.add_move(target)
+                        };
+                        added.map(|_| ()).map_err(err)
                     })?;
                 }
-                self.show_instance(Instance::Scale(target));
-            }
-            EffectKind::Move => {
-                if tl.move_keys(target).is_empty() {
-                    self.edit(now, "Move", |e| {
-                        e.timeline.add_move(target).map(|_| ()).map_err(err)
-                    })?;
+                let shown = clip.or_else(|| self.clip_at_playhead_or_first());
+                if let Some(id) = shown {
+                    let t = FrameTarget::Clip(id);
+                    self.show_instance(if scale {
+                        Instance::Scale(t)
+                    } else {
+                        Instance::Move(t)
+                    });
                 }
-                self.show_instance(Instance::Move(target));
             }
             _ => {}
         }
         Ok(())
     }
 
-    /// Opens the popup of a picture effect without applying it (the effect's row).
+    /// The clip under the playhead, else the first clip.
+    pub(super) fn clip_at_playhead_or_first(&self) -> Option<ClipId> {
+        let tl = &self.project.timeline;
+        tl.locate(self.playhead)
+            .map(|(i, _)| tl.clips[i].id)
+            .or_else(|| tl.clips.first().map(|c| c.id))
+    }
+
+    /// Opens the popup of a picture effect without applying it (the effect's row): Change
+    /// aspect's, or the popup of the selected clip's own Scale, Move or Apply LUT (there is
+    /// no whole-video popup, REQ-200).
     pub(super) fn open_frame_effect(&mut self, effect: EffectKind) {
+        if effect == EffectKind::ChangeAspect {
+            self.show_instance(Instance::Aspect);
+            return;
+        }
+        let Some(id) = self.target_clip() else { return };
+        let t = FrameTarget::Clip(id);
+        let tl = &self.project.timeline;
         match effect {
-            EffectKind::ChangeAspect => self.show_instance(Instance::Aspect),
-            EffectKind::Scale => self.show_instance(Instance::Scale(FrameTarget::Whole)),
-            EffectKind::Move => self.show_instance(Instance::Move(FrameTarget::Whole)),
-            EffectKind::ApplyLut => self.show_instance(Instance::Lut(FrameTarget::Whole)),
+            EffectKind::Scale if !tl.scale_keys(t).is_empty() => {
+                self.show_instance(Instance::Scale(t));
+            }
+            EffectKind::Move if !tl.move_keys(t).is_empty() => {
+                self.show_instance(Instance::Move(t));
+            }
+            EffectKind::ApplyLut => self.show_instance(Instance::Lut(t)),
+            EffectKind::Scale | EffectKind::Move => {
+                self.status = format!(
+                    "This clip has no {}: drag it onto the clip, or double-click it to give every clip one",
+                    effect.name()
+                );
+            }
             _ => {}
         }
     }
@@ -116,15 +163,6 @@ impl AppState {
 
     /// The time of a key of `target` at the playhead.
     fn key_at_playhead(&self, target: FrameTarget) -> Result<Micros, String> {
-        // the dashed handles of the whole-video copy work at the same time into their clip
-        // as the playhead is into its own (REQ-202)
-        if let FrameTarget::Clip(c) = target
-            && (self.whole_handle_clip(FrameFx::Scale) == Some(c)
-                || self.whole_handle_clip(FrameFx::Move) == Some(c))
-            && let Some(t) = self.copy_key_time(c)
-        {
-            return Ok(t);
-        }
         self.project
             .timeline
             .key_time(target, self.playhead)
@@ -154,32 +192,6 @@ impl AppState {
             FrameFx::Move => !tl.move_keys(clip).is_empty(),
         };
         has.then_some(clip)
-    }
-
-    /// The copy the whole-video popup of `effect` shows: the selected row while that clip
-    /// still has the effect, else the first clip that has it (REQ-200).
-    pub fn selected_copy(&self, effect: FrameFx) -> Option<ClipId> {
-        let tl = &self.project.timeline;
-        let has = |id: ClipId| match effect {
-            FrameFx::Scale => !tl.scale_keys(FrameTarget::Clip(id)).is_empty(),
-            FrameFx::Move => !tl.move_keys(FrameTarget::Clip(id)).is_empty(),
-        };
-        self.popups
-            .copy
-            .filter(|c| has(*c))
-            .or_else(|| tl.clips.iter().map(|c| c.id).find(|c| has(*c)))
-    }
-
-    /// Selects a row of the whole-video popup: its keyframes are the ones shown and
-    /// edited, and the playhead goes to the start of that clip (REQ-200).
-    pub(super) fn select_copy(&mut self, clip: ClipId, now: Instant) -> Result<(), String> {
-        let tl = &self.project.timeline;
-        let i = tl.index_of(clip).ok_or(EditError::NoSuchClip.to_string())?;
-        let start = tl.start_of(i);
-        self.popups.copy = Some(clip);
-        self.popups.key = None;
-        self.seek(start, now);
-        Ok(())
     }
 
     /// "Copy keyframes": the clip's keys of `effect`, in the clip's own time (REQ-204).
@@ -421,56 +433,6 @@ impl AppState {
         };
         let p = st.at(local.clamp(Micros::ZERO, c.len()));
         Some((p.rect(frame, picture), frame))
-    }
-
-    /// The second set of picture handles (REQ-202): the copy that the whole-video Scale or
-    /// Move popup has selected, when it belongs to another clip than the one under the
-    /// playhead. The clip's own handles are solid, these are dashed; a drag changes only
-    /// the copy its handle belongs to.
-    pub fn whole_handle_clip(&self, effect: FrameFx) -> Option<ClipId> {
-        let open = self.popups.is_open(Popup::Instance)
-            && match self.popups.instance {
-                Some(Instance::Scale(FrameTarget::Whole)) => effect == FrameFx::Scale,
-                Some(Instance::Move(FrameTarget::Whole)) => effect == FrameFx::Move,
-                _ => false,
-            };
-        if !open {
-            return None;
-        }
-        let copy = self.selected_copy(effect)?;
-        let tl = &self.project.timeline;
-        let (i, _) = tl.locate(self.playhead)?;
-        (tl.clips[i].id != copy).then_some(copy)
-    }
-
-    /// The rectangle of the copy of clip `copy` shown with the dashed handles: the same time
-    /// into the clip as the playhead is into the clip under it.
-    pub fn picture_rect_of_copy(
-        &self,
-        copy: ClipId,
-    ) -> Option<(crate::frame::FractionRect, (u32, u32))> {
-        let tl = &self.project.timeline;
-        let (_, start) = tl.locate(self.playhead)?;
-        self.picture_rect_of(tl.index_of(copy)?, self.playhead - start)
-    }
-
-    /// The Scale shown for clip `copy` at the same time into the clip as the playhead.
-    pub fn scale_of_copy(&self, copy: ClipId) -> Option<Scale> {
-        let t = self.copy_key_time(copy)?;
-        keyframes::at(self.project.timeline.scale_keys(FrameTarget::Clip(copy)), t)
-    }
-
-    /// The Move shown for clip `copy` at the same time into the clip as the playhead.
-    pub fn move_of_copy(&self, copy: ClipId) -> Option<Pos> {
-        let t = self.copy_key_time(copy)?;
-        keyframes::at(self.project.timeline.move_keys(FrameTarget::Clip(copy)), t)
-    }
-
-    fn copy_key_time(&self, copy: ClipId) -> Option<Micros> {
-        let tl = &self.project.timeline;
-        let (_, start) = tl.locate(self.playhead)?;
-        let c = tl.get(copy)?;
-        Some(c.src_at((self.playhead - start).clamp(Micros::ZERO, c.len())))
     }
 }
 

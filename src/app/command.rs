@@ -477,10 +477,6 @@ pub enum Command {
         edge: crate::timeline::ClipEdge,
         delta: Micros,
     },
-    /// The "Apply to new clips" button of the status bar (REQ-201).
-    ApplyWholeToNew,
-    /// Selects the copy shown by the whole-video Scale or Move popup (REQ-200).
-    SelectCopy(ClipId),
     /// "Copy keyframes" of a clip's Scale or Move (REQ-204).
     CopyKeys {
         clip: ClipId,
@@ -583,7 +579,6 @@ impl Command {
             Command::AddSubtitle => "Add subtitle line",
             Command::ConfirmImportSubtitles => "Import subtitles",
             Command::TrimEdge { .. } => "Trim",
-            Command::ApplyWholeToNew => "Apply to new clips",
             Command::PasteKeys { .. } => "Paste keyframes",
             Command::MoveKey { .. } => "Move keyframe",
             Command::MoveFade { .. } => "Move fade",

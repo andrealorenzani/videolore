@@ -716,9 +716,10 @@ fn frame_effects_under_faster_are_checked_and_match_best_quality() {
         }))
         .unwrap();
     p.timeline.add_scale(FrameTarget::Whole).unwrap();
+    let c0 = FrameTarget::Clip(p.timeline.clips[0].id);
     p.timeline
         .set_scale_key(
-            FrameTarget::Whole,
+            c0,
             Micros::ZERO,
             Scale {
                 permille: 600,
@@ -729,7 +730,7 @@ fn frame_effects_under_faster_are_checked_and_match_best_quality() {
         .unwrap();
     p.timeline.add_move(FrameTarget::Whole).unwrap();
     p.timeline
-        .set_move_key(FrameTarget::Whole, Micros::ZERO, Pos { x: 6000, y: 5000 })
+        .set_move_key(c0, Micros::ZERO, Pos { x: 6000, y: 5000 })
         .unwrap();
     let (best, m) = env.export_job(
         &p,
@@ -1050,4 +1051,122 @@ fn qg05_reference_render() {
             env.format_of(&path)
         );
     }
+}
+
+/// REQ-315 measurement (manual, real hardware, `--ignored`): the QG-05 reference project (a
+/// 1080p H.264 video of 30 s in three cuts) is exported three times with Best quality and three
+/// times with Faster; for Faster the times of the phases are printed (the hardware encode, the
+/// strict decode, the three sample renders) from the progress events, and the output of both is
+/// compared (format and frame count). Run with the system ffmpeg that reaches the hardware:
+/// `VIDEOLORE_FFMPEG=/usr/bin/ffmpeg VIDEOLORE_FFPROBE=/usr/bin/ffprobe cargo test --release
+/// --test ffmpeg_integration req315 -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn req315_phase_times() {
+    let Some(env) = setup() else { return };
+    let (w, h) = (1920, 1080);
+    let clip = env.fixture(
+        "req315-1080p30-10s.mp4",
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            &format!("testsrc2=size={w}x{h}:rate=30:duration=10,noise=alls=12:allf=t"),
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=10",
+            "-c:a",
+            "aac",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-b:v",
+            "8M",
+            "-pix_fmt",
+            "yuv420p",
+            "-g",
+            "30",
+        ],
+    );
+    let mut p = Project::default();
+    let m = env.probe(&mut p, &clip);
+    for _ in 0..3 {
+        p.timeline.append(&m).unwrap();
+    }
+    // a fade between the first two cuts: the project is re-encoded, not copied
+    p.timeline.toggle_fade(0).unwrap();
+    let status = hwenc::probe_all(
+        &SystemRunner,
+        &env.info.ffmpeg,
+        &env.info.encoders,
+        &Platform::detect(),
+        ProbeLimits::default(),
+        &Default::default(),
+        &AtomicBool::new(false),
+    );
+    eprintln!("REQ-315 hardware: {status:?}");
+    let hw = HwOffer::automatic(&status);
+    let mut best = Vec::new();
+    let mut faster = Vec::new();
+    let faster_only = std::env::var("VIDEOLORE_REQ315_FASTER_ONLY").is_ok();
+    for run in 0..3 {
+        for (name, offer) in [("best", None), ("faster", Some(hw.clone()))] {
+            if faster_only && name == "best" && run > 0 {
+                continue;
+            }
+            let out = env.dir.path().join(format!("req315-{name}-{run}.mp4"));
+            let mut job = env.job(&p, &out);
+            job.threads = None;
+            job.hw = offer;
+            let (tx, rx) = channel();
+            let start = Instant::now();
+            let (took, marks, method) = std::thread::scope(|s| {
+                let reader = s.spawn(move || {
+                    // when the progress first reached the end of the encode (85%), of the strict
+                    // decode (90%) and of the samples (100%)
+                    let mut marks = [None; 3];
+                    while let Ok(e) = rx.recv() {
+                        let at = start.elapsed().as_secs_f64();
+                        if let ExportEvent::Progress(f) = e {
+                            for (i, limit) in [0.85f32, 0.9, 0.999].iter().enumerate() {
+                                if f >= *limit && marks[i].is_none() {
+                                    marks[i] = Some(at);
+                                }
+                            }
+                        }
+                    }
+                    marks
+                });
+                let (_, method) =
+                    export::run(&job, &SystemRunner, &AtomicBool::new(false), &tx).unwrap();
+                let took = start.elapsed().as_secs_f64();
+                drop(tx);
+                (took, reader.join().unwrap(), method)
+            });
+            eprintln!(
+                "REQ-315 {name} run {run}: {took:.2} s {method:?} marks(85%,90%,100%) {marks:?}"
+            );
+            if name == "best" {
+                best.push(took);
+            } else {
+                faster.push(took);
+            }
+            if run == 0 && name == "faster" {
+                let b = env.dir.path().join("req315-best-0.mp4");
+                assert_eq!(env.format_of(&out), env.format_of(&b));
+            }
+        }
+    }
+    let median = |v: &mut Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    let (mb, mf) = (median(&mut best), median(&mut faster));
+    eprintln!(
+        "REQ-315 median best {mb:.2} s, faster {mf:.2} s: faster is {:.1}% {}",
+        (1.0 - mf / mb).abs() * 100.0,
+        if mf < mb { "lower" } else { "higher" }
+    );
 }

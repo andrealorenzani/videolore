@@ -2,6 +2,20 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 2.2.0 — 2026-11-21 22:07 +0000
+- Added: the Applied effects widget is a column on the right of the Preview (at least 180 px wide, its width kept with the layout), and every effect except Speed can be moved up or down in it: Crop, Change aspect, Scale, Move, LUT, Fade, texts, picture items, subtitle lines, Volume and Clean audio; Speed stays fixed. On 360 clips the rows fixed to the sphere stay fixed. A LUT above Change aspect grades the frame fill (REQ-317 to REQ-322).
+- Added: a text's Maximum size (2 to 50% of the picture height) in the text popup and the Add Text popup; without one the 10% default stays (REQ-323).
+- Changed: whole-video effects are copies on every clip: Scale, Move and Apply LUT added to the whole video give each clip its own copy in one undo step, and the copies are edited on their clip; Fade IN and OUT stay on the first clip's start and the last clip's end; Change aspect keeps its whole-video double-click (REQ-083, REQ-129, REQ-131, REQ-147, REQ-148, REQ-200 to REQ-202, REQ-303, REQ-076).
+- Removed: the whole-video popup, its row list, the status-bar offer and the "whole video" mark of the Applied effects widget.
+- Changed: the text size follows its box (measured best fit), with the optional maximum per text (REQ-318, REQ-319).
+- Changed: a LUT is prepared in the background with a percentage in the status bar; the preview shows the picture without the LUT meanwhile, and the export is not affected (REQ-312).
+- Changed: picture items are limited to 16 megapixels; a larger picture is refused with a message (REQ-316).
+- Changed: Faster checks its decode and its sample renders at the same time: on one measured Intel machine the total was about 9% less than before (12.3 s Best quality, 11.3 s Faster). The 20% target is not met; the hardware encode phase is the rest (REQ-315). The blurred fill costs about 2 ms a frame more and is unchanged (REQ-314).
+- Changed: project format 13 is written by 2.2.0; 2.1.0 and older refuse it with a message and leave the file untouched; formats 12 and older open as before.
+- Changed: REQ-177 (speech regions for reused subtitles) is built but not met: 43% of the words within 0.3 s against 90% on the reference clip; the old timing stays.
+- Changed: tests replaced where they tested the removed whole-video popup and mark (timeline, app, Applied widget and interface tests), now copy tests on each clip.
+- Changed: the widget test of the picture rows changed: Crop is a movable row, so the widget lists three movable rows in the picture group.
+
 ## 2.1.0 — 2026-11-21 19:43 +0000
 - Added: LUT files of up to 256 points per side and 512 MiB can be chosen with Choose file…; a large LUT loads in the background with a percentage and can be cancelled; a LUT above 20 MB keeps only its path in the project, and the 64 MB total of copies is unchanged (REQ-300, REQ-301).
 - Added: Applied effects widget in the Preview section (about 15% of its space) lists the effects of the selected clip in the order they are applied; move a LUT, text, picture item or the subtitles up or down with the buttons, by drag, or with Alt+Up and Alt+Down; preview and export use the same order, overlapping texts follow it, and an effect applied to the whole video is marked "whole video" on each clip; a new LUT or picture goes on top (REQ-302 to REQ-305).

@@ -615,6 +615,10 @@ impl FrameKey {
         {
             return None;
         }
+        // a clip built step by step has its background made from its own steps (REQ-320)
+        if crate::effect_order::needs_steps(&self.order) {
+            return None;
+        }
         let what = format!(
             "{:?}|{}|{:?}|{:?}|{:?}",
             self.path, self.frame, self.size, aspect, self.luts

@@ -32,11 +32,22 @@ impl Project {
         let lines = self.subtitles.project(tl);
         let mut start = Micros::ZERO;
         let mut out = Vec::with_capacity(tl.clips.len());
-        for c in &tl.clips {
+        for (index, c) in tl.clips.iter().enumerate() {
             let end = start + c.len();
             let sphere = self.media(c.media).is_some_and(|m| m.format.is_360());
+            // the fades at the ends of the video belong to the first and last clip (REQ-083);
+            // a fade between two clips is shown on both
+            let fade = (index == 0 && c.fade_in)
+                || (index > 0 && tl.has_fade(index - 1))
+                || tl.has_fade(index)
+                || (index + 1 == tl.clips.len() && c.fade_out);
             let mut present = Present {
                 lut: tl.lut_of(FrameTarget::Clip(c.id)).is_some(),
+                crop: !c.crop.is_none(),
+                frame: tl.frame_aspect.is_some() || tl.own_aspect(c.id).is_some(),
+                scale: !tl.scale_keys(FrameTarget::Clip(c.id)).is_empty(),
+                moved: !tl.move_keys(FrameTarget::Clip(c.id)).is_empty(),
+                fade,
                 ..Default::default()
             };
             let mut sphere_texts = Vec::new();
@@ -87,6 +98,37 @@ impl Project {
         })
     }
 
+    /// What the sound group of a clip has: its Volume (a level, a mute or keyframes) and its
+    /// Clean audio.
+    fn sound_has(&self, clip: ClipId) -> (bool, bool) {
+        let tl = &self.timeline;
+        tl.get(clip).map_or((false, false), |c| {
+            (
+                c.has_volume() || !tl.volume_keys(clip).is_empty(),
+                c.clean_audio,
+            )
+        })
+    }
+
+    /// The order of the sound group of a clip, top (applied first) to bottom (REQ-320).
+    pub fn sound_order(&self, clip: ClipId) -> Vec<Row> {
+        let (v, c) = self.sound_has(clip);
+        crate::order_chain::resolve_sound(self.timeline.order_of(clip), v, c)
+    }
+
+    /// True when the clip's Volume is applied before its Clean audio (not the default order).
+    pub fn sound_swapped(&self, clip: ClipId) -> bool {
+        let (v, c) = self.sound_has(clip);
+        crate::order_chain::sound_swapped(self.timeline.order_of(clip), v, c)
+    }
+
+    /// Stores the sound group order of `clip`, keeping its picture rows (nothing is written
+    /// for the default order).
+    pub fn set_sound_order(&mut self, clip: ClipId, order: &[Row]) {
+        let rows = crate::order_chain::with_sound(self.timeline.order_of(clip), order);
+        self.timeline.set_order(clip, rows);
+    }
+
     /// The clips whose order differs from the older one, with their rows top first: they are
     /// drawn by the overlay stage of the render.
     pub fn changed_orders(&self) -> Vec<(ClipRows, Vec<Row>)> {
@@ -108,6 +150,7 @@ impl Project {
     pub fn set_order(&mut self, clip: ClipId, order: Vec<Row>) {
         let Some(r) = self.rows_of(clip) else { return };
         let rows = effect_order::to_store(order, &r.present);
+        let rows = crate::order_chain::with_picture(self.timeline.order_of(clip), rows);
         self.timeline.set_order(clip, rows);
     }
 
@@ -119,11 +162,18 @@ impl Project {
             if only.is_some_and(|o| !o.contains(&r.clip)) {
                 continue;
             }
-            if !r.present.is_empty() && r.present.has(row) {
+            // on top of the other movable rows only: a LUT on a clip that has no text, picture
+            // or lines stays in the clip's own chain, under the frame, as before (2.2.0: the
+            // rows that act on the picture are not part of "on top")
+            let p = &r.present;
+            let movable =
+                usize::from(p.lut) + usize::from(p.subtitles) + p.texts.len() + p.pictures.len();
+            if movable > 1 && p.has(row) {
                 let mut order: Vec<Row> = self.order_of(r.clip);
                 order.retain(|x| *x != row);
                 order.insert(0, row);
                 let rows = effect_order::to_store(order, &r.present);
+                let rows = crate::order_chain::with_picture(self.timeline.order_of(r.clip), rows);
                 self.timeline.set_order(r.clip, rows);
             }
         }
@@ -148,7 +198,15 @@ impl Project {
                 let ok = match r {
                     Row::Unknown => false,
                     Row::Text(i) | Row::Picture(i) => ids.contains(i),
-                    Row::Lut | Row::Subtitles => true,
+                    Row::Lut
+                    | Row::Subtitles
+                    | Row::Volume
+                    | Row::Clean
+                    | Row::Crop
+                    | Row::Frame
+                    | Row::Scale
+                    | Row::Move
+                    | Row::Fade => true,
                 };
                 if ok && !rows.contains(r) {
                     rows.push(*r);

@@ -98,11 +98,24 @@ fn choosing_changing_and_removing_a_lut_are_one_undo_step_each() {
         app.disabled_reason(&Command::RemoveLut(c)),
         Some("There is no LUT to remove")
     );
-    // the whole video's LUT, from the Effects row (no target yet): shown for the whole video
+    // a click on the Effects row opens the popup of the clip (2.2.0: no whole-video popup)
     app.dispatch(Command::OpenFrameEffect(EffectKind::ApplyLut), now())
         .unwrap();
+    assert!(matches!(
+        app.popups.instance,
+        Some(Instance::Lut(FrameTarget::Clip(_)))
+    ));
+    // the double-click chooser gives every clip its copy
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::ApplyLut,
+            target: Target::WholeVideo,
+        },
+        now(),
+    )
+    .unwrap();
     assert_eq!(app.popups.instance, Some(Instance::Lut(FrameTarget::Whole)));
-    assert_eq!(app.popup_title(Popup::Instance), "Apply LUT — whole video");
+    assert_eq!(app.popup_title(Popup::Instance), "Apply LUT — every clip");
     app.dispatch(Command::PickLut(FrameTarget::Whole), now())
         .unwrap();
     assert_eq!(
@@ -515,4 +528,117 @@ fn an_80_mb_lut_is_used_but_only_its_path_is_kept_in_the_project() {
     assert_eq!(app.missing_luts(), ["huge.cube"]);
     // the project of this text carries no copy to fall back on
     assert!(!crate::lut::has_embedded(text(&big)));
+}
+
+/// Ticks until every LUT of the project is prepared: the slowest tick and whether the status
+/// line ever said "Preparing LUT".
+fn tick_until_prepared(app: &mut AppState) -> (Duration, bool) {
+    let mut worst = Duration::ZERO;
+    let mut said = false;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !app.unready_luts().is_empty() {
+        let t = Instant::now();
+        app.tick(t);
+        worst = worst.max(t.elapsed());
+        said |= app.status.starts_with("Preparing LUT ");
+        assert!(Instant::now() < deadline, "{}", app.status);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    (worst, said)
+}
+
+// covers: REQ-312
+#[test]
+fn a_lut_is_prepared_in_the_background_and_the_preview_shows_the_picture_without_it_meanwhile() {
+    let (dir, mut app, _) = three();
+    let file = dir.path().join("prep.cube");
+    std::fs::write(&file, crate::lut::tests::identity(30)).unwrap();
+    let c = FrameTarget::Clip(clip(&app, 0));
+    app.dispatch(
+        Command::SetLut {
+            target: c,
+            path: file.clone(),
+        },
+        now(),
+    )
+    .unwrap();
+    let path = text(&file).to_string();
+    // the LUT is chosen but not ready: the project has it, the preview does not (the
+    // unprocessed picture), and the first tick says what is going on
+    assert_eq!(app.unready_luts(), vec![path.clone()]);
+    assert!(app.shown_project().timeline.clip_luts.is_empty());
+    assert_eq!(app.project.timeline.clip_luts.len(), 1);
+    let (worst, said) = tick_until_prepared(&mut app);
+    assert!(worst < Duration::from_millis(200), "{worst:?}");
+    // ready: the preview shows it at once, the colours are those of the file
+    assert_eq!(app.shown_project().timeline.clip_luts.len(), 1);
+    assert!(crate::lut::is_prepared(&path));
+    let _ = said;
+    // a bigger table: the status line says "Preparing LUT" with a share, the interface
+    // answers within 200 ms meanwhile (REQ-312 a, b)
+    let big = dir.path().join("bigger.cube");
+    std::fs::write(&big, crate::lut::tests::identity(46)).unwrap();
+    app.dispatch(
+        Command::SetLut {
+            target: c,
+            path: big.clone(),
+        },
+        now(),
+    )
+    .unwrap();
+    wait_for_lut(&mut app);
+    let (worst, said) = tick_until_prepared(&mut app);
+    assert!(worst < Duration::from_millis(200), "{worst:?}");
+    assert!(said, "the status line said Preparing LUT");
+    assert!(crate::lut::is_prepared(text(&big)));
+    // a newer choice replaces the preparation in progress (REQ-312 d): the old file is no
+    // longer wanted
+    let other = dir.path().join("other.cube");
+    std::fs::write(&other, crate::lut::tests::identity(30)).unwrap();
+    app.dispatch(
+        Command::SetLut {
+            target: c,
+            path: other.clone(),
+        },
+        now(),
+    )
+    .unwrap();
+    assert_eq!(app.unready_luts(), vec![text(&other).to_string()]);
+    app.tick(now());
+    assert_eq!(
+        app.lut_prep.as_ref().map(|p| p.path.clone()),
+        Some(text(&other).to_string())
+    );
+}
+
+// covers: REQ-312
+#[test]
+fn a_lut_that_cannot_be_prepared_says_why_and_is_left_out_of_the_preview() {
+    let (dir, mut app, _) = three();
+    let file = dir.path().join("gone.cube");
+    std::fs::write(&file, crate::lut::tests::identity(5)).unwrap();
+    let c = FrameTarget::Clip(clip(&app, 0));
+    app.dispatch(
+        Command::SetLut {
+            target: c,
+            path: file.clone(),
+        },
+        now(),
+    )
+    .unwrap();
+    // the file is damaged after it was chosen (not cached any more)
+    std::fs::write(
+        &file,
+        "not a lut at all, and long enough to change the size",
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while app.lut_failed.is_empty() {
+        app.tick(now());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(app.status.contains("gone.cube"), "{}", app.status);
+    assert!(app.unready_luts().is_empty(), "not tried again");
+    assert!(app.shown_project().timeline.clip_luts.len() == 1 || app.project.timeline.any_lut());
 }

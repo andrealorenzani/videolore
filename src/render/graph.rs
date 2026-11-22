@@ -135,6 +135,38 @@ pub enum Background {
     Cached(usize),
 }
 
+/// The chain that makes the blurred background of clip `i` from the picture `[pb{i}]` (the
+/// fitted picture): a small copy, blurred, scaled back to the frame, ending in `[b{i}]`.
+pub(super) fn blur_chain(i: usize, (w, h): (u32, u32), level: frame::BlurLevel) -> String {
+    let (sw, sh) = (
+        (w / frame::BLUR_DIVISOR).max(frame::BLUR_MIN_SIDE) & !1,
+        (h / frame::BLUR_DIVISOR).max(frame::BLUR_MIN_SIDE) & !1,
+    );
+    let r = blur_radius(sw, sh, level);
+    format!(
+        "[pb{i}]scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},\
+         boxblur={r}:2,scale={w}:{h},setsar=1[b{i}]"
+    )
+}
+
+/// The chain of a plain colour background of clip `i`, ending in `[b{i}]`, on the clock of
+/// the clip (it starts at the clip's first rendered instant).
+pub(super) fn colour_chain(
+    i: usize,
+    s: &Segment,
+    (w, h): (u32, u32),
+    fps: Fps,
+    rgb: frame::Rgb,
+) -> String {
+    format!(
+        "color=c={c}:s={w}x{h}:r={fps}:d={d},setpts=PTS-STARTPTS+{o}/TB[b{i}]",
+        c = rgb.ff(),
+        fps = fps.ff(),
+        d = s.rendered().ff(),
+        o = s.skip.ff(),
+    )
+}
+
 pub(super) fn compose_frame(
     parts: &mut Vec<String>,
     i: usize,
@@ -146,19 +178,10 @@ pub(super) fn compose_frame(
 ) -> String {
     let g = &spec.geometry;
     let (w, h) = (g.width, g.height);
-    let o = s.skip.ff();
     let blur = matches!(f.aspect.map(|a| a.fill), Some(frame::Fill::Blur));
     // stage B: the background
     if blur {
-        let (sw, sh) = (
-            (w / frame::BLUR_DIVISOR).max(frame::BLUR_MIN_SIDE) & !1,
-            (h / frame::BLUR_DIVISOR).max(frame::BLUR_MIN_SIDE) & !1,
-        );
-        let r = blur_radius(sw, sh, f.aspect.map(|a| a.blur).unwrap_or_default());
-        let blurred = format!(
-            "[pb{i}]scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},\
-             boxblur={r}:2,scale={w}:{h},setsar=1[b{i}]"
-        );
+        let blurred = blur_chain(i, (w, h), f.aspect.map(|a| a.blur).unwrap_or_default());
         match bg {
             Background::Normal => {
                 parts.push(format!("{picture},split=2[pa{i}][pb{i}]"));
@@ -185,12 +208,7 @@ pub(super) fn compose_frame(
             _ => frame::Rgb::BLACK,
         };
         parts.push(format!("{picture}[pa{i}]"));
-        parts.push(format!(
-            "color=c={c}:s={w}x{h}:r={fps}:d={d},setpts=PTS-STARTPTS+{o}/TB[b{i}]",
-            c = rgb.ff(),
-            fps = g.fps.ff(),
-            d = s.rendered().ff(),
-        ));
+        parts.push(colour_chain(i, s, (w, h), g.fps, rgb));
     }
     // stage C: the picture at the size and place of the Scale and Move keys
     let st = &f.stack;
@@ -256,7 +274,7 @@ pub struct PicOverlay {
 
 impl PicOverlay {
     /// The `enable` expression: the picture shows while it is true.
-    fn enable(&self) -> String {
+    pub(super) fn enable(&self) -> String {
         let between = |a: Micros, b: Micros| format!("between(t,{},{})", a.ff(), b.ff());
         if self.pieces.is_empty() {
             between(self.start, self.end)
@@ -489,6 +507,7 @@ pub fn build_graph_pics(
                 None => (w, h),
             };
             let lut = lut_chain(s, spec.pix_fmt, &mut lut_files);
+            let by_steps = !s.steps.is_empty();
             let mut c = if let Some(path) = &s.sphere {
                 // the camera view fills the output picture: no scale, no bars
                 let from = s.src_from();
@@ -539,6 +558,10 @@ pub fn build_graph_pics(
                     o = s.skip.ff(),
                     f = g.fps.ff(),
                 )
+            } else if by_steps {
+                // the rows of the clip are built one by one (REQ-320): the source, trimmed and on
+                // the clip's clock; the Crop is a step
+                format!("{src}trim=start={voff}:duration={vd},setpts={shift}")
             } else {
                 // a 360 video keeps the equirectangular picture: texts fixed to the sphere are
                 // burned on it
@@ -570,40 +593,52 @@ pub fn build_graph_pics(
                     ),
                 }
             };
-            if let Some(f) = fr {
-                c = compose_frame(&mut parts, i, s, f, spec, c, bg);
-                if f.own && (outer.0, outer.1) != (w, h) {
-                    c.push_str(&format!(
-                        ",scale={ow}:{oh}:force_original_aspect_ratio=decrease,\
-                         pad={ow}:{oh}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format={pf}",
-                        ow = outer.0,
-                        oh = outer.1,
-                        pf = spec.pix_fmt
-                    ));
+            let c = if by_steps {
+                let ctx = steps::Ctx {
+                    i,
+                    s,
+                    spec,
+                    outer,
+                    pics: &seg_pics[i],
+                    sphere: s.sphere.is_some(),
+                };
+                steps::chain(&mut parts, &ctx, c, (&mut lut_files, &mut command_files))
+            } else {
+                if let Some(f) = fr {
+                    c = compose_frame(&mut parts, i, s, f, spec, c, bg);
+                    if f.own && (outer.0, outer.1) != (w, h) {
+                        c.push_str(&format!(
+                            ",scale={ow}:{oh}:force_original_aspect_ratio=decrease,\
+                             pad={ow}:{oh}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format={pf}",
+                            ow = outer.0,
+                            oh = outer.1,
+                            pf = spec.pix_fmt
+                        ));
+                    }
                 }
-            }
-            // two frames: sources often start a few milliseconds late, which costs one
-            let early = if s.to_black {
-                Micros(g.fps.frame_duration().0 * 2)
-            } else {
-                Micros::ZERO
+                // two frames: sources often start a few milliseconds late, which costs one
+                let early = if s.to_black {
+                    Micros(g.fps.frame_duration().0 * 2)
+                } else {
+                    Micros::ZERO
+                };
+                fades(&mut c, "fade", s, early);
+                // the picture read from the frame before the first instant ends with the clip
+                let cut = if back > Micros::ZERO {
+                    format!(",trim=duration={d}")
+                } else {
+                    String::new()
+                };
+                c.push_str(&format!(",setpts=PTS-STARTPTS{cut}"));
+                overlay_chain(
+                    &mut parts,
+                    (c, i),
+                    s,
+                    spec.pix_fmt,
+                    &seg_pics[i],
+                    (&mut lut_files, &mut command_files),
+                )
             };
-            fades(&mut c, "fade", s, early);
-            // the picture read from the frame before the first instant ends with the clip
-            let cut = if back > Micros::ZERO {
-                format!(",trim=duration={d}")
-            } else {
-                String::new()
-            };
-            c.push_str(&format!(",setpts=PTS-STARTPTS{cut}"));
-            let c = overlay_chain(
-                &mut parts,
-                (c, i),
-                s,
-                spec.pix_fmt,
-                &seg_pics[i],
-                (&mut lut_files, &mut command_files),
-            );
             parts.push(format!("{c}[v{i}]"));
             concat_in.push_str(&format!("[v{i}]"));
         }
@@ -632,6 +667,20 @@ pub fn build_graph_pics(
                     o = s.skip.ff()
                 )
             };
+            // the clip's Volume (REQ-280); `t` on this chain is the clip's own time (the chain
+            // starts at `skip` and its clock is moved by `skip`)
+            let volume = if !s.volume_keys.is_empty() && s.gain > 0.0 {
+                let expr = frame::volume_expression(&s.volume_keys, Micros::ZERO);
+                format!(",volume='{expr}':eval=frame")
+            } else if s.gain != 1.0 {
+                format!(",volume={:.6}", s.gain)
+            } else {
+                String::new()
+            };
+            // Volume and Clean audio are in the order of the clip's sound group (REQ-320)
+            if s.volume_first {
+                c.push_str(&volume);
+            }
             if s.clean && s.has_audio && s.clean_strength >= 100 {
                 c.push(',');
                 c.push_str(CLEAN_AUDIO);
@@ -649,13 +698,8 @@ pub fn build_graph_pics(
                 c.push(',');
                 c.push_str(NORMALISE_SPEECH);
             }
-            if !s.volume_keys.is_empty() && s.gain > 0.0 {
-                // `t` on this chain is the clip's own time (the chain starts at `skip`
-                // and its clock is moved by `skip`) (REQ-280)
-                let expr = frame::volume_expression(&s.volume_keys, Micros::ZERO);
-                c.push_str(&format!(",volume='{expr}':eval=frame"));
-            } else if s.gain != 1.0 {
-                c.push_str(&format!(",volume={:.6}", s.gain));
+            if !s.volume_first {
+                c.push_str(&volume);
             }
             fades(&mut c, "afade", s, Micros::ZERO);
             c.push_str(&format!(",asetpts=PTS-STARTPTS[a{i}]"));

@@ -120,6 +120,9 @@ pub struct UiCache {
     pub text_draft: Option<(crate::text::TextItem, String)>,
     /// The text of an existing item while it is being typed.
     pub text_edit: Option<(crate::text::TextId, String)>,
+    /// What is typed in the Maximum size field of the text popup, with the text it is for
+    /// (the id of the item, 0 for a new text) (REQ-323).
+    pub max_text: Option<(u64, String)>,
     /// The lines that overlap another (REQ-169) with the fingerprint of what they were
     /// computed from: recomputed only when a line, the timeline or the frame changes.
     pub overlaps: Option<(u64, std::collections::BTreeSet<crate::subtitles::LineId>)>,
@@ -595,11 +598,84 @@ fn controls_height(ui: &Ui) -> f32 {
 /// The preview: picture, play controls and seek bar. The controls always get their room
 /// first; the picture shrinks (to nothing when the section is very small).
 fn preview_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
+    // the picture and its controls on the left, the Applied effects column on the right at the
+    // full height of the section (REQ-317); the picture shrinks first (REQ-068)
+    let f = cache
+        .layout_drag
+        .unwrap_or(app.settings.layout.unwrap_or_default());
+    let full = ui.available_rect_before_wrap();
+    let col_w = layout::applied_width(full.width(), f.applied);
+    // two pixels between the picture and the border: a handle on the picture's edge is not
+    // taken by the border
+    const SEAM: f32 = 2.0;
+    let left = Rect::from_min_size(
+        full.min,
+        vec2(
+            (full.width() - col_w - layout::GAP - SEAM).max(0.0),
+            full.height(),
+        ),
+    );
+    let border = Rect::from_min_size(
+        pos2(left.max.x + SEAM, full.min.y),
+        vec2(layout::GAP.min(full.width()), full.height()),
+    );
+    let right = Rect::from_min_max(pos2(border.max.x.min(full.max.x), full.min.y), full.max);
+    ui.scope_builder(UiBuilder::new().max_rect(left), |ui| {
+        picture_panel(ui, app, cache, cmds);
+    });
+    applied_border(ui, cache, cmds, f, full.width(), border);
+    ui.scope_builder(UiBuilder::new().max_rect(right), |ui| {
+        applied_effects::show(ui, app, cache, cmds, right.height());
+    });
+}
+
+/// The border between the picture and the Applied effects column: dragged to the left it
+/// widens the column; the share is saved with the layout (REQ-317).
+fn applied_border(
+    ui: &mut Ui,
+    cache: &mut UiCache,
+    cmds: &mut Vec<Command>,
+    f: layout::Fractions,
+    section_w: f32,
+    rect: Rect,
+) {
+    let resp = ui
+        .interact(rect, Id::unique("videolore-applied-border"), Sense::drag())
+        .on_hover_text(tr!(DragToResizeTheAppliedEffects));
+    let active = resp.hovered() || resp.dragged();
+    if active {
+        ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+    }
+    let color = if active {
+        ui.visuals().selection.bg_fill
+    } else {
+        ui.visuals().widgets.noninteractive.bg_stroke.color
+    };
+    ui.painter().line_segment(
+        [rect.center_top(), rect.center_bottom()],
+        Stroke::new(if active { 2.0 } else { 1.0 }, color),
+    );
+    if resp.drag_started() {
+        cache.layout_drag_start = Some(f);
+    }
+    if resp.dragged()
+        && let (Some(start), Some(d)) = (cache.layout_drag_start, resp.total_drag_delta())
+    {
+        cache.layout_drag = Some(layout::drag_applied(start, section_w, d.x));
+    }
+    if resp.drag_stopped() {
+        cache.layout_drag_start = None;
+        if let Some(l) = cache.layout_drag.take() {
+            cmds.push(Command::SetLayout(l));
+        }
+    }
+}
+
+/// The picture, the play controls and the seek bar (the left part of the Preview).
+fn picture_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Vec<Command>) {
     let controls_h = controls_height(ui);
-    // the Applied effects take a share of the section; the picture shrinks first (REQ-302)
-    let applied_h = applied_effects::height(ui.available_height());
     let gap = ui.spacing().item_spacing.y;
-    let picture_h = (ui.available_height() - controls_h - applied_h - gap).max(0.0);
+    let picture_h = (ui.available_height() - controls_h - gap).max(0.0);
     let area = ScrollArea::vertical()
         .id_salt("preview-scroll")
         .auto_shrink(false);
@@ -673,7 +749,6 @@ fn preview_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
         if r.changed() {
             cmds.push(Command::Seek(Micros::from_secs_f64(secs)));
         }
-        applied_effects::show(ui, app, cache, cmds, applied_h);
     });
 }
 

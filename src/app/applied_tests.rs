@@ -113,10 +113,14 @@ fn the_widget_lists_the_movable_rows_top_first_then_the_fixed_rows() {
             "Speed"
         ]
     );
-    assert_eq!(a.movable(), 2);
+    // the picture group is Text, Apply LUT and Crop (REQ-320: every effect moves); Volume is a
+    // row of the sound group; only Speed is fixed
+    assert_eq!(a.movable(), 3);
     assert_eq!(a.rows[0].row, Some(Row::Text(t.0)));
     assert_eq!(a.rows[1].row, Some(Row::Lut));
-    assert!(a.rows[2..].iter().all(|r| r.row.is_none()));
+    assert_eq!(a.rows[2].row, Some(Row::Crop));
+    assert_eq!(a.rows[3].row, Some(Row::Volume));
+    assert_eq!(a.rows[4].row, None);
     // the text row shows its time range
     assert_eq!(a.rows[0].range, Some((s(1), s(4))));
     // a click opens the popup of the effect (and selects the clip)
@@ -166,44 +170,78 @@ fn long_texts_are_shortened_and_pictures_are_named_by_their_file() {
     assert_eq!(app.undo_text(), "Undo Add picture");
 }
 
-// covers: REQ-303
+// covers: REQ-303, REQ-147
 #[test]
-fn a_whole_video_effect_is_marked_on_the_clips_it_affects() {
-    let (_d, mut app, _) = three();
+fn a_whole_video_effect_is_an_ordinary_row_on_each_clip_with_no_mark() {
+    let (_d, mut app, lut) = three();
     let ids: Vec<ClipId> = (0..3).map(|i| clip(&app, i)).collect();
-    let volume = |app: &mut AppState, c: ClipId, v: u8| {
+    // double-clicks of Scale, Move, Apply LUT and Clean audio give each clip its copy
+    for effect in [EffectKind::Scale, EffectKind::Move] {
+        app.dispatch(
+            Command::ApplyEffect {
+                effect,
+                target: Target::WholeVideo,
+            },
+            now(),
+        )
+        .unwrap();
+    }
+    app.dispatch(
+        Command::SetLut {
+            target: FrameTarget::Whole,
+            path: lut,
+        },
+        now(),
+    )
+    .unwrap();
+    app.dispatch(
+        Command::SetCleanAudio {
+            target: Target::WholeVideo,
+            on: true,
+        },
+        now(),
+    )
+    .unwrap();
+    for c in &ids {
         app.dispatch(
             Command::SetClipVolume {
-                clip: c,
-                volume: v,
+                clip: *c,
+                volume: 50,
                 muted: false,
             },
             now(),
         )
         .unwrap();
-    };
-    let marks = |app: &mut AppState, name: &str| -> Vec<Option<bool>> {
-        ids.iter()
-            .map(|c| {
-                app.dispatch(Command::SelectClip(Some(*c)), now()).unwrap();
-                app.applied()
-                    .unwrap()
-                    .rows
-                    .iter()
-                    .find(|r| r.name == name)
-                    .map(|r| r.whole)
-            })
-            .collect()
-    };
-    // the same level on every clip: marked on each
-    for c in &ids {
-        volume(&mut app, *c, 50);
     }
-    assert_eq!(marks(&mut app, "Volume"), [Some(true); 3]);
-    // one clip differs: the effect is no longer the same on every clip, no mark
-    volume(&mut app, ids[1], 20);
-    assert_eq!(marks(&mut app, "Volume"), [Some(false); 3]);
-    // a Change aspect of the whole video is shown on every clip, with the mark
+    let rows = |app: &mut AppState, c: ClipId| {
+        app.dispatch(Command::SelectClip(Some(c)), now()).unwrap();
+        app.applied().unwrap().rows
+    };
+    let before: Vec<_> = ids.iter().map(|c| rows(&mut app, *c)).collect();
+    for r in &before {
+        let n: Vec<&str> = r.iter().map(|r| r.name.as_str()).collect();
+        for want in ["Scale", "Move", "Clean audio", "Volume"] {
+            assert!(n.contains(&want), "{want} in {n:?}");
+        }
+        assert!(n.iter().any(|x| x.starts_with("Apply LUT: ")), "{n:?}");
+        assert!(
+            n.iter().all(|x| !x.to_lowercase().contains("whole video")),
+            "no whole-video mark in {n:?}"
+        );
+    }
+    // a change of clip 2's Volume leaves the rows of clips 1 and 3 as they were
+    app.dispatch(
+        Command::SetClipVolume {
+            clip: ids[1],
+            volume: 20,
+            muted: false,
+        },
+        now(),
+    )
+    .unwrap();
+    assert_eq!(rows(&mut app, ids[0]), before[0]);
+    assert_eq!(rows(&mut app, ids[2]), before[2]);
+    // the project's Change aspect and the edge fades are plain rows too
     app.dispatch(
         Command::SetAspect(crate::frame::FrameAspect {
             shape: crate::frame::Shape::Tall9x16,
@@ -214,76 +252,356 @@ fn a_whole_video_effect_is_marked_on_the_clips_it_affects() {
         now(),
     )
     .unwrap();
-    assert_eq!(marks(&mut app, "Change aspect"), [Some(true); 3]);
-    // the fade in the whole video starts: only the first clip has it; the fade out only the last
     for edge in [Edge::Start, Edge::End] {
         app.dispatch(Command::SetEdgeFade { edge, on: true }, now())
             .unwrap();
     }
-    assert_eq!(marks(&mut app, "Fade IN"), [Some(true), None, None]);
-    assert_eq!(marks(&mut app, "Fade OUT"), [None, None, Some(true)]);
-    // a fade between two clips is on both, without the mark
-    app.dispatch(Command::ToggleFade(0), now()).unwrap();
-    assert_eq!(
-        marks(&mut app, "Fade IN/OUT with the next clip"),
-        [Some(false), None, None]
-    );
-    assert_eq!(
-        marks(&mut app, "Fade IN/OUT with the previous clip"),
-        [None, Some(false), None]
-    );
+    let name = |app: &mut AppState, c: ClipId, n: &str| rows(app, c).iter().any(|r| r.name == n);
+    assert!(name(&mut app, ids[0], "Fade IN") && !name(&mut app, ids[1], "Fade IN"));
+    assert!(name(&mut app, ids[2], "Fade OUT") && !name(&mut app, ids[1], "Fade OUT"));
+    assert!(ids.iter().all(|c| name(&mut app, *c, "Change aspect")));
 }
 
-// covers: REQ-303
+// covers: REQ-313
 #[test]
-fn whole_video_scale_move_lut_and_clean_audio_copies_are_marked() {
+fn the_rows_are_built_once_and_again_only_after_a_change_of_the_clip_or_its_effects() {
     let (_d, mut app, lut) = three();
-    for i in 0..3 {
-        let c = clip(&app, i);
-        set_lut(&mut app, &lut, c);
-        app.dispatch(Command::SelectClip(Some(c)), now()).unwrap();
-        for kind in [EffectKind::Scale, EffectKind::Move] {
-            // applying the effect gives the clip its first key
-            app.dispatch(
-                Command::ApplyEffect {
-                    effect: kind,
-                    target: Target::Clip(c),
-                },
-                now(),
-            )
-            .unwrap();
-        }
+    let (a, b) = (clip(&app, 0), clip(&app, 1));
+    set_lut(&mut app, &lut, a);
+    app.dispatch(Command::SelectClip(Some(a)), now()).unwrap();
+    let first = app.applied().unwrap();
+    let n = app.applied_builds();
+    // sixty frames with no change: no build
+    for _ in 0..60 {
+        assert_eq!(app.applied().unwrap(), first);
+    }
+    assert_eq!(app.applied_builds(), n);
+    // one change (an effect added): one build
+    app.dispatch(
+        Command::SetClipVolume {
+            clip: a,
+            volume: 40,
+            muted: false,
+        },
+        now(),
+    )
+    .unwrap();
+    assert_eq!(app.applied().unwrap().rows.len(), first.rows.len() + 1);
+    assert_eq!(app.applied_builds(), n + 1);
+    // a move, an undo and another selected clip each count once
+    app.dispatch(Command::Undo, now()).unwrap();
+    assert_eq!(app.applied().unwrap(), first);
+    assert_eq!(app.applied_builds(), n + 2);
+    app.dispatch(Command::SelectClip(Some(b)), now()).unwrap();
+    assert!(app.applied().unwrap().rows.is_empty());
+    assert_eq!(app.applied_builds(), n + 3);
+    for _ in 0..60 {
+        app.applied();
+    }
+    assert_eq!(app.applied_builds(), n + 3);
+    // with no clip selected the clip under the playhead counts: moving the playhead into
+    // another clip is a change, moving inside the same clip is not
+    app.dispatch(Command::SelectClip(None), now()).unwrap();
+    app.dispatch(Command::Seek(s(1)), now()).unwrap();
+    app.applied();
+    let m = app.applied_builds();
+    app.dispatch(Command::Seek(s(2)), now()).unwrap();
+    app.applied();
+    assert_eq!(app.applied_builds(), m);
+    app.dispatch(Command::Seek(s(7)), now()).unwrap();
+    app.applied();
+    assert_eq!(app.applied_builds(), m + 1);
+}
+
+// covers: REQ-320, REQ-321
+#[test]
+fn the_sound_rows_move_inside_their_group_in_one_named_undo_step_and_speed_stays_fixed() {
+    let (_d, mut app, lut) = three();
+    let (c, other) = (clip(&app, 0), clip(&app, 1));
+    set_lut(&mut app, &lut, c);
+    for k in [c, other] {
+        app.dispatch(
+            Command::SetClipVolume {
+                clip: k,
+                volume: 50,
+                muted: false,
+            },
+            now(),
+        )
+        .unwrap();
         app.dispatch(
             Command::SetCleanAudio {
-                target: Target::Clip(c),
+                target: Target::Clip(k),
                 on: true,
             },
             now(),
         )
         .unwrap();
     }
-    for i in 0..3 {
-        app.dispatch(Command::SelectClip(Some(clip(&app, i))), now())
-            .unwrap();
+    app.dispatch(
+        Command::SetSpeed {
+            clip: c,
+            speed: 2000,
+        },
+        now(),
+    )
+    .unwrap();
+    app.dispatch(Command::SelectClip(Some(c)), now()).unwrap();
+    let names = |app: &mut AppState, k: ClipId| -> Vec<String> {
+        app.dispatch(Command::SelectClip(Some(k)), now()).unwrap();
+        app.applied()
+            .unwrap()
+            .rows
+            .into_iter()
+            .map(|r| r.name)
+            .collect()
+    };
+    // the default is the sound of 1.4.0: Clean audio, then Volume; Speed is the last, fixed row
+    assert_eq!(
+        names(&mut app, c),
+        ["Apply LUT: warm.cube", "Clean audio", "Volume", "Speed"]
+    );
+    let speed = app
+        .applied()
+        .unwrap()
+        .rows
+        .into_iter()
+        .find(|r| r.name == "Speed")
+        .unwrap();
+    assert!(speed.row.is_none(), "Speed cannot be moved");
+    // Volume up: above Clean audio, one named step
+    let up = Command::MoveRow {
+        clip: c,
+        row: Row::Volume,
+        mv: RowMove::Up,
+    };
+    assert!(app.is_enabled(&up));
+    app.dispatch(up.clone(), now()).unwrap();
+    assert_eq!(app.undo_text(), "Undo Move Volume up");
+    assert_eq!(
+        names(&mut app, c),
+        ["Apply LUT: warm.cube", "Volume", "Clean audio", "Speed"]
+    );
+    assert!(app.project.sound_swapped(c));
+    // the other clip keeps its order (a copy is moved on its own clip)
+    assert!(!app.project.sound_swapped(other));
+    // it is the top row of its group now: greyed out, and no move across to the picture group
+    assert!(!app.is_enabled(&up));
+    assert_eq!(
+        app.disabled_reason(&up),
+        Some("It is already the top row of its group")
+    );
+    assert!(
+        !app.is_enabled(&Command::MoveRow {
+            clip: c,
+            row: Row::Volume,
+            mv: RowMove::To(0),
+        }),
+        "a drag cannot put a sound row among the picture rows"
+    );
+    // the picture rows were not touched: no overlay stage for a sound swap
+    assert!(app.project.changed_orders().is_empty());
+    // one undo restores the order and stores nothing
+    app.dispatch(Command::Undo, now()).unwrap();
+    assert!(!app.project.sound_swapped(c));
+    assert!(app.project.timeline.clip_order.is_empty());
+}
+
+// covers: REQ-320, REQ-321
+#[test]
+fn every_effect_of_the_picture_is_a_row_that_moves_in_one_named_undo_step_and_a_copy_on_one_clip_stays_put()
+ {
+    let (_d, mut app, lut) = three();
+    let ids: Vec<ClipId> = (0..3).map(|i| clip(&app, i)).collect();
+    for effect in [EffectKind::Scale, EffectKind::Move] {
+        app.dispatch(
+            Command::ApplyEffect {
+                effect,
+                target: Target::WholeVideo,
+            },
+            now(),
+        )
+        .unwrap();
+    }
+    set_lut(&mut app, &lut, ids[0]);
+    app.dispatch(
+        Command::SetAspect(crate::frame::FrameAspect::default()),
+        now(),
+    )
+    .unwrap();
+    app.dispatch(
+        Command::SetEdgeFade {
+            edge: Edge::Start,
+            on: true,
+        },
+        now(),
+    )
+    .unwrap();
+    let rows = |app: &mut AppState, c: ClipId| {
+        app.dispatch(Command::SelectClip(Some(c)), now()).unwrap();
         let a = app.applied().unwrap();
-        for name in ["Scale", "Move", "Clean audio"] {
-            let r = a.rows.iter().find(|r| r.name == name).expect(name);
-            assert!(r.whole && r.row.is_none(), "{name}");
+        assert_eq!(a.picture, a.rows.iter().filter(|r| r.row.is_some()).count());
+        a.rows.into_iter().map(|r| r.name).collect::<Vec<_>>()
+    };
+    // the default is the build of the older versions: the fade is applied last, then the frame,
+    // the Move, the Scale and the LUT; each row is movable
+    let default = [
+        "Fade IN",
+        "Change aspect",
+        "Move",
+        "Scale",
+        "Apply LUT: warm.cube",
+    ];
+    assert_eq!(rows(&mut app, ids[0]), default);
+    assert_eq!(rows(&mut app, ids[1]), ["Change aspect", "Move", "Scale"]);
+    // the Change aspect row opens the project's Change aspect, the fade its popup
+    app.dispatch(Command::SelectClip(Some(ids[0])), now())
+        .unwrap();
+    let a = app.applied().unwrap();
+    assert!(a.rows.iter().all(|r| r.row.is_some()));
+    assert_eq!(
+        a.rows[1].open,
+        vec![
+            Command::SelectClip(Some(ids[0])),
+            Command::OpenInstance(Instance::Aspect)
+        ]
+    );
+    assert_eq!(
+        a.rows[0].open,
+        vec![
+            Command::SelectClip(Some(ids[0])),
+            Command::OpenInstance(Instance::FadeStart)
+        ]
+    );
+    // Scale up: above Move; one step with its name
+    let up = Command::MoveRow {
+        clip: ids[0],
+        row: Row::Scale,
+        mv: RowMove::Up,
+    };
+    assert!(app.is_enabled(&up));
+    app.dispatch(up, now()).unwrap();
+    assert_eq!(app.undo_text(), "Undo Move Scale up");
+    assert_eq!(
+        rows(&mut app, ids[0]),
+        [
+            "Fade IN",
+            "Change aspect",
+            "Scale",
+            "Move",
+            "Apply LUT: warm.cube"
+        ]
+    );
+    // the copy on the second clip did not move
+    assert_eq!(rows(&mut app, ids[1]), ["Change aspect", "Move", "Scale"]);
+    // each kind has its own undo name
+    for (row, name) in [
+        (Row::Crop, None),
+        (Row::Frame, Some("Undo Move Change aspect down")),
+        (Row::Move, Some("Undo Move the Move effect down")),
+        (Row::Fade, Some("Undo Move Fade down")),
+        (Row::Lut, Some("Undo Move LUT up")),
+    ] {
+        let mv = if row == Row::Lut {
+            RowMove::Up
+        } else {
+            RowMove::Down
+        };
+        app.dispatch(Command::SelectClip(Some(ids[0])), now())
+            .unwrap();
+        let cmd = Command::MoveRow {
+            clip: ids[0],
+            row,
+            mv,
+        };
+        if let Some(name) = name {
+            assert!(app.is_enabled(&cmd), "{row:?}");
+            app.dispatch(cmd, now()).unwrap();
+            assert_eq!(app.undo_text(), name);
+        } else {
+            // the clip has no Crop: no such row
+            assert!(!app.is_enabled(&cmd));
         }
-        let l = a.rows.iter().find(|r| r.row == Some(Row::Lut)).unwrap();
-        assert!(l.whole);
     }
-    // a timeline of one clip has no "whole video" apart from the clip
-    let (_d2, mut one, lut) = three();
-    for _ in 0..2 {
-        one.dispatch(Command::Delete, now()).unwrap();
+    // a drag to the top of the list, and undo after undo restores the default order
+    while app.undo_text().starts_with("Undo Move") {
+        app.dispatch(Command::Undo, now()).unwrap();
     }
-    assert_eq!(one.project.timeline.clips.len(), 1);
-    let c = clip(&one, 0);
-    set_lut(&mut one, &lut, c);
-    one.dispatch(Command::SelectClip(Some(c)), now()).unwrap();
-    let a = one.applied().unwrap();
-    assert!(!a.rows[0].whole);
+    assert!(app.project.timeline.clip_order.is_empty());
+    assert_eq!(rows(&mut app, ids[0]), default);
+    app.dispatch(
+        Command::MoveRow {
+            clip: ids[0],
+            row: Row::Fade,
+            mv: RowMove::To(4),
+        },
+        now(),
+    )
+    .unwrap();
+    assert_eq!(app.undo_text(), "Undo Move effect");
+    assert_eq!(rows(&mut app, ids[0])[4], "Fade IN");
+}
+
+// covers: REQ-321
+#[test]
+fn moving_a_picture_row_keeps_the_order_of_the_sound_rows() {
+    let (_d, mut app, _) = three();
+    let c = clip(&app, 0);
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::Scale,
+            target: Target::Clip(c),
+        },
+        now(),
+    )
+    .unwrap();
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::Move,
+            target: Target::Clip(c),
+        },
+        now(),
+    )
+    .unwrap();
+    app.dispatch(
+        Command::SetClipVolume {
+            clip: c,
+            volume: 50,
+            muted: false,
+        },
+        now(),
+    )
+    .unwrap();
+    app.dispatch(
+        Command::SetCleanAudio {
+            target: Target::Clip(c),
+            on: true,
+        },
+        now(),
+    )
+    .unwrap();
+    app.dispatch(
+        Command::MoveRow {
+            clip: c,
+            row: Row::Volume,
+            mv: RowMove::Up,
+        },
+        now(),
+    )
+    .unwrap();
+    app.dispatch(
+        Command::MoveRow {
+            clip: c,
+            row: Row::Scale,
+            mv: RowMove::Up,
+        },
+        now(),
+    )
+    .unwrap();
+    // the Volume above Clean audio is still stored
+    assert!(app.project.sound_swapped(c));
+    app.dispatch(Command::Undo, now()).unwrap();
+    assert!(app.project.sound_swapped(c));
 }
 
 // covers: REQ-304

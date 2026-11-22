@@ -85,7 +85,7 @@ Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, st
 - REQ-071: the keyboard shortcuts window also lists the gestures Ctrl/Cmd+click (add a subtitle line to the selection) and Shift+drag on the timeline (select lines in a time range); Esc first closes the topmost popup and, when none is open, clears the subtitle line selection.
 - REQ-072: new greyed-out reasons: "No subtitles on the timeline", "Subtitles are being created", "Select a clip first", "The clips have different volumes".
 - REQ-073: the status bar also shows checking videos for subtitle tracks and "Matching subtitles to the speech", with Cancel.
-- REQ-076: popups say whether they show the whole-video instance or a clip's ("— whole video" or "— <clip name>"); new popups for a clip's volume and for the start and end fades.
+- REQ-076 (implemented): Since 2.2.0 only Change aspect says "— whole video"; Fades, Volume and Clean audio popups have no suffix; the LUT chooser says "Apply LUT — every clip". the "— whole video" title stays for Change aspect only; whole-video copies open their clips' popups (REQ-147). Earlier text: popups say whether they show the whole-video instance or a clip's ("— whole video" or "— <clip name>"); new popups for a clip's volume and for the start and end fades.
 - REQ-068: the new dialog, menu items and popup fields fit at 800x500.
 
 ### Changed in 1.3.0
@@ -118,7 +118,7 @@ Since 1.1.0 the window is reorganised (resizable sections, menu bar, toolbar, st
 
 ### Changed in 1.6.1
 - REQ-082 and REQ-147: a double-click on an effect applies it to every clip on the timeline (not to one range over the whole video); clips added later do not get it. Whole-video Fade IN/OUT is a fade in at the first clip and a fade out at the last clip (REQ-083).
-- A whole-video Scale or Move gives each clip its own copy of the keyframes, which that clip's popup edits alone; the whole-video popup changes all copies (REQ-148, see [Frame](business-frame.md)).
+- A whole-video Scale or Move gives each clip its own copy of the keyframes, which that clip's popup edits alone (REQ-148, see [Frame](business-frame.md)). 2.2.0 (planned): the whole-video popup that changed all copies is removed.
 - REQ-145 and REQ-146: the visible edges of a box (the picture's Scale box, a subtitle line, a text item) work as resize handles when the box is partly outside the picture.
 
 ## Known limitations

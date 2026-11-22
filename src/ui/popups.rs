@@ -22,6 +22,7 @@ pub fn windows(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
     if !app.popups.is_open(Popup::Text) {
         cache.text_draft = None;
         cache.text_edit = None;
+        cache.max_text = None;
     }
     if !app.popups.is_open(Popup::Splash) {
         cache.splash_rects = None;

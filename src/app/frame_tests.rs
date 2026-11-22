@@ -105,6 +105,7 @@ fn change_aspect_on_a_clip_gives_that_clip_its_own_aspect_and_not_the_whole_vide
 }
 
 // covers: REQ-130
+// covers: REQ-076
 #[test]
 fn scale_goes_on_one_clip_and_a_second_scale_opens_the_first_popup() {
     let (_d, mut app) = two();
@@ -127,20 +128,37 @@ fn scale_goes_on_one_clip_and_a_second_scale_opens_the_first_popup() {
         app.popups.instance,
         Some(Instance::Scale(FrameTarget::Clip(c1)))
     );
-    // Move is independent, and the whole video can have its own
+    // Move is independent; a whole-video Move is a copy on each clip that lacks one and
+    // opens the popup of the clip under the playhead (clip 0)
     apply(&mut app, EffectKind::Move, Target::Clip(c1)).unwrap();
     apply(&mut app, EffectKind::Move, Target::WholeVideo).unwrap();
-    assert_eq!(app.project.timeline.move_keys(FrameTarget::Whole).len(), 1);
+    assert_eq!(
+        app.project.timeline.move_keys(FrameTarget::Clip(c0)).len(),
+        1
+    );
     assert_eq!(
         app.popups.instance,
-        Some(Instance::Move(FrameTarget::Whole))
+        Some(Instance::Move(FrameTarget::Clip(c0)))
     );
-    // the popup titles name what they apply to
+    // the popup titles name the clip, never "whole video" (REQ-076)
     let t = app.popup_title(Popup::Instance);
-    assert_eq!(t, "Move — whole video");
+    assert!(
+        t.starts_with("Move — ") && !t.contains("whole video"),
+        "{t}"
+    );
+    // a click on the Scale row opens the popup of the selected clip's own Scale
+    app.dispatch(Command::SelectClip(Some(c1)), now()).unwrap();
     app.dispatch(Command::OpenFrameEffect(EffectKind::Scale), now())
         .unwrap();
-    assert_eq!(app.popup_title(Popup::Instance), "Scale — whole video");
+    assert_eq!(
+        app.popups.instance,
+        Some(Instance::Scale(FrameTarget::Clip(c1)))
+    );
+    // a clip with no Scale: the click says so and opens nothing new
+    app.dispatch(Command::SelectClip(Some(c0)), now()).unwrap();
+    app.dispatch(Command::OpenFrameEffect(EffectKind::Scale), now())
+        .unwrap();
+    assert!(app.status.contains("has no Scale"), "{}", app.status);
     // Remove effect: one step, the popup closes
     app.dispatch(
         Command::RemoveFrameEffect {
@@ -267,7 +285,8 @@ fn a_change_on_the_picture_without_a_selected_key_makes_one_at_the_playhead() {
     apply(&mut app, EffectKind::Move, Target::WholeVideo).unwrap();
     app.dispatch(Command::SelectKey(None), now()).unwrap();
     app.dispatch(Command::Seek(s(3)), now()).unwrap();
-    let w = FrameTarget::Whole;
+    // the whole-video Move is a copy on each clip: the playhead is in the first one
+    let w = FrameTarget::Clip(clip(&app, 0));
     // a drag is shown in the preview but is not an edit
     let drag = FrameDrag {
         target: w,
@@ -354,9 +373,10 @@ fn markers_and_instances_find_their_clip() {
     assert_eq!(at(Instance::Scale(FrameTarget::Clip(c1))), Some(s(5)));
     assert_eq!(at(Instance::Move(FrameTarget::Clip(c1))), Some(s(5)));
     assert_eq!(at(Instance::Aspect), Some(Micros::ZERO));
-    assert_eq!(at(Instance::Scale(FrameTarget::Whole)), Some(Micros::ZERO));
+    // no whole-video Scale popup: a Whole target has no start
+    assert_eq!(at(Instance::Scale(FrameTarget::Whole)), None);
     assert_eq!(
-        Instance::Scale(FrameTarget::Whole).frame_fx(),
+        Instance::Scale(FrameTarget::Clip(c1)).frame_fx(),
         Some(FrameFx::Scale)
     );
     assert_eq!(Instance::Aspect.frame_fx(), None);

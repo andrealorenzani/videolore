@@ -191,7 +191,8 @@ fn fade_on_a_clip_or_the_whole_video_is_one_undo_step() {
     .unwrap();
     assert!(app.project.timeline.start_fade() && app.project.timeline.end_fade());
     assert!(app.project.timeline.fades.is_empty());
-    assert_eq!(app.popup_title(Popup::Fades), "Fade IN/OUT — whole video");
+    // only Change aspect says "whole video" (REQ-076, 2.2.0)
+    assert_eq!(app.popup_title(Popup::Fades), "Fade IN/OUT");
     // each edge fade has its own popup and is removed alone
     app.dispatch(Command::OpenInstance(Instance::FadeEnd), now)
         .unwrap();
@@ -298,7 +299,7 @@ fn volume_on_a_clip_opens_its_popup_and_records_changes() {
     )
     .unwrap();
     assert!(app.popups.is_open(Popup::Volume));
-    assert_eq!(app.popup_title(Popup::Volume), "Volume — whole video");
+    assert_eq!(app.popup_title(Popup::Volume), "Volume");
     // the volume marker opens the clip's popup
     app.dispatch(
         Command::SetClipVolume {

@@ -86,14 +86,19 @@ fn the_widget_shows_the_text_above_the_lut_and_a_click_opens_the_popup() {
     // the text was added after the LUT: its row is above the LUT row
     let lut = "Apply LUT: warm.cube";
     assert!(y_of(&h, "Text: Hello") < y_of(&h, lut), "{:#?}", h.labels());
-    // the picture shrank: the widget is about 15% of the section
+    // the widget is a column on the right of the Preview section at its full height
+    // (REQ-317): 180 px wide at least, about 15% of the section when that is wider
     let section = h.cache.sections.unwrap().preview;
     let title = h.find("Applied effects").unwrap();
-    let below = section.max.y - title.rect.min.y;
+    let want = (0.15 * section.width()).max(layout::APPLIED_MIN);
     assert!(
-        below >= 0.1 * section.height() && below <= 0.25 * section.height(),
-        "{below} of {}",
-        section.height()
+        (section.max.x - title.rect.min.x - want).abs() < 16.0,
+        "title at {} in {section:?}, want {want} wide",
+        title.rect.min.x
+    );
+    assert!(
+        title.rect.min.y < section.min.y + 60.0,
+        "at the top of the section"
     );
     // a click on the LUT row opens the Apply LUT popup
     click_button(&mut h, lut);
@@ -181,10 +186,47 @@ fn a_row_can_be_dragged_and_moved_from_the_keyboard() {
     assert_eq!(h.app.undo_text(), "Undo Move text up");
 }
 
+// covers: REQ-320, REQ-321
+#[test]
+fn the_scale_and_move_rows_have_move_buttons_a_drag_and_the_keyboard_like_every_other_row() {
+    use crate::app::{EffectKind, Target};
+    let (_d, mut app, c, _t) = setup();
+    for effect in [EffectKind::Scale, EffectKind::Move] {
+        app.dispatch(
+            Command::ApplyEffect {
+                effect,
+                target: Target::Clip(c),
+            },
+            now(),
+        )
+        .unwrap();
+    }
+    app.dispatch(Command::SelectClip(Some(c)), now()).unwrap();
+    // the popups the two effects opened would cover the column
+    app.popups.open.clear();
+    app.popups.instance = None;
+    let mut h = Harness::new(app, 1800.0, 1600.0);
+    // the default build order: the Move row above the Scale row, both above the LUT
+    assert!(y_of(&h, "Move") < y_of(&h, "Scale"));
+    assert!(y_of(&h, "Scale") < y_of(&h, "Apply LUT: warm.cube"));
+    assert!(h.has("Move up: Scale") && h.has("Move down: Scale"));
+    // a drag of the Move row onto the Scale row puts it below: Scale is applied last
+    let from = button(&h, "Move").rect.center();
+    let to = button(&h, "Scale").rect.center();
+    h.drag(from, to);
+    assert_eq!(h.app.undo_text(), "Undo Move effect");
+    assert!(y_of(&h, "Scale") < y_of(&h, "Move"));
+    // Scale down: below Move again, the default order: one named undo step, nothing stored
+    click_button(&mut h, "Move down: Scale");
+    assert_eq!(h.app.undo_text(), "Undo Move Scale down");
+    assert!(h.app.project.timeline.order_of(c).is_empty());
+    assert!(y_of(&h, "Move") < y_of(&h, "Scale"));
+}
+
 // covers: REQ-302
 // covers: REQ-303
 #[test]
-fn fixed_rows_follow_the_movable_ones_and_the_whole_video_mark_shows() {
+fn fixed_rows_follow_the_movable_ones_and_no_whole_video_mark_shows() {
     let (_d, mut app, c, _t) = setup();
     for clip in app
         .project
@@ -207,10 +249,11 @@ fn fixed_rows_follow_the_movable_ones_and_the_whole_video_mark_shows() {
     app.dispatch(Command::SelectClip(Some(c)), now()).unwrap();
     let mut h = Harness::new(app, 1800.0, 1600.0);
     assert!(y_of(&h, "Apply LUT: warm.cube") < y_of(&h, "Volume"));
-    // the mark sits next to the row
-    assert!(h.has("whole video"), "{:#?}", h.labels());
-    // the fixed row has no Move buttons
-    assert!(!h.has("Move up: Volume"));
+    // no whole-video mark next to a row (REQ-303)
+    assert!(!h.has("whole video"), "{:#?}", h.labels());
+    // Volume is a row of the sound group (REQ-320): it has Move buttons (greyed out when it
+    // is alone in its group)
+    assert!(h.has("Move up: Volume"));
     click_button(&mut h, "Volume");
     assert_eq!(h.app.popups.instance, Some(Instance::ClipVolume(c)));
 }
@@ -234,4 +277,73 @@ fn at_the_smallest_window_every_row_can_be_reached() {
     h.idle(3);
     let lost = reachable(&h, true);
     assert!(lost.is_empty(), "{lost:#?}");
+}
+
+/// The Applied effects title and the picture's area in the Preview section.
+fn column(h: &Harness) -> (f32, f32) {
+    let section = h.cache.sections.unwrap().preview;
+    let title = h.find("Applied effects").unwrap();
+    (section.max.x - title.rect.min.x, section.width())
+}
+
+// covers: REQ-317
+#[test]
+fn the_applied_effects_are_a_column_beside_the_picture_of_at_least_180_px() {
+    // at 1280 x 800 the picture and the column are side by side; 15% of the section is under
+    // the 180 px minimum there, so the column is 180 px wide (the share governs from 1200 px)
+    let (_d, app, _c, _t) = setup();
+    let mut h = Harness::new(app, 1280.0, 800.0);
+    h.idle(2);
+    let (w, section) = column(&h);
+    assert!(0.15 * section < 180.0);
+    assert!((w - 180.0).abs() < 16.0, "{w} in a section {section} wide");
+    let title = h.find("Applied effects").unwrap();
+    let picture = h.find("Drag a subtitle to move it");
+    if let Some(p) = picture {
+        assert!(
+            p.rect.max.x <= title.rect.min.x,
+            "the picture is left of the column"
+        );
+    }
+    // a wide window: the column is 15% of the section
+    let (_d, app, _c, _t) = setup();
+    let mut h = Harness::new(app, 2600.0, 1000.0);
+    h.idle(2);
+    let (w, section) = column(&h);
+    assert!((w - 0.15 * section).abs() < 16.0, "{w} of {section}");
+    // the minimum window: the column keeps 180 px, the picture takes the rest
+    let (_d, app, _c, _t) = setup();
+    let mut h = Harness::new(app, 800.0, 500.0);
+    h.idle(2);
+    let (w, _) = column(&h);
+    assert!((w - 180.0).abs() < 16.0, "{w}");
+}
+
+// covers: REQ-317
+#[test]
+fn a_dragged_border_changes_the_column_width_and_the_share_is_saved() {
+    let (_d, app, _c, _t) = setup();
+    let mut h = Harness::new(app, 2600.0, 1000.0);
+    h.idle(2);
+    let (before, section) = column(&h);
+    let title = h.find("Applied effects").unwrap();
+    // the border is a few pixels left of the column
+    let x = title.rect.min.x - 5.0;
+    let y = h.cache.sections.unwrap().preview.center().y;
+    h.drag(pos2(x, y), pos2(x - 120.0, y));
+    let saved = h.app.settings.layout.expect("the layout was saved").applied;
+    h.idle(2);
+    let (after, _) = column(&h);
+    assert!(after > before + 60.0, "{before} -> {after}");
+    assert!(
+        (saved * section - after).abs() < 20.0,
+        "{saved} {section} {after}"
+    );
+    // dragging far to the right stops at the minimum width
+    let title = h.find("Applied effects").unwrap();
+    let x = title.rect.min.x - 5.0;
+    h.drag(pos2(x, y), pos2(x + 2000.0, y));
+    h.idle(2);
+    let (narrow, _) = column(&h);
+    assert!((narrow - 180.0).abs() < 16.0, "{narrow}");
 }

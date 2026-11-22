@@ -309,6 +309,15 @@ fn clean(dir: &Path) {
     }
 }
 
+/// The processes of a hardware export that passes its check: the encode, the metadata, then (at
+/// the same time, REQ-315) the strict decode and the three sample comparisons, in any order.
+fn assert_checked_once(log: &[&str]) {
+    assert_eq!(log[..2], ["hardware", "metadata"], "{log:?}");
+    let mut rest = log[2..].to_vec();
+    rest.sort_unstable();
+    assert_eq!(rest, ["compare", "compare", "compare", "decode"], "{log:?}");
+}
+
 fn progress(ev: &[ExportEvent]) -> Vec<f32> {
     ev.iter()
         .filter_map(|e| match e {
@@ -328,12 +337,7 @@ fn working_hardware_makes_the_file_after_the_check() {
         let (path, method) = r.unwrap();
         assert_eq!(method, ExportMethod::Hardware(v));
         assert_eq!(std::fs::read(&path).unwrap(), b"hardware video");
-        assert_eq!(
-            log,
-            [
-                "hardware", "metadata", "decode", "compare", "compare", "compare"
-            ]
-        );
+        assert_checked_once(&log);
         let p = progress(&ev);
         assert!(p.windows(2).all(|w| w[0] <= w[1]), "{p:?}");
         assert!(p.iter().any(|f| *f >= 0.85) && p.iter().all(|f| (0.0..=1.0).contains(f)));
@@ -599,12 +603,7 @@ fn a_360_clip_with_a_camera_path_is_exported_in_hardware_and_checked() {
     let (r, _, log) = export(&j, &s);
     let (_, method) = r.unwrap();
     assert_eq!(method, ExportMethod::Hardware(Vendor::Nvenc));
-    assert_eq!(
-        log,
-        [
-            "hardware", "metadata", "decode", "compare", "compare", "compare"
-        ]
-    );
+    assert_checked_once(&log);
     // the camera command file was in the folder of the hardware run and of the check
     assert!(s.cam_seen.load(std::sync::atomic::Ordering::SeqCst) >= 2);
     // the redo with the normal method gets it too

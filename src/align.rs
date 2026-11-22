@@ -147,6 +147,30 @@ pub fn spread(media: MediaId, cues: &[Cue]) -> Vec<NewLine> {
         .collect()
 }
 
+/// Puts the words of a cue over the speech regions inside its window `(lo, hi)`: a word that a
+/// region takes gets that time (found or not); a word the placement leaves out keeps its
+/// recognised time, if it has one.
+fn place_in_speech(
+    anchors: &mut [Option<(Micros, Micros)>],
+    words: &[String],
+    (lo, hi): (Micros, Micros),
+    speech: &SpeechRegions,
+) {
+    let inside: Vec<(Micros, Micros)> = speech
+        .regions
+        .iter()
+        .filter(|(a, b)| *b > lo && *a < hi)
+        .map(|(a, b)| ((*a).max(lo), (*b).min(hi)))
+        .collect();
+    let refs: Vec<&str> = words.iter().map(String::as_str).collect();
+    let placed = crate::speech_regions::place(&refs, &inside, &speech.params);
+    for (slot, time) in anchors.iter_mut().zip(placed) {
+        if time.is_some() {
+            *slot = time;
+        }
+    }
+}
+
 /// Word times of one matched cue: found words at their recognised time (kept inside the
 /// cue, never going back), the others spread evenly between their found neighbours.
 fn timings(cue: &Cue, tokens: &[&str], anchors: &[Option<(Micros, Micros)>]) -> Vec<Word> {
@@ -205,9 +229,42 @@ fn timings(cue: &Cue, tokens: &[&str], anchors: &[Option<(Micros, Micros)>]) -> 
     words
 }
 
+/// The speech regions of a source, found in its own sound (REQ-177, ADR-220): where the words of a
+/// matched cue are placed instead of at the times the recogniser gave them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpeechRegions {
+    /// The regions, in source time, in time order.
+    pub regions: Vec<(Micros, Micros)>,
+    pub params: crate::speech_regions::Params,
+}
+
+impl SpeechRegions {
+    /// The regions of `db` (the level of every 10 ms in dB, from `start` of the source) with
+    /// the setting `params`.
+    pub fn new(db: &[f32], start: Micros, params: crate::speech_regions::Params) -> SpeechRegions {
+        let regions = crate::speech_regions::regions(db, &params)
+            .into_iter()
+            .map(|(a, b)| (a + start, b + start))
+            .collect();
+        SpeechRegions { regions, params }
+    }
+}
+
 /// Aligns the cues of one source (source times) with the words recognised in its speech
 /// (source times, in time order).
 pub fn align(media: MediaId, cues: &[Cue], recognised: &[Word]) -> Alignment {
+    align_with(media, cues, recognised, None)
+}
+
+/// [`align`] with the speech regions of the source: the words of a matched cue (found or not)
+/// are placed over the speech regions around the cue, not at the recognised times, which lag
+/// the speech (REQ-177).
+pub fn align_with(
+    media: MediaId,
+    cues: &[Cue],
+    recognised: &[Word],
+    speech: Option<&SpeechRegions>,
+) -> Alignment {
     let mut order: Vec<&Cue> = cues.iter().collect();
     order.sort_by_key(|c| (c.start, c.end));
     let rec_norm: Vec<String> = recognised.iter().map(|w| normalise(&w.text)).collect();
@@ -247,6 +304,9 @@ pub fn align(media: MediaId, cues: &[Cue], recognised: &[Word]) -> Alignment {
             if let Some(last) = pairs.iter().flatten().max() {
                 cursor = cand_idx[*last] + 1;
             }
+            if let Some(sp) = speech {
+                place_in_speech(&mut anchors, &norm, (lo, hi), sp);
+            }
             timings(cue, &tokens, &anchors)
         } else {
             out.unmatched += 1;
@@ -269,7 +329,17 @@ pub fn align(media: MediaId, cues: &[Cue], recognised: &[Word]) -> Alignment {
 /// a cue written early or late follows what is said. A cue that did not match keeps the
 /// file's times and counts in `unmatched`.
 pub fn retime(media: MediaId, cues: &[Cue], recognised: &[Word]) -> Alignment {
-    let mut a = align(media, cues, recognised);
+    retime_with(media, cues, recognised, None)
+}
+
+/// [`retime`] with the speech regions of the source (see [`align_with`]).
+pub fn retime_with(
+    media: MediaId,
+    cues: &[Cue],
+    recognised: &[Word],
+    speech: Option<&SpeechRegions>,
+) -> Alignment {
+    let mut a = align_with(media, cues, recognised, speech);
     for (line, found) in a.lines.iter_mut().zip(&a.found) {
         let first = found.iter().position(|f| *f);
         let last = found.iter().rposition(|f| *f);
@@ -538,5 +608,87 @@ mod tests {
         } else {
             assert_eq!((l.start, l.end), (ms(400), ms(3000)));
         }
+    }
+
+    /// 10 ms levels: silence (-100 dB) with a loud burst for each `(start, end)` in frames.
+    fn levels(frames: usize, bursts: &[(usize, usize)]) -> Vec<f32> {
+        let mut v = vec![-100.0f32; frames];
+        for (a, b) in bursts {
+            v[*a..*b].fill(-20.0);
+        }
+        v
+    }
+
+    fn setting() -> crate::speech_regions::Params {
+        crate::speech_regions::Params {
+            t_db: 12.0,
+            gap: Micros(120_000),
+            rate: 10.0,
+            lambda: 1.0,
+        }
+    }
+
+    // covers: REQ-177
+    #[test]
+    fn with_speech_regions_the_words_take_the_regions_and_not_the_recognised_times() {
+        // the recogniser hears both words 0.6 s late; the speech is two bursts, 0.2 s to 0.8 s
+        // and 1.2 s to 1.8 s (frames of 10 ms)
+        // (six letters each: 0.6 s at 10 characters a second, the length of a region)
+        let cues = [cue(0, 3000, "alphab betaga")];
+        let words = rec(&[(800, 1200, "alphab"), (1800, 2300, "betaga")]);
+        let speech = SpeechRegions::new(
+            &levels(300, &[(20, 80), (120, 180)]),
+            Micros::ZERO,
+            setting(),
+        );
+        assert_eq!(speech.regions.len(), 2, "{:?}", speech.regions);
+        let old = align(MediaId(1), &cues, &words);
+        assert_eq!(old.lines[0].words[0].start, ms(800), "the recognised time");
+        let a = align_with(MediaId(1), &cues, &words, Some(&speech));
+        assert_valid(&a);
+        let w = &a.lines[0].words;
+        assert_eq!((w[0].start, w[0].end), (ms(200), ms(800)));
+        assert_eq!((w[1].start, w[1].end), (ms(1200), ms(1800)));
+        // which words were found is still the matching's own result
+        assert_eq!(a.found, old.found);
+        // a source that starts later: the regions are in source time
+        let late = SpeechRegions::new(&levels(300, &[(20, 80), (120, 180)]), ms(10_000), setting());
+        assert_eq!(late.regions[0].0, ms(10_200));
+        // without regions around the cue, the recognised times stay
+        let a = align_with(MediaId(1), &cues, &words, Some(&late));
+        assert_eq!(a.lines[0].words[0].start, ms(800));
+        // re-timing with the regions starts the line at its first word
+        let r = retime_with(MediaId(1), &cues, &words, Some(&speech));
+        assert_eq!(r.lines[0].start, ms(200));
+        assert_eq!(r.lines[0].end, ms(1800));
+        assert_eq!(retime(MediaId(1), &cues, &words).lines[0].start, ms(800));
+    }
+
+    // covers: REQ-177
+    #[test]
+    fn a_word_that_no_region_takes_keeps_its_recognised_time() {
+        // five words, one short region that can only take a few: the placement leaves some out
+        let cues = [cue(0, 4000, "one two three four five six seven eight")];
+        let words = rec(&[
+            (500, 700, "one"),
+            (800, 1000, "two"),
+            (1100, 1300, "three"),
+            (1400, 1600, "four"),
+            (1700, 1900, "five"),
+            (2000, 2200, "six"),
+            (2300, 2500, "seven"),
+            (2600, 2800, "eight"),
+        ]);
+        let speech = SpeechRegions::new(
+            &levels(400, &[(30, 40)]),
+            Micros::ZERO,
+            crate::speech_regions::Params {
+                lambda: 0.05,
+                ..setting()
+            },
+        );
+        let a = align_with(MediaId(1), &cues, &words, Some(&speech));
+        assert_valid(&a);
+        assert_eq!(a.lines[0].words.len(), 8);
     }
 }

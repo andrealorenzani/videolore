@@ -174,8 +174,136 @@ fn a_project_without_orders_opens_and_saves_as_before() {
     assert!(notes.iter().all(|n| !n.contains("effect order")));
     let old = to_json(&p, Path::new("/tmp/x.vlproj"))
         .unwrap()
-        .replace("\"schema_version\": 12", "\"schema_version\": 11");
+        .replace("\"schema_version\": 13", "\"schema_version\": 11");
     let (r, _) = from_json(&old, Path::new("/tmp")).unwrap();
     assert!(r.timeline.clip_order.is_empty());
     assert_eq!(r.changed_orders(), vec![]);
+}
+
+/// Two clips of 10 s; the first has a Crop, a Scale, a Move, a fade at its start, a Change
+/// aspect and a text; the second only the Change aspect of the project.
+fn every_picture_row() -> (Project, Vec<crate::timeline::ClipId>) {
+    use crate::timeline::{Crop, FrameTarget};
+    let (mut p, ids) = three_texts();
+    let c = FrameTarget::Clip(ids[0]);
+    p.timeline
+        .set_crop(
+            ids[0],
+            Crop {
+                left: 10,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    p.timeline.add_scale(c).unwrap();
+    p.timeline.add_move(c).unwrap();
+    p.timeline.set_edge_fades(true).unwrap();
+    p.timeline
+        .set_frame_aspect(Some(crate::frame::FrameAspect::default()))
+        .unwrap();
+    (p, ids)
+}
+
+// covers: REQ-320, REQ-322
+#[test]
+fn every_picture_row_is_in_the_clips_order_in_the_build_order_of_the_older_versions() {
+    let (p, ids) = every_picture_row();
+    let r = p.rows_of(ids[0]).unwrap().present;
+    assert!(r.crop && r.scale && r.moved && r.fade && r.frame);
+    // the default: texts (the later on top), then Fade, Change aspect, Move, Scale, Crop
+    assert_eq!(
+        p.order_of(ids[0]),
+        vec![
+            Row::Text(3),
+            Row::Text(2),
+            Row::Text(1),
+            Row::Fade,
+            Row::Frame,
+            Row::Move,
+            Row::Scale,
+            Row::Crop
+        ]
+    );
+    // the second clip has the project's Change aspect and the fade at the end of the video
+    assert_eq!(
+        p.order_of(ids[1]),
+        vec![Row::Text(3), Row::Fade, Row::Frame]
+    );
+    assert!(p.changed_orders().is_empty());
+}
+
+// covers: REQ-320, REQ-321, REQ-322
+#[test]
+fn a_moved_picture_row_is_stored_with_its_clip_and_comes_back_and_a_new_row_takes_its_default_place()
+ {
+    let (mut p, ids) = every_picture_row();
+    // Scale above Move: stored in full, for the first clip only
+    let mut o = p.order_of(ids[0]);
+    o.retain(|r| *r != Row::Scale);
+    let at = o.iter().position(|r| *r == Row::Move).unwrap();
+    o.insert(at, Row::Scale);
+    p.set_order(ids[0], o.clone());
+    assert_eq!(p.order_of(ids[0]), o);
+    assert!(p.timeline.order_of(ids[1]).is_empty());
+    assert_eq!(p.changed_orders().len(), 1);
+    assert!(crate::effect_order::needs_steps(&p.changed_orders()[0].1));
+    let (q, notes) = reopened(&p);
+    assert!(
+        notes.iter().all(|n| !n.contains("effect order")),
+        "{notes:?}"
+    );
+    assert_eq!(q.order_of(ids[0]), o);
+    assert!(q.timeline.order_of(ids[1]).is_empty());
+    // a row that is added later (here a Crop on the second clip) takes its place in the default
+    // sequence, not the top
+    p.timeline
+        .set_crop(
+            ids[1],
+            crate::timeline::Crop {
+                left: 5,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        p.order_of(ids[1]),
+        vec![Row::Text(3), Row::Fade, Row::Frame, Row::Crop]
+    );
+    assert!(p.timeline.order_of(ids[1]).is_empty());
+    // the sound rows of a clip survive a change of its picture rows
+    p.set_sound_order(ids[0], &[Row::Volume, Row::Clean]);
+    p.set_order(ids[0], p.order_of(ids[0]));
+    assert!(p.timeline.order_of(ids[0]).contains(&Row::Volume));
+}
+
+// covers: REQ-322
+#[test]
+fn a_2_1_0_order_opens_with_its_rows_above_the_default_sequence_of_the_new_ones() {
+    let (p, ids) = every_picture_row();
+    let json = to_json(&p, Path::new("/tmp/x.vlproj")).unwrap();
+    let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    // what 2.1.0 wrote: a clip order with movable rows only (format 12)
+    v["schema_version"] = serde_json::json!(12);
+    v["timeline"]["clip_order"] =
+        serde_json::json!([{"clip": ids[0].0, "rows": ["text:1", "text:2", "text:3"]}]);
+    let (q, notes) = from_json(&v.to_string(), Path::new("/tmp")).unwrap();
+    assert!(
+        notes.iter().all(|n| !n.contains("effect order")),
+        "{notes:?}"
+    );
+    assert_eq!(
+        q.order_of(ids[0]),
+        vec![
+            Row::Text(1),
+            Row::Text(2),
+            Row::Text(3),
+            Row::Fade,
+            Row::Frame,
+            Row::Move,
+            Row::Scale,
+            Row::Crop
+        ]
+    );
+    // it is the form of the 2.1.0 overlay stage: no step builder
+    assert!(!crate::effect_order::needs_steps(&q.changed_orders()[0].1));
 }

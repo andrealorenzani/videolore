@@ -56,6 +56,9 @@ pub struct Segment {
     pub gain: f64,
     /// Clean audio is on for this clip (REQ-114): applied before the gain and the fades.
     pub clean: bool,
+    /// Volume is applied before Clean audio (the clip's sound group is in the other order
+    /// than the default, REQ-320).
+    pub volume_first: bool,
     /// How much of the clean sound is used, 0 to 100 (REQ-278).
     pub clean_strength: u8,
     /// Normalise speech (REQ-279).
@@ -91,6 +94,9 @@ pub struct Segment {
     /// with the order of the older versions, which keeps its LUT in its own chain and has its
     /// texts, lines and pictures drawn after the concat. See [`overlay`].
     pub overlay: Vec<overlay::OverlayStep>,
+    /// The rows of a clip whose order needs the step builder (REQ-320, ADR-224), bottom to top;
+    /// empty for every other clip. `Step::Over(n)` is `overlay[n]`.
+    pub steps: Vec<steps::Step>,
 }
 
 /// The LUT of `target` for a render: `None` without one; a file that cannot be used is an
@@ -226,6 +232,7 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
             out.push(Segment {
                 clip: c.id,
                 overlay: Vec::new(),
+                steps: Vec::new(),
                 lut_clip,
                 media: m.id,
                 path: src.path_of(m),
@@ -238,6 +245,7 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 speed: c.speed,
                 gain: crate::music::clip_gain(c),
                 clean: c.clean_audio,
+                volume_first: project.sound_swapped(c.id),
                 clean_strength: c.clean_strength,
                 speech: c.speech_enhance,
                 volume_keys: tl.volume_keys(c.id).to_vec(),
