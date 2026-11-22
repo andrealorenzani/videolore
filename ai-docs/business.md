@@ -10,21 +10,22 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business.md § 2.0.4 — L35-46 (12 lines; links to all 2.0.4 sub-docs; REQ-177 not built note)
 - docs/business.md § 2.1.0 — L47-51 (5 lines; links to applied-effects, subtitle-styles, lut section)
 - docs/business.md § 2.2.0 (theme: speed) — L52-57 (6 lines; speed, applied effects column and order, text box, whole-video amendments)
-- docs/business.md § Constraints — L58-62 (5 lines)
-- docs/business.md § Key decisions (general) — L63-98 (36 lines; 2.2.0 bullets: D64, order, whole-video; grep "2.2.0, planned")
-- docs/business.md § Known limitations (1.2.0 to 1.6.0) — L99-127 (29 lines)
-- docs/business.md § Out of scope — L128-139 (12 lines)
+- docs/business.md § 2.3.0 (planned, answered 2026-11-22) — L58-66 (9 lines; overlap, frame, effects, applied effects, editing, splash links)
+- docs/business.md § Constraints — L67-71 (5 lines)
+- docs/business.md § Key decisions (general) — L72-109 (38 lines; 2.2.0 and 2.3.0 bullets; grep "2.2.0, planned", "2.3.0")
+- docs/business.md § Known limitations (1.2.0 to 1.6.0) — L110-138 (29 lines)
+- docs/business.md § Out of scope — L139-150 (12 lines)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-14 (10 lines)
 - docs/business-editing.md § Requirements — L15-16 (2 lines)
-- docs/business-editing.md § Media and projects (REQ-001..004, 026..029, 094, 105, 113, 123, 149) — L17-31 (15 lines)
-- docs/business-editing.md § Timeline (REQ-005..012, 083; 083 amended 2.2.0) — L32-42 (11 lines)
-- docs/business-editing.md § Preview (REQ-013, 034, 035, 144, 155) — L43-49 (7 lines)
-- docs/business-editing.md § Layout and commands — L50-52 (3 lines)
-- docs/business-editing.md § Responsiveness and performance (REQ-032, 033, 038, 039) — L53-58 (6 lines)
-- docs/business-editing.md § Key decisions — L59-77 (19 lines)
-- docs/business-editing.md § Known limitations — L78-85 (8 lines)
-- docs/business-editing.md § Out of scope — L86-87 (2 lines; 2.0.4 pointer)
+- docs/business-editing.md § Media and projects (REQ-001..004, 026..029, 094, 105, 113, 123, 149; 324 Add media planned 2.3.0) — L17-32 (16 lines)
+- docs/business-editing.md § Timeline (REQ-005..012, 083; 083 amended 2.2.0) — L33-43 (11 lines)
+- docs/business-editing.md § Preview (REQ-013, 034, 035, 144, 155) — L44-50 (7 lines)
+- docs/business-editing.md § Layout and commands — L51-53 (3 lines)
+- docs/business-editing.md § Responsiveness and performance (REQ-032, 033, 038, 039) — L54-59 (6 lines)
+- docs/business-editing.md § Key decisions — L60-78 (19 lines)
+- docs/business-editing.md § Known limitations — L79-86 (8 lines)
+- docs/business-editing.md § Out of scope — L87-88 (2 lines; 2.0.4 pointer)
 - docs/business-ui.md § intro — L1-6 (6 lines)
 - docs/business-ui.md § Features — L7-23 (17 lines)
 - docs/business-ui.md § Requirements — L24-25 (2 lines)
@@ -72,15 +73,15 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-frame.md § intro — L1-6 (6 lines)
 - docs/business-frame.md § Features — L7-13 (7 lines)
 - docs/business-frame.md § Requirements (intro) — L14-15 (2 lines)
-- docs/business-frame.md § Change aspect (REQ-124..126) — L16-20 (5 lines)
-- docs/business-frame.md § Scale and Move (REQ-127, 128, 129 amended 2.2.0, 145, 148 amended 2.2.0) — L21-27 (7 lines)
-- docs/business-frame.md § Effects list, menus and markers (REQ-130) — L28-30 (3 lines)
-- docs/business-frame.md § Picture rules and export (REQ-131 amended 2.2.0) — L31-33 (3 lines)
-- docs/business-frame.md § Project file (REQ-132) — L34-36 (3 lines)
-- docs/business-frame.md § Key decisions — L37-48 (12 lines; 2.2.0 whole-video bullet)
-- docs/business-frame.md § Impact on existing features — L49-57 (9 lines)
-- docs/business-frame.md § Known limitations — L58-68 (11 lines)
-- docs/business-frame.md § Out of scope — L69-72 (4 lines; 2.0.4 pointers)
+- docs/business-frame.md § Change aspect (REQ-124..126; 326 clip fit and empty space planned 2.3.0) — L16-21 (6 lines)
+- docs/business-frame.md § Scale and Move (REQ-127, 128, 129 amended 2.2.0, 145, 148 amended 2.2.0) — L22-28 (7 lines)
+- docs/business-frame.md § Effects list, menus and markers (REQ-130) — L29-31 (3 lines)
+- docs/business-frame.md § Picture rules and export (REQ-131 amended 2.2.0) — L32-34 (3 lines)
+- docs/business-frame.md § Project file (REQ-132) — L35-37 (3 lines)
+- docs/business-frame.md § Key decisions — L38-50 (13 lines; 2.2.0 whole-video bullet, 2.3.0 clip aspect bullet)
+- docs/business-frame.md § Impact on existing features — L51-59 (9 lines)
+- docs/business-frame.md § Known limitations — L60-70 (11 lines)
+- docs/business-frame.md § Out of scope — L71-74 (4 lines; 2.0.4 pointers)
 - docs/business-subtitles.md § intro — L1-4 (4 lines)
 - docs/business-subtitles.md § Features — L5-19 (15 lines)
 - docs/business-subtitles.md § Requirements — L20-21 (2 lines)
@@ -136,10 +137,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-splash.md § Features — L7-11 (5 lines)
 - docs/business-splash.md § Requirements — L12-13 (2 lines)
 - docs/business-splash.md § Splash screen (REQ-133, 134, 154) — L14-18 (5 lines)
-- docs/business-splash.md § Show option (2.0.4; REQ-295) — L19-21 (3 lines)
-- docs/business-splash.md § Key decisions — L22-28 (7 lines)
-- docs/business-splash.md § Known limitations — L29-34 (6 lines)
-- docs/business-splash.md § Out of scope — L35-37 (3 lines)
+- docs/business-splash.md § Show option (2.0.4; REQ-295 planned 2.3.0, "Never" removed) — L19-21 (3 lines)
+- docs/business-splash.md § Key decisions (2.3.0 Never removed) — L22-29 (8 lines)
+- docs/business-splash.md § Known limitations — L30-35 (6 lines)
+- docs/business-splash.md § Out of scope — L36-38 (3 lines)
 - docs/business-lut.md § intro — L1-6 (6 lines)
 - docs/business-lut.md § Features — L7-12 (6 lines)
 - docs/business-lut.md § Requirements / Apply LUT (REQ-135) — L13-17 (5 lines)
@@ -212,11 +213,11 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-360-video.md § Out of scope (2.0.4) — L35-37 (3 lines)
 - docs/business-effects-frame.md § intro — L1-4 (4 lines)
 - docs/business-effects-frame.md § Fades, music and sound (REQ-274..280) — L5-13 (9 lines)
-- docs/business-effects-frame.md § Clip timing and picture (REQ-281..287; 287 no change, 316 amends) — L14-22 (9 lines)
-- docs/business-effects-frame.md § Effects list and Change aspect (REQ-288) — L23-25 (3 lines)
-- docs/business-effects-frame.md § LUT options (REQ-289..294) — L26-33 (8 lines)
-- docs/business-effects-frame.md § Key decisions (2.0.4) — L34-42 (9 lines)
-- docs/business-effects-frame.md § Out of scope (2.0.4) — L43-45 (3 lines)
+- docs/business-effects-frame.md § Clip timing and picture (REQ-281 Change speed, 283 Crop removed, 287 planned 2.3.0, 332 conversion; 2.3.0) — L14-23 (10 lines)
+- docs/business-effects-frame.md § Effects list and Change aspect (REQ-288) — L24-26 (3 lines)
+- docs/business-effects-frame.md § LUT options (REQ-289..294) — L27-34 (8 lines)
+- docs/business-effects-frame.md § Key decisions (2.0.4; 2.3.0 Crop, Speed, Volume bullets) — L35-43 (9 lines)
+- docs/business-effects-frame.md § Out of scope (2.0.4) — L44-46 (3 lines)
 - docs/business-quality.md § intro — L1-4 (4 lines)
 - docs/business-quality.md § Preview copies and cache (REQ-296, 297) — L5-8 (4 lines)
 - docs/business-quality.md § Project page (REQ-298, 299) — L9-12 (4 lines)
@@ -231,21 +232,21 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-applied-effects.md § Project file (REQ-311) — L25-27 (3 lines)
 - docs/business-applied-effects.md § Edge cases and rules for the builders — L28-37 (10 lines)
 - docs/business-applied-effects.md § Layout and the order of all effects (2.2.0; REQ-317, 320 Q2/Q3 closed, 321, 322 built) — L38-47 (10 lines)
-- docs/business-applied-effects.md § Decisions of the layout and the order (2.2.0; Q2, Q3 closed) — L48-54 (7 lines)
-- docs/business-applied-effects.md § Key decisions (2.1.0) — L55-60 (6 lines)
-- docs/business-applied-effects.md § Key decisions (2.2.0 REQ-305 accepted) — L61-64 (4 lines)
-- docs/business-applied-effects.md § Known limitations — L65-71 (7 lines)
-- docs/business-applied-effects.md § Out of scope (2.1.0; 2.2.0 amended) — L72-75 (4 lines)
+- docs/business-applied-effects.md § Decisions of the layout and the order (2.2.0; Q2, Q3 closed; 2.3.0 Crop removed bullet) — L48-55 (8 lines)
+- docs/business-applied-effects.md § Key decisions (2.1.0) — L56-61 (6 lines)
+- docs/business-applied-effects.md § Key decisions (2.2.0 REQ-305 accepted) — L62-65 (4 lines)
+- docs/business-applied-effects.md § Known limitations — L66-72 (7 lines)
+- docs/business-applied-effects.md § Out of scope (2.1.0; 2.2.0 amended) — L73-76 (4 lines)
 - docs/business-subtitle-styles.md § intro — L1-6 (6 lines; built 2.1.0)
 - docs/business-subtitle-styles.md § Features — L7-12 (6 lines)
 - docs/business-subtitle-styles.md § Requirements (intro) — L13-14 (2 lines)
 - docs/business-subtitle-styles.md § Shadow (REQ-306, 307) — L15-19 (5 lines)
 - docs/business-subtitle-styles.md § Word highlight colours (REQ-308) — L20-22 (3 lines)
-- docs/business-subtitle-styles.md § Enlarge word and Typewriter (REQ-309, 310) — L23-27 (5 lines)
-- docs/business-subtitle-styles.md § Edge cases and rules for the builders — L28-36 (9 lines)
-- docs/business-subtitle-styles.md § Key decisions (2.1.0) — L37-41 (5 lines)
-- docs/business-subtitle-styles.md § Known limitations — L42-46 (5 lines)
-- docs/business-subtitle-styles.md § Out of scope (2.1.0) — L47-51 (5 lines)
+- docs/business-subtitle-styles.md § Enlarge word and Typewriter (REQ-309 status note, 310, 333 planned 2.3.0 fix) — L23-28 (6 lines)
+- docs/business-subtitle-styles.md § Edge cases and rules for the builders — L29-37 (9 lines)
+- docs/business-subtitle-styles.md § Key decisions (2.1.0) — L38-42 (5 lines)
+- docs/business-subtitle-styles.md § Known limitations — L43-47 (5 lines)
+- docs/business-subtitle-styles.md § Out of scope (2.1.0) — L48-52 (5 lines)
 - docs/business-speed.md § title and intro — L1-6 (6 lines; built 2.2.0)
 - docs/business-speed.md § Features — L7-13 (7 lines)
 - docs/business-speed.md § Requirements (intro) — L14-15 (2 lines)
@@ -258,6 +259,12 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-speed.md § Key decisions (2.2.0) — L34-39 (6 lines)
 - docs/business-speed.md § Scope — L40-43 (4 lines)
 - docs/business-speed.md § Known limitations (2.2.0) — L44-48 (5 lines)
+- docs/business-overlap.md § title and intro (2.3.0, planned) — L1-4 (4 lines)
+- docs/business-overlap.md § Features (planned) — L5-13 (9 lines)
+- docs/business-overlap.md § Requirements (REQ-325, 327..331, planned) — L14-21 (8 lines)
+- docs/business-overlap.md § Key decisions (2.3.0) — L22-26 (5 lines)
+- docs/business-overlap.md § Out of scope (2.3.0) — L27-31 (5 lines)
+- docs/business-overlap.md § Known limitations (2.3.0) — L32-34 (3 lines)
 
 Line range convention: heading to the line before the next heading. Re-check after any edit.
 
@@ -272,6 +279,60 @@ Line range convention: heading to the line before the next heading. Re-check aft
   - § Rejected or considered — L49-67 (19 lines)
   - § Product risks (current, 2.0.4) — L68-80 (13 lines)
   - § Open questions (deviations, REQ-177) — L81-92 (12 lines)
+
+## Checkpoint 2.3.0 (PLAN 2026-11-22, not built; target version 2.3.0; Andrea's request of 2026-11-22)
+- Planned: REQ-324 (editing, Add media button), REQ-325, REQ-327..331 (docs/business-overlap.md), REQ-326 (frame; amends REQ-286). Amended `(planned)` in place: REQ-287 (effects-frame; Add Picture replaced), REQ-295 (splash; "Never" removed). Next free ID: REQ-332. REQ-316 unchanged (implemented; REQ-331 applies it to overlap files).
+- Fit finding (item 1): the fit modes exist since 1.5.0 (D3 "Fit on height crop"; the Crop-to-fill both modes was rejected in 1.5.0). Fit on width keeps the width and cuts a vertical clip top and bottom (or pads a wide one); Fit on height keeps the height and cuts a horizontal clip left and right (or pads a tall one). Whole-video popup still shows the Fit dropdown (src/ui/frame_popups.rs aspect-fit, REQ-124/125). The per-clip row "Aspect of this clip" (src/ui/popups.rs, clip_settings, built 2.0.4 REQ-286; changelog 2.0.4 "Clip details sets the clip's own shape") offers only Off and the three shapes; each shape choice writes Fit::Height over any earlier fit, and keeps the fill and blur of the clip's own aspect (a new clip gets the FrameAspect::default black fill). REQ-286's own text promises "its shape, fit and empty space": the build does not match its text. Hence REQ-326 and question Q1/Q2. Not verified in a running UI (PM reads code only).
+- Item 2 explanations (for Andrea; the code and REQ facts):
+  - Volume keyframes: REQ-280 (built 2.0.4, batch 11, ADR-190). Origin: 1.5.0 roadmap "Keyframes for other effects" (out of scope of the 1.5.0 request); 2.0.4 decision "keyframes only for volume". Logic: keys hold the clip's volume in % (0-100) at clip time; straight line, or ease (REQ-282, Volume part); gain = (percent/100)^2; one key = constant; UI "Volume keys" row in Clip details (popups.rs, next to the slider and the level at the playhead). Meets: REQ-280, 282 (volume), 084 (clip volume, stays), 020, 320/321 (Volume row, Sound group), 322 (stored, format 13). Removal impact: volume keys of old projects either keep playing (dead data, no new keys) or are dropped (the sound changes to the clip slider value; a notice); tests of 280 and 282 (v204.rs, render tests) change; no other REQ depends on keys; fades (REQ-274..276) are not keys and stay.
+  - Crop: REQ-283 (built 2.0.4, batch 11). Origin: 1.5.0 rejected "a crop tool" (business-frame Key decisions 1.5.0); 2.0.4 "cropping by hand" was a planned item of the 2.0.4 out-of-scope list. Logic: per clip, left/top/right/bottom each 0-45% of the picture (fractions), at least 10% kept; applied before the Change aspect fit (REQ-131 step 2); UI "Crop %" row in Clip details (popups.rs), movable Crop row in the picture group (REQ-320/321). Relation to Fit: Crop is a manual cut at chosen edges; Fit is an automatic centred cut. Meets: REQ-283, 131, 125, 320, 321, 322. Removal impact: stored crop in format 13 (old crops would show the full picture unless converted); REQ-131 composition step; widget rows; tests (applied_tests, order_tests, effect_order); if Fit is restored, Crop is the only manual cut.
+  - Speed: REQ-281 (built 2.0.4, batch 13). Origin: not a user request in the docs; the 2.0.4 list was proposed by the assistant and split by Andrea (git commit 87ee546 says so). Logic: 50-200% of the clip's time, pitch kept, the clip's timeline length scales and ripples, subtitle lines mapped (REQ-018), volume keys in timeline time (REQ-280), a speed clip is never stream copied (REQ-023/281), merge needs equal speeds; Speed is fixed first in the order (REQ-320, not in REQ-322 stored order). Meets: REQ-281, 018, 023, 280, 320, 322. Removal impact: old projects with speed other than 100% change length on opening unless kept (subtitle mapping and volume keys times move too); export rule REQ-023 and the 2.2.0 "every effect except Speed" text change; tests (speed_tests.rs and the 2.0.4 speed tests). Name clash: the 2.2.0 "speed" theme is performance, not this.
+- SEVERE questions (sent to the user; answers pending):
+  - Q1 (where): a) the clip's "Aspect of this clip" row (no Fit, no empty space); b) the whole-video Change aspect popup (has Fit; check what the user sees); c) both; d) other, described.
+  - Q2 (what the clip row offers): a) Fit and empty space (colour or blur, blur level) as the whole video [recommended, REQ-326 default]; b) Fit only, empty space black; c) shape only as now, cut by hand with Crop; d) as a, but a new clip keeps Fit on height as now (no default change).
+  - Q3 (Volume keyframes): a) keep as built; b) remove, old keys dropped on open (sound becomes the clip slider value, notice); c) remove the control, old keys keep playing; d) keep the keys, remove only the ease choice (straight lines).
+  - Q4 (Crop): a) keep as built; b) remove, old crops dropped on open (full picture back, notice); c) remove the control, old crops keep being applied; d) keep for now, decide after Fit is restored and used.
+  - Q5 (Speed): a) keep as built; b) remove, old speeds dropped (clip back to normal length, notice); c) remove the control, old speeds keep playing; d) keep, offer only 50%, 100%, 200%.
+  - Q6 (overlap animation, REQ-328): a) loop for the whole overlap length [recommended reading]; b) play once, then hold the last frame; c) play once, then the overlap is transparent; d) first frame only (still), also for GIF and MOV.
+  - Q7 (edits of a clip with an overlap, REQ-329): a) it follows its clip: moves with ripple, trimmed to the kept part, split keeps the part where its start lies, deleted with the clip [recommended]; b) split copies it to each part it overlaps; c) split and trim blocked while an overlap is on the clip; d) overlap keeps its timeline time and is detached (becomes free) on split.
+  - Q8 (old Add Picture items, REQ-330): a) each becomes an overlap on the clip under its start, same times and place; no clip under its start: stays a picture item [recommended]; b) kept as free picture items, only new items are overlaps; c) dropped on open with a notice; d) kept, and the Add Picture row stays next to Overlap media.
+  - Q9 (stored "Never", REQ-295): a) read as "Once for each version" [recommended]; b) read as "At every start" (the default); c) no splash, not selectable (hidden legacy value); d) one-time question on the first start after the update.
+- MINOR defaults taken (2.3.0): Add media = File > Import media… action, label "Add media" (REQ-324); overlap default length 3 s cut to the clip; start and end clamped to the clip; sound of MOV not played; overlap on top of the picture group by default; several overlaps per clip allowed; 16 MP limit applies to overlap files (REQ-331); a 360 export does not draw overlaps; MOV without alpha drawn opaque (known limit); clip Change aspect first choice Fit on width and black (REQ-326, pending Q2); normal edge drag keeps the media's ratio (REQ-327, Andrea's wording), Ctrl or Command: MOV cropped, GIF and PNG stretched; Overlap placed where the playhead is, refused with a status line when no clip is under it.
+- Decisions: overlap is bound to one clip (Andrea's "ONE clip"); Ctrl/Command only (Andrea); Add Picture replaced (Andrea's "instead of").
+- Rejected or considered: overlap as a free object on the picture (contradicts the one-clip rule); a separate video track for overlaps (multiple video tracks out of scope); copying the picture into the project (not requested).
+- Risks: R1 alpha video (MOV with alpha, GIF transparency) must be decoded with alpha by the bundled ffmpeg; hardware decoders may drop alpha, so the Architect may route overlaps to the software path (export check REQ-062/063 unchanged). R2 new stored data (overlap) needs a project format bump; older versions refuse it (REQ-029). R3 REQ-326 touches the frame graph (stream copy already re-encodes). R4 test churn: REQ-287, 295 ("Never"), 286 (clip aspect UI), 316 (overlap files). R5 removing Volume keys, Crop or Speed changes old projects unless converted (see Q3-Q5). R6 the clip row's Fit default (Fit on width vs height) changes existing clips' picture only if the user picks again.
+- Roadmap items affected (for RELEASE): "Keyframes for other effects" (Volume keys part, Q3); "Default place of new picture rows" (overlap rows added); "Picture item limits" (REQ-316 applies to overlaps); possibly "Crop" and "Speed" items per Q4/Q5.
+- Open questions: Q1-Q9 above (all SEVERE). Ready for REFINE.
+
+## Checkpoint 2.3.0 STATUS done (2026-11-22, built by the Principal Engineer; suite green, 95.1% line, feature 313/313 before marking)
+- Marked `(implemented)` in the human docs: REQ-280, 281, 283 (removed), 287, 320, 321, 322 (amended), 324, 325, 326, 327, 328, 329, 330, 331, 332, 333. REQ-295 implemented (amended: "Never" removed). REQ-309 stays implemented (fixed by REQ-333).
+- Deviations accepted by Andrea and written into the texts: (a) REQ-329: a split keeps each part of every overlap on the half it falls in, no popup; a trim shows the popup only when an overlap would have nothing left; deleting a clip shows one popup and removes all its overlaps (Cancel keeps them). (b) REQ-325: the overlap lane appears only while overlaps exist, 1 to 3 sub-rows visible, wheel scroll. (c) The Effects row "Overlap media" shares the first row with "Add Text". (d) REQ-332 and REQ-330 opening status line: "Opening: N clip(s) changed by the conversion (M crop(s) dropped, K picture(s) made overlaps)" (confirmed). (e) REQ-280: the Volume popup has an ease choice per key and Add keyframe at the playhead.
+- Earlier amendments kept: REQ-325 lane and Effects row, REQ-329 Change speed rescales overlap times, REQ-331 preview at half size above 1920x1080, export full size.
+- Index: no range changed (all edits kept line counts).
+
+## Checkpoint 2.3.0 REFINE (2026-11-22, Andrea's answers; all SEVERE questions closed; Q1-Q9 no longer open)
+- Q1 = both: REQ-326 covers the clip row; the whole-video popup keeps Fit and empty space (REQ-124..126) and the PE checks and fixes it in the running popup (REQ-326 text).
+- Q2 = Fit plus empty space (colour, or blurred video with blur level), as the whole video. Default of a new clip: Fit on width and black (MINOR, as whole video).
+- Q3 = Volume is itself keyframable, as an effect of its own (drag, right-click, Effects list; popup with the REQ-129 timeline; straight or ease; at most one Volume effect per clip). The Clip details "Volume keys" row is removed. MINOR: a new Volume effect starts with one key at the clip's current slider level; the slider (REQ-084) stays and shows that keys set the volume while the effect exists. Migration (MINOR, the model allows it): 2.2.0 volume keys become the clip's Volume effect keys unchanged (REQ-332). REQ-280 amended (planned); REQ-282 text unchanged (it already names Volume).
+- Q4 = Crop removed; old crops dropped on opening with one status line (REQ-332, as REQ-149 style); REQ-283 kept as "(planned, removed 2.3.0)". REQ-131 text names no crop; its step (2) loses the crop before the fit (no text change). REQ-320/321/322 amended: no Crop row, no crop in order.
+- Q5 = Speed kept as its own effect "Change speed" (50-200%, not keyframed), applied to one clip (drag, right-click) or to all clips (double-click, one copy per clip, REQ-147 rule). Not a Clip details row, not in Change aspect. Old speeds kept and become the clip's Change speed (REQ-332). MINOR: Change speed keeps the fixed bottom row of the order (applied first, REQ-320). REQ-281 amended (planned).
+- Q6 = overlap GIF/MOV plays once, then transparent (REQ-328; PNG still). Closed.
+- Q7 = edits: an overlap cut to the kept part is kept, cut (no warning). An edit that would remove overlaps (clip deleted; overlap wholly outside the kept part after trim/split) shows one warning popup for all of them with the count: OK removes them with the edit, Cancel cancels the whole edit; one undo restores (REQ-329). MINOR: the "only cut = keep" reading.
+- Q8 = old Add Picture items become overlaps on the clip under their start (same times and place); no clip under the start: stays a picture item (REQ-330). Closed.
+- Q9 = stored "Never" read as "Once for each version" (REQ-295). Closed.
+- Changed (planned, in the human docs): REQ-280 (Volume keyframes), REQ-281 (Change speed), REQ-283 (removed), REQ-332 (new: conversion of 2.2.0 projects), REQ-320, 321, 322 (order: Crop out, Overlap media in, Change speed fixed; amended, planned), REQ-326 (whole-video check added), REQ-328, 329, 330 (decided). Business-effects.md line on Clip volume notes the Volume effect (REQ-280). Key decisions updated in effects-frame, applied-effects, frame, splash and business.md.
+- Next free ID: REQ-333 at REFINE; now REQ-334 (see § Additions below).
+- Additions (PM, 2026-11-22, after REFINE; Write/Edit only):
+  - REQ-309 (implemented, kept) gets a status note: the 2.1.0 build moves the enlarged word up instead of enlarging it around its place; the acceptance "other words do not move, the enlarged word keeps its centre" is not met. Kept `implemented` so the coverage grep counts it; it is effectively open until REQ-333 is built (the Principal Engineer decides at STATUS; the PM will mark it planned if the fix is not met).
+  - REQ-333 (planned, decided by Andrea): Enlarge word grows around its own centre; others do not move; fix by ADR-235 (architecture-plan-2.3.0 § 8.8). Gates per architecture § 9: centre within 2% of the picture height; other words unchanged.
+  - REQ-325: one shared overlap lane, sub-rows, at most three sub-rows visible with scroll (Andrea, via architect Q-A).
+  - REQ-281/329: Change speed rescales the overlap times with the clip's times (Andrea, via architect).
+  - REQ-331: overlay files above 1920x1080 are previewed at half size; export keeps full size (Andrea, via architect; REQ-316 unchanged).
+  - REQ-330 and REQ-332: one opening status line, wording "Opening: N clip(s) changed by the conversion (M crop(s) dropped)" (PM's MINOR wording, to be confirmed by Andrea; architecture § 4 uses the same line).
+  - Open for Andrea: confirm the status-line wording above.
+- Old open items closed: the Q1-Q9 open items of the PLAN, the "open until Andrea decides" wording in REQ-326, 328, 329, 330, 295, and the Volume keys / Crop / Speed "keep or remove" question.
+- Roadmap for RELEASE: "Keyframes for other effects" now covers Volume only (Volume done in 2.3.0 by plan); "Crop" removed from the roadmap as a feature; "Speed" stays as Change speed. Add: none. Picture items item: REQ-316 applies to overlaps.
+- Risks added: R7 migration of 2.2.0 projects (volume keys, speed, crop dropped): test with a 2.2.0 fixture. R8 the Change speed "all clips" copy is a new use of the copy rule for a non-keyframed effect.
 
 ## Checkpoint 2.2.0 (PLAN 2026-11-21, not built; target version 2.2.0, theme speed)
 - Source: the user's answers of 2026-11-21 (final). Requirements: REQ-312 to REQ-316 `(planned)` in docs/business-speed.md; REQ-177 amended in place (planned, subtitle-accuracy doc). Next free ID: REQ-317.

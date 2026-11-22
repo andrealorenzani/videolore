@@ -909,7 +909,7 @@ fn dropping_a_project_asks_about_unsaved_changes_then_opens_it() {
     // an empty media list invites to import or drop
     h.idle(1);
     assert!(h.has(media::EMPTY_HINT), "{:#?}", h.labels());
-    assert!(h.has("Import media…"));
+    assert!(h.has(media::ADD_MEDIA));
 }
 
 // covers: REQ-075, REQ-076
@@ -933,7 +933,8 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
             "Change aspect",
             "Scale",
             "Move",
-            "Apply LUT"
+            "Apply LUT",
+            "Change speed"
         ]
     );
     for (effect, name) in rows.into_iter().take(4) {

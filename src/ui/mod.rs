@@ -23,6 +23,8 @@ pub mod markers;
 pub mod media;
 pub mod menu;
 pub mod modals;
+pub mod overlap_box;
+pub mod overlap_lane;
 pub mod picture;
 pub mod place;
 pub mod placement;
@@ -66,6 +68,8 @@ pub struct Container {
 /// UI-only state that is not part of the application state.
 #[derive(Default)]
 pub struct UiCache {
+    /// The first sub-row of the overlap lane that is shown (the lane scrolls, ADR-242).
+    pub overlap_scroll: usize,
     texture: Option<TextureHandle>,
     serial: u64,
     title: String,
@@ -688,6 +692,7 @@ fn picture_panel(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mut Ve
             let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
             ui.painter().image(t.id(), r, uv, Color32::WHITE);
             picture::interact(ui, app, cache, cmds, r);
+            overlap_box::interact(ui, app, cmds, r);
         }
         if let Some(e) = &app.preview.error {
             ui.painter().text(
@@ -804,6 +809,8 @@ mod icon_ux_tests;
 mod interface_ux_tests;
 #[cfg(test)]
 mod lut_ux_tests;
+#[cfg(test)]
+mod overlap_ux_tests;
 #[cfg(test)]
 mod placing_ux_tests;
 #[cfg(test)]

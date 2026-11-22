@@ -594,10 +594,11 @@ pub struct FrameKey {
     /// Fingerprint of the clip's Apply LUT table (1.6.0): a changed file re-renders the
     /// picture once.
     pub luts: Option<String>,
-    /// The crop of the clip (REQ-283).
-    pub crop: crate::timeline::Crop,
     /// The order of the clip's movable effects when the user changed it (REQ-304), top first.
     pub order: Vec<crate::effect_order::Row>,
+    /// The overlaps of the clip on screen, with the frame index since their start for an
+    /// animation (REQ-325).
+    pub overlaps: Vec<(crate::overlap::Overlap, i64)>,
 }
 
 impl FrameKey {
@@ -682,10 +683,23 @@ pub fn frame_key(
         .find(|(r, _)| r.clip == c.id)
         .map(|(_, o)| o)
         .unwrap_or_default();
+    let overlaps = tl
+        .overlaps_of(c.id)
+        .iter()
+        .filter(|o| offset >= o.from && offset < o.end())
+        .map(|o| {
+            let n = if o.kind == crate::overlap::Kind::Motion {
+                export.fps.frame_index(offset - o.from)
+            } else {
+                0
+            };
+            (o.clone(), n)
+        })
+        .collect();
     Some(FrameKey {
         luts,
         order,
-        crop: c.crop,
+        overlaps,
         placement,
         path: src.path_of(m),
         frame: fps.frame_index(c.src_at(offset)),

@@ -18,7 +18,7 @@ An effect applied to the whole video (double-click) is put on the clips as a cop
   - Acceptance: changing the subtitle style changes the preview and undo restores it; with 3 fades, "Remove all fades" leaves 0 and one undo brings back 3; playback continues while a popup is open.
 - REQ-077 (implemented): Every fade and every subtitle line has a marker on the timeline at its position; since 1.2.0 so do the fade from black at the start of the video, the fade to black at its end (REQ-083), and every video clip whose own volume is not 100% or is muted (marker at the clip start, REQ-084). Markers differ by type (shape and colour); the tooltip gives the type, the time and, for subtitles, the start of the line's text. Clicking a marker selects that instance, moves the playhead to its start, highlights it and opens its popup:
   - Fade between clips: the two clips it sits between, its time, and Remove. Start or end fade: its time and Remove.
-  - Clip volume: that clip's volume slider and mute switch.
+  - Clip volume: that clip's volume slider and mute switch; since 2.3.0 also the clip's Volume effect with keyframes (REQ-280, planned).
   - Subtitle line: a text field, start and end adjustable by ±0.1 s, Delete, "Play this line" and (since 1.2.0) "Reset position" (REQ-089). Ctrl+click (Cmd+click on macOS) on a line marker adds it to or removes it from the selection instead (REQ-090).
   - A clip boundary without a fade shows a small "Add fade" handle; clicking it adds a fade (one undo step). Clicking an existing fade marker opens its popup (it no longer removes the fade directly).
   - When several markers overlap under the pointer, a small chooser lists them all.

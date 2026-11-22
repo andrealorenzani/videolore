@@ -197,11 +197,46 @@ pub enum Command {
         clip: ClipId,
         speed: u16,
     },
-    /// Crop of a clip (REQ-283).
-    SetCrop {
-        clip: ClipId,
-        crop: crate::timeline::Crop,
+    /// Speed of every clip in thousandths (REQ-281): one copy on each clip (REQ-147), one undo
+    /// step.
+    SetSpeedAll {
+        speed: u16,
     },
+    /// Straight or eased move of the volume to the next key (REQ-282).
+    SetVolumeKeyEase {
+        clip: ClipId,
+        at: Micros,
+        ease: crate::keyframes::Ease,
+    },
+    /// Takes the Volume effect off a clip: its keyframes go, the level of the slider stays
+    /// (REQ-280).
+    RemoveVolume {
+        clip: ClipId,
+    },
+    /// Adds an overlap over the clip under the playhead, from a file (the dialog when none)
+    /// (REQ-325).
+    AddOverlap(Option<PathBuf>),
+    /// Moves or resizes the box of an overlap; `reshaped` is the Ctrl (Command) shape change
+    /// (REQ-327).
+    SetOverlapBox {
+        id: u64,
+        place: Pos,
+        width: u16,
+        height: u16,
+        reshaped: bool,
+    },
+    /// Moves the two ends of an overlap on its clip (offsets from the clip's start).
+    SetOverlapTimes {
+        id: u64,
+        from: Micros,
+        len: Micros,
+    },
+    RemoveOverlap(u64),
+    SelectOverlap(Option<u64>),
+    /// OK of the warning of an edit that removes overlaps: the edit is done with the removal.
+    ConfirmRemoval,
+    /// Cancel of that warning: nothing changes.
+    CancelRemoval,
     /// The length of every fade (REQ-274) and the side of the fade at a boundary (REQ-275).
     SetFadeLength(Micros),
     SetFadeSide {
@@ -561,8 +596,14 @@ impl Command {
             Command::ToggleFade(_) | Command::ToggleFadeAtPlayhead => "Fade",
             Command::RemoveAllFades => "Remove all fades",
             Command::SetFadeLength(_) => "Fade length",
-            Command::SetCrop { .. } => "Crop",
-            Command::SetSpeed { .. } => "Speed",
+            Command::SetSpeed { .. } | Command::SetSpeedAll { .. } => "Change speed",
+            Command::RemoveVolume { .. } => "Remove Volume",
+            Command::SetVolumeKeyEase { .. } => "Volume keyframe ease",
+            Command::AddOverlap(_) => "Add overlap",
+            Command::SetOverlapBox { .. } => "Move overlap",
+            Command::SetOverlapTimes { .. } => "Change overlap time",
+            Command::RemoveOverlap(_) => "Remove overlap",
+            Command::SelectOverlap(_) | Command::ConfirmRemoval | Command::CancelRemoval => "",
             Command::SetClipAspect { .. } => "Clip aspect",
             Command::SetVolumeKey { .. } => "Volume keyframe",
             Command::RemoveVolumeKey { .. } => "Remove volume keyframe",

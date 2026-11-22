@@ -2,6 +2,20 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 2.3.0 — 2026-11-22 11:17 +0000
+- Added: Overlap media puts a PNG, GIF or MOV file with transparency over one video clip, with its own start and end on the timeline and a box that is dragged in the preview; Ctrl or Command while dragging an edge changes the shape of the box; a GIF or MOV plays once and then stays transparent. The overlaps of a project share one lane on the timeline, with up to three rows visible (REQ-325, REQ-327 to REQ-329, REQ-331).
+- Added: Add media button at the end of the Media section, the same action as File > Import media… (REQ-324).
+- Added: Change speed, an effect of 50% to 200% applied to one clip (drag or right-click) or to every clip (double-click); it replaces the Speed row of Clip details (REQ-281).
+- Added: Volume is an effect of its own with keyframes (straight or eased), applied to a clip from the Effects list; the Volume keys row of Clip details is removed (REQ-280).
+- Added: the clip's Change aspect offers Fit and the empty space (a colour, or a blur) as the whole video does (REQ-326).
+- Changed: Overlap media replaces the Add Picture action; a picture item under a clip's start becomes an overlap of that clip, and a picture item with no clip under its start stays a picture item (REQ-330).
+- Changed: a stored "Never" start-screen choice is read as "Once for each version", and the choice is removed from Settings (REQ-295).
+- Changed: overlay files count against the 16 megapixel limit of picture items; an overlay above 1920 x 1080 is drawn at half size in the preview and at full size in the export, so the preview is softer for it (REQ-316, REQ-325, REQ-331).
+- Changed: editing a clip moves, trims or splits its overlaps with it; an edit that would remove overlaps shows one warning with their number, and one undo restores them (REQ-329).
+- Changed: the project file is format 14. Versions up to 2.2.0 refuse it with a message and leave the file untouched; formats 13 and older open as before, and a format 13 file is converted in memory when it opens, with one status line (REQ-330, REQ-332).
+- Fixed: Enlarge word draws the enlarged word centred on its normal place in the line, and the other words keep their place while it is enlarged; the 2.1.0 style moved the line instead (REQ-333, fixes REQ-309).
+- Removed: Crop of a clip (REQ-283). A crop in an older project is dropped when it opens, with one status line (REQ-332).
+
 ## 2.2.0 — 2026-11-21 22:07 +0000
 - Added: the Applied effects widget is a column on the right of the Preview (at least 180 px wide, its width kept with the layout), and every effect except Speed can be moved up or down in it: Crop, Change aspect, Scale, Move, LUT, Fade, texts, picture items, subtitle lines, Volume and Clean audio; Speed stays fixed. On 360 clips the rows fixed to the sphere stay fixed. A LUT above Change aspect grades the frame fill (REQ-317 to REQ-322).
 - Added: a text's Maximum size (2 to 50% of the picture height) in the text popup and the Add Text popup; without one the 10% default stays (REQ-323).

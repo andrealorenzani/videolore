@@ -216,6 +216,29 @@ pub fn subtitles_doc_ordered(
     ))
 }
 
+/// How the file of overlap `o`, which starts at timeline time `start`, is drawn by a render
+/// that begins at `from` (REQ-327, REQ-328, ADR-243): an animation plays once and is read from
+/// where it has got to; a reshaped video fills its box; a file above 1920 x 1080 is halved in
+/// a preview.
+pub(super) fn overlap_look(
+    o: &crate::overlap::Overlap,
+    start: Micros,
+    from: Micros,
+    src: Source,
+) -> Look {
+    let motion = o.kind == crate::overlap::Kind::Motion;
+    Look {
+        motion,
+        skip: if motion {
+            (from - start).max(Micros::ZERO)
+        } else {
+            Micros::ZERO
+        },
+        cover: motion && o.reshaped && !o.is_gif(),
+        half: matches!(src, Source::Preview { .. }) && o.is_large(),
+    }
+}
+
 /// The picture items (REQ-287) shown from the timeline position `from` on, placed on a
 /// picture of `g`, with their times counted from `from`. A file that is gone stops an export
 /// and is left out of a preview.
@@ -228,17 +251,57 @@ pub fn picture_overlays(
     let video_end = project.timeline.duration();
     let keep = overlay::legacy_windows(project);
     let mut out = Vec::new();
+    // what is drawn: the picture items, then the overlaps of the clips (REQ-287, REQ-325)
+    struct Cand {
+        name: String,
+        path: PathBuf,
+        usable: bool,
+        rect: (i32, i32, u32, u32),
+        start: Micros,
+        end: Micros,
+        look: Look,
+    }
+    let mut cands: Vec<Cand> = Vec::new();
     for t in &project.texts.items {
         let Some(pic) = &t.picture else { continue };
-        let end = t.end().min(video_end);
-        if end <= from.max(t.start) {
+        let path = PathBuf::from(&pic.path);
+        cands.push(Cand {
+            name: pic.name(),
+            usable: crate::picture::usable(&path),
+            path,
+            rect: pic.rect(t.place, t.width, t.height, (g.width, g.height)),
+            start: t.start,
+            end: t.end().min(video_end),
+            look: Look::default(),
+        });
+    }
+    let mut at = Micros::ZERO;
+    for c in &project.timeline.clips {
+        for o in project.timeline.overlaps_of(c.id) {
+            let start = at + o.from;
+            let path = PathBuf::from(&o.path);
+            cands.push(Cand {
+                name: o.name(),
+                usable: crate::picture::overlay_usable(&path),
+                path,
+                rect: o.rect((g.width, g.height)),
+                start,
+                end: (at + o.end()).min(video_end),
+                look: overlap_look(o, start, from, src),
+            });
+        }
+        at = at + c.len();
+    }
+    for c in cands {
+        let (start, end) = (c.start, c.end);
+        if end <= from.max(start) {
             continue;
         }
         // the parts of the item that the overlay stage does not draw, as render times
         let pieces: Vec<(Micros, Micros)> = match &keep {
             None => Vec::new(),
             Some(ws) => {
-                let own = [(t.start.max(from), end)];
+                let own = [(start.max(from), end)];
                 let parts = crate::text::intersect(&own, ws);
                 if parts.is_empty() {
                     continue;
@@ -253,23 +316,23 @@ pub fn picture_overlays(
                 }
             }
         };
-        let path = PathBuf::from(&pic.path);
-        if !crate::picture::usable(&path) {
+        if !c.usable {
             if matches!(src, Source::Preview { .. }) {
                 continue;
             }
-            return Err(RenderError::Picture(pic.name()));
+            return Err(RenderError::Picture(c.name));
         }
-        let (x, y, w, h) = pic.rect(t.place, t.width, t.height, (g.width, g.height));
+        let (x, y, w, h) = c.rect;
         out.push(PicOverlay {
-            path,
+            path: c.path,
             x,
             y,
             w,
             h,
-            start: (t.start - from).max(Micros::ZERO),
+            start: (start - from).max(Micros::ZERO),
             end: end - from,
             pieces,
+            look: c.look,
         });
     }
     Ok(out)
@@ -327,7 +390,6 @@ pub fn plan_export_choice(
             // a 360 video keeps its sound as recorded: the viewer's player turns it (REQ-273)
             s.spatial = None;
             s.frame = None;
-            s.crop = Default::default();
         }
     }
     let owned: Vec<MediaFormat> = media
@@ -402,7 +464,6 @@ pub fn plan_export_choice(
         && preset.is_none()
         && choice.audio == format::AudioChoice::Same
         && !project.timeline.any_clean_audio()
-        && (sphere || !project.timeline.any_crop())
         && !project.timeline.any_lut()
         && project.timeline.clips.iter().all(|c| !c.has_volume())
         && !project.timeline.any_volume_keys()

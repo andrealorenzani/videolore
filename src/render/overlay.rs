@@ -97,7 +97,6 @@ pub fn attach(
         for row in order.iter().rev() {
             let before = out.len();
             match *row {
-                Row::Crop if by_steps => seq.push(Step::Crop),
                 Row::Frame if by_steps => seq.push(Step::Frame),
                 Row::Scale if by_steps => seq.push(Step::Scale),
                 Row::Move if by_steps => seq.push(Step::Move),
@@ -151,6 +150,39 @@ pub fn attach(
                         start: a - doc_shift,
                         end: b - doc_shift,
                         pieces: Vec::new(),
+                        look: Look::default(),
+                    }));
+                }
+                Row::Overlap(id) => {
+                    let Some((_, o)) = project.timeline.find_overlap(id) else {
+                        continue;
+                    };
+                    let abs = rows.start + o.from;
+                    let (a, b) = (
+                        abs.max(shift),
+                        (rows.start + o.end()).min(rows.end).min(end_all),
+                    );
+                    if b <= a {
+                        continue;
+                    }
+                    let path = PathBuf::from(&o.path);
+                    if !crate::picture::overlay_usable(&path) {
+                        if matches!(src, Source::Preview { .. }) {
+                            continue;
+                        }
+                        return Err(RenderError::Picture(o.name()));
+                    }
+                    let (x, y, w, h) = o.rect((g.width, g.height));
+                    out.push(OverlayStep::Pic(PicOverlay {
+                        path,
+                        x,
+                        y,
+                        w,
+                        h,
+                        start: a - doc_shift,
+                        end: b - doc_shift,
+                        pieces: Vec::new(),
+                        look: super::plan::overlap_look(o, abs, shift, src),
                     }));
                 }
                 Row::Subtitles if burn_lines => {

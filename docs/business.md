@@ -55,6 +55,15 @@ Professional editors needing multitrack video, color grading or advanced effects
 - [Text](business-text.md) (2.2.0): the text box governs the text size; each text may set an optional maximum size (default cap 10%, REQ-323, D64); old projects keep their sizes (REQ-318, REQ-319).
 - Whole-video effects (planned): a whole-video effect is a copy on each clip (for Fade IN/OUT, the first clip's start and the last clip's end, as today) that then behaves as a clip effect; the whole-video mark and the whole-video popup are removed. Amended in [Effects](business-effects.md) (REQ-147), [Editing](business-editing.md) (REQ-083), [Frame](business-frame.md) (REQ-129, REQ-148), [Whole-video and keyframe clarity](business-keyframes.md) (REQ-200 to REQ-202) and [Applied effects](business-applied-effects.md) (REQ-303).
 
+### 2.3.0 (Andrea's requests of 2026-11-22, built)
+- [Overlap media](business-overlap.md) — a PNG, GIF or MOV with transparency placed over one video clip, with its start and end on the timeline, a box that keeps its shape (Ctrl or Command while dragging an edge changes it: MOV cropped, GIF and PNG stretched); replaces Add Picture (REQ-325, REQ-327 to REQ-331).
+- [Frame](business-frame.md) — a clip's own Change aspect gets the Fit and empty-space choices of the whole video (REQ-326); the whole-video choices are checked in the running popup.
+- [New effects, frame and LUT options](business-effects-frame.md) — Crop removed (REQ-283); Volume is keyframed as an effect of its own (REQ-280); Speed becomes the Change speed effect, not keyframed (REQ-281); 2.2.0 projects are converted on opening (REQ-332).
+- [Applied effects](business-applied-effects.md) — the order lists Overlap media and Change speed (fixed), and no Crop (REQ-320 to REQ-322 amended).
+- [Editing](business-editing.md) — an Add media button at the end of the Media section (REQ-324).
+- [Splash screen](business-splash.md) — the "Never" choice of the start screen is removed (REQ-295 amended).
+- All questions of this development were answered by Andrea on 2026-11-22; the answers are written into the documents above. No question is open.
+
 ## Constraints
 - **ffmpeg is bundled** in every installer (since 0.2.0; before, it had to be installed by the user). A user-chosen ffmpeg can still be configured instead.
 - **The product works fully offline** (editor and video player alike). The only network access is the one-time, user-approved download of the speech model of the chosen subtitle quality level (each model has its own consent), from fixed secure addresses and checked before use; a model can also be provided as a local file. There is no telemetry and no update check.
@@ -93,6 +102,8 @@ Professional editors needing multitrack video, color grading or advanced effects
 - (2.2.0, D64) A text may set its own maximum size (REQ-323); the 10% cap stays the default. This overrides the 1.4.0 rule of no size field for this one field.
 - (2.2.0, Andrea) Every effect can be reordered inside its group, except Speed, which stays fixed and applied first; today's order is the default (REQ-320).
 - (2.2.0, Andrea 2026-11-21) An effect applied to the whole video is distributed as copies on the clips (on every clip; Fade IN/OUT only on the first and last clip, as today) and then behaves as a clip effect (no whole-video mark, no whole-video popup); Change aspect stays the project frame. This removes the mark asked for in the 2.1.0 request.
+- (2.3.0, Andrea 2026-11-22) An overlay is bound to one video clip (Overlap media), not a free object on the picture; Ctrl or Command is the only way to change its shape. See [Overlap media](business-overlap.md).
+- (2.3.0, Andrea 2026-11-22) Crop is removed; Volume is keyframed as an effect; Speed is the Change speed effect; the 2.2.0 values are kept by conversion on opening (REQ-332).
 
 Topic-specific decisions are in each document.
 
@@ -126,7 +137,7 @@ Topic-specific decisions are in each document.
 - Faster export needs NVIDIA graphics driver 610 or newer; on Fedora, AMD and Intel hardware export needs the RPM Fusion "freeworld" video drivers; on Linux, Intel and AMD hardware with the bundled ffmpeg needs system libva 2.21 or newer (Ubuntu 24.04 has 2.20, so it is skipped there); on integrated Intel graphics Faster was measured to be sometimes slower than Best quality; on computers with several graphics cards NVIDIA is always preferred; some combinations are not yet verified on real hardware. In every case a problem with the hardware leads to the normal method automatically, so the exported file is still correct (see [Export](business-export.md)).
 
 ## Out of scope
-- Multiple video tracks, overlays, picture-in-picture.
+- Multiple video tracks. Picture-in-picture only as an overlap bound to one clip (Overlap media, 2.3.0).
 - Color grading other than applying a LUT file (1.6.0), keyframe animation other than Scale and Move (1.5.0), transitions other than fade through black.
 - Editing, saving or exporting in the video player (1.6.0).
 - Accounts, cloud storage, sync, collaboration, direct upload to social networks.

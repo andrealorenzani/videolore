@@ -53,7 +53,7 @@ pub enum ActionId {
     GenerateSubtitles,
     AddSubtitleLine,
     AddText,
-    AddPicture,
+    AddOverlap,
     ApplyClipFade,
     ApplyClipSubtitles,
     ApplyClipVolume,
@@ -337,10 +337,10 @@ pub const ACTIONS: &[Action] = &[
         "Opens a popup to add a text at the playhead"
     ),
     action!(
-        AddPicture,
-        "Add picture at playhead",
+        AddOverlap,
+        "Overlap media at playhead",
         [],
-        "Adds a PNG picture at the playhead"
+        "Shows a PNG, GIF or video with transparency over the clip under the playhead"
     ),
     action!(
         ApplyClipFade,
@@ -628,7 +628,7 @@ impl ActionId {
             GenerateSubtitles => Command::GenerateSubtitles,
             AddSubtitleLine => Command::AddSubtitle,
             AddText => Command::OpenNewText,
-            AddPicture => Command::AddPicture(None),
+            AddOverlap => Command::AddOverlap(None),
             ApplyClipFade => apply(EffectKind::Fade, Target::Selected),
             ApplyClipSubtitles => apply(EffectKind::Subtitles, Target::Selected),
             ApplyClipVolume => apply(EffectKind::Volume, Target::Selected),
@@ -717,7 +717,7 @@ impl ActionId {
             ApplyLut | ApplyClipLut | ApplyWholeLut => i::PALETTE,
             GenerateSubtitles => i::MAGIC_WAND,
             AddText => i::TEXT_T,
-            AddPicture => i::IMAGE,
+            AddOverlap => i::IMAGE,
             AlignHorizontal => i::ALIGN_CENTER_HORIZONTAL,
             AlignVertical => i::ALIGN_CENTER_VERTICAL,
             MoveInside => i::CORNERS_OUT,

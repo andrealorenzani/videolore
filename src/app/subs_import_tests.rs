@@ -481,7 +481,7 @@ fn a_project_of_2_0_3_records_the_file_stats_without_an_analysis() {
     // saving writes format 12 with the stats
     app.dispatch(Command::SaveProject, Instant::now()).unwrap();
     let text = std::fs::read_to_string(&file).unwrap();
-    assert!(text.contains("\"schema_version\": 13"));
+    assert!(text.contains("\"schema_version\": 14"));
     assert!(text.contains("\"file_size\"") && text.contains("\"modified_ms\""));
 }
 

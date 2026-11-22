@@ -7,28 +7,26 @@
 //! every other order is built here, row by row, bottom to top, on a stream that is in one of
 //! three states:
 //!
-//! - the **source**: the picture as the file has it (a Crop here cuts the source);
+//! - the **source**: the picture as the file has it;
 //! - the **layer**: the picture fitted to the frame on a transparent surround (RGBA, the size of
-//!   the frame): Crop cuts the frame and scales it back, Apply LUT and Fade act on the colours and
-//!   keep the transparency, Scale resizes the layer about the centre of the frame and Move offsets
+//!   the frame): Apply LUT and Fade act on the colours and keep the transparency, Scale resizes the layer about the centre of the frame and Move offsets
 //!   it, so Scale then Move and Move then Scale give two places; texts are drawn by a matte;
 //! - the **frame**: the layer composed over the background (Change aspect), opaque: a Scale or
 //!   Move now acts on the whole frame (the uncovered edge is black), a LUT grades the background
 //!   too and a Fade fades it too.
 //!
-//! The picture is fitted when the first row other than Crop needs it, and the background is
+//! The picture is fitted when the first row needs it, and the background is
 //! composed at the Change aspect row; a clip without that effect is composed over black before
 //! its first text, picture or line (they need an opaque frame) or at the end. The clock of the
 //! chain is the clip's own (its documents are written in it), restarted by the last filter.
 
-use super::graph::{blur_chain, colour_chain, crop_filter, fades};
+use super::graph::{blur_chain, colour_chain, fades};
 use super::overlay::OverlayStep;
 use super::*;
 
 /// One step of a clip built step by step, bottom to top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
-    Crop,
     /// Change aspect: the background is composed under the picture here.
     Frame,
     Scale,
@@ -190,20 +188,6 @@ impl Build<'_> {
         self.stage = Stage::Frame;
     }
 
-    /// Crop.
-    fn crop(&mut self) {
-        let s = self.ctx.s;
-        // the camera view of a 360 clip is not cropped (as before)
-        if s.crop.is_none() || self.ctx.sphere {
-            return;
-        }
-        self.push(&crop_filter(&s.crop));
-        if self.stage != Stage::Source {
-            // the cut frame is made as big as the frame again
-            self.push(&format!(",scale={}:{},setsar=1", self.cur.0, self.cur.1));
-        }
-    }
-
     /// Scale (`scale`) or Move: a transparent canvas under a layer, black under a frame.
     fn place_picture(&mut self, scale: bool) {
         let Some(f) = self.ctx.s.frame.as_ref() else {
@@ -342,7 +326,6 @@ pub(super) fn chain(
             b.compose();
         }
         match *step {
-            Step::Crop => b.crop(),
             Step::Frame => b.compose(),
             Step::Scale => b.place_picture(true),
             Step::Move => b.place_picture(false),
@@ -381,14 +364,9 @@ pub(super) fn chain(
                         let (pi, q) = (b.label("pi"), b.label("q"));
                         let end = if b.stage == Stage::Layer { "rgba" } else { pf };
                         b.parts.push(format!(
-                            "[{input}:v:0]format=rgba,scale={}:{}{pi};\
-                             {l}{pi}overlay=x={}:y={}:enable='{}':shortest=1:format=auto,\
-                             format={end}{q}",
-                            p.w,
-                            p.h,
-                            p.x,
-                            p.y,
-                            p.enable(),
+                            "{prep};{l}{pi}overlay={laid}:format=auto,format={end}{q}",
+                            prep = p.prepared(*input, &pi),
+                            laid = p.laid(),
                         ));
                         b.c = q;
                     }

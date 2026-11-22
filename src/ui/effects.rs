@@ -64,7 +64,7 @@ pub const EFFECT_TOOLTIP: &str =
     "Drag onto a clip to apply it to that clip; double-click to apply it to the whole video";
 
 /// The rows of the Effects section: the effect and its name (nothing else is shown).
-pub fn rows() -> [(EffectKind, &'static str); 8] {
+pub fn rows() -> [(EffectKind, &'static str); 9] {
     EffectKind::ALL.map(|e| (e, e.name()))
 }
 
@@ -80,14 +80,17 @@ pub fn effect_icon(effect: EffectKind) -> &'static str {
         EffectKind::Scale => i::ARROWS_OUT,
         EffectKind::Move => i::ARROWS_OUT_CARDINAL,
         EffectKind::ApplyLut => i::PALETTE,
+        EffectKind::ChangeSpeed => i::SLIDERS,
     }
 }
 
 /// The row below the effects that opens the popup of a new text (REQ-075, REQ-108).
 pub const ADD_TEXT_ROW: &str = "Add Text";
-/// The row that adds a PNG picture (REQ-287).
-pub const ADD_PICTURE_ROW: &str = "Add Picture";
-pub const ADD_PICTURE_TOOLTIP: &str = "Adds a PNG picture at the playhead";
+/// The row that adds an overlap over the clip under the playhead; it replaces Add Picture
+/// (REQ-325).
+pub const OVERLAP_MEDIA_ROW: &str = "Overlap media";
+pub const OVERLAP_MEDIA_TOOLTIP: &str =
+    "Shows a PNG, GIF or video with transparency over the clip under the playhead";
 /// Tooltip of [`ADD_TEXT_ROW`].
 pub const ADD_TEXT_TOOLTIP: &str = "Opens a popup to add a text at the playhead";
 
@@ -119,6 +122,7 @@ fn row_is_open(app: &AppState, effect: EffectKind) -> bool {
 
 pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     let w = ui.available_width();
+    new_object_row(ui, app, cmds);
     for (effect, name) in rows() {
         let popup = effect.popup();
         let r = ui
@@ -163,28 +167,32 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             });
         }
     }
-    // not an effect to drop on a clip: only a click
-    let r = ui
-        .add(
-            Button::selectable(
+}
+
+/// The row of the things that are not effects to drop on a clip, only a click: Add Text and
+/// Overlap media (REQ-325) share one row, wrapped when the section is narrow. It is the first
+/// row of the Effects section, so the nine effects below it may scroll.
+fn new_object_row(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+    ui.horizontal_wrapped(|ui| {
+        let r = ui
+            .add(Button::selectable(
                 app.popups.is_open(crate::app::Popup::Text),
                 super::icons::label(super::icons::TEXT_T, ADD_TEXT_ROW),
-            )
-            .min_size(egui::vec2(w, 0.0)),
-        )
-        .on_hover_text(ADD_TEXT_TOOLTIP);
-    if r.clicked() {
-        cmds.push(Command::OpenNewText);
-    }
-    let r = ui
-        .add(
-            Button::new(super::icons::label(super::icons::IMAGE, ADD_PICTURE_ROW))
-                .min_size(egui::vec2(w, 0.0)),
-        )
-        .on_hover_text(ADD_PICTURE_TOOLTIP);
-    if r.clicked() {
-        cmds.push(Command::AddPicture(None));
-    }
+            ))
+            .on_hover_text(ADD_TEXT_TOOLTIP);
+        if r.clicked() {
+            cmds.push(Command::OpenNewText);
+        }
+        let r = ui
+            .add(Button::new(super::icons::label(
+                super::icons::IMAGE,
+                OVERLAP_MEDIA_ROW,
+            )))
+            .on_hover_text(OVERLAP_MEDIA_TOOLTIP);
+        if r.clicked() {
+            cmds.push(Command::AddOverlap(None));
+        }
+    });
 }
 
 /// Text of a fade in lists and the chooser.
@@ -631,7 +639,20 @@ pub fn clip_volume_body(
         ui.add(egui::Label::new(format!("Clip: {name}")).truncate());
     }
     ui.weak("The video's volume (Volume, whole video) multiplies this level.");
-    clip_volume_controls(ui, app, cache, clip, cmds);
+    let tl = &app.project.timeline;
+    let keys = tl.volume_keys(clip);
+    if keys.is_empty() {
+        clip_volume_controls(ui, app, cache, clip, cmds);
+    } else if let Some(c) = tl.get(clip) {
+        // while the effect is set the keyframes set the volume: the slider is shown, off
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr!(ClipSound));
+            let mut v = c.volume;
+            ui.add_enabled(false, egui::Slider::new(&mut v, 0..=100).suffix("%"));
+        });
+        ui.weak("The keyframes set the volume; the slider is off while Volume is set.");
+    }
+    volume_keys_controls(ui, app, clip, cmds);
     button(
         ui,
         app,
@@ -641,6 +662,143 @@ pub fn clip_volume_body(
             volume: 100,
             muted: false,
         },
+        cmds,
+    );
+}
+
+pub const ADD_KEYFRAME: &str = "Add keyframe";
+const ADD_KEYFRAME_TIP: &str = "Adds a keyframe at the playhead, at the volume there";
+const KEYFRAME_THERE: &str = "There is a keyframe at the playhead already";
+pub const EASE: &str = "Ease";
+const EASE_TIP: &str = "Moves slowly at both ends to the next keyframe";
+const REMOVE_KEY: &str = "✕";
+
+/// The keyframes of the Volume effect (REQ-280, REQ-282): add one at the playhead with the
+/// level there, take one away, straight or eased move to the next one, remove the effect.
+pub fn volume_keys_controls(
+    ui: &mut Ui,
+    app: &AppState,
+    clip: crate::timeline::ClipId,
+    cmds: &mut Vec<Command>,
+) {
+    let tl = &app.project.timeline;
+    let Some(i) = tl.index_of(clip) else { return };
+    let c = tl.clips[i];
+    let keys = tl.volume_keys(clip);
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr!(VolumeKeys));
+        let at = (app.playhead - tl.start_of(i)).clamp(Micros::ZERO, c.len());
+        let level = crate::keyframes::at(keys, at).unwrap_or(if c.muted { 0 } else { c.volume });
+        let can_add = keys.iter().all(|k| k.t != at);
+        if ui
+            .add_enabled(can_add, Button::new(ADD_KEYFRAME))
+            .on_hover_text(ADD_KEYFRAME_TIP)
+            .on_disabled_hover_text(KEYFRAME_THERE)
+            .clicked()
+        {
+            cmds.push(Command::SetVolumeKey {
+                clip,
+                at,
+                percent: level,
+            });
+        }
+    });
+    for k in keys {
+        ui.horizontal_wrapped(|ui| {
+            let mut v = f32::from(k.v);
+            let r = ui.add(
+                egui::DragValue::new(&mut v)
+                    .range(0.0..=100.0)
+                    .speed(0.5)
+                    .max_decimals(0)
+                    .prefix(format!("{}  ", timecode(k.t)))
+                    .suffix(" %"),
+            );
+            if (r.drag_stopped() || (r.changed() && !r.dragged())) && v.round() != f32::from(k.v) {
+                cmds.push(Command::SetVolumeKey {
+                    clip,
+                    at: k.t,
+                    percent: v.round() as u8,
+                });
+            }
+            let eased = k.ease == crate::keyframes::Ease::EaseInOut;
+            if ui
+                .selectable_label(eased, EASE)
+                .on_hover_text(EASE_TIP)
+                .clicked()
+            {
+                cmds.push(Command::SetVolumeKeyEase {
+                    clip,
+                    at: k.t,
+                    ease: if eased {
+                        crate::keyframes::Ease::Straight
+                    } else {
+                        crate::keyframes::Ease::EaseInOut
+                    },
+                });
+            }
+            if ui
+                .small_button(REMOVE_KEY)
+                .on_hover_text(tr!(RemoveThisKeyframe))
+                .clicked()
+            {
+                cmds.push(Command::RemoveVolumeKey { clip, at: k.t });
+            }
+        });
+    }
+    if !keys.is_empty() {
+        button(
+            ui,
+            app,
+            "Remove effect",
+            Command::RemoveVolume { clip },
+            cmds,
+        );
+    }
+}
+
+/// The popup of Change speed (REQ-281): 50 to 200 %, for one clip or, from the whole-video
+/// entry, for every clip at once (one copy on each clip, one undo step). Not keyframed.
+pub fn speed_body(
+    ui: &mut Ui,
+    app: &AppState,
+    target: crate::timeline::FrameTarget,
+    cmds: &mut Vec<Command>,
+) {
+    use crate::timeline::FrameTarget;
+    let tl = &app.project.timeline;
+    let current = match target {
+        FrameTarget::Clip(id) => tl.get(id).map(|c| c.speed),
+        FrameTarget::Whole => tl.clips.first().map(|c| c.speed),
+    };
+    let Some(current) = current else {
+        ui.label(tr!(ThisClipNoLongerExists));
+        return;
+    };
+    ui.weak(
+        "The clip plays faster or slower; its sound keeps its pitch and its length on the \
+         timeline changes. The overlaps of the clip change with it.",
+    );
+    let apply = |speed: u16| match target {
+        FrameTarget::Clip(clip) => Command::SetSpeed { clip, speed },
+        FrameTarget::Whole => Command::SetSpeedAll { speed },
+    };
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr!(SpeedPercent));
+        let mut pct = u32::from(current) / 10;
+        let r = ui.add(egui::DragValue::new(&mut pct).range(50..=200));
+        if (r.drag_stopped() || (r.changed() && !r.dragged())) && pct * 10 != u32::from(current) {
+            cmds.push(apply((pct * 10) as u16));
+        }
+    });
+    if matches!(target, FrameTarget::Whole) {
+        ui.weak("The value is set on every clip.");
+    }
+    button(
+        ui,
+        app,
+        "Remove effect",
+        apply(crate::timeline::NORMAL_SPEED),
         cmds,
     );
 }

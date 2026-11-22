@@ -257,11 +257,20 @@ fn volume_on_a_clip_opens_its_popup_and_records_changes() {
         now,
     )
     .unwrap();
-    assert_eq!(
-        app.history.undo_len(),
-        n,
-        "the undo step comes with a change"
-    );
+    // a new Volume effect starts with one keyframe at the level of the slider (REQ-280): one
+    // undo step; applying it again changes nothing more
+    assert_eq!(app.history.undo_len(), n + 1);
+    assert_eq!(app.project.timeline.volume_keys(c[1]).len(), 1);
+    assert_eq!(app.project.timeline.volume_keys(c[1])[0].v, 100);
+    app.dispatch(
+        Command::ApplyEffect {
+            effect: EffectKind::Volume,
+            target: Target::Clip(c[1]),
+        },
+        now,
+    )
+    .unwrap();
+    assert_eq!(app.history.undo_len(), n + 1);
     assert_eq!(app.popups.instance, Some(Instance::ClipVolume(c[1])));
     assert_eq!(app.popup_title(Popup::Instance), "Clip volume — b.mp4");
     app.dispatch(

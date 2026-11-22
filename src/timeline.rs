@@ -8,6 +8,7 @@ use crate::base::pos::Pos;
 use crate::frame::{self, FrameAspect, Scale, Stack, Track};
 use crate::keyframes::{self, Key, KeyError};
 use crate::media::{MediaId, MediaItem};
+use crate::overlap::Overlap;
 use crate::time::Micros;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -19,7 +20,9 @@ pub const MAX_FADE: Micros = Micros(500_000);
 pub const MIN_FADE_LEN: Micros = Micros(100_000);
 pub const MAX_FADE_LEN: Micros = Micros(10_000_000);
 
-/// How much of each side of a picture is cut away, in whole percents (REQ-283).
+/// How much of each side of a picture was cut away, in whole percents. Crop was removed in
+/// 2.3.0 (REQ-283): the type remains only to read a project of format 13 and count the crops
+/// it drops (REQ-332); nothing writes or draws it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Crop {
     pub left: u8,
@@ -28,18 +31,9 @@ pub struct Crop {
     pub bottom: u8,
 }
 
-/// Most of one side that can be cut away, in percent.
-pub const MAX_CROP: u8 = 45;
-
 impl Crop {
     pub fn is_none(&self) -> bool {
         *self == Crop::default()
-    }
-
-    pub fn is_valid(&self) -> bool {
-        [self.left, self.top, self.right, self.bottom]
-            .iter()
-            .all(|v| *v <= MAX_CROP)
     }
 }
 
@@ -100,8 +94,8 @@ pub struct Clip {
     /// Speech is made even in level ("Normalise speech", REQ-279; absent = off).
     #[serde(default, skip_serializing_if = "is_false")]
     pub speech_enhance: bool,
-    /// The part of the picture cut away, before the fit to the frame (REQ-283).
-    #[serde(default, skip_serializing_if = "Crop::is_none")]
+    /// Format 13 only: read to be dropped by the loader (REQ-332); never written.
+    #[serde(default, skip_serializing)]
     pub crop: Crop,
     /// A fade in from black at this clip's start, used when the clip is the first one
     /// (1.6.1, REQ-083: it belongs to the clip; absent = none).
@@ -132,6 +126,10 @@ fn is_normal_speed(v: &u16) -> bool {
 
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 fn is_full(v: &u8) -> bool {
@@ -236,6 +234,8 @@ pub enum ClipEdge {
 pub enum EditError {
     #[error("no such clip")]
     NoSuchClip,
+    #[error("no such overlap")]
+    NoSuchOverlap,
     #[error("the playhead is not inside a clip")]
     NotInsideClip,
     #[error("'{0}' has no video: audio files go on the music track")]
@@ -250,8 +250,6 @@ pub enum EditError {
     NoSuchBoundary,
     #[error("a volume key is from 0 to 100 % inside the clip")]
     VolumeKey,
-    #[error("a crop is from 0 to 45 % of a side")]
-    CropRange,
     #[error("a speed is from 50 % to 200 %")]
     SpeedRange,
     #[error("a fade lasts from 0.1 s to 10 s")]
@@ -364,9 +362,24 @@ pub struct ClipVolume {
     pub keys: Vec<Key<u8>>,
 }
 
+/// The overlap media of one clip (2.3.0, REQ-325): offsets are counted from the clip's start,
+/// so the overlaps follow the clip through a ripple, a trim, a split and a delete.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipOverlaps {
+    pub clip: ClipId,
+    #[serde(deserialize_with = "crate::overlap::lenient")]
+    pub items: Vec<Overlap>,
+}
+
 /// The video track.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Timeline {
+    /// The overlap media of the clips that have some (REQ-325), sorted by clip id; format 14.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clip_overlaps: Vec<ClipOverlaps>,
+    /// The next id of an overlap (unique in the project; 0 and 1 both start at 1).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub next_overlap_id: u64,
     /// Change aspect of single clips (REQ-286), sorted by clip id.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clip_aspects: Vec<ClipAspect>,
@@ -619,6 +632,26 @@ impl Timeline {
         // and the order of its effects
         let rows = self.order_of(c.id).to_vec();
         self.set_order(id, rows);
+        // and each overlap is cut to the part of the clip it lies in (REQ-329); one that
+        // spans the cut is in both parts, the right one under a new id
+        let all = self.overlaps_of(c.id).to_vec();
+        if !all.is_empty() {
+            let left: Vec<Overlap> = all
+                .iter()
+                .filter_map(|o| o.kept_part(Micros::ZERO, offset))
+                .collect();
+            let mut right = Vec::new();
+            for o in &all {
+                if let Some(mut part) = o.kept_part(offset, c.len()) {
+                    if left.iter().any(|l| l.id == o.id) {
+                        part.id = self.new_overlap_id();
+                    }
+                    right.push(part);
+                }
+            }
+            self.put_overlaps(c.id, left);
+            self.put_overlaps(id, right);
+        }
         Ok(id)
     }
 
@@ -630,6 +663,8 @@ impl Timeline {
         self.clip_frames.retain(|f| f.clip != id);
         self.clip_luts.retain(|l| l.clip != id);
         self.clip_order.retain(|o| o.clip != id);
+        // the overlaps go with their clip (REQ-329)
+        self.clip_overlaps.retain(|o| o.clip != id);
         Ok(c)
     }
 
@@ -703,7 +738,6 @@ impl Timeline {
             Some(DIFFERENT_VOLUMES)
         } else if a.clean_audio != b.clean_audio
             || a.clean_strength != b.clean_strength
-            || a.crop != b.crop
             || a.speech_enhance != b.speech_enhance
         {
             Some(DIFFERENT_CLEAN_AUDIO)
@@ -722,8 +756,21 @@ impl Timeline {
             return Err(EditError::NotMergeable);
         }
         let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
+        // the overlaps of the second part move to the end of the first (REQ-329)
+        let shift = self.clips[i].len();
+        let mut items = self.overlaps_of(id).to_vec();
+        items.extend(
+            self.overlaps_of(self.clips[i + 1].id)
+                .iter()
+                .map(|o| Overlap {
+                    from: o.from + shift,
+                    ..o.clone()
+                }),
+        );
         let b = self.clips.remove(i + 1);
         self.clips[i].src_out = b.src_out;
+        self.put_overlaps(id, items);
+        self.clip_overlaps.retain(|o| o.clip != b.id);
         self.clips[i].fade_out = b.fade_out;
         self.fades.remove(&(id, b.id));
         self.rename_fade_left(b.id, id);
@@ -749,8 +796,16 @@ impl Timeline {
         if self.clips[i].to_timeline(new_out - new_in) < min_len.max(Micros(1)) {
             return Err(EditError::InvalidRange);
         }
+        // the overlaps follow the kept part of the clip (REQ-329): the start of the clip moved
+        // by the trimmed time, an overlap with nothing left in the new clip is removed
+        let old = self.clips[i];
+        let moved = old.to_timeline(new_in - old.src_in);
         self.clips[i].src_in = new_in;
         self.clips[i].src_out = new_out;
+        if !self.overlaps_of(id).is_empty() {
+            let len = self.clips[i].len();
+            self.cut_overlaps(id, moved, moved + len);
+        }
         Ok(())
     }
 
@@ -1538,22 +1593,32 @@ impl Timeline {
         Ok(())
     }
 
-    /// Cuts away part of the picture of a clip (REQ-283): 0 to 45 % of each side.
-    pub fn set_crop(&mut self, id: ClipId, crop: Crop) -> Result<(), EditError> {
-        if !crop.is_valid() {
-            return Err(EditError::CropRange);
-        }
-        let c = self
-            .clips
+    /// Sets how the volume moves on from the key at clip time `at` (REQ-282).
+    pub fn set_volume_key_ease(
+        &mut self,
+        id: ClipId,
+        at: Micros,
+        ease: keyframes::Ease,
+    ) -> Result<(), EditError> {
+        self.get(id).ok_or(EditError::NoSuchClip)?;
+        let v = self
+            .clip_volume
             .iter_mut()
-            .find(|c| c.id == id)
+            .find(|v| v.clip == id)
             .ok_or(EditError::NoSuchClip)?;
-        c.crop = crop;
+        keyframes::set_ease(&mut v.keys, at, ease).map_err(EditError::Key)
+    }
+
+    /// Takes every volume key off a clip: the Volume effect is removed (REQ-280).
+    pub fn clear_volume_keys(&mut self, id: ClipId) -> Result<(), EditError> {
+        self.get(id).ok_or(EditError::NoSuchClip)?;
+        self.clip_volume.retain(|v| v.clip != id);
         Ok(())
     }
 
     /// Sets the speed of a clip, in thousandths from 500 to 2000 (REQ-281); the clip's length
-    /// on the timeline changes and what follows ripples.
+    /// on the timeline changes and what follows ripples. The times of its overlaps are
+    /// rescaled with the speed, so each keeps its part of the clip (REQ-329).
     pub fn set_speed(&mut self, id: ClipId, speed: u16) -> Result<(), EditError> {
         if !(MIN_SPEED..=MAX_SPEED).contains(&speed) {
             return Err(EditError::SpeedRange);
@@ -1563,7 +1628,16 @@ impl Timeline {
             .iter_mut()
             .find(|c| c.id == id)
             .ok_or(EditError::NoSuchClip)?;
-        c.speed = speed;
+        let old = std::mem::replace(&mut c.speed, speed);
+        if old != speed {
+            for o in &mut self.clip_overlaps {
+                if o.clip == id {
+                    for x in &mut o.items {
+                        *x = x.rescaled(old, speed);
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1572,9 +1646,97 @@ impl Timeline {
         self.clips.iter().any(|c| c.speed != NORMAL_SPEED)
     }
 
-    /// True when any clip has a crop.
-    pub fn any_crop(&self) -> bool {
-        self.clips.iter().any(|c| !c.crop.is_none())
+    /// The overlaps of clip `id`, in the order they were added (REQ-325).
+    pub fn overlaps_of(&self, id: ClipId) -> &[Overlap] {
+        self.clip_overlaps
+            .iter()
+            .find(|o| o.clip == id)
+            .map_or(&[], |o| &o.items)
+    }
+
+    /// The ids of every overlap of the project.
+    pub fn overlap_ids(&self) -> Vec<u64> {
+        self.clip_overlaps
+            .iter()
+            .flat_map(|o| o.items.iter().map(|x| x.id))
+            .collect()
+    }
+
+    /// True when any clip has an overlap.
+    pub fn any_overlap(&self) -> bool {
+        self.clip_overlaps.iter().any(|o| !o.items.is_empty())
+    }
+
+    /// The clip that holds overlap `id` and the overlap.
+    pub fn find_overlap(&self, id: u64) -> Option<(ClipId, &Overlap)> {
+        self.clip_overlaps
+            .iter()
+            .find_map(|o| o.items.iter().find(|x| x.id == id).map(|x| (o.clip, x)))
+    }
+
+    /// Reserves a new overlap id (unique in the project).
+    pub fn new_overlap_id(&mut self) -> u64 {
+        self.next_overlap_id = self.next_overlap_id.max(1);
+        let id = self.next_overlap_id;
+        self.next_overlap_id += 1;
+        id
+    }
+
+    /// Replaces the overlaps of a clip (an empty list removes the entry); entries stay sorted
+    /// by clip id.
+    pub fn put_overlaps(&mut self, id: ClipId, items: Vec<Overlap>) {
+        self.clip_overlaps.retain(|o| o.clip != id);
+        if !items.is_empty() {
+            self.clip_overlaps.push(ClipOverlaps { clip: id, items });
+            self.clip_overlaps.sort_by_key(|o| o.clip);
+        }
+    }
+
+    /// Adds an overlap to clip `id`, kept inside the clip; its id comes from
+    /// [`Self::new_overlap_id`].
+    pub fn add_overlap(&mut self, id: ClipId, o: Overlap) -> Result<(), EditError> {
+        let len = self.get(id).ok_or(EditError::NoSuchClip)?.len();
+        let mut items = self.overlaps_of(id).to_vec();
+        items.push(o.clamped(len));
+        self.put_overlaps(id, items);
+        Ok(())
+    }
+
+    /// Changes overlap `id` with `f` (the result is kept inside its clip).
+    pub fn change_overlap(
+        &mut self,
+        id: u64,
+        f: impl FnOnce(&mut Overlap),
+    ) -> Result<(), EditError> {
+        let (clip, _) = self.find_overlap(id).ok_or(EditError::NoSuchOverlap)?;
+        let len = self.get(clip).ok_or(EditError::NoSuchClip)?.len();
+        let mut items = self.overlaps_of(clip).to_vec();
+        if let Some(x) = items.iter_mut().find(|x| x.id == id) {
+            f(x);
+            *x = x.clone().clamped(len);
+        }
+        self.put_overlaps(clip, items);
+        Ok(())
+    }
+
+    /// Removes overlap `id`.
+    pub fn remove_overlap(&mut self, id: u64) -> Result<(), EditError> {
+        let (clip, _) = self.find_overlap(id).ok_or(EditError::NoSuchOverlap)?;
+        let mut items = self.overlaps_of(clip).to_vec();
+        items.retain(|x| x.id != id);
+        self.put_overlaps(clip, items);
+        Ok(())
+    }
+
+    /// The overlaps of a clip after its time window changed to `[keep_from, keep_to)` of its old
+    /// offsets, counted from `keep_from` (a trim, REQ-329); the ones with no part left are gone.
+    fn cut_overlaps(&mut self, id: ClipId, keep_from: Micros, keep_to: Micros) {
+        let items: Vec<Overlap> = self
+            .overlaps_of(id)
+            .iter()
+            .filter_map(|o| o.kept_part(keep_from, keep_to))
+            .collect();
+        self.put_overlaps(id, items);
     }
 
     /// True when any clip has Clean audio.

@@ -149,17 +149,6 @@ impl AppState {
                         e.timeline.set_speed(clip, speed).map_err(err)
                     })
                 }
-                Command::SetCrop { clip, crop } => {
-                    if self
-                        .project
-                        .timeline
-                        .get(clip)
-                        .is_some_and(|c| c.crop == crop)
-                    {
-                        return Ok(());
-                    }
-                    self.edit(now, label, |e| e.timeline.set_crop(clip, crop).map_err(err))
-                }
                 Command::SetFadeLength(len) => {
                     if self.project.timeline.fade_len() == len {
                         return Ok(());

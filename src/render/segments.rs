@@ -65,8 +65,6 @@ pub struct Segment {
     pub speech: bool,
     /// Volume keys in percent in the clip's own time (REQ-280).
     pub volume_keys: Vec<crate::keyframes::Key<u8>>,
-    /// Part of the picture cut away before the fit (REQ-283).
-    pub crop: crate::timeline::Crop,
     /// The fade-out is the one at the very end of the video: its last frame is black.
     pub to_black: bool,
     /// A 360 source (1.2.6): the points of view of its camera path (source time). Empty:
@@ -249,7 +247,6 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 clean_strength: c.clean_strength,
                 speech: c.speech_enhance,
                 volume_keys: tl.volume_keys(c.id).to_vec(),
-                crop: c.crop,
                 to_black: tl.end_fade() && i + 1 == tl.clips.len() && !tl.has_fade(i),
                 sphere: m
                     .format

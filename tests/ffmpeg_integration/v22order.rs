@@ -237,34 +237,31 @@ fn scale_then_move_and_move_then_scale_place_the_picture_apart_and_the_preview_a
     assert!(p.timeline.order_of(c).is_empty());
 }
 
-// covers: REQ-320
+// covers: REQ-283
 #[test]
-fn crop_below_scale_crops_the_source_and_above_it_crops_the_scaled_frame() {
+fn a_crop_left_over_from_format_13_changes_nothing_in_preview_or_export() {
     let Some(env) = setup() else { return };
     let (mut p, c) = project(&env);
     scale(&mut p, c, 500);
-    p.timeline
-        .set_crop(
-            c,
-            Crop {
-                left: 25,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    // the default: the source is cropped first (its left quarter is gone), then scaled: the
-    // picture is at x 100..220 with its red third first
-    let (e, _) = both(&env, &p, "c1.mp4", 1.0);
-    assert!(is(e.f(0.2, 0.5), BLACK), "{:?}", e.f(0.2, 0.5));
-    assert!(is(e.f(0.37, 0.5), RED), "{:?}", e.f(0.37, 0.5));
-    assert!(is(e.f(0.6, 0.5), BLUE));
-    // Crop above Scale: the scaled frame is cropped and made as big as the frame again: the
-    // picture (x 80..240) is cut at x 80 and stretched, so its red part starts at the left edge
-    p.set_order(c, vec![Row::Crop, Row::Scale]);
-    let (e, _) = both(&env, &p, "c2.mp4", 1.0);
-    assert!(is(e.f(0.1, 0.5), RED), "{:?}", e.f(0.1, 0.5));
-    assert!(is(e.f(0.45, 0.5), BLUE), "{:?}", e.f(0.45, 0.5));
-    assert!(is(e.f(0.9, 0.5), BLACK));
+    let (plain, _) = both(&env, &p, "c1.mp4", 1.0);
+    // the field is read only to be dropped on opening: nothing draws it any more
+    for clip in &mut p.timeline.clips {
+        clip.crop = Crop {
+            left: 25,
+            ..Default::default()
+        };
+    }
+    let (cropped, _) = both(&env, &p, "c2.mp4", 1.0);
+    for (x, y) in [
+        (0.1, 0.5),
+        (0.2, 0.5),
+        (0.37, 0.5),
+        (0.5, 0.5),
+        (0.6, 0.5),
+        (0.9, 0.5),
+    ] {
+        assert_eq!(plain.f(x, y), cropped.f(x, y), "{x} {y}");
+    }
 }
 
 // covers: REQ-320

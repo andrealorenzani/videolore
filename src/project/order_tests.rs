@@ -174,27 +174,18 @@ fn a_project_without_orders_opens_and_saves_as_before() {
     assert!(notes.iter().all(|n| !n.contains("effect order")));
     let old = to_json(&p, Path::new("/tmp/x.vlproj"))
         .unwrap()
-        .replace("\"schema_version\": 13", "\"schema_version\": 11");
+        .replace("\"schema_version\": 14", "\"schema_version\": 11");
     let (r, _) = from_json(&old, Path::new("/tmp")).unwrap();
     assert!(r.timeline.clip_order.is_empty());
     assert_eq!(r.changed_orders(), vec![]);
 }
 
-/// Two clips of 10 s; the first has a Crop, a Scale, a Move, a fade at its start, a Change
-/// aspect and a text; the second only the Change aspect of the project.
+/// Two clips of 10 s; the first has a Scale, a Move, a fade at its start, a Change aspect and
+/// a text; the second only the Change aspect of the project.
 fn every_picture_row() -> (Project, Vec<crate::timeline::ClipId>) {
-    use crate::timeline::{Crop, FrameTarget};
+    use crate::timeline::FrameTarget;
     let (mut p, ids) = three_texts();
     let c = FrameTarget::Clip(ids[0]);
-    p.timeline
-        .set_crop(
-            ids[0],
-            Crop {
-                left: 10,
-                ..Default::default()
-            },
-        )
-        .unwrap();
     p.timeline.add_scale(c).unwrap();
     p.timeline.add_move(c).unwrap();
     p.timeline.set_edge_fades(true).unwrap();
@@ -209,8 +200,8 @@ fn every_picture_row() -> (Project, Vec<crate::timeline::ClipId>) {
 fn every_picture_row_is_in_the_clips_order_in_the_build_order_of_the_older_versions() {
     let (p, ids) = every_picture_row();
     let r = p.rows_of(ids[0]).unwrap().present;
-    assert!(r.crop && r.scale && r.moved && r.fade && r.frame);
-    // the default: texts (the later on top), then Fade, Change aspect, Move, Scale, Crop
+    assert!(r.scale && r.moved && r.fade && r.frame);
+    // the default: texts (the later on top), then Fade, Change aspect, Move, Scale
     assert_eq!(
         p.order_of(ids[0]),
         vec![
@@ -220,8 +211,7 @@ fn every_picture_row_is_in_the_clips_order_in_the_build_order_of_the_older_versi
             Row::Fade,
             Row::Frame,
             Row::Move,
-            Row::Scale,
-            Row::Crop
+            Row::Scale
         ]
     );
     // the second clip has the project's Change aspect and the fade at the end of the video
@@ -254,20 +244,14 @@ fn a_moved_picture_row_is_stored_with_its_clip_and_comes_back_and_a_new_row_take
     );
     assert_eq!(q.order_of(ids[0]), o);
     assert!(q.timeline.order_of(ids[1]).is_empty());
-    // a row that is added later (here a Crop on the second clip) takes its place in the default
+    // a row that is added later (here a Scale on the second clip) takes its place in the default
     // sequence, not the top
     p.timeline
-        .set_crop(
-            ids[1],
-            crate::timeline::Crop {
-                left: 5,
-                ..Default::default()
-            },
-        )
+        .add_scale(crate::timeline::FrameTarget::Clip(ids[1]))
         .unwrap();
     assert_eq!(
         p.order_of(ids[1]),
-        vec![Row::Text(3), Row::Fade, Row::Frame, Row::Crop]
+        vec![Row::Text(3), Row::Fade, Row::Frame, Row::Scale]
     );
     assert!(p.timeline.order_of(ids[1]).is_empty());
     // the sound rows of a clip survive a change of its picture rows
@@ -300,8 +284,7 @@ fn a_2_1_0_order_opens_with_its_rows_above_the_default_sequence_of_the_new_ones(
             Row::Fade,
             Row::Frame,
             Row::Move,
-            Row::Scale,
-            Row::Crop
+            Row::Scale
         ]
     );
     // it is the form of the 2.1.0 overlay stage: no step builder

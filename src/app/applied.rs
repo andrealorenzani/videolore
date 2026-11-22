@@ -63,8 +63,8 @@ pub(super) fn move_label(row: Row, mv: RowMove) -> &'static str {
         ("Volume", RowMove::Down) => "Move Volume down",
         ("Clean audio", RowMove::Up) => "Move Clean audio up",
         ("Clean audio", RowMove::Down) => "Move Clean audio down",
-        ("Crop", RowMove::Up) => "Move Crop up",
-        ("Crop", RowMove::Down) => "Move Crop down",
+        ("overlap", RowMove::Up) => "Move overlap up",
+        ("overlap", RowMove::Down) => "Move overlap down",
         ("Change aspect", RowMove::Up) => "Move Change aspect up",
         ("Change aspect", RowMove::Down) => "Move Change aspect down",
         ("Scale", RowMove::Up) => "Move Scale up",
@@ -158,7 +158,6 @@ impl AppState {
         // the picture group, top first (REQ-320): every row can move inside it
         for row in order {
             let (name, range, open) = match row {
-                Row::Crop => ("Crop".to_string(), None, open_popup(Popup::ClipDetails)),
                 Row::Frame => {
                     let open = if tl.own_aspect(id).is_some() {
                         open_popup(Popup::ClipDetails)
@@ -214,8 +213,22 @@ impl AppState {
                         vec![Command::OpenText(item.id)],
                     )
                 }
+                Row::Overlap(oid) => {
+                    let Some((_, o)) = tl.find_overlap(oid) else {
+                        continue;
+                    };
+                    let start = rows.start + o.from;
+                    (
+                        format!("Overlap: {}", short(&o.name())),
+                        Some((start, start + o.len)),
+                        vec![
+                            Command::SelectClip(Some(id)),
+                            Command::SelectOverlap(Some(oid)),
+                        ],
+                    )
+                }
                 Row::Subtitles => ("Subtitles".to_string(), None, open_popup(Popup::Subtitles)),
-                Row::Volume | Row::Clean | Row::Unknown => continue,
+                Row::Volume | Row::Clean | Row::Unknown | Row::Crop => continue,
             };
             out.push(AppliedRow {
                 name,
@@ -271,11 +284,12 @@ impl AppState {
             });
         }
         if c.speed != crate::timeline::NORMAL_SPEED {
+            // the fixed row applied first (REQ-320): the clip's Change speed (REQ-281)
             out.push(AppliedRow {
-                name: "Speed".to_string(),
+                name: format!("Change speed: {}%", c.speed / 10),
                 range: None,
                 row: None,
-                open: open_popup(Popup::ClipDetails),
+                open: open_instance(Instance::Speed(FrameTarget::Clip(id))),
             });
         }
         Some(Applied {

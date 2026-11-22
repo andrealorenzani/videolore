@@ -130,10 +130,39 @@ pub fn text_lane(below_video: Rect) -> (Rect, Rect) {
     )
 }
 
+/// Splits the area left under the Text lane into the shared overlap lane (REQ-325, ADR-242)
+/// and the music track.
+pub fn overlap_lane(below_text: Rect, lane_h: f32) -> (Rect, Rect) {
+    let top = below_text.min.y;
+    if lane_h <= 0.0 {
+        // no overlap: no lane, the music track keeps its place
+        return (
+            Rect::from_min_size(below_text.min, vec2(0.0, 0.0)),
+            below_text,
+        );
+    }
+    (
+        Rect::from_min_max(
+            pos2(below_text.min.x, top),
+            pos2(below_text.max.x, top + lane_h),
+        ),
+        Rect::from_min_max(
+            pos2(below_text.min.x, top + lane_h + TRACK_GAP),
+            below_text.max,
+        ),
+    )
+}
+
 /// Height of the timeline content: the visible height, or the sum of the minimum heights
-/// when that is more (then it scrolls).
-pub fn content_height(visible: f32) -> f32 {
-    visible.max(RULER_H + LANE_H + VIDEO_MIN_H + TEXT_H + MUSIC_MIN_H + 2.0 * TRACK_GAP)
+/// when that is more (then it scrolls). `lane_h` is the height of the overlap lane (0 with no
+/// overlap).
+pub fn content_height(visible: f32, lane_h: f32) -> f32 {
+    let lane = if lane_h > 0.0 {
+        lane_h + TRACK_GAP
+    } else {
+        0.0
+    };
+    visible.max(RULER_H + LANE_H + VIDEO_MIN_H + TEXT_H + lane + MUSIC_MIN_H + 2.0 * TRACK_GAP)
 }
 
 /// What a drag on the bar of a text item changes.
@@ -172,6 +201,8 @@ pub struct Geometry {
     pub lane: Rect,
     pub video: Rect,
     pub text: Rect,
+    /// The shared lane of the overlaps (2.3.0).
+    pub overlaps: Rect,
     pub music: Rect,
 }
 
@@ -236,7 +267,13 @@ pub fn timeline_panel(
     }
     let avail = ui.available_size();
     let content_w = (total.as_secs_f64() * f64::from(z)) as f32 + 40.0;
-    let size = vec2(content_w.max(avail.x - 2.0), content_height(avail.y - 2.0));
+    let lane_h = super::overlap_lane::lane_height(super::overlap_lane::row_count(
+        &super::overlap_lane::bars(app),
+    ));
+    let size = vec2(
+        content_w.max(avail.x - 2.0),
+        content_height(avail.y - 2.0, lane_h),
+    );
     let area = ScrollArea::both()
         .id_salt("timeline-scroll")
         .auto_shrink(false);
@@ -291,17 +328,32 @@ fn tracks(
     );
     let tracks_area = Rect::from_min_max(pos2(rect.min.x, lane.max.y + 2.0), rect.max);
     let (video, below) = track_rects(tracks_area);
-    let (text, music) = text_lane(below);
+    let (text, below_text) = text_lane(below);
+    let lane_h = super::overlap_lane::lane_height(super::overlap_lane::row_count(
+        &super::overlap_lane::bars(app),
+    ));
+    let (overlaps, music) = overlap_lane(below_text, lane_h);
     cache.timeline = Some(Geometry {
         x0,
         zoom: z,
         lane,
         video,
         text,
+        overlaps,
         music,
     });
     painter.rect_filled(lane, 0.0, Color32::from_gray(24));
     painter.rect_filled(text, 0.0, Color32::from_gray(34));
+    if lane_h > 0.0 {
+        painter.rect_filled(overlaps, 0.0, Color32::from_gray(30));
+        painter.text(
+            pos2(rect.min.x + 2.0, overlaps.min.y + 1.0),
+            Align2::LEFT_TOP,
+            "▣",
+            FontId::proportional(10.0),
+            Color32::GRAY,
+        );
+    }
     painter.text(
         pos2(rect.min.x + 2.0, text.min.y + 1.0),
         Align2::LEFT_TOP,
@@ -463,6 +515,15 @@ fn tracks(
     }
     marker_lane(ui, app, cache, &painter, lane, x0, z, visible, cmds);
     text_track(ui, app, &painter, text, x0, z, visible, cmds);
+    super::overlap_lane::overlap_track(
+        ui,
+        app,
+        cache,
+        &painter,
+        (overlaps, visible),
+        (x0, z),
+        cmds,
+    );
     music_track(ui, app, cache, &painter, music, x0, z, visible, cmds);
     range_select(ui, cache, &painter, rect, x0, z, cmds);
     let xp = x0 + px(app.playhead);
@@ -963,6 +1024,18 @@ fn marker_lane(
                         },
                     ),
                     Instance::Lut(target) => ("Remove effect", Command::RemoveLut(target)),
+                    Instance::Speed(target) => (
+                        "Remove effect",
+                        match target {
+                            crate::timeline::FrameTarget::Clip(clip) => Command::SetSpeed {
+                                clip,
+                                speed: crate::timeline::NORMAL_SPEED,
+                            },
+                            crate::timeline::FrameTarget::Whole => Command::SetSpeedAll {
+                                speed: crate::timeline::NORMAL_SPEED,
+                            },
+                        },
+                    ),
                 };
                 entry(ui, app.is_enabled(&cmd), label, cmds, vec![cmd]);
                 if let Instance::Line(id, _) = i {

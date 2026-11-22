@@ -912,9 +912,6 @@ fn the_player_follows_the_splash_option_and_remembers_the_version() {
             now(),
         )
     };
-    let mut never = make();
-    never.start_splash(Never);
-    assert!(!never.splash);
     let mut always = make();
     always.start_splash(Always);
     assert!(always.splash);

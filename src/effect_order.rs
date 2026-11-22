@@ -22,8 +22,12 @@ pub enum Row {
     Volume,
     /// The clip's Clean audio: a row of the sound group (2.2.0).
     Clean,
-    /// The clip's Crop: a row of the picture group (2.2.0, REQ-320).
+    /// The Crop of format 13 (removed in 2.3.0, REQ-283): never made, read only so that the
+    /// loader can drop it without calling it damaged (REQ-332).
     Crop,
+    /// An overlap of the clip (2.3.0, REQ-331): a row of the picture group, drawn over the
+    /// picture items (its id).
+    Overlap(u64),
     /// Change aspect (the clip's frame: the fit and the background), a row of the picture group.
     Frame,
     /// The clip's Scale, a row of the picture group.
@@ -52,6 +56,7 @@ impl Row {
             Row::Fade => "fade".into(),
             Row::Text(i) => format!("text:{i}"),
             Row::Picture(i) => format!("picture:{i}"),
+            Row::Overlap(i) => format!("overlap:{i}"),
             Row::Unknown => "unknown".into(),
         }
     }
@@ -74,6 +79,8 @@ impl Row {
                     Row::Text(i)
                 } else if let Some(i) = s.strip_prefix("picture:").and_then(id) {
                     Row::Picture(i)
+                } else if let Some(i) = s.strip_prefix("overlap:").and_then(id) {
+                    Row::Overlap(i)
                 } else {
                     Row::Unknown
                 }
@@ -112,9 +119,9 @@ pub struct Present {
     pub texts: Vec<u64>,
     /// Picture items, in item order.
     pub pictures: Vec<u64>,
+    /// The overlaps of the clip (2.3.0), in the order they were added.
+    pub overlaps: Vec<u64>,
     pub subtitles: bool,
-    /// The clip has a Crop (2.2.0).
-    pub crop: bool,
     /// The clip has a Change aspect, its own or the project's.
     pub frame: bool,
     pub scale: bool,
@@ -126,7 +133,11 @@ pub struct Present {
 impl Present {
     /// Whether the clip has no movable row of the 2.1.0 kind (Apply LUT, texts, pictures, lines).
     pub fn is_empty(&self) -> bool {
-        !self.lut && !self.subtitles && self.texts.is_empty() && self.pictures.is_empty()
+        !self.lut
+            && !self.subtitles
+            && self.texts.is_empty()
+            && self.pictures.is_empty()
+            && self.overlaps.is_empty()
     }
 
     /// Whether `r` is one of the rows.
@@ -136,7 +147,8 @@ impl Present {
             Row::Subtitles => self.subtitles,
             Row::Text(i) => self.texts.contains(&i),
             Row::Picture(i) => self.pictures.contains(&i),
-            Row::Crop => self.crop,
+            Row::Overlap(i) => self.overlaps.contains(&i),
+            Row::Crop => false,
             Row::Frame => self.frame,
             Row::Scale => self.scale,
             Row::Move => self.moved,
@@ -159,17 +171,20 @@ impl Row {
         FIXED.contains(&self)
     }
 
-    /// True for a row drawn on the frame (a text, a picture item, the subtitle lines).
+    /// True for a row drawn on the frame (a text, a picture item, an overlap, the subtitle
+    /// lines).
     pub fn is_drawn(self) -> bool {
-        matches!(self, Row::Text(_) | Row::Picture(_) | Row::Subtitles)
+        matches!(
+            self,
+            Row::Text(_) | Row::Picture(_) | Row::Overlap(_) | Row::Subtitles
+        )
     }
 }
 
 /// The picture rows that act on the picture, top first, in the order the picture has been built
 /// since 1.5.0: the fade is applied last, then the frame (the background under the picture), the
-/// picture is moved, scaled, and cropped first (Apply LUT sits between Scale and Crop, see
-/// [`legacy`]).
-pub const FIXED: [Row; 5] = [Row::Fade, Row::Frame, Row::Move, Row::Scale, Row::Crop];
+/// picture is moved and scaled first (Apply LUT sits below Scale, see [`legacy`]).
+pub const FIXED: [Row; 4] = [Row::Fade, Row::Frame, Row::Move, Row::Scale];
 
 /// The place of a fixed row in [`FIXED`] (0 = the top).
 fn rank(r: Row) -> Option<usize> {
@@ -186,11 +201,9 @@ pub fn legacy(p: &Present) -> Vec<Row> {
     if p.subtitles {
         v.push(Row::Subtitles);
     }
+    v.extend(p.overlaps.iter().rev().map(|i| Row::Overlap(*i)));
     v.extend(p.pictures.iter().rev().map(|i| Row::Picture(*i)));
     for r in FIXED {
-        if r == Row::Crop && p.lut {
-            v.push(Row::Lut);
-        }
         if p.has(r) {
             v.push(r);
         }
@@ -299,6 +312,7 @@ pub fn noun(r: Row) -> &'static str {
         Row::Subtitles => "subtitles",
         Row::Volume => "Volume",
         Row::Clean => "Clean audio",
+        Row::Overlap(_) => "overlap",
         Row::Crop => "Crop",
         Row::Frame => "Change aspect",
         Row::Scale => "Scale",
@@ -327,8 +341,8 @@ mod tests {
             lut: true,
             texts: vec![1],
             pictures: vec![5],
+            overlaps: vec![7],
             subtitles: true,
-            crop: true,
             frame: true,
             scale: true,
             moved: true,
@@ -345,26 +359,23 @@ mod tests {
             vec![
                 Text(1),
                 Subtitles,
+                Overlap(7),
                 Picture(5),
                 Fade,
                 Frame,
                 Move,
                 Scale,
-                Lut,
-                Crop
+                Lut
             ]
         );
-        // Apply LUT is above Crop and below Scale; with no Crop it is the last row
-        let no_crop = Present {
-            crop: false,
-            ..all()
-        };
-        assert_eq!(legacy(&no_crop).last(), Some(&Lut));
-        let only_crop = Present {
-            crop: true,
+        // Apply LUT is below Scale: the last row (Crop was removed in 2.3.0)
+        assert_eq!(legacy(&all()).last(), Some(&Lut));
+        let only_overlap = Present {
+            overlaps: vec![3],
             ..Default::default()
         };
-        assert_eq!(legacy(&only_crop), vec![Crop]);
+        assert_eq!(legacy(&only_overlap), vec![Overlap(3)]);
+        assert!(!only_overlap.is_empty());
         // nothing stored: the default, never "changed"
         assert_eq!(resolve(&[], &all()), legacy(&all()));
         assert!(!is_changed(&legacy(&all()), &all()));
@@ -381,40 +392,47 @@ mod tests {
         let present = Present {
             lut: true,
             texts: vec![1],
-            crop: true,
             scale: true,
             fade: true,
             ..Default::default()
         };
         let o = resolve(&stored, &present);
-        assert_eq!(o, vec![Lut, Text(1), Fade, Scale, Crop]);
+        assert_eq!(o, vec![Lut, Text(1), Fade, Scale]);
         assert!(overlay_form(&o) && !needs_steps(&o));
         // a Move added later goes between Fade... and Scale, not on top
         let more = Present {
             moved: true,
             ..present.clone()
         };
-        assert_eq!(
-            resolve(&o, &more),
-            vec![Lut, Text(1), Fade, Move, Scale, Crop]
-        );
-        // a stored Crop above Scale is a built order of its own (not the 2.1.0 overlay form)
-        let swapped = vec![Text(1), Crop, Scale];
+        assert_eq!(resolve(&o, &more), vec![Lut, Text(1), Fade, Move, Scale]);
+        // a Frame above Scale... below Move is a built order of its own (not the 2.1.0 form)
+        let swapped = vec![Text(1), Scale, Frame];
         assert!(needs_steps(&swapped) && !overlay_form(&swapped));
         assert!(needs_steps(&[Scale, Fade]));
         assert!(!needs_steps(&[]) && !needs_steps(&[Text(1), Lut]));
         // a drawn row below a fixed one is not the overlay form
         assert!(needs_steps(&[Fade, Text(1)]));
         assert!(Text(1).is_drawn() && Subtitles.is_drawn() && !Lut.is_drawn());
-        assert!(Crop.is_fixed() && !Lut.is_fixed());
+        assert!(Frame.is_fixed() && !Lut.is_fixed() && !Crop.is_fixed());
+        assert!(Overlap(2).is_drawn());
     }
 
-    // covers: REQ-322
+    // covers: REQ-322, REQ-331
     #[test]
     fn the_new_rows_have_names_in_the_file() {
-        for r in [Row::Crop, Row::Frame, Row::Scale, Row::Move, Row::Fade] {
+        for r in [
+            Row::Crop,
+            Row::Frame,
+            Row::Scale,
+            Row::Move,
+            Row::Fade,
+            Row::Overlap(12),
+        ] {
             assert_eq!(Row::parse(&r.name()), r);
         }
+        assert_eq!(Row::Overlap(12).name(), "overlap:12");
+        assert_eq!(Row::parse("overlap:x"), Row::Unknown);
+        assert_eq!(noun(Row::Overlap(1)), "overlap");
         assert_eq!(Row::Crop.name(), "crop");
         assert_eq!(noun(Row::Frame), "Change aspect");
         assert_eq!(noun(Row::Fade), "Fade");

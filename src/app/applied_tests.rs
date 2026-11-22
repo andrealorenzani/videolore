@@ -73,17 +73,6 @@ fn the_widget_lists_the_movable_rows_top_first_then_the_fixed_rows() {
     let t = add_text(&mut app, "Hello", 1);
     app.dispatch(Command::SelectClip(Some(c)), now()).unwrap();
     app.dispatch(
-        Command::SetCrop {
-            clip: c,
-            crop: crate::timeline::Crop {
-                left: 10,
-                ..Default::default()
-            },
-        },
-        now(),
-    )
-    .unwrap();
-    app.dispatch(
         Command::SetSpeed {
             clip: c,
             speed: 2000,
@@ -108,19 +97,17 @@ fn the_widget_lists_the_movable_rows_top_first_then_the_fixed_rows() {
         [
             "Text: Hello",
             "Apply LUT: warm.cube",
-            "Crop",
             "Volume",
-            "Speed"
+            "Change speed: 200%"
         ]
     );
-    // the picture group is Text, Apply LUT and Crop (REQ-320: every effect moves); Volume is a
-    // row of the sound group; only Speed is fixed
-    assert_eq!(a.movable(), 3);
+    // the picture group is Text and Apply LUT (REQ-320: every effect moves); Volume is a row
+    // of the sound group; only Change speed is fixed (REQ-281)
+    assert_eq!(a.movable(), 2);
     assert_eq!(a.rows[0].row, Some(Row::Text(t.0)));
     assert_eq!(a.rows[1].row, Some(Row::Lut));
-    assert_eq!(a.rows[2].row, Some(Row::Crop));
-    assert_eq!(a.rows[3].row, Some(Row::Volume));
-    assert_eq!(a.rows[4].row, None);
+    assert_eq!(a.rows[2].row, Some(Row::Volume));
+    assert_eq!(a.rows[3].row, None);
     // the text row shows its time range
     assert_eq!(a.rows[0].range, Some((s(1), s(4))));
     // a click opens the popup of the effect (and selects the clip)
@@ -133,10 +120,10 @@ fn the_widget_lists_the_movable_rows_top_first_then_the_fixed_rows() {
         ]
     );
     assert_eq!(
-        a.rows[2].open,
+        a.rows[3].open,
         vec![
             Command::SelectClip(Some(c)),
-            Command::OpenPopup(Popup::ClipDetails)
+            Command::OpenInstance(Instance::Speed(FrameTarget::Clip(c)))
         ]
     );
     // with no clip selected, the clip at the playhead is shown (the second clip has nothing)
@@ -359,16 +346,21 @@ fn the_sound_rows_move_inside_their_group_in_one_named_undo_step_and_speed_stays
     // the default is the sound of 1.4.0: Clean audio, then Volume; Speed is the last, fixed row
     assert_eq!(
         names(&mut app, c),
-        ["Apply LUT: warm.cube", "Clean audio", "Volume", "Speed"]
+        [
+            "Apply LUT: warm.cube",
+            "Clean audio",
+            "Volume",
+            "Change speed: 200%"
+        ]
     );
     let speed = app
         .applied()
         .unwrap()
         .rows
         .into_iter()
-        .find(|r| r.name == "Speed")
+        .find(|r| r.name.starts_with("Change speed"))
         .unwrap();
-    assert!(speed.row.is_none(), "Speed cannot be moved");
+    assert!(speed.row.is_none(), "Change speed cannot be moved");
     // Volume up: above Clean audio, one named step
     let up = Command::MoveRow {
         clip: c,
@@ -380,7 +372,12 @@ fn the_sound_rows_move_inside_their_group_in_one_named_undo_step_and_speed_stays
     assert_eq!(app.undo_text(), "Undo Move Volume up");
     assert_eq!(
         names(&mut app, c),
-        ["Apply LUT: warm.cube", "Volume", "Clean audio", "Speed"]
+        [
+            "Apply LUT: warm.cube",
+            "Volume",
+            "Clean audio",
+            "Change speed: 200%"
+        ]
     );
     assert!(app.project.sound_swapped(c));
     // the other clip keeps its order (a copy is moved on its own clip)

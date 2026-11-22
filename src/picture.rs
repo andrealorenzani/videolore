@@ -34,6 +34,8 @@ pub enum PictureError {
     TooLarge(String),
     #[error("The picture is larger than 16 megapixels ({0} x {1}) and was not added.")]
     TooManyPixels(u32, u32),
+    #[error("\"{0}\" is not a picture or video that can be shown over the video")]
+    NotAnOverlay(String),
 }
 
 /// Most pixels (width times height) a picture item may have: 16 megapixels (REQ-316). The
@@ -57,6 +59,85 @@ pub fn parse_png_size(head: &[u8]) -> Option<(u32, u32)> {
     let be = |i: usize| u32::from_be_bytes([head[i], head[i + 1], head[i + 2], head[i + 3]]);
     let (w, h) = (be(16), be(20));
     (w > 0 && h > 0).then_some((w, h))
+}
+
+/// The size of a GIF from its first 10 bytes: the signature and the logical screen size
+/// (2.3.0, overlap media).
+pub fn parse_gif_size(head: &[u8]) -> Option<(u32, u32)> {
+    if head.len() < 10 || !(head.starts_with(b"GIF87a") || head.starts_with(b"GIF89a")) {
+        return None;
+    }
+    let le = |i: usize| u32::from(u16::from_le_bytes([head[i], head[i + 1]]));
+    let (w, h) = (le(6), le(8));
+    (w > 0 && h > 0).then_some((w, h))
+}
+
+/// What a file chosen for an overlap is (REQ-325): a still PNG, or a GIF or video that plays
+/// once; with the size of its picture in pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverlaySource {
+    pub still: bool,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Reads the file of an overlap: a PNG or a GIF from its header (nothing is decoded), any other
+/// file through `probe`, which gives the size of its video. Above 16 megapixels the file is
+/// refused (REQ-316, REQ-331) and nothing is added.
+pub fn read_overlay(
+    path: &Path,
+    probe: impl FnOnce(&Path) -> Option<(u32, u32)>,
+) -> Result<OverlaySource, PictureError> {
+    let name = path.file_name().map_or_else(
+        || path.display().to_string(),
+        |n| n.to_string_lossy().into(),
+    );
+    if path.to_string_lossy().len() > MAX_PATH {
+        return Err(PictureError::Unreadable(name));
+    }
+    let mut head = Vec::with_capacity(24);
+    std::fs::File::open(path)
+        .and_then(|f| f.take(24).read_to_end(&mut head))
+        .map_err(|_| PictureError::Unreadable(name.clone()))?;
+    let (still, (width, height)) = if let Some(s) = parse_png_size(&head) {
+        (true, s)
+    } else if let Some(s) = parse_gif_size(&head) {
+        (false, s)
+    } else {
+        let s = probe(path).ok_or_else(|| PictureError::NotAnOverlay(name.clone()))?;
+        (false, s)
+    };
+    if u64::from(width) * u64::from(height) > MAX_PICTURE_PIXELS {
+        return Err(PictureError::TooManyPixels(width, height));
+    }
+    if width > MAX_SIDE || height > MAX_SIDE {
+        return Err(PictureError::TooLarge(name));
+    }
+    Ok(OverlaySource {
+        still,
+        width,
+        height,
+    })
+}
+
+/// True when the file of an overlap can be drawn now: it is there and, for a PNG or a GIF, its
+/// header gives a size within the limits (a file replaced by a larger one counts as missing,
+/// REQ-316). Another video is trusted by the size read when it was added.
+pub fn overlay_usable(path: &Path) -> bool {
+    let mut head = Vec::with_capacity(24);
+    if std::fs::File::open(path)
+        .and_then(|f| f.take(24).read_to_end(&mut head))
+        .is_err()
+    {
+        return false;
+    }
+    let size = parse_png_size(&head).or_else(|| parse_gif_size(&head));
+    match size {
+        Some((w, h)) => {
+            u64::from(w) * u64::from(h) <= MAX_PICTURE_PIXELS && w <= MAX_SIDE && h <= MAX_SIDE
+        }
+        None => path.is_file(),
+    }
 }
 
 /// Reads the picture at `path`: it must be a PNG of a reasonable size.
@@ -224,6 +305,85 @@ pub(crate) mod tests {
         // a long thin picture within the pixel limit but past the side limit keeps its message
         std::fs::write(&png, header(20_000, 10)).unwrap();
         assert!(matches!(read(&png), Err(PictureError::TooLarge(_))));
+    }
+
+    /// The first bytes of a GIF of `w` x `h`.
+    pub fn gif_header(w: u16, h: u16) -> Vec<u8> {
+        let mut b = b"GIF89a".to_vec();
+        b.extend(w.to_le_bytes());
+        b.extend(h.to_le_bytes());
+        b.extend([0, 0, 0]);
+        b
+    }
+
+    // covers: REQ-316, REQ-331
+    #[test]
+    fn overlay_files_are_read_from_their_header_and_the_sixteen_megapixel_limit_applies() {
+        let dir = tempfile::tempdir().unwrap();
+        let no_probe = |_: &Path| -> Option<(u32, u32)> { panic!("a header is enough") };
+        // PNG and GIF sizes come from the header; the GIF plays, the PNG is still
+        let png = dir.path().join("a.png");
+        std::fs::write(&png, header(4000, 4000)).unwrap();
+        assert_eq!(
+            read_overlay(&png, no_probe),
+            Ok(OverlaySource {
+                still: true,
+                width: 4000,
+                height: 4000
+            })
+        );
+        std::fs::write(&png, header(4001, 4000)).unwrap();
+        assert_eq!(
+            read_overlay(&png, no_probe),
+            Err(PictureError::TooManyPixels(4001, 4000))
+        );
+        let gif = dir.path().join("a.gif");
+        std::fs::write(&gif, gif_header(300, 200)).unwrap();
+        assert_eq!(
+            read_overlay(&gif, no_probe),
+            Ok(OverlaySource {
+                still: false,
+                width: 300,
+                height: 200
+            })
+        );
+        assert_eq!(parse_gif_size(&gif_header(0, 5)), None);
+        assert_eq!(parse_gif_size(b"GIF89a"), None);
+        assert_eq!(parse_gif_size(b"PNG89a....."), None);
+        std::fs::write(&gif, gif_header(4001, 4000)).unwrap();
+        assert!(matches!(
+            read_overlay(&gif, no_probe),
+            Err(PictureError::TooManyPixels(4001, 4000))
+        ));
+        // a video is measured by the probe, and a file that has no video is refused
+        let mov = dir.path().join("a.mov");
+        std::fs::write(&mov, b"not a header of a picture").unwrap();
+        assert_eq!(
+            read_overlay(&mov, |_| Some((1920, 1080))),
+            Ok(OverlaySource {
+                still: false,
+                width: 1920,
+                height: 1080
+            })
+        );
+        assert!(matches!(
+            read_overlay(&mov, |_| None),
+            Err(PictureError::NotAnOverlay(_))
+        ));
+        assert!(matches!(
+            read_overlay(&mov, |_| Some((4001, 4000))),
+            Err(PictureError::TooManyPixels(4001, 4000))
+        ));
+        assert!(matches!(
+            read_overlay(&dir.path().join("none.mov"), |_| Some((1, 1))),
+            Err(PictureError::Unreadable(_))
+        ));
+        // the use check: the header of a replaced file, a video that is there
+        assert!(!overlay_usable(&gif));
+        std::fs::write(&gif, gif_header(10, 10)).unwrap();
+        assert!(overlay_usable(&gif));
+        assert!(overlay_usable(&mov));
+        assert!(!overlay_usable(&dir.path().join("none.mov")));
     }
 
     // covers: REQ-287

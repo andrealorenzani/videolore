@@ -164,6 +164,16 @@ fn a_separate_track_is_one_subtitle_stream_with_the_language_and_the_picture_has
 /// Renders `doc` on black with libass (the ass filter) in a folder holding `fonts`, with
 /// an empty font configuration so that no installed font can help; returns the gray picture.
 fn render_ass(env: &Env, doc: &str, fonts: &[(&str, &[u8])]) -> Vec<u8> {
+    render_ass_sized(env, doc, fonts, (640, 360))
+}
+
+/// [`render_ass`] on a picture of the given size.
+pub(super) fn render_ass_sized(
+    env: &Env,
+    doc: &str,
+    fonts: &[(&str, &[u8])],
+    (w, h): (u32, u32),
+) -> Vec<u8> {
     let dir = tempfile::tempdir().unwrap();
     let fdir = dir.path().join("fonts");
     std::fs::create_dir_all(&fdir).unwrap();
@@ -184,7 +194,7 @@ fn render_ass(env: &Env, doc: &str, fonts: &[(&str, &[u8])]) -> Vec<u8> {
         .current_dir(dir.path())
         .env("FONTCONFIG_FILE", dir.path().join("fc.conf"))
         .args(["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i"])
-        .arg("color=c=black:s=640x360:d=1")
+        .arg(format!("color=c=black:s={w}x{h}:d=1"))
         .args(["-vf", "ass=subs.ass:fontsdir=fonts,format=gray"])
         .args(["-frames:v", "1", "-f", "rawvideo", "pipe:1"])
         .output()

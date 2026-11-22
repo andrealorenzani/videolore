@@ -98,11 +98,24 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         return;
     };
     let mut a = cur;
-    egui::Grid::new("aspect-grid")
+    aspect_fields(ui, &mut a, "aspect");
+    if a != cur {
+        cmds.push(Command::SetAspect(a));
+    }
+    ui.weak("The frame is the video's size with this shape; the picture is never stretched.");
+    button(ui, app, "Remove effect", Command::RemoveAspect, cmds);
+}
+
+/// The fields of a Change aspect, the same for the whole video's popup and for a clip's own
+/// aspect (REQ-124, REQ-126, REQ-326): the shape, a custom ratio, the Fit (on width or on
+/// height), the Empty space (a colour with its chooser, or blurred with its level). `salt`
+/// keeps the widgets of two places apart.
+pub fn aspect_fields(ui: &mut Ui, a: &mut crate::frame::FrameAspect, salt: &str) {
+    egui::Grid::new(format!("{salt}-grid"))
         .num_columns(2)
         .show(ui, |ui| {
             ui.label(tr!(Aspect));
-            egui::ComboBox::from_id_salt("aspect-shape")
+            egui::ComboBox::from_id_salt(format!("{salt}-shape"))
                 .selected_text(a.shape.name())
                 .show_ui(ui, |ui| {
                     for s in Shape::ALL {
@@ -111,10 +124,10 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
                 });
             ui.end_row();
             ui.label(tr!(CustomRatio));
-            custom_ratio(ui, &mut a);
+            custom_ratio(ui, a, salt);
             ui.end_row();
             ui.label(tr!(Fit));
-            egui::ComboBox::from_id_salt("aspect-fit")
+            egui::ComboBox::from_id_salt(format!("{salt}-fit"))
                 .selected_text(a.fit.name())
                 .show_ui(ui, |ui| {
                     for f in Fit::ALL {
@@ -124,7 +137,7 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             ui.end_row();
             ui.label(tr!(EmptySpace));
             let is_colour = matches!(a.fill, Fill::Colour(_));
-            egui::ComboBox::from_id_salt("aspect-fill")
+            egui::ComboBox::from_id_salt(format!("{salt}-fill"))
                 .selected_text(a.fill.name())
                 .show_ui(ui, |ui| {
                     if ui
@@ -141,7 +154,7 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             ui.end_row();
             if !is_colour {
                 ui.label(tr!(Blur));
-                egui::ComboBox::from_id_salt("aspect-blur")
+                egui::ComboBox::from_id_salt(format!("{salt}-blur"))
                     .selected_text(a.blur.name())
                     .show_ui(ui, |ui| {
                         for b in crate::frame::BlurLevel::ALL {
@@ -159,17 +172,13 @@ pub fn aspect_body(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
                 ui.end_row();
             }
         });
-    if a != cur {
-        cmds.push(Command::SetAspect(a));
-    }
-    ui.weak("The frame is the video's size with this shape; the picture is never stretched.");
-    button(ui, app, "Remove effect", Command::RemoveAspect, cmds);
 }
 
 /// The two numbers of a custom ratio and the button that uses them (REQ-285): a ratio from
 /// 1:4 to 4:1 is used, anything else is explained and nothing changes.
-fn custom_ratio(ui: &mut Ui, a: &mut crate::frame::FrameAspect) {
-    let id = egui::Id::unique("custom-ratio");
+fn custom_ratio(ui: &mut Ui, a: &mut crate::frame::FrameAspect, salt: &str) {
+    // one state for each place that shows it (the whole video's popup and a clip's row)
+    let id = egui::Id::unique(("custom-ratio", salt));
     let (mut w, mut h): (u32, u32) = ui.data(|d| d.get_temp(id)).unwrap_or_else(|| {
         let (w, h) = a.shape.ratio();
         (w, h)

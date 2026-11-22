@@ -70,7 +70,7 @@ pub const EMPTY_HINT: &str = "Import media… or drop files here";
 pub fn media_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     if app.project.media.is_empty() {
         ui.weak(EMPTY_HINT);
-        button(ui, app, "Import media…", Command::PickImport, cmds);
+        add_media_button(ui, app, cmds);
         return;
     }
     let w = ui.available_width();
@@ -123,4 +123,14 @@ pub fn media_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             }
         });
     }
+    add_media_button(ui, app, cmds);
+}
+
+/// The label of the button at the end of the Media section (REQ-324).
+pub const ADD_MEDIA: &str = "Add media";
+
+/// The **Add media** button at the end of the Media section (REQ-324): the same action as
+/// File > Import media…, so the same dialog and the same command (ADR-239).
+fn add_media_button(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+    button(ui, app, ADD_MEDIA, Command::PickImport, cmds);
 }

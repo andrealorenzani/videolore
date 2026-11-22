@@ -56,6 +56,7 @@ pub fn popup_icon(app: &AppState, p: Popup) -> &'static str {
             Some(Instance::Scale(_)) => i::ARROWS_OUT,
             Some(Instance::Move(_)) => i::ARROWS_OUT_CARDINAL,
             Some(Instance::Lut(_)) => i::PALETTE,
+            Some(Instance::Speed(_)) => i::SLIDERS,
             None => i::LIST,
         },
     }
@@ -190,6 +191,7 @@ pub fn instance_label(app: &AppState, i: Instance) -> String {
         Instance::Scale(t) => format!("Scale of {}", target_name(app, t)),
         Instance::Move(t) => format!("Move of {}", target_name(app, t)),
         Instance::Lut(t) => format!("Apply LUT of {}", target_name(app, t)),
+        Instance::Speed(t) => format!("Change speed of {}", target_name(app, t)),
         Instance::Pov(m, t) => {
             let at = app.pov_position(m, t).map(timecode).unwrap_or_default();
             format!("360° point of view {at}")
@@ -319,6 +321,7 @@ pub fn instance_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &mu
             super::frame_popups::key_body(ui, app, cache, t, crate::app::FrameFx::Move, cmds)
         }
         Some(Instance::Lut(t)) => super::lut_popup::lut_body(ui, app, t, cmds),
+        Some(Instance::Speed(t)) => effects::speed_body(ui, app, t, cmds),
     }
 }
 
@@ -607,6 +610,47 @@ pub fn clip_details_body(
     }
 }
 
+/// The Change aspect of one clip in Clip details (REQ-326): Off or a shape; the first shape
+/// gives the default aspect (Fit on width, black empty space), a later shape keeps the Fit and
+/// the Empty space; with an aspect the same fields as the whole video's popup follow, each
+/// change is one command.
+pub fn clip_aspect_rows(
+    ui: &mut Ui,
+    own: Option<crate::frame::FrameAspect>,
+    clip: crate::timeline::ClipId,
+    cmds: &mut Vec<Command>,
+) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr!(ClipAspect));
+        if ui.selectable_label(own.is_none(), tr!(AspectOff)).clicked() && own.is_some() {
+            cmds.push(Command::SetClipAspect { clip, aspect: None });
+        }
+        for shape in crate::frame::Shape::ALL {
+            let on = own.is_some_and(|a| a.shape == shape);
+            if ui.selectable_label(on, shape.name()).clicked() && !on {
+                let aspect = crate::frame::FrameAspect {
+                    shape,
+                    ..own.unwrap_or_default()
+                };
+                cmds.push(Command::SetClipAspect {
+                    clip,
+                    aspect: Some(aspect),
+                });
+            }
+        }
+    });
+    if let Some(cur) = own {
+        let mut a = cur;
+        super::frame_popups::aspect_fields(ui, &mut a, "clip-aspect");
+        if a != cur {
+            cmds.push(Command::SetClipAspect {
+                clip,
+                aspect: Some(a),
+            });
+        }
+    }
+}
+
 fn clip_settings(
     ui: &mut Ui,
     app: &AppState,
@@ -639,97 +683,9 @@ fn clip_settings(
             cmds.push(Command::SetMarked360(c.media, on));
         }
     }
-    // volume keyframes (REQ-280): the level at the playhead, and the keys of the clip
-    ui.horizontal_wrapped(|ui| {
-        ui.label(tr!(VolumeKeys));
-        let at = (app.playhead - start).clamp(Micros::ZERO, c.len());
-        let now_level =
-            f32::from(crate::keyframes::at(tl.volume_keys(c.id), at).unwrap_or(c.volume));
-        let mut v = now_level;
-        let r = ui.add(
-            egui::Slider::new(&mut v, 0.0..=100.0)
-                .step_by(1.0)
-                .suffix(" %"),
-        );
-        if (r.drag_stopped() || (r.changed() && !r.dragged())) && v.round() != now_level {
-            cmds.push(Command::SetVolumeKey {
-                clip: c.id,
-                at,
-                percent: v.round() as u8,
-            });
-        }
-        for k in tl.volume_keys(c.id) {
-            if ui
-                .small_button(format!("{} {}% ✕", timecode(k.t), k.v))
-                .on_hover_text(tr!(RemoveThisKeyframe))
-                .clicked()
-            {
-                cmds.push(Command::RemoveVolumeKey {
-                    clip: c.id,
-                    at: k.t,
-                });
-            }
-        }
-    });
-    // the clip's own Change aspect (REQ-286)
-    ui.horizontal_wrapped(|ui| {
-        ui.label(tr!(ClipAspect));
-        let own = tl.own_aspect(c.id);
-        if ui.selectable_label(own.is_none(), tr!(AspectOff)).clicked() && own.is_some() {
-            cmds.push(Command::SetClipAspect {
-                clip: c.id,
-                aspect: None,
-            });
-        }
-        for shape in crate::frame::Shape::ALL {
-            let on = own.is_some_and(|a| a.shape == shape);
-            if ui.selectable_label(on, shape.name()).clicked() && !on {
-                let aspect = crate::frame::FrameAspect {
-                    shape,
-                    fit: crate::frame::Fit::Height,
-                    ..own.unwrap_or_default()
-                };
-                cmds.push(Command::SetClipAspect {
-                    clip: c.id,
-                    aspect: Some(aspect),
-                });
-            }
-        }
-    });
-    // part of the picture cut away (REQ-283)
-    ui.horizontal_wrapped(|ui| {
-        ui.label(tr!(CropPercent));
-        let mut crop = c.crop;
-        let mut changed = false;
-        for (name, v) in [
-            (tr!(CropLeft), &mut crop.left),
-            (tr!(CropTop), &mut crop.top),
-            (tr!(CropRight), &mut crop.right),
-            (tr!(CropBottom), &mut crop.bottom),
-        ] {
-            let r = ui.add(
-                egui::DragValue::new(v)
-                    .range(0..=crate::timeline::MAX_CROP)
-                    .prefix(format!("{name} ")),
-            );
-            changed |= r.drag_stopped() || (r.changed() && !r.dragged());
-        }
-        if changed && crop != c.crop {
-            cmds.push(Command::SetCrop { clip: c.id, crop });
-        }
-    });
-    // playing speed (REQ-281)
-    ui.horizontal_wrapped(|ui| {
-        ui.label(tr!(SpeedPercent));
-        let mut pct = u32::from(c.speed) / 10;
-        let r = ui.add(egui::DragValue::new(&mut pct).range(50..=200));
-        if (r.drag_stopped() || (r.changed() && !r.dragged())) && pct * 10 != u32::from(c.speed) {
-            cmds.push(Command::SetSpeed {
-                clip: c.id,
-                speed: (pct * 10) as u16,
-            });
-        }
-    });
+    // the clip's own Change aspect (REQ-286, REQ-326): Off, the shapes, and with a shape the Fit
+    // and the Empty space as the whole video's popup has them
+    clip_aspect_rows(ui, tl.own_aspect(c.id), c.id, cmds);
     ui.label(format!(
         "In {}  Out {}  Length {}",
         timecode(c.src_in),

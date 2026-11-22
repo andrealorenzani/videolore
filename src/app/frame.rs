@@ -132,7 +132,8 @@ impl AppState {
         self.popups.show(Popup::Instance);
         if let Instance::Scale(FrameTarget::Clip(c))
         | Instance::Move(FrameTarget::Clip(c))
-        | Instance::Lut(FrameTarget::Clip(c)) = i
+        | Instance::Lut(FrameTarget::Clip(c))
+        | Instance::Speed(FrameTarget::Clip(c)) = i
         {
             self.selected_clip = Some(c);
         }

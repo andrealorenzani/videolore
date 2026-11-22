@@ -194,6 +194,23 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                 });
             });
         }
+        Some(Modal::RemoveOverlaps(n)) => {
+            egui::Modal::new(egui::Id::unique("remove-overlaps")).show(ctx, |ui| {
+                ui.heading(super::icons::label(
+                    super::icons::WARNING,
+                    "Overlaps will be removed",
+                ));
+                ui.label(crate::app::overlap::removal_text(*n));
+                ui.horizontal(|ui| {
+                    if ui.button(tr!(OK)).clicked() {
+                        cmds.push(Command::ConfirmRemoval);
+                    }
+                    if ui.button(tr!(Cancel)).clicked() {
+                        cmds.push(Command::CancelRemoval);
+                    }
+                });
+            });
+        }
         Some(Modal::SubtitleSource { labels, can_match }) => {
             if cache.source_choice >= labels.len() {
                 cache.source_choice = 0;

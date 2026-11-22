@@ -451,6 +451,48 @@ fn text_styles(width: u32, height: u32, texts: &[AssEvent]) -> String {
 pub const TEXT_STYLE: &str = "Text";
 pub const TEXT_BOX_STYLE: &str = "TextBox";
 
+/// The centre, in pixels, of each word of a line at its normal size (REQ-333): the words
+/// are measured with the bundled font (the one the style names), wrapped at the width the
+/// renderer allows and centred as the line is, at its own position or the style's place.
+/// `None` when the words cannot be placed (the layout then stays as it was).
+fn word_centres(
+    l: &ShownLine,
+    words: &[crate::word_styles::Timed],
+    preset: Preset,
+    px: u32,
+    width: u32,
+    height: u32,
+) -> Option<Vec<(f64, f64)>> {
+    let joined: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
+    let shaped = crate::measure::Shaped::new(FONT, 0, &joined.join(" "))?;
+    let px = f64::from(px);
+    let room = f64::from(width) - 2.0 * f64::from(margin_lr(width));
+    let placed = shaped.place_words(room, px)?;
+    let block = placed.line_widths.len() as f64 * px;
+    let (cx, cy) = match l.position {
+        Some(p) => {
+            let c = |v: u16, size: u32| {
+                f64::from(v.min(POS_MAX)) * f64::from(size) / f64::from(POS_MAX)
+            };
+            (c(p.x, width), c(p.y, height))
+        }
+        None => default_centre(preset, width, height, block),
+    };
+    Some(
+        placed
+            .boxes
+            .iter()
+            .map(|b| {
+                let lw = placed.line_widths[b.line];
+                (
+                    cx - lw / 2.0 + b.left + b.width / 2.0,
+                    cy - block / 2.0 + (b.line as f64 + 0.5) * px,
+                )
+            })
+            .collect(),
+    )
+}
+
 /// [`document`] plus the events of text items (timeline times, like the lines), with the
 /// project's style settings (shadow, word colours, Enlarge word size: 2.1.0).
 pub fn document_styled(
@@ -510,7 +552,20 @@ pub fn document_styled(
                     |z| sized_font(width, height, z),
                 );
                 let big = base + scaled_px(st.enlarge, height);
-                crate::word_styles::enlarge(&words, span, &tag, big, &escape_scripts)
+                let centres = word_centres(l, &words, preset, base, width, height);
+                let bord = if l.size.is_some() {
+                    format!("\\bord{}", outline(base))
+                } else {
+                    String::new()
+                };
+                crate::word_styles::enlarge(
+                    &words,
+                    span,
+                    &tag,
+                    big,
+                    &escape_scripts,
+                    centres.as_deref().map(|c| (c, bord.as_str())),
+                )
             };
             for e in events.iter().filter(|e| e.end > shift) {
                 s.push_str(&dialogue(at(e.start), at(e.end), &e.text));

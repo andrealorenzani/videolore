@@ -270,6 +270,84 @@ pub struct PicOverlay {
     /// The parts of `start..end` the picture shows when some of it is drawn by the overlay
     /// stage instead (REQ-304); empty: the whole of it.
     pub pieces: Vec<(Micros, Micros)>,
+    /// How an overlap (2.3.0) is drawn; a picture item or a PNG overlap is the default: a
+    /// looped still fitted to its box.
+    pub look: Look,
+}
+
+/// What differs between a picture item and the files of an overlap (2.3.0, REQ-327, REQ-328,
+/// ADR-232, ADR-243).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Look {
+    /// A GIF or a video: read from its start without a loop, so it plays once and the overlay
+    /// lets the picture through after it (REQ-328).
+    pub motion: bool,
+    /// How much of the animation had played when this render starts (a preview from the
+    /// middle of an overlap): the input is read from there.
+    pub skip: Micros,
+    /// A reshaped video fills its box: it is scaled up and the overflow is cut evenly (REQ-327).
+    pub cover: bool,
+    /// The file is larger than 1920 x 1080 and this is a preview: it is halved first (ADR-243).
+    pub half: bool,
+}
+
+impl PicOverlay {
+    /// The input that reads this overlay.
+    pub(super) fn input(&self, video_end: Micros) -> Input {
+        Input {
+            path: self.path.clone(),
+            start: if self.look.motion {
+                self.look.skip
+            } else {
+                Micros::ZERO
+            },
+            len: video_end,
+            still: !self.look.motion,
+        }
+    }
+
+    /// The filters that turn input `n` into the picture to lay over the video, ending in
+    /// `out` (a label with its brackets). Numbers only (ADR-099).
+    pub(super) fn prepared(&self, n: usize, out: &str) -> String {
+        let mut f = format!("[{n}:v:0]format=rgba");
+        if self.look.half {
+            f.push_str(",scale=iw/2:ih/2");
+        }
+        if self.look.motion {
+            f.push_str(&format!(
+                ",setpts=PTS-STARTPTS+{}/TB",
+                (self.start.max(Micros::ZERO)).ff()
+            ));
+        }
+        if self.look.cover {
+            f.push_str(&format!(
+                ",scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}",
+                w = self.w,
+                h = self.h
+            ));
+        } else {
+            f.push_str(&format!(",scale={}:{}", self.w, self.h));
+        }
+        f.push_str(out);
+        f
+    }
+
+    /// The options of the `overlay` filter after the picture's own place: it shows while
+    /// `enable` is true; a still ends with the video, an animation lets the picture through
+    /// when it has ended.
+    pub(super) fn laid(&self) -> String {
+        format!(
+            "x={}:y={}:enable='{}':{}",
+            self.x,
+            self.y,
+            self.enable(),
+            if self.look.motion {
+                "eof_action=pass"
+            } else {
+                "shortest=1"
+            }
+        )
+    }
 }
 
 impl PicOverlay {
@@ -345,24 +423,14 @@ pub fn build_graph_pics(
     // the pictures follow the music; the raw background is after them all
     let pic_base = inputs.len();
     let video_end = segs.iter().fold(Micros::ZERO, |a, s| a + s.rendered());
-    inputs.extend(pics.iter().map(|p| Input {
-        path: p.path.clone(),
-        start: Micros::ZERO,
-        len: video_end,
-        still: true,
-    }));
+    inputs.extend(pics.iter().map(|p| p.input(video_end)));
     // the picture items of the overlay stage, one input each, after the others' pictures
     let mut seg_pics: Vec<Vec<usize>> = vec![Vec::new(); segs.len()];
     for (i, s) in segs.iter().enumerate() {
         for step in &s.overlay {
             if let (true, OverlayStep::Pic(p)) = (spec.video, step) {
                 seg_pics[i].push(inputs.len());
-                inputs.push(Input {
-                    path: p.path.clone(),
-                    start: Micros::ZERO,
-                    len: s.rendered() + Micros(1_000_000),
-                    still: true,
-                });
+                inputs.push(p.input(s.rendered() + Micros(1_000_000)));
             }
         }
     }
@@ -560,7 +628,7 @@ pub fn build_graph_pics(
                 )
             } else if by_steps {
                 // the rows of the clip are built one by one (REQ-320): the source, trimmed and on
-                // the clip's clock; the Crop is a step
+                // the clip's clock
                 format!("{src}trim=start={voff}:duration={vd},setpts={shift}")
             } else {
                 // a 360 video keeps the equirectangular picture: texts fixed to the sphere are
@@ -573,18 +641,17 @@ pub fn build_graph_pics(
                     }
                     None => String::new(),
                 };
-                let crop = crop_filter(&s.crop);
                 match fr {
                     // the picture fitted to the frame, with no bars: the frame effect
                     // draws the background and places the picture
                     Some(f) => format!(
-                        "{src}trim=start={voff}:duration={vd},setpts={shift}{crop}{fit},\
+                        "{src}trim=start={voff}:duration={vd},setpts={shift}{fit},\
                          setsar=1,fps={fps}{lut}{anchored}",
                         fit = frame::fit_filter((w, h), f.aspect.as_ref()),
                         fps = g.fps.ff(),
                     ),
                     None => format!(
-                        "{src}trim=start={voff}:duration={vd},setpts={shift}{crop},\
+                        "{src}trim=start={voff}:duration={vd},setpts={shift},\
                          scale={w}:{h}:force_original_aspect_ratio=decrease{lut},\
                          pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={f}{anchored},\
                          format={pf}",
@@ -733,14 +800,9 @@ pub fn build_graph_pics(
             "[outv]".to_string()
         };
         parts.push(format!(
-            "[{n}:v:0]format=rgba,scale={w}:{h}[pi{j}];\
-             [pv{j}][pi{j}]overlay=x={x}:y={y}:enable='{en}':shortest=1,format={pf}{next}",
-            n = pic_base + j,
-            w = p.w,
-            h = p.h,
-            x = p.x,
-            y = p.y,
-            en = p.enable(),
+            "{prep};[pv{j}][pi{j}]overlay={laid},format={pf}{next}",
+            prep = p.prepared(pic_base + j, &format!("[pi{j}]")),
+            laid = p.laid(),
             pf = spec.pix_fmt,
         ));
     }
@@ -879,14 +941,9 @@ fn overlay_chain(
                 let Some(input) = pic.next() else { continue };
                 parts.push(format!("{c}[o{i}x{n}]"));
                 parts.push(format!(
-                    "[{input}:v:0]format=rgba,scale={w}:{h}[pi{i}x{n}];\
-                     [o{i}x{n}][pi{i}x{n}]overlay=x={x}:y={y}:enable='{en}':shortest=1,\
-                     format={pix_fmt}[q{i}x{n}]",
-                    w = p.w,
-                    h = p.h,
-                    x = p.x,
-                    y = p.y,
-                    en = p.enable(),
+                    "{prep};[o{i}x{n}][pi{i}x{n}]overlay={laid},format={pix_fmt}[q{i}x{n}]",
+                    prep = p.prepared(*input, &format!("[pi{i}x{n}]")),
+                    laid = p.laid(),
                 ));
                 c = format!("[q{i}x{n}]");
                 continue;
@@ -902,18 +959,4 @@ fn overlay_chain(
         c.push_str("null");
     }
     c
-}
-
-/// The filter that cuts away the part of the picture chosen in Crop (REQ-283), written for
-/// the sides in percent, in even pixels: `,crop=w:h:x:y`; nothing when there is no crop.
-pub(super) fn crop_filter(c: &crate::timeline::Crop) -> String {
-    if c.is_none() {
-        return String::new();
-    }
-    let (l, t, r, b) = (c.left, c.top, c.right, c.bottom);
-    format!(
-        ",crop=w='trunc(iw*{}/200)*2':h='trunc(ih*{}/200)*2':x='trunc(iw*{l}/200)*2':y='trunc(ih*{t}/200)*2'",
-        100 - u32::from(l) - u32::from(r),
-        100 - u32::from(t) - u32::from(b)
-    )
 }

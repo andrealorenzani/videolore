@@ -197,6 +197,75 @@ fn enlarge_word_writes_two_events_per_word_with_the_larger_size() {
     assert!(!events[0].contains("\\fs"));
 }
 
+// covers: REQ-333, REQ-309
+#[test]
+fn the_enlarged_word_is_drawn_at_its_measured_centre_inside_two_percent_of_the_height() {
+    let l = [spoken()];
+    let st = StyleSettings::default();
+    let d = document_styled(&l, Preset::EnlargeWord, &st, 1920, 1080, Micros::ZERO, &[]);
+    let events: Vec<&str> = d.lines().filter(|l| l.starts_with("Dialogue")).collect();
+    // the big event is the word alone at an own position; the base keeps the whole line
+    let big = events[1];
+    assert!(big.contains("\\an5\\pos("), "{big}");
+    assert!(big.ends_with("}one"), "{big}");
+    assert!(!events[0].contains("\\pos"), "{}", events[0]);
+    // the centre of every word is on the line's own height (single line): the style's place
+    let h = 1080.0;
+    let px = f64::from(font_size(1920, 1080));
+    let expect_y = h - margin_v(Preset::EnlargeWord, 1080) - px / 2.0;
+    for e in events.iter().skip(1).step_by(2) {
+        let at = e.split("\\pos(").nth(1).unwrap();
+        let (x, rest) = at.split_once(',').unwrap();
+        let y: f64 = rest.split(')').next().unwrap().parse().unwrap();
+        assert!((y - expect_y).abs() < 0.02 * h, "{e}");
+        let x: f64 = x.parse().unwrap();
+        assert!(x > 0.0 && x < 1920.0);
+    }
+    // words go left to right
+    let xs: Vec<f64> = events
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .map(|e| {
+            let at = e.split("\\pos(").nth(1).unwrap();
+            at.split_once(',').unwrap().0.parse().unwrap()
+        })
+        .collect();
+    assert!(xs.windows(2).all(|w| w[0] < w[1]), "{xs:?}");
+    // a line with its own place and size is centred on that place
+    let mut own = spoken();
+    own.position = Some(crate::base::pos::Pos { x: 5000, y: 2500 });
+    own.size = Some(1500);
+    let d = document_styled(
+        &[own],
+        Preset::EnlargeWord,
+        &st,
+        1920,
+        1080,
+        Micros::ZERO,
+        &[],
+    );
+    let big = d
+        .lines()
+        .filter(|l| l.starts_with("Dialogue"))
+        .nth(1)
+        .unwrap();
+    assert!(big.contains("\\bord"), "{big}");
+    let y: f64 = big
+        .split("\\pos(")
+        .nth(1)
+        .unwrap()
+        .split_once(',')
+        .unwrap()
+        .1
+        .split(')')
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((y - 270.0).abs() < 0.02 * h, "{big}");
+}
+
 // covers: REQ-310
 #[test]
 fn typewriter_writes_one_event_per_word_with_the_letters_on_their_times() {

@@ -132,3 +132,9 @@
 - tests/ffmpeg_integration/v22.rs: 177, 314
 - tests/module_cycles.rs: 153
 - tests/page.rs: 298, 299
+
+## 2.3.0 (all planned until the Product Manager marks them; each has a covers: line)
+- REQ-280 (Volume effect): src/app/overlap_tests.rs `volume_is_an_effect_with_keyframes...`; REQ-281 (Change speed): src/app/overlap_tests.rs; REQ-283 (Crop removed): src/render/tests.rs, tests/ffmpeg_integration/v22order.rs
+- REQ-295: src/app/cache_tests.rs `a_stored_never_reads_as_once_for_each_version`, src/splash.rs, src/ui/overlap_ux_tests.rs; REQ-324/326: src/ui/overlap_ux_tests.rs
+- REQ-325/327/328/329/330/331/332: src/overlap.rs, src/app/overlap_tests.rs, src/render/overlap_tests.rs, src/project/v14_tests.rs, src/ui/overlap_{ux_tests,lane,box}.rs, tests/ffmpeg_integration/v23overlap.rs (fixtures tests/fixtures/overlay)
+- REQ-333 (+309): src/word_styles.rs, src/measure.rs, src/ass/style_tests.rs, tests/ffmpeg_integration/v23overlap.rs (real libass centroid)

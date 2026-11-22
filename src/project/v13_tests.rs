@@ -28,7 +28,7 @@ fn reopened(json: &str) -> (Project, Vec<String>) {
 #[test]
 fn a_text_maximum_is_written_in_format_13_and_read_back() {
     let json = json_of(&with_max(Some(200)));
-    assert!(json.contains("\"schema_version\": 13"));
+    assert!(json.contains("\"schema_version\": 14"));
     assert!(json.contains("\"max_size\": 200"), "{json}");
     let (p, notes) = reopened(&json);
     assert_eq!(p.texts.items[0].max_size, Some(200));
@@ -40,12 +40,12 @@ fn a_text_maximum_is_written_in_format_13_and_read_back() {
 // covers: REQ-323, REQ-322
 #[test]
 fn a_project_of_format_12_opens_with_no_maximum_and_the_same_texts() {
-    let json = json_of(&with_max(None)).replace("\"schema_version\": 13", "\"schema_version\": 12");
+    let json = json_of(&with_max(None)).replace("\"schema_version\": 14", "\"schema_version\": 12");
     let (p, notes) = reopened(&json);
     assert_eq!(p.texts.items[0].max_size, None);
     assert!(notes.is_empty());
-    // and it is saved again as 13
-    assert!(json_of(&p).contains("\"schema_version\": 13"));
+    // and it is saved again as 14 (13 is converted in memory since 2.3.0)
+    assert!(json_of(&p).contains("\"schema_version\": 14"));
 }
 
 // covers: REQ-323
@@ -62,12 +62,12 @@ fn a_maximum_outside_two_to_fifty_percent_is_dropped_with_a_note() {
 
 // covers: REQ-029
 #[test]
-fn a_project_of_a_newer_format_than_13_is_refused_and_older_programs_refuse_13() {
+fn a_project_of_a_newer_format_than_14_is_refused_and_older_programs_refuse_13() {
     let json = json_of(&with_max(Some(200)));
-    let newer = json.replace("\"schema_version\": 13", "\"schema_version\": 14");
+    let newer = json.replace("\"schema_version\": 14", "\"schema_version\": 15");
     assert_eq!(
         from_json(&newer, std::path::Path::new("/tmp")).unwrap_err(),
-        ProjectError::TooNew(14)
+        ProjectError::TooNew(15)
     );
     // what a 2.1.0 program (format 12) did with this file: refuse it, as REQ-029 says
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();

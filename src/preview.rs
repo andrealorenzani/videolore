@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 /// The format of each video file a preview run of `project` reads, by the argument that
 /// names it (`file:<path>`). A preview copy is always H.264.
 fn input_codecs(project: &Project, src: Source) -> HashMap<OsString, Codec> {
-    project
+    let mut known: HashMap<OsString, Codec> = project
         .media
         .iter()
         .filter_map(|m| {
@@ -45,7 +45,13 @@ fn input_codecs(project: &Project, src: Source) -> HashMap<OsString, Codec> {
             };
             Some((crate::ffmpeg::file_arg(&path), codec))
         })
-        .collect()
+        .collect();
+    // an overlay file is always decoded in software: a hardware decoder may drop its alpha
+    // channel (ADR-233); a file that is also a clip is software-decoded here too
+    for o in project.timeline.clip_overlaps.iter().flat_map(|c| &c.items) {
+        known.remove(&crate::ffmpeg::file_arg(std::path::Path::new(&o.path)));
+    }
+    known
 }
 
 /// Frames buffered between the decoder and the UI.

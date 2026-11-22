@@ -82,7 +82,6 @@ pub fn should_show(
     match option {
         Always => true,
         OncePerVersion => last != Some(version),
-        Never => false,
     }
 }
 
@@ -98,8 +97,7 @@ mod option_tests {
         assert!(should_show(OncePerVersion, None, "2.0.4", false));
         assert!(should_show(OncePerVersion, Some("2.0.3"), "2.0.4", false));
         assert!(!should_show(OncePerVersion, Some("2.0.4"), "2.0.4", false));
-        assert!(!should_show(Never, None, "2.0.4", false));
-        for o in [Always, OncePerVersion, Never] {
+        for o in [Always, OncePerVersion] {
             assert!(
                 !should_show(o, None, "2.0.4", true),
                 "a path never shows it"

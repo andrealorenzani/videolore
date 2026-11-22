@@ -3,11 +3,16 @@
 Sub-document of [business index](business.md). Requirement texts live in the human docs (`docs/business*.md`); this file is the map and the short meaning of the early requirements.
 
 ## Status and map
+- 2.3.0 STATUS (2026-11-22, built): implemented 280, 281, 283 (removed), 287, 295, 320, 321, 322, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333; 309 stays implemented (fixed by 333). Next free ID: REQ-334.
+- 2.3.0 PLAN and REFINE (2026-11-22; the planned state before STATUS): new `(planned)` REQ-324 (editing, Add media), 325 and 327-331 (overlap doc), 326 (frame, amends 286; whole-video check), 332 (conversion of 2.2.0 projects). Amended `(planned)` in place: 280 (Volume keyframed effect), 281 (Change speed effect), 283 (Crop removed), 287 (Add Picture replaced), 295 ("Never" removed), 320, 321, 322 (order: no Crop, Overlap media, Change speed fixed). Decisions in ai-docs/business.md § Checkpoint 2.3.0 REFINE. REQ-333 (planned): Enlarge word keeps the word's place (fixes REQ-309). Next free ID: REQ-334.
 - 2.2.0 PLAN (2026-11-21, not built): REQ-312..316 `(planned)` (speed doc). Amended `(planned)` in place: 076, 083, 129, 131, 147, 148, 177, 200, 201, 202, 303 (whole-video rule, REQ-177 build). REQ-300 wording fixed (implemented, no status change); REQ-305 accepted; REQ-287 unchanged (316 amends it). STATUS 2.2.0 done (2026-11-22): 27 lines marked implemented (see the checkpoint in ai-docs/business.md); REQ-315 and REQ-177 stay planned with measured results. Next free ID: REQ-324. Added by GO (2.2.0 part 2): REQ-317 (widget column), 318 and 319 (text box governs size; old sizes), 320 to 322 (order of all effects, undo and copies, storage), 323 (optional per-text maximum size, D64); amended planned: 116, 156, 157 (text), 302, 304, 311 (applied effects).
 - 2.1.0 STATUS done (2026-11-21, version 2.1.0): REQ-300..311 `(implemented)`, each with a `// covers:` test (grep-checked, no test run by the PM); amended to the built behaviour (300, 301, 303, 304, 305, 306-310, 311). REQ-301 answered: option C, D62. Next free ID REQ-312.
 - REQ-001..REQ-176 and REQ-178..179 are `(implemented)` (2.0.3). REQ-177 stays `(planned)` (accuracy target not met; open decision for Andrea). 2.0.4 STATUS done: all REQ-180..299 are `(implemented)` (120 requirements; each has a `// covers:` test, grep-checked); REQ-177 is the only 2.0.4 item left planned. Next free ID: REQ-300. QG-01..QG-05 implemented; QG-06 (CI time) open, to read from the first CI run; QG-07..QG-10 delivered 2.0.2; QG-11..QG-13 measured in 2.0.4 (no covers); QG-14..QG-18 built in 2.0.4 (no covers; egui_kittest not adopted).
 - REQ -> human doc (grep the ID in `docs/business*.md`):
-  - editing: 001-004, 005-013, 026-029, 032-035, 038, 039, 083, 094, 105, 113, 123, 144, 149, 155; 2.0.4 gestures and autosave 189-199 (editing-gestures)
+  - editing: 001-004, 005-013, 026-029, 032-035, 038, 039, 083, 094, 105, 113, 123, 144, 149, 155; 324 Add media (planned 2.3.0); 2.0.4 gestures and autosave 189-199 (editing-gestures)
+  - overlap (2.3.0, planned): 325, 327-331 (overlap)
+  - 2.3.0 planned amendments: 280, 281, 283, 320-322 (effects-frame, applied-effects); 332 conversion (effects-frame)
+  - 2.3.0 subtitle styles: 309 status note (kept implemented; acceptance not met), 333 planned fix (subtitle-styles)
   - ui: 024, 025, 066-074, 078-081, 093; 2.0.4 interface 234-247 (interface)
   - effects: 075, 076, 077, 082, 107, 147; 2.0.4 effects and frame 274-294 implemented (effects-frame)
   - subtitles: 014-018, 044, 085-092, 095; placement 168-176; 2.0.4 subtitle files 180-188 (subtitle-files)
@@ -20,11 +25,11 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
   - text: 108-111, 115, 116; readable text 156-167
   - picture: 096-099, 100-106, 112, 117, 146
   - 360 (2.0.4): 257-273 implemented (360-video)
-  - frame: 124-132, 145, 148
+  - frame: 124-132, 145, 148; 326 Clip aspect fit and empty space (planned 2.3.0)
   - lut: 135-137; 2.1.0 import and large LUTs 300-301 (implemented, business-lut)
   - 2.1.0 (implemented): applied effects 302-305 and project format 311 (applied-effects); shadow, highlight colours, Enlarge word, Typewriter 306-310 (subtitle-styles)
   - player: 138-141, 150; 2.0.4 opening, prefs, playlist 248-256 implemented (player)
-  - splash: 133, 134, 154; 2.0.4 show option 295 (splash)
+  - splash: 133, 134, 154; 2.0.4 show option 295 (planned 2.3.0: Never removed) (splash)
   - icons: 142, 143
   - install: 030, 031, 040-042
   - platforms (2.0.4): 225-233 (platforms)

@@ -146,7 +146,7 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(Move),
                 A(ApplyLut),
                 A(AddText),
-                A(AddPicture),
+                A(AddOverlap),
                 S,
                 Submenu("Apply to selected clip", APPLY_TO_CLIP),
                 Submenu("Apply to whole video", APPLY_TO_VIDEO),
@@ -296,7 +296,7 @@ mod tests {
             Move,
             ApplyLut,
             AddText,
-            AddPicture,
+            AddOverlap,
         ] {
             assert!(effects.contains(&Item::Action(id)), "{id:?}");
         }

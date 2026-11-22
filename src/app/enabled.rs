@@ -49,9 +49,9 @@ impl AppState {
             Command::SetMusicEffects { clip, .. } => self.project.music.get(*clip).is_some(),
             Command::SetClipVolume { clip, .. }
             | Command::SetVolumeKey { clip, .. }
+            | Command::SetVolumeKeyEase { clip, .. }
             | Command::RemoveVolumeKey { clip, .. }
-            | Command::SetSpeed { clip, .. }
-            | Command::SetCrop { clip, .. } => tl.get(*clip).is_some(),
+            | Command::SetSpeed { clip, .. } => tl.get(*clip).is_some(),
             Command::SetCleanAudio { target, .. } | Command::SetCleanStrength { target, .. } => {
                 match target {
                     Target::Selected => self.target_clip().is_some(),
@@ -126,6 +126,13 @@ impl AppState {
             Command::AddText(_) | Command::AddPicture(_) | Command::OpenNewText => {
                 !tl.clips.is_empty() && self.playhead < tl.duration()
             }
+            Command::AddOverlap(_) => tl.locate(self.playhead).is_some(),
+            Command::SetOverlapBox { id, .. }
+            | Command::SetOverlapTimes { id, .. }
+            | Command::RemoveOverlap(id) => tl.find_overlap(*id).is_some(),
+            Command::ConfirmRemoval | Command::CancelRemoval => self.pending_removal.is_some(),
+            Command::SetSpeedAll { .. } => !tl.clips.is_empty(),
+            Command::RemoveVolume { clip } => !tl.volume_keys(*clip).is_empty(),
             Command::DeleteTexts(ids) => {
                 !ids.is_empty() && ids.iter().all(|i| self.project.texts.get(*i).is_some())
             }
@@ -172,6 +179,7 @@ impl AppState {
             Command::AddText(_) | Command::AddPicture(_) | Command::OpenNewText => {
                 texts::PLAYHEAD_IN_VIDEO
             }
+            Command::AddOverlap(_) => overlap::NO_CLIP_UNDER_PLAYHEAD,
             Command::DeleteTexts(_) => texts::SELECT_A_TEXT,
             Command::Cut | Command::Copy | Command::Delete => "Select a clip first",
             Command::Merge if self.target_clip().is_none() => "Select a clip first",

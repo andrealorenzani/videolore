@@ -17,7 +17,7 @@ Added in 1.6.0 for the editor, and extended to the video player in 1.6.2 (REQ-15
 - REQ-154 (implemented): The summary is shown in the largest text, from 15 down to 7 image pixels, at which it fits the popup; a summary that is longer than the popup at 15 pixels uses a smaller text and is never scrolled. The summaries shipped with a version must fit at 7 pixels or more; a summary that does not fit fails the test suite, so it is not released. Acceptance: a summary with more lines than fit at 15 pixels is shown smaller, and every line is inside the popup; no scroll bar appears; the shipped editor and player summaries fit their popups; a summary that cannot fit even at 7 pixels fails the tests.
 
 ### Show option (2.0.4)
-- REQ-295 (implemented): Settings has **Show the start screen**: "At every start" (the default, as now), "Once for each version" or "Never". The choice is a program setting; the player's start screen follows the same choice for the player. A start with a path on the command line never shows it. Acceptance: "Once for each version" shows the splash at the first start of a version and not at the next starts of that version; "Never" shows none; the default shows it at every start.
+- REQ-295 (implemented; amended 2.3.0: the "Never" choice is removed): Settings has **Show the start screen** with two choices: "At every start" (the default, as now) and "Once for each version". The choice is a program setting; the player's start screen follows the same choice for the player. A start with a path on the command line never shows it. A "Never" stored in an older Settings file is read as "Once for each version" (decided by Andrea, 2026-11-22). Acceptance: "Once for each version" shows the splash at the first start of a version and not at the next starts of that version; the default shows it at every start; the Settings window has no "Never" choice.
 
 ## Key decisions
 - (1.6.0) The splash shows at every start without a project or video path on the command line, not once per version, so the summary is seen by everyone who starts the program by hand. A start that opens a project or a video (first start or second window) shows no splash, so opening work is not delayed. No single-instance detection.
@@ -25,6 +25,7 @@ Added in 1.6.0 for the editor, and extended to the video player in 1.6.2 (REQ-15
 - (1.6.0) The version text is written by the program from the version number, not drawn in the picture, so each picture needs no text of its own.
 - (1.6.2, names in 1.6.3) The picture files (`splash.gif`, `splash-player.gif`) and the summary files (`summary.txt`, `summary-player.txt`) have fixed names; nothing is copied per version. Only the text of the summaries is rewritten for each release.
 - (1.6.2) Each program has its own summary, because the editor and the player change in different ways. The 1.6.0 rule of no splash in the player is reversed (REQ-150).
+- (2.3.0, Andrea 2026-11-22) The "Never" choice of the start screen is removed from Settings (REQ-295); the two remaining choices are the default and once per version.
 
 ## Known limitations
 - The summary text is written by hand for each release; a release without an updated summary shows the previous one.

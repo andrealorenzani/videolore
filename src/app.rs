@@ -95,10 +95,12 @@ pub enum EffectKind {
     Move,
     /// Changes the colours of the picture with a LUT file (1.6.0, REQ-135).
     ApplyLut,
+    /// The speed of one clip or of all of them, not keyframed (2.3.0, REQ-281).
+    ChangeSpeed,
 }
 
 impl EffectKind {
-    pub const ALL: [EffectKind; 8] = [
+    pub const ALL: [EffectKind; 9] = [
         EffectKind::Fade,
         EffectKind::Subtitles,
         EffectKind::Volume,
@@ -107,6 +109,7 @@ impl EffectKind {
         EffectKind::Scale,
         EffectKind::Move,
         EffectKind::ApplyLut,
+        EffectKind::ChangeSpeed,
     ];
 
     /// True for the effects of the picture frame (1.5.0).
@@ -127,6 +130,7 @@ impl EffectKind {
             EffectKind::Scale => "Scale",
             EffectKind::Move => "Move",
             EffectKind::ApplyLut => "Apply LUT",
+            EffectKind::ChangeSpeed => "Change speed",
         }
     }
 
@@ -140,7 +144,8 @@ impl EffectKind {
             EffectKind::ChangeAspect
             | EffectKind::Scale
             | EffectKind::Move
-            | EffectKind::ApplyLut => Popup::Instance,
+            | EffectKind::ApplyLut
+            | EffectKind::ChangeSpeed => Popup::Instance,
         }
     }
 }
@@ -276,6 +281,9 @@ pub enum Modal {
     MissingLut(Box<export::choice::ExportChoice>),
     /// The file of the export exists: asks before replacing it.
     ConfirmOverwrite(Box<export::choice::ExportChoice>),
+    /// An edit would remove this many overlaps (REQ-329): OK does the edit and removes them,
+    /// Cancel changes nothing; the edit waits in `AppState::pending_removal`.
+    RemoveOverlaps(usize),
     About,
 }
 
@@ -354,6 +362,8 @@ pub enum Instance {
     /// Apply LUT of a clip, or its file chooser for every clip (`Whole`, until a file is
     /// chosen, then the popup follows the copy on the clip under the playhead) (1.6.0).
     Lut(FrameTarget),
+    /// Change speed of one clip, or its chooser for every clip (`Whole`) (2.3.0, REQ-281).
+    Speed(FrameTarget),
 }
 
 /// Scale or Move, as the commands of the keyframes name them.
@@ -482,7 +492,7 @@ pub trait Dialogs {
     fn pick_subtitles_open(&mut self) -> Option<PathBuf> {
         None
     }
-    /// A PNG image to add as a picture item (REQ-287).
+    /// A PNG, GIF or video file to show over a clip (REQ-325).
     fn pick_picture(&mut self) -> Option<PathBuf> {
         None
     }
@@ -677,6 +687,15 @@ pub struct AppState {
     pub rebind: Option<(String, Option<String>)>,
     /// The next export leaves out the LUT files that are missing (REQ-292).
     export_without_missing_luts: bool,
+    /// The overlap that is selected (the lane, the widget and the preview follow it, REQ-325).
+    pub selected_overlap: Option<u64>,
+    /// An edit that would remove overlaps waits for the answer of the warning (REQ-329): the
+    /// number of overlaps it would remove, noted by [`AppState::edit`].
+    removal_ask: Option<usize>,
+    /// The command that waits for the answer of the removal warning.
+    pending_removal: Option<Command>,
+    /// The edit being run again was confirmed: it removes its overlaps.
+    removal_confirmed: bool,
     /// The window changed at this time and is not saved yet (REQ-234).
     window_dirty: Option<Instant>,
     pub preview: Preview,
@@ -961,6 +980,10 @@ impl AppState {
             banner_after_splash: None,
             rebind: None,
             export_without_missing_luts: false,
+            selected_overlap: None,
+            removal_ask: None,
+            pending_removal: None,
+            removal_confirmed: false,
             window_dirty: None,
         }
     }
@@ -1313,7 +1336,18 @@ impl AppState {
 
     /// Runs a command. Errors are also put in the status line.
     pub fn dispatch(&mut self, cmd: Command, now: Instant) -> Result<(), String> {
+        // with overlaps in the project an edit that would remove some asks first (REQ-329)
+        let again = self.project.timeline.any_overlap().then(|| cmd.clone());
         let r = self.dispatch_inner(cmd, now);
+        if let (Err(e), Some(again)) = (&r, again)
+            && e == overlap::REMOVAL_ASK
+        {
+            let n = self.removal_ask.take().unwrap_or(0);
+            self.pending_removal = Some(again);
+            self.modal = Some(Modal::RemoveOverlaps(n));
+            self.refresh_dirty();
+            return Ok(());
+        }
         if let Err(e) = &r {
             self.status = e.clone();
         }
@@ -1419,6 +1453,31 @@ impl AppState {
                 volume,
                 muted,
             } => self.set_clip_volume(clip, volume, muted, now),
+            Command::SetSpeedAll { speed } => self.set_speed_all(speed, now),
+            Command::RemoveVolume { clip } => self.remove_volume(clip, now),
+            Command::SetVolumeKeyEase { clip, at, ease } => {
+                self.edit(now, "Volume keyframe ease", |e| {
+                    e.timeline.set_volume_key_ease(clip, at, ease).map_err(err)
+                })
+            }
+            Command::AddOverlap(path) => self.add_overlap(path, now),
+            Command::SetOverlapBox {
+                id,
+                place,
+                width,
+                height,
+                reshaped,
+            } => self.set_overlap_box(id, place, width, height, reshaped, now),
+            Command::SetOverlapTimes { id, from, len } => {
+                self.set_overlap_times(id, from, len, now)
+            }
+            Command::RemoveOverlap(id) => self.remove_overlap(id, now),
+            Command::SelectOverlap(id) => {
+                self.selected_overlap = id;
+                Ok(())
+            }
+            Command::ConfirmRemoval => self.confirm_removal(now),
+            Command::CancelRemoval => self.cancel_removal(),
             Command::SetCleanAudio { target, on } => self.set_clean_audio(target, on, now),
             Command::SetSpeechEnhance { target, on } => self.set_speech_enhance(target, on, now),
             Command::SetCleanStrength { target, percent } => {
@@ -1590,13 +1649,14 @@ impl AppState {
                 tl.index_of(c).map(|i| tl.start_of(i))
             }
             Instance::Pov(m, t) => self.pov_position(m, t),
-            Instance::Aspect | Instance::Lut(FrameTarget::Whole) => {
-                (!tl.clips.is_empty()).then_some(Micros::ZERO)
-            }
+            Instance::Aspect
+            | Instance::Lut(FrameTarget::Whole)
+            | Instance::Speed(FrameTarget::Whole) => (!tl.clips.is_empty()).then_some(Micros::ZERO),
             Instance::Scale(FrameTarget::Whole) | Instance::Move(FrameTarget::Whole) => None,
             Instance::Scale(FrameTarget::Clip(c))
             | Instance::Move(FrameTarget::Clip(c))
-            | Instance::Lut(FrameTarget::Clip(c)) => tl.index_of(c).map(|i| tl.start_of(i)),
+            | Instance::Lut(FrameTarget::Clip(c))
+            | Instance::Speed(FrameTarget::Clip(c)) => tl.index_of(c).map(|i| tl.start_of(i)),
         }
     }
 
@@ -1760,6 +1820,9 @@ impl AppState {
 
     fn open_now(&mut self, path: PathBuf, now: Instant) -> Result<(), String> {
         let (p, missing, migration) = project::load_noted(&path).map_err(|e| e.to_string())?;
+        // a project of format 13 or older: Crop dropped and picture items made overlaps, said once
+        // on the status line, with no undo step and no change mark (REQ-332)
+        let converted = p.converted.map(|c| c.message());
         self.remember_recent(&path);
         self.load_project(p, Some(path), now);
         if !missing.is_empty() {
@@ -1770,6 +1833,9 @@ impl AppState {
         }
         // a project from before 2.0.3: one message about its text items, once (REQ-167)
         self.status = migration.map_or_else(|| "Project opened".into(), |m| m.message());
+        if let Some(line) = converted {
+            self.status = line;
+        }
         Ok(())
     }
 
@@ -1984,6 +2050,13 @@ impl AppState {
         let before = self.project.edit();
         let mut e = before.clone();
         f(&mut e)?;
+        // an edit that removes overlaps (a trim, a delete of their clip) is asked about first,
+        // before anything is changed (REQ-329, ADR-234)
+        let lost = crate::overlap::lost(&before.timeline.overlap_ids(), &e.timeline.overlap_ids());
+        if !lost.is_empty() && !self.removal_confirmed {
+            self.removal_ask = Some(lost.len());
+            return Err(overlap::REMOVAL_ASK.into());
+        }
         self.history.record(before, label);
         self.replace_edit(e, now);
         Ok(())
@@ -2110,6 +2183,7 @@ mod enabled;
 mod export_flow;
 mod frame;
 mod lut;
+pub mod overlap;
 mod placing;
 mod recovery;
 mod sphere;
@@ -2134,6 +2208,8 @@ mod frame_tests;
 mod hw_tests;
 #[cfg(test)]
 mod lut_tests;
+#[cfg(test)]
+mod overlap_tests;
 #[cfg(test)]
 mod placing_tests;
 #[cfg(test)]

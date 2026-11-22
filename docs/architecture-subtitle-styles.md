@@ -17,7 +17,7 @@ Part of [Architecture](architecture.md) and [2.1.0 overview](architecture-2.1.0-
 
 ## Enlarge word (new style)
 - The spoken word is drawn larger by N px at 1080 px height (1 to 40, default 12), scaled with the picture height. The other words do not move.
-- Implementation (`src/word_styles.rs` makes the plan, `src/ass.rs` writes it): a base line event for each word time, with the spoken word hidden (`\alpha` fully transparent) so the layout stays; one event for the enlarged word at its measured centre (`\fs` larger, `\pos` at the centre of its place in the line).
+- Implementation as built (`src/word_styles.rs` makes the plan, `src/ass.rs` writes it): a base line event for each word time, with the spoken word hidden (`\alpha` fully transparent) so the layout stays; the enlarged word is a run of the same line with `\fs` larger. The line's own `\an5` and `\pos` then re-lay the whole line, so the word moves instead of growing in place (2.2.0 finding, REQ-309 acceptance not met). The fix (2.3.0, ADR-235; acceptance in REQ-333, [business](business-subtitle-styles.md)): one event for the enlarged word alone, at its measured centre (`\fs` larger, `\pos` at its place in the line).
 - The line layout of the in-house measure must match the one libass draws; a spike checks it at 1080 px (open point, see [decisions and open points](architecture-2.1.0-overview.md#decisions-and-open-points)).
 - A line without word times spreads its words evenly, as the word highlight does now.
 

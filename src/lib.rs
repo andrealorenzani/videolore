@@ -44,6 +44,7 @@ pub mod music;
 pub mod notices;
 pub mod order_chain;
 pub mod outcheck;
+pub mod overlap;
 pub mod packaging;
 pub mod picture;
 pub mod placement;

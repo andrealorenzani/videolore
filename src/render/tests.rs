@@ -54,7 +54,7 @@ fn s(n: i64) -> Micros {
     Micros(n * 1_000_000)
 }
 
-fn spec(video: bool, audio: bool) -> GraphSpec {
+pub(crate) fn spec(video: bool, audio: bool) -> GraphSpec {
     GraphSpec {
         video,
         audio,
@@ -2167,59 +2167,30 @@ fn clean_audio_strength_is_all_none_or_a_mix_of_clean_and_original() {
 
 // covers: REQ-283
 #[test]
-fn a_crop_is_cut_in_even_pixels_before_the_fit_and_forces_a_re_encode() {
+fn crop_is_gone_a_clip_with_the_old_field_is_still_copied_and_nothing_cuts_the_picture() {
     use crate::timeline::Crop;
     let mut p = project(&[(4, 640, 360, 30), (4, 640, 360, 30)]);
-    let id = p.timeline.clips[0].id;
     let plain = format!("{:?}", plan_export(&p, &enc(), |_, _| true).unwrap());
     assert!(plain.contains("Copy"), "identical clips are copied");
-    p.timeline
-        .set_crop(
-            id,
-            Crop {
-                left: 10,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
-    let Plan::Reencode { graph, .. } = &plan else {
-        panic!("a clip with a crop is not stream copied")
+    // the field of format 13 is read only to be dropped: nothing draws it and it does not
+    // force a re-encode
+    p.timeline.clips[0].crop = Crop {
+        left: 10,
+        ..Default::default()
     };
-    assert!(
-        graph.graph.contains("crop=w='trunc(iw*90/200)*2':h='trunc(ih*100/200)*2':x='trunc(iw*10/200)*2':y='trunc(ih*0/200)*2'"),
-        "{}",
-        graph.graph
-    );
-    // the crop comes before the fit to the output size, and only the cropped clip has one
-    let at = |n: &str| graph.graph.find(n).unwrap();
-    assert!(at("crop=") < at("scale="));
-    assert_eq!(graph.graph.matches("crop=w=").count(), 1);
-    // limits: 45 % of a side at most
-    assert!(
-        p.timeline
-            .set_crop(
-                id,
-                Crop {
-                    left: 46,
-                    ..Default::default()
-                }
-            )
-            .is_err()
-    );
-    assert!(
-        p.timeline
-            .set_crop(
-                id,
-                Crop {
-                    left: 45,
-                    right: 45,
-                    top: 45,
-                    bottom: 45
-                }
-            )
-            .is_ok()
-    );
+    let plan = plan_export(&p, &enc(), |_, _| true).unwrap();
+    assert!(format!("{plan:?}").contains("Copy"));
+    // a re-encode has no crop filter for it
+    p.timeline
+        .set_frame_aspect(Some(Default::default()))
+        .unwrap();
+    let Plan::Reencode { graph, .. } = plan_export(&p, &enc(), |_, _| true).unwrap() else {
+        panic!("a frame effect re-encodes")
+    };
+    assert!(!graph.graph.contains("crop=w="), "{}", graph.graph);
+    // and it is never written
+    let json = crate::project::to_json(&p, std::path::Path::new("/tmp/x.vlproj")).unwrap();
+    assert!(!json.contains("\"crop\""));
 }
 
 // covers: REQ-276, REQ-277

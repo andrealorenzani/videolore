@@ -404,7 +404,6 @@ pub enum SplashOption {
     Always,
     /// At the first start of each version.
     OncePerVersion,
-    Never,
 }
 
 /// The preview copies' size limit by default: 4 GB.
@@ -420,6 +419,11 @@ fn default_cache_limit() -> u64 {
 
 fn lenient_splash<'de, D: serde::Deserializer<'de>>(d: D) -> Result<SplashOption, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
+    // "Never" was a choice up to 2.2.0 (REQ-295 removed it in 2.3.0): it reads as the quiet
+    // choice that is left, not as the default
+    if v.as_str() == Some("Never") {
+        return Ok(SplashOption::OncePerVersion);
+    }
     Ok(serde_json::from_value(v).unwrap_or_default())
 }
 

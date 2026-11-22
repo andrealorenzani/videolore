@@ -43,7 +43,7 @@ impl Project {
                 || (index + 1 == tl.clips.len() && c.fade_out);
             let mut present = Present {
                 lut: tl.lut_of(FrameTarget::Clip(c.id)).is_some(),
-                crop: !c.crop.is_none(),
+                overlaps: tl.overlaps_of(c.id).iter().map(|o| o.id).collect(),
                 frame: tl.frame_aspect.is_some() || tl.own_aspect(c.id).is_some(),
                 scale: !tl.scale_keys(FrameTarget::Clip(c.id)).is_empty(),
                 moved: !tl.move_keys(FrameTarget::Clip(c.id)).is_empty(),
@@ -166,8 +166,11 @@ impl Project {
             // or lines stays in the clip's own chain, under the frame, as before (2.2.0: the
             // rows that act on the picture are not part of "on top")
             let p = &r.present;
-            let movable =
-                usize::from(p.lut) + usize::from(p.subtitles) + p.texts.len() + p.pictures.len();
+            let movable = usize::from(p.lut)
+                + usize::from(p.subtitles)
+                + p.texts.len()
+                + p.pictures.len()
+                + p.overlaps.len();
             if movable > 1 && p.has(row) {
                 let mut order: Vec<Row> = self.order_of(r.clip);
                 order.retain(|x| *x != row);
@@ -198,11 +201,15 @@ impl Project {
                 let ok = match r {
                     Row::Unknown => false,
                     Row::Text(i) | Row::Picture(i) => ids.contains(i),
+                    Row::Overlap(i) => self.timeline.overlaps_of(e.clip).iter().any(|o| o.id == *i),
+                    // a crop row of format 13 went with the crop (no note)
+                    Row::Crop => {
+                        continue;
+                    }
                     Row::Lut
                     | Row::Subtitles
                     | Row::Volume
                     | Row::Clean
-                    | Row::Crop
                     | Row::Frame
                     | Row::Scale
                     | Row::Move

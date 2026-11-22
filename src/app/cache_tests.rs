@@ -30,7 +30,6 @@ fn the_splash_follows_the_option_and_remembers_the_version() {
         (SplashOption::Always, Some(version), true),
         (SplashOption::OncePerVersion, None, true),
         (SplashOption::OncePerVersion, Some(version), false),
-        (SplashOption::Never, None, false),
     ] {
         let mut app = state(FakeDialogs::default());
         app.settings.show_splash = option;
@@ -59,11 +58,25 @@ fn the_splash_follows_the_option_and_remembers_the_version() {
     assert!(!again.popups.is_open(Popup::Splash));
     // the choice is a command
     app.dispatch(
-        Command::SetSplashOption(SplashOption::Never),
+        Command::SetSplashOption(SplashOption::Always),
         Instant::now(),
     )
     .unwrap();
-    assert_eq!(app.settings.show_splash, SplashOption::Never);
+    assert_eq!(app.settings.show_splash, SplashOption::Always);
+}
+
+// covers: REQ-295
+#[test]
+fn a_stored_never_reads_as_once_for_each_version() {
+    let with = |value: &str| -> Settings {
+        let mut v = serde_json::to_value(Settings::default()).unwrap();
+        v["show_splash"] = value.into();
+        serde_json::from_value(v).unwrap()
+    };
+    let s = with("Never");
+    assert_eq!(s.show_splash, SplashOption::OncePerVersion);
+    let s = with("Nonsense");
+    assert_eq!(s.show_splash, SplashOption::Always);
 }
 
 // covers: REQ-297

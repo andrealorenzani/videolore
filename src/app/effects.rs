@@ -66,12 +66,22 @@ impl AppState {
             EffectKind::Volume => {
                 match clip {
                     Some(id) => {
+                        // Volume is an effect of its own with keyframes (REQ-280): a new one
+                        // starts with one key at the level of the clip's slider
+                        self.add_volume_effect(id, now)?;
                         self.selected_clip = Some(id);
                         self.popups.instance = Some(Instance::ClipVolume(id));
                         self.show_effect(Popup::Instance, shown);
                     }
                     None => self.show_effect(Popup::Volume, shown),
                 }
+                Ok(())
+            }
+            EffectKind::ChangeSpeed => {
+                // nothing changes until a value is chosen in the popup (not keyframed, REQ-281)
+                self.show_instance(Instance::Speed(
+                    clip.map_or(FrameTarget::Whole, FrameTarget::Clip),
+                ));
                 Ok(())
             }
             EffectKind::Subtitles => {
@@ -125,6 +135,9 @@ impl AppState {
             (Popup::Instance, Some(Instance::Scale(t))) => return self.frame_title("Scale", t),
             (Popup::Instance, Some(Instance::Move(t))) => return self.frame_title("Move", t),
             (Popup::Instance, Some(Instance::Lut(t))) => return self.frame_title("Apply LUT", t),
+            (Popup::Instance, Some(Instance::Speed(t))) => {
+                return self.frame_title("Change speed", t);
+            }
             _ => p.title(),
         };
         match self.popups.target(p) {
@@ -539,5 +552,6 @@ fn effect_label(effect: EffectKind) -> &'static str {
         EffectKind::Scale => "Scale",
         EffectKind::Move => "Move",
         EffectKind::ApplyLut => "Apply LUT",
+        EffectKind::ChangeSpeed => "Change speed",
     }
 }

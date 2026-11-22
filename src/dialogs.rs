@@ -82,7 +82,11 @@ impl Dialogs for NativeDialogs {
 
     fn pick_picture(&mut self) -> Option<PathBuf> {
         rfd::FileDialog::new()
-            .add_filter("PNG image", &["png"])
+            .add_filter(
+                "Picture or video with transparency",
+                &["png", "gif", "mov", "webm", "mkv", "mp4"],
+            )
+            .add_filter("All files", &["*"])
             .pick_file()
     }
 }

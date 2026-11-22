@@ -398,7 +398,6 @@ fn look_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
         for (o, text) in [
             (SplashOption::Always, tr!(AtEveryStart)),
             (SplashOption::OncePerVersion, tr!(OnceForEachVersion)),
-            (SplashOption::Never, tr!(Never)),
         ] {
             if ui.radio(app.settings.show_splash == o, text).clicked() {
                 cmds.push(Command::SetSplashOption(o));

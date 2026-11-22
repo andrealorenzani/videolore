@@ -91,6 +91,8 @@ pub use self::segments::*;
 #[cfg(test)]
 pub(crate) mod golden_tests;
 #[cfg(test)]
+mod overlap_tests;
+#[cfg(test)]
 mod overlay_tests;
 #[cfg(test)]
 pub(crate) mod tests;

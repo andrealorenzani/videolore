@@ -57,6 +57,21 @@ pub struct Fit {
     pub fits: bool,
 }
 
+/// One word placed in its line (pixels).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WordBox {
+    pub line: usize,
+    pub left: f64,
+    pub width: f64,
+}
+
+/// The words of a text placed in its wrapped lines (see [`Shaped::place_words`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placed {
+    pub boxes: Vec<WordBox>,
+    pub line_widths: Vec<f64>,
+}
+
 impl Fit {
     /// Height of the lines, in pixels.
     pub fn height(&self) -> f64 {
@@ -180,6 +195,44 @@ impl Shaped {
         lines
     }
 
+    /// Where each word of a one-paragraph text sits when the text is wrapped greedily at
+    /// `box_w` pixels at the size `px` (REQ-333): its line, the distance of its left edge from
+    /// the line's left edge and its width, in pixels, plus the width of every line. `None`
+    /// for a text of several paragraphs or a word wider than the box (the caller then keeps
+    /// the old layout).
+    pub fn place_words(&self, box_w: f64, px: f64) -> Option<Placed> {
+        if self.paragraphs.len() != 1 || px <= 0.0 {
+            return None;
+        }
+        let max = (box_w / px) as f32;
+        let mut boxes = Vec::new();
+        let mut lines: Vec<f32> = Vec::new();
+        let (mut line, mut x) = (0usize, 0.0f32);
+        for (i, word) in self.paragraphs[0].iter().enumerate() {
+            if word.width > max {
+                return None;
+            }
+            if i > 0 && x + self.space + word.width > max {
+                lines.push(x);
+                line += 1;
+                x = 0.0;
+            } else if i > 0 {
+                x += self.space;
+            }
+            boxes.push(WordBox {
+                line,
+                left: f64::from(x) * px,
+                width: f64::from(word.width) * px,
+            });
+            x += word.width;
+        }
+        lines.push(x);
+        Some(Placed {
+            boxes,
+            line_widths: lines.into_iter().map(|w| f64::from(w) * px).collect(),
+        })
+    }
+
     /// The text wrapped at `box_w` pixels at the fixed size `px` (no fitting).
     pub fn at_size(&self, box_w: f64, px: f64) -> Fit {
         let lines = self.wrap((box_w / px) as f32);
@@ -248,6 +301,28 @@ mod tests {
         assert_eq!(word.cuts.len(), 4);
         assert!((word.cuts[3] - word.width).abs() < 1e-4);
         assert!(word.cuts[0] < word.cuts[1]);
+    }
+
+    // covers: REQ-333
+    #[test]
+    fn words_are_placed_left_to_right_and_wrapped_by_line() {
+        let s = shaped("one two three");
+        let wide = s.place_words(10_000.0, 50.0).unwrap();
+        assert_eq!(wide.boxes.len(), 3);
+        assert_eq!(wide.line_widths.len(), 1);
+        assert_eq!(wide.boxes[0].left, 0.0);
+        assert!(wide.boxes[1].left > wide.boxes[0].width);
+        let last = wide.boxes[2];
+        assert!((last.left + last.width - wide.line_widths[0]).abs() < 1e-3);
+        // a narrow box wraps: every word on its own line, starting at the left edge
+        let narrow = s.place_words(wide.boxes[2].width * 1.01, 50.0).unwrap();
+        assert_eq!(narrow.line_widths.len(), 3);
+        assert_eq!(narrow.boxes[2].line, 2);
+        assert_eq!(narrow.boxes[2].left, 0.0);
+        // a word wider than the box, or several paragraphs: no placement
+        assert!(s.place_words(10.0, 50.0).is_none());
+        assert!(shaped("a\nb").place_words(10_000.0, 50.0).is_none());
+        assert!(s.place_words(10_000.0, 0.0).is_none());
     }
 
     // covers: REQ-156
