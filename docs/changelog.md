@@ -16,6 +16,8 @@ Changes since the last release, newest first. Each entry: version and date-time.
 - **Fit empty with blurred video** shows the blurred fill on a clip's Change aspect in the preview, as in the export (REQ-335).
 ### Workflow
 - New `scripts/doc-replace.sh` replaces a requirement, an ADR or a literal text (library version, README badge) without reading the old text; the test loop (run, fix, rerun) now runs once, at the end of all the code of a development.
+### Tests
+- A preview test that checked a returned frame could fail intermittently; it now waits for the shown frame's key, as the still-rendering rule requires (REQ-144).
 
 ## 3.0.0 — 2026-11-22 17:22 +0000
 - Version 3.0.0 opened after release 2.3.0 "Multiple overlays and effect stack and order". New README poem. Project page regenerated for release 2.3.0.

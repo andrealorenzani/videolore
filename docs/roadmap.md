@@ -151,6 +151,7 @@ Why: keeps the code and tests healthy, replaces assumed numbers with measured on
 - **Headless frame-time baseline.** (source: 1.2.0)
 - **Feature coverage script and one status format** — `scripts/feature-coverage.sh` ignores statuses written "(implemented; ...)", so 320 of the 338 implemented requirements were counted; accept that form and settle one status format. (source: 3.1.0, feature coverage check)
 - **Faster test suite and smaller 360 pictures in tests.** (source: 0.3.0, 1.6.3)
+- **Tests wait for state, not for a returned frame** — the fake ffmpeg answers instantly, so a test that unwraps a frame returned by `poll_until` can see none; the preview tests that do this (`poll_until(...).unwrap()` in `src/preview.rs`) should wait for the state they check, such as the shown key. (source: 3.1.0, flaky preview test fixed)
 - **CI time** — push check (QG-06), pinned ffmpeg download, installer job, cycle check. (source: 1.6.1, 2.0.1, 2.0.2)
 - **Preview copies** — a lighter preset; copies for 720p sources under Automatic. (source: 0.3.0, 0.2.0)
 - **Preview cache cleanup on a worker.** (source: 2.0.4)
