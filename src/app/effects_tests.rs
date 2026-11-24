@@ -18,7 +18,7 @@ fn s(n: i64) -> Micros {
 }
 
 /// Three clips: a.mp4, b.mp4 trimmed to [1 s, 4 s), a.mp4 again (5 + 3 + 5 s).
-fn three(app: &mut AppState, dir: &Path) {
+pub(super) fn three(app: &mut AppState, dir: &Path) {
     let f = files(dir);
     import(app, f);
     let now = Instant::now();
@@ -38,12 +38,12 @@ fn three(app: &mut AppState, dir: &Path) {
     .unwrap();
 }
 
-fn ids(app: &AppState) -> Vec<ClipId> {
+pub(super) fn ids(app: &AppState) -> Vec<ClipId> {
     app.project.timeline.clips.iter().map(|c| c.id).collect()
 }
 
 /// The speech file installed, so creation starts at once.
-fn speech_ready(app: &mut AppState, dir: &Path) {
+pub(super) fn speech_ready(app: &mut AppState, dir: &Path) {
     let body = with_fake_speech(app, dir);
     let local = dir.join("local-model.bin");
     std::fs::write(&local, crate::stt::tests::level_body(&body, 0)).unwrap();
@@ -71,7 +71,7 @@ fn seed_lines(app: &mut AppState) {
     );
 }
 
-fn wait_create(app: &mut AppState) {
+pub(super) fn wait_create(app: &mut AppState) {
     let deadline = Instant::now() + Duration::from_secs(10);
     while (app.stt.is_some() || app.pending_create.is_some() && app.modal.is_none())
         && Instant::now() < deadline
@@ -308,7 +308,7 @@ fn volume_on_a_clip_opens_its_popup_and_records_changes() {
     )
     .unwrap();
     assert!(app.popups.is_open(Popup::Volume));
-    assert_eq!(app.popup_title(Popup::Volume), "Volume");
+    assert_eq!(app.popup_title(Popup::Volume), "Volume and track");
     // the volume marker opens the clip's popup
     app.dispatch(
         Command::SetClipVolume {
@@ -471,7 +471,7 @@ fn subtitles_for_one_clip_cover_only_its_range() {
 }
 
 /// A runner whose subtitle track extraction writes `srt`.
-fn runner_with_track(srt: &'static str) -> FakeRunner {
+pub(super) fn runner_with_track(srt: &'static str) -> FakeRunner {
     let mut r = runner();
     r.responders.insert(
         0,
@@ -487,11 +487,11 @@ fn runner_with_track(srt: &'static str) -> FakeRunner {
     r
 }
 
-const TRACK: &str = "1\n00:00:01,200 --> 00:00:01,900\n{\\an8}<i>w0</i>\n\n\
+pub(super) const TRACK: &str = "1\n00:00:01,200 --> 00:00:01,900\n{\\an8}<i>w0</i>\n\n\
                      2\n00:00:02,000 --> 00:00:03,500\nw1\nw2\n\n\
                      3\n00:00:04,500 --> 00:00:05,000\nafter the clip\n";
 
-fn with_tracks(app: &mut AppState, m: usize, tracks: &[(&str, &str)]) {
+pub(super) fn with_tracks(app: &mut AppState, m: usize, tracks: &[(&str, &str)]) {
     app.project.media[m].format.subtitle_tracks = Some(
         tracks
             .iter()

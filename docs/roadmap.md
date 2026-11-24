@@ -1,6 +1,6 @@
 # Roadmap
 
-Open items after version 2.3.0, most valuable and urgent first. Each band says why it comes there; each item says where it came from. Delivered items are removed (see the [changelog](changelog.md)). Suggested versions and batches: [roadmap tasks](roadmap_tasks.md).
+Open items after version 3.1.0, most valuable and urgent first. Each band says why it comes there; each item says where it came from. Delivered items are removed (see the [changelog](changelog.md)). Suggested versions and batches: [roadmap tasks](roadmap_tasks.md).
 
 ## Priority 1 — Release checks and decisions
 Why first: they need a real computer, player, ear or a decision by the maintainer.
@@ -14,6 +14,10 @@ Why first: they need a real computer, player, ear or a decision by the maintaine
 - **Clean audio and MP3 by ear** — `afftdn` and `libmp3lame` on the bundled ffmpeg 9.x. (source: 1.4.0)
 - **Windows and macOS test runs with the pinned ffmpeg 9.0.2** — integration tests run on Linux in CI only. (source: 2.0.2)
 - **Moving-camera export cost on 9.0.2** — measure again on the bundled ffmpeg. (source: 2.0.2)
+- **Manual checks of 3.1.0 at its status** — the checks listed in the verification document for the 3.1.0 requirements, by hand on a real system. (source: 3.1.0)
+- **Measurements of 3.1.0 after the build** — time of the second-audio-track decode (T2) for a non-first track; proxy size per audio track; blurred fill pixels; Enlarge word baseline within 2 %. (source: 3.1.0 architecture)
+- **Release notes of 3.1.0** — say that projects saved by 3.1.0 open only in 3.1.0 or later; that projects with Enlarge word look different after the upgrade (words move from the base); that the blurred fill is fixed; that "As subtitle track" differs between preview and export. (source: 3.1.0)
+- **Full suite on the pinned ffmpeg 9.0.2** — run the whole test suite once on the pinned build and record the result. (source: 3.1.0)
 - **Release process check** — run one release and review the consolidation. (source: 1.6.3)
 
 ## Priority 2 — Text and subtitles on the picture
@@ -35,10 +39,12 @@ Why: automatic subtitles are a core promise; the accuracy target is not met.
 - **Gated alignment test on CI's versions** — confirm with the ffmpeg and fixture CI uses. (source: 1.2.0)
 - **Larger speech levels** — measure speed and memory of Balanced and Most accurate. (source: 0.3.0)
 - **Replaced files** — re-check the track list of a file replaced on disk. (source: 1.2.0)
+- **Editor preview of "As subtitle track"** — the preview draws the Classic look, not the chosen style; the track in the export has no styling. (source: 3.1.0)
 - **Subtitle fonts for other scripts** — CJK and other scripts use installed fonts; bundled fonts need a licence check. (source: 0.2.0, 2.0.4)
 - **Text from picture-based tracks** — OCR of DVD, Blu-ray and DVB subtitles. (source: 1.2.0)
 - **Style per line or clip; custom style editor; translation; other speech models.** (source: 1.2.0)
-- **Enlarge word and Typewriter in subtitle files** — decide whether a format can carry them. (source: 2.1.0)
+- **Enlarge word and Typewriter in subtitle files** — decide whether a format can carry them, and draw them inside the "As subtitle track" track. (source: 2.1.0, 3.1.0)
+- **Style-preserving ASS track for "As subtitle track"** — the exported track keeps the subtitle style instead of plain text. (source: 3.1.0, REQ-337 limit)
 - **Typewriter caret and typing sound** — add if users ask. (source: 2.1.0)
 - **Preview cache key for Typewriter** — the cache follows the word, not each letter. (source: 2.1.0)
 
@@ -97,6 +103,7 @@ Why: unsigned installers and platform gaps add friction.
 Why: comfort and discoverability; none blocks a task.
 - **Sub-second ruler labels.** (source: 1.2.0)
 - **Multi-selection lost** — report a way to trigger it. (source: 1.3.0)
+- **Effects section scrolls at 800 px** — at 800 px of window height only 11 rows fit in the Effects section, so it scrolls. (source: 3.1.0)
 
 ## Priority 9 — Video player
 Why: the player only watches video; none is needed for editing.
@@ -131,6 +138,9 @@ Why: each new effect is new scope with its own requirements.
 - **Colour management for LUTs.** (source: 1.6.0)
 - **LUT still loading when a project closes** — cancel the read on close. (source: 2.1.0)
 - **Find the LUT file in the background.** (source: 2.1.0)
+- **Several audio tracks mixed into one export output** — today one audio track is chosen per clip (REQ-340). (source: 3.1.0)
+- **Lossless export of a non-first audio track** — copy the chosen track without re-encoding (stream copy). (source: 3.1.0 architecture)
+- **Remember the Subtitles popup audio track per clip** — the popup asks again each time today; keeping it needs stored state in the project. (source: 3.1.0 architecture, 3.1.0 accepted deviation)
 - **Exact conversion of combined Scale and Move** — only if a user reports a changed old project. (source: 1.6.1)
 
 ## Priority 12 — Quality, project page and release process
@@ -139,6 +149,7 @@ Why: keeps the code and tests healthy, replaces assumed numbers with measured on
 - **Apply LUT cost** — measure with 33- and 65-point LUTs. (source: 1.6.0)
 - **4K and 8K frame times** — preview and 360 view against REQ-104. (source: 1.3.0)
 - **Headless frame-time baseline.** (source: 1.2.0)
+- **Feature coverage script and one status format** — `scripts/feature-coverage.sh` ignores statuses written "(implemented; ...)", so 320 of the 338 implemented requirements were counted; accept that form and settle one status format. (source: 3.1.0, feature coverage check)
 - **Faster test suite and smaller 360 pictures in tests.** (source: 0.3.0, 1.6.3)
 - **CI time** — push check (QG-06), pinned ffmpeg download, installer job, cycle check. (source: 1.6.1, 2.0.1, 2.0.2)
 - **Preview copies** — a lighter preset; copies for 720p sources under Automatic. (source: 0.3.0, 0.2.0)
@@ -146,7 +157,7 @@ Why: keeps the code and tests healthy, replaces assumed numbers with measured on
 - **Large-file memory test.** (source: 0.4.2)
 - **Stable computer identity on virtual machines.** (source: 0.3.0)
 - **Interface tests with a harness** — `egui_kittest` if the helper grows. (source: 1.1.0)
-- **Split the application module** — `src/app.rs`, `src/render.rs` and `dispatch_inner`, when next changed. (source: 1.1.0, 1.6.3)
+- **Split the application module** — `src/app.rs` (1,962 lines at 3.1.0), `src/render.rs`, `src/ui/popups.rs` (881 lines) and `dispatch_inner`, when next changed. (source: 1.1.0, 1.6.3, 3.1.0 architecture)
 - **One keyframe module for the 360 camera and the picture.** (source: 1.5.0)
 - **Cycle check limits** — macro-generated cycles and `#[path]` files are not followed. (source: 2.0.1)
 - **Shared core crate** — only if a third program is planned. (source: 1.6.0)

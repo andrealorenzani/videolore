@@ -613,7 +613,8 @@ fn clicking_markers_opens_their_settings() {
     assert!(choices.contains(&fade));
     assert!(choices.contains(&Instance::Line(line, c[1])));
     h.idle(1);
-    h.click_label("Subtitle");
+    let entry = super::popups::instance_label(&h.app, Instance::Line(line, c[1]));
+    h.click_label(&entry);
     assert_eq!(h.app.popups.instance, Some(Instance::Line(line, c[1])));
     assert_eq!(h.app.popups.chooser, None);
     // the line's popup shows its text; editing it is one undo step
@@ -928,7 +929,7 @@ fn the_effects_section_lists_the_effects_and_opens_their_popups() {
         [
             "Fade IN/OUT",
             "Subtitles",
-            "Volume",
+            "Volume and track",
             "Clean audio",
             "Change aspect",
             "Scale",

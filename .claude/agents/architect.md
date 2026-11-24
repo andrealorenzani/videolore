@@ -38,3 +38,5 @@ Run after the Principal Engineer's RELEASE (it left the module architecture in `
 3. **Page data**: append a `## Architect` section to the temporary file `github_page/after release.md` (quote the name; git-ignored): how it is built in user-level words (components, platforms, what is bundled, security and privacy points, performance figures that were measured) for the project page. Facts only.
 Return the usual format (`## Questions` `none`, `## Changed`, `## Future work`).
 
+## Replacing text
+To change a requirement, an ADR or a version/number/word when you know the new text, use `scripts/doc-replace.sh` (`req`, `adr`, `line`, `text`; rule 13b in `AGENTS.md`); never read the old paragraph first. If it prints `+N lines` with N≠0, refresh your `ai-docs` index with `scripts/doc-index.sh`.

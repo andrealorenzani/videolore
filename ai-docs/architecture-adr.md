@@ -3,6 +3,7 @@
 Format: `ADR-NNN (version, status) title. Choice. Alt: rejected alternatives. Why.` Status "built" unless marked. Superseded ADRs keep one line with the replacement. Archived plans (1.3.0 to 2.0.4) are in the release snapshot `releases/<version> - <name>/docs/ai-docs/`. Decisions of Andrea are marked D (his decision) or Q (question closed).
 
 ## Area index
+- 3.1.0 (planned): 244..254 in ai-docs/architecture-adr-3.1.0.md (format 15, audio tracks, Enlarge from base, As subtitle track, blur fix, Overlap row, player Audio menu).
 - platform, GUI, engine, concurrency: 001..005, 012
 - export and media pipeline: 006..008, 010, 015..019, 033, 035
 - speech and subtitles: 009, 020..022, 030, 053..057, 164..167

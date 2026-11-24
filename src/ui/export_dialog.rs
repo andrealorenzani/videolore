@@ -175,14 +175,24 @@ pub fn export_dialog(
 
                 if choice::shows_subtitle_choice(&c, &ctx_info) {
                     ui.label(SUBTITLES_LABEL);
-                    egui::ComboBox::from_id_salt("export-subtitles")
-                        .selected_text(c.subtitles.label())
-                        .show_ui(ui, |ui| {
-                            for m in crate::format::SubtitleMode::ALL {
-                                ui.selectable_value(&mut c.subtitles, m, m.label());
-                            }
-                        });
+                    let fixed = ctx_info.subtitles_as_track;
+                    ui.add_enabled_ui(!fixed, |ui| {
+                        egui::ComboBox::from_id_salt("export-subtitles")
+                            .selected_text(choice::subtitle_mode(&c, &ctx_info).label())
+                            .show_ui(ui, |ui| {
+                                for m in crate::format::SubtitleMode::ALL {
+                                    ui.selectable_value(&mut c.subtitles, m, m.label());
+                                }
+                            })
+                            .response
+                            .on_disabled_hover_text(choice::AS_TRACK_REASON);
+                    });
                     ui.end_row();
+                    if fixed {
+                        ui.add_space(0.0);
+                        ui.weak(choice::AS_TRACK_REASON);
+                        ui.end_row();
+                    }
                 }
             });
         if choice::shows_subtitle_choice(&c, &ctx_info)

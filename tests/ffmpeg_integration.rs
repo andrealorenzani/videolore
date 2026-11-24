@@ -996,6 +996,7 @@ fn real_speech_is_transcribed() {
             range: None,
             mode: videolore::stt::Mode::Recognise,
             track_language: None,
+            audio: 0,
         }],
         language: None,
         ffmpeg: env.info.ffmpeg.clone(),
@@ -1119,6 +1120,7 @@ fn higher_levels_are_at_least_as_accurate() {
                 range: None,
                 mode: videolore::stt::Mode::Recognise,
                 track_language: None,
+                audio: 0,
             }],
             language: Some("en".into()),
             ffmpeg: env.info.ffmpeg.clone(),
@@ -1166,3 +1168,5 @@ mod v22;
 mod v22order;
 #[path = "ffmpeg_integration/v23overlap.rs"]
 mod v23overlap;
+#[path = "ffmpeg_integration/v31.rs"]
+mod v31;

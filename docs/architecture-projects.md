@@ -21,6 +21,7 @@ Projects are JSON files (`.vlproj`) with a format number. The writer always writ
 | 12 | 2.1.0 | `clip_order` (movable rows, top first); text shadow; subtitle style shadow, highlight colours, enlarge size; presets Enlarge word and Typewriter |
 | 13 | 2.2.0 | the full row list of an ordered clip (written only when not default); text maximum size (`max_size`, 2 to 50 %, out of range dropped with a note); 2.1.0 refuses it (ADR-222) |
 | 14 | 2.3.0 | overlaps per clip (`clip_overlaps`, ADR-230); Crop removed (read only); 1 to 14 open, newer refused |
+| 15 | 3.1.0 (planned) | per clip audio track (`Clip.audio_track`, not written when 0; ADR-245); the subtitle style "As subtitle track" (`as_track`); each media item records its audio tracks (`audio_tracks`, cached `ffprobe` data like the subtitle tracks); 1 to 15 open, newer refused (ADR-244) |
 
 - Nothing is written in versions 0.3.0, 0.4.0 or 1.1.0 (1.1 timeline markers are computed; layout and recent projects are settings).
 - **Why a new number for 2.2.0:** a 2.1.0 program would otherwise lose rows it does not know; older programs refuse 13 with their newer-version message (REQ-029). Migration 12 to 13 in memory; written on save only.
@@ -35,6 +36,7 @@ Projects are JSON files (`.vlproj`) with a format number. The writer always writ
 - **Format 6 to 7:** no picture effects; **7 to 8:** no LUT.
 - **Format 8 to 9 (1.6.1):** whole-video Scale or Move becomes a copy of its keys in each clip (key times in clip time, stored in source time; the value at each edge kept); whole-video LUT becomes the same LUT per clip; whole-video start and end fades become the first clip's start fade and the last clip's end fade; the project-wide video level is multiplied into each clip's level (rounded to 1 %) and set to 100 %. A clip with its own Scale or Move gets one combined path (scales multiplied, moves added at the key times of both; exact there). A clip with its own LUT keeps it. Above 200 keys the clip's own are kept first. The status line at opening says how many clips changed.
 - **Format 12 to 13 (2.2.0):** texts read with no maximum (keep their sizes); a project with a changed order of movable rows opens with those rows on top of the default order (its look does not change).
+- **Format 14 to 15 (3.1.0, ADR-244, planned):** every save writes 15 (Andrea's answer to Q-F1); no conversion; the new fields take their defaults (track 0, no audio list until the media is analysed again, REQ-186). A file from 14 opens with the same picture, sound and export.
 - **Format 13 to 14 (2.3.0, ADR-241):** crops dropped (count); a picture item whose start lies in a clip becomes an overlap of that clip (its `picture:<id>` row becomes `overlap:<new id>`); an item with no clip stays a picture item. `Project.converted: Option<Conversion>` gives one status line: "Opening: N clip(s) changed by the conversion (M crop(s) dropped[, K picture(s) made overlaps])"; no undo step; not unsaved.
 
 ## Loading and validation
@@ -50,6 +52,7 @@ Projects are JSON files (`.vlproj`) with a format number. The writer always writ
 - Format 12: an unknown order id dropped; shadow and enlarge values out of range set to defaults; each adds a line to the repair notice (2.1.0).
 - Format 13: text maximum outside 2 to 50 dropped ("A text size maximum outside 2 to 50 was removed"); the stored order repaired ("A damaged effect order was repaired").
 - Format 14: `validate_overlaps` drops damaged overlaps ("N damaged overlap(s) were removed").
+- Format 15 (planned): a clip's audio track outside the media's audio tracks (or above 31, or above 0 when the media has no analysis) is set to track 0 with one status line ("N clip audio track choice(s) reset"); the track list cache is cleaned like the subtitle track descriptions.
 - A missing font, LUT file or media is kept and reported (the project opens; export names the file).
 
 ## Saving and unsaved changes

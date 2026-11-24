@@ -3,6 +3,8 @@
 Resolved items are removed. [OPEN] needs a decision or measurement; [TECH] technical risk accepted; [MANUAL] checked by hand only. The human list: docs/architecture-risks.md.
 
 ## Open decisions and measurements
+- [TECH, accepted, Andrea Q-F1 2026-11-24, 3.1.0] format 15 on every save (ADR-244): 3.0.x refuses every project saved by 3.1.0 or later; release note line required.
+- [TECH, PE, 3.1.0] blurred fill cause in the clip path (ADR-250: steps.rs frame_row gate or SegFrame aspect; UI popup as fallback A-3.1-3); Enlarge baseline anchor from the font descent (A-3.1-4, ADR-248); proxy layout bump re-encodes proxies once (ADR-247); T2 for a non-first track is a time cost (ADR-246, future: `-map 0:a:k` copy).
 - [OPEN, Andrea] REQ-177 subtitle timing (2.0.3 D56, 2.2.0): NOT MET (10 of 23 = 43 %, target 90 %; FROZEN None). A second clip (about 30 s real speech) is the next check; a pace-aware method is needed. Continuous speech may fail the frozen setting.
 - [OPEN, Andrea] REQ-315 Faster on integrated graphics: NOT MET (8.7 % against 20 %; the rest is the hardware encode phase). Levers (b) (0.1 s) and (c) (hardware decode of the check) not taken. Decide: re-baseline per hardware class, or a cheaper check.
 - [OPEN, product] REQ-222 blur divisor: built 1/8 (measured, ADR-180); the requirement says 1/4. PM decides the wording.

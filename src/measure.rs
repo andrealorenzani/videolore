@@ -41,6 +41,8 @@ struct Word {
 pub struct Shaped {
     /// Width of a space, in line heights.
     space: f32,
+    /// Distance from the baseline to the bottom of a line, in line heights.
+    descent: f32,
     paragraphs: Vec<Vec<Word>>,
 }
 
@@ -94,7 +96,24 @@ fn line_units(font: &FontRef) -> Option<f32> {
     (sum > 0).then_some(sum as f32)
 }
 
+/// The part of the line height below the baseline (the descent), in font units, taken from
+/// the same table as [`line_units`].
+fn descent_units(font: &FontRef) -> Option<f32> {
+    if let Ok(o) = font.os2()
+        && u32::from(o.us_win_ascent()) + u32::from(o.us_win_descent()) > 0
+    {
+        return Some(f32::from(o.us_win_descent()));
+    }
+    let h = font.hhea().ok()?;
+    Some(f32::from(-h.descender().to_i16()).max(0.0))
+}
+
 impl Shaped {
+    /// The distance from the baseline to the bottom of a line, in line heights (REQ-334).
+    pub fn descent(&self) -> f64 {
+        f64::from(self.descent)
+    }
+
     /// Shapes `text` (lines separated by `\n`) with the face `index` of the font file
     /// `bytes`. `None` when the font cannot be read or the text is too long.
     pub fn new(bytes: &[u8], index: u32, text: &str) -> Option<Shaped> {
@@ -103,6 +122,7 @@ impl Shaped {
         }
         let font = FontRef::from_index(bytes, index).ok()?;
         let line = line_units(&font)?;
+        let descent = descent_units(&font).unwrap_or(0.0) / line;
         let data = ShaperData::new(&font);
         let shaper = data.shaper(&font).build();
         let measure = |s: &str| -> (f32, Vec<f32>) {
@@ -151,7 +171,11 @@ impl Shaped {
                     .collect()
             })
             .collect();
-        Some(Shaped { space, paragraphs })
+        Some(Shaped {
+            space,
+            descent,
+            paragraphs,
+        })
     }
 
     /// The lines of the text wrapped at `max` line heights, each with its width: greedy at

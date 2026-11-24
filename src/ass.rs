@@ -126,7 +126,7 @@ pub fn margin_lr(width: u32) -> u32 {
 pub fn margin_v(preset: Preset, height: u32) -> f64 {
     let h = f64::from(height);
     match preset {
-        Preset::Classic => (h * 0.06).round(),
+        Preset::Classic | Preset::AsTrack => (h * 0.06).round(),
         Preset::Boxed => (h * 0.25).round(),
         Preset::WordHighlight | Preset::EnlargeWord | Preset::Typewriter => (h * 0.18).round(),
     }
@@ -200,7 +200,7 @@ fn style(preset: Preset, st: &StyleSettings, width: u32, height: u32) -> String 
     let margin_lr = margin_lr(width);
     // Colours are &HAABBGGRR (alpha 00 = opaque).
     let (primary, secondary, outline_c, mut back, border, margin_v) = match preset {
-        Preset::Classic => (
+        Preset::Classic | Preset::AsTrack => (
             "&H00FFFFFF".to_string(),
             "&H00FFFFFF".to_string(),
             "&H00000000".to_string(),
@@ -451,25 +451,25 @@ fn text_styles(width: u32, height: u32, texts: &[AssEvent]) -> String {
 pub const TEXT_STYLE: &str = "Text";
 pub const TEXT_BOX_STYLE: &str = "TextBox";
 
-/// The centre, in pixels, of each word of a line at its normal size (REQ-333): the words
-/// are measured with the bundled font (the one the style names), wrapped at the width the
-/// renderer allows and centred as the line is, at its own position or the style's place.
-/// `None` when the words cannot be placed (the layout then stays as it was).
-fn word_centres(
+/// The words of a line at their normal size (REQ-334): measured with the bundled font (the
+/// one the style names), wrapped at the width the renderer allows and centred as the line is,
+/// at its own position or the style's place. `None` when the words cannot be placed (the
+/// layout then stays as it was).
+fn word_block(
     l: &ShownLine,
     words: &[crate::word_styles::Timed],
     preset: Preset,
     px: u32,
     width: u32,
     height: u32,
-) -> Option<Vec<(f64, f64)>> {
+) -> Option<crate::word_layout::Block> {
     let joined: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
     let shaped = crate::measure::Shaped::new(FONT, 0, &joined.join(" "))?;
     let px = f64::from(px);
     let room = f64::from(width) - 2.0 * f64::from(margin_lr(width));
     let placed = shaped.place_words(room, px)?;
     let block = placed.line_widths.len() as f64 * px;
-    let (cx, cy) = match l.position {
+    let centre = match l.position {
         Some(p) => {
             let c = |v: u16, size: u32| {
                 f64::from(v.min(POS_MAX)) * f64::from(size) / f64::from(POS_MAX)
@@ -478,19 +478,21 @@ fn word_centres(
         }
         None => default_centre(preset, width, height, block),
     };
-    Some(
-        placed
+    Some(crate::word_layout::Block {
+        slots: placed
             .boxes
             .iter()
-            .map(|b| {
-                let lw = placed.line_widths[b.line];
-                (
-                    cx - lw / 2.0 + b.left + b.width / 2.0,
-                    cy - block / 2.0 + (b.line as f64 + 0.5) * px,
-                )
+            .map(|b| crate::word_layout::Slot {
+                line: b.line,
+                left: b.left,
+                width: b.width,
             })
             .collect(),
-    )
+        line_widths: placed.line_widths,
+        centre,
+        px,
+        descent: shaped.descent(),
+    })
 }
 
 /// [`document`] plus the events of text items (timeline times, like the lines), with the
@@ -552,20 +554,37 @@ pub fn document_styled(
                     |z| sized_font(width, height, z),
                 );
                 let big = base + scaled_px(st.enlarge, height);
-                let centres = word_centres(l, &words, preset, base, width, height);
                 let bord = if l.size.is_some() {
                     format!("\\bord{}", outline(base))
                 } else {
                     String::new()
                 };
-                crate::word_styles::enlarge(
-                    &words,
-                    span,
-                    &tag,
-                    big,
-                    &escape_scripts,
-                    centres.as_deref().map(|c| (c, bord.as_str())),
-                )
+                match word_block(l, &words, preset, base, width, height) {
+                    // the word keeps its base and the others make room (REQ-334)
+                    Some(block) => {
+                        let spots: Vec<Vec<crate::word_styles::At>> = (0..words.len())
+                            .map(|i| {
+                                block
+                                    .with_enlarged(i, f64::from(big))
+                                    .into_iter()
+                                    .map(|p| crate::word_styles::At {
+                                        left: p.left,
+                                        bottom: p.bottom,
+                                        size: p.size,
+                                    })
+                                    .collect()
+                            })
+                            .collect();
+                        crate::word_styles::enlarge_placed(
+                            &words,
+                            span,
+                            &spots,
+                            &bord,
+                            &escape_scripts,
+                        )
+                    }
+                    None => crate::word_styles::enlarge(&words, span, &tag, big, &escape_scripts),
+                }
             };
             for e in events.iter().filter(|e| e.end > shift) {
                 s.push_str(&dialogue(at(e.start), at(e.end), &e.text));
@@ -646,7 +665,7 @@ mod tests {
             .iter()
             .map(|p| document(&lines, *p, 1080, 1920, Micros::ZERO))
             .collect();
-        assert_eq!(docs.len(), 5);
+        assert_eq!(docs.len(), 6);
         assert!(
             docs.iter()
                 .all(|d| d.contains("PlayResX: 1080\nPlayResY: 1920"))

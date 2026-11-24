@@ -70,15 +70,19 @@ pub enum Preset {
     EnlargeWord,
     /// The word being spoken appears letter by letter (2.1.0, REQ-310).
     Typewriter,
+    /// The lines are not drawn in the export: they are written as a separate switchable
+    /// subtitle track (3.1.0, REQ-337). The editor preview draws them like Classic.
+    AsTrack,
 }
 
 impl Preset {
-    pub const ALL: [Preset; 5] = [
+    pub const ALL: [Preset; 6] = [
         Preset::Classic,
         Preset::Boxed,
         Preset::WordHighlight,
         Preset::EnlargeWord,
         Preset::Typewriter,
+        Preset::AsTrack,
     ];
 
     /// The styles that follow the spoken words one at a time.
@@ -96,6 +100,7 @@ impl Preset {
             Preset::WordHighlight => "Word highlight",
             Preset::EnlargeWord => "Enlarge word",
             Preset::Typewriter => "Typewriter",
+            Preset::AsTrack => "As subtitle track",
         }
     }
 }
@@ -789,7 +794,7 @@ pub(crate) mod tests {
         };
         assert_eq!(empty.word_at(ms(6100)), None);
         assert_eq!(clean_text(&"x".repeat(MAX_TEXT + 5)).len(), MAX_TEXT);
-        assert_eq!(Preset::ALL.len(), 5);
+        assert_eq!(Preset::ALL.len(), 6);
         assert_eq!(Preset::WordHighlight.name(), "Word highlight");
         assert_eq!(Preset::default(), Preset::Classic);
     }

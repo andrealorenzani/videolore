@@ -174,7 +174,7 @@ fn a_project_without_orders_opens_and_saves_as_before() {
     assert!(notes.iter().all(|n| !n.contains("effect order")));
     let old = to_json(&p, Path::new("/tmp/x.vlproj"))
         .unwrap()
-        .replace("\"schema_version\": 14", "\"schema_version\": 11");
+        .replace("\"schema_version\": 15", "\"schema_version\": 11");
     let (r, _) = from_json(&old, Path::new("/tmp")).unwrap();
     assert!(r.timeline.clip_order.is_empty());
     assert_eq!(r.changed_orders(), vec![]);

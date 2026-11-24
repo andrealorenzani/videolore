@@ -65,6 +65,9 @@ pub struct ExportChoice {
 pub struct Context {
     pub has_clips: bool,
     pub has_subtitles: bool,
+    /// The subtitle style is "As subtitle track": the lines are always a separate track
+    /// (REQ-337).
+    pub subtitles_as_track: bool,
     /// Every video clip is a 360 clip (and there is at least one).
     pub all_360: bool,
     pub encoders: BTreeSet<String>,
@@ -289,6 +292,20 @@ pub fn audio_field_reason(choice: &ExportChoice) -> Option<&'static str> {
 
 /// True when the Subtitles row is shown: a full video of a project with subtitle lines
 /// (REQ-182).
+/// The text under the Subtitles choice when the style fixes it (REQ-337).
+pub const AS_TRACK_REASON: &str =
+    "The subtitle style \"As subtitle track\" writes the lines as a separate track.";
+
+/// The subtitle choice the export uses: fixed to the separate track for the style "As
+/// subtitle track" (REQ-337), the dialog's choice otherwise.
+pub fn subtitle_mode(choice: &ExportChoice, ctx: &Context) -> SubtitleMode {
+    if ctx.subtitles_as_track {
+        SubtitleMode::Separate
+    } else {
+        choice.subtitles
+    }
+}
+
 pub fn shows_subtitle_choice(choice: &ExportChoice, ctx: &Context) -> bool {
     choice.mode == Mode::Full && ctx.has_subtitles
 }
@@ -317,7 +334,7 @@ pub fn request(choice: &ExportChoice, ctx: &Context) -> Request {
                 format: FormatChoice {
                     video: choice.video,
                     audio: choice.audio,
-                    subtitles: choice.subtitles,
+                    subtitles: subtitle_mode(choice, ctx),
                 },
             }
         }
@@ -333,6 +350,7 @@ mod tests {
             frame_effects_360: Vec::new(),
             has_clips: true,
             has_subtitles: true,
+            subtitles_as_track: false,
             all_360: false,
             encoders: ["libx264", "libx265", "aac", "libmp3lame"]
                 .iter()

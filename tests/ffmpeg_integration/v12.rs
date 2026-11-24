@@ -232,6 +232,7 @@ fn spread_job(env: &Env, path: &Path, track: u8, range: Option<(Micros, Micros)>
             range,
             mode: Mode::Spread { track },
             track_language: None,
+            audio: 0,
         }],
         language: None,
         ffmpeg: env.info.ffmpeg.clone(),

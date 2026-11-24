@@ -42,6 +42,13 @@ const TRACKS: &str = r#"{"streams":[
   {"codec_type":"subtitle","codec_name":"subrip","tags":{"language":"ita"}}],
   "format":{"format_name":"matroska,webm","duration":"5.0"}}"#;
 
+const TWO_SOUNDS: &str = r#"{"streams":[
+  {"codec_type":"video","codec_name":"h264","width":1280,"height":720,
+   "avg_frame_rate":"30/1","r_frame_rate":"30/1","bit_rate":"2000000"},
+  {"codec_type":"audio","codec_name":"aac","channels":2,"tags":{"language":"eng"}},
+  {"codec_type":"audio","codec_name":"aac","channels":6,"tags":{"language":"ita","title":"Film"}}],
+  "format":{"format_name":"matroska,webm","duration":"5.0"}}"#;
+
 const AUDIO: &str = r#"{"streams":[{"codec_type":"audio","codec_name":"mp3"}],
   "format":{"format_name":"mp3","duration":"30.0"}}"#;
 
@@ -99,6 +106,7 @@ impl Runner for Fake {
             return match () {
                 _ if last.ends_with("sphere.mp4") => out(SPHERE),
                 _ if last.ends_with("tracks.mkv") => out(TRACKS),
+                _ if last.ends_with("sounds.mkv") => out(TWO_SOUNDS),
                 _ if last.ends_with(".mp3") => out(AUDIO),
                 _ if last.ends_with(".mp4") => out(VIDEO),
                 _ => Ok(CmdOutput {
@@ -327,6 +335,7 @@ fn the_player_has_no_save_export_or_edit_command() {
             | Command::Skip(_)
             | Command::SetVolume(_)
             | Command::ToggleMute
+            | Command::ChooseAudio(_)
             | Command::ChooseSubtitles(_)
             | Command::PickSrt
             | Command::OpenSrt(_)
@@ -923,4 +932,70 @@ fn the_player_follows_the_splash_option_and_remembers_the_version() {
     let mut second = make();
     second.start_splash(OncePerVersion);
     assert!(!second.splash);
+}
+
+// covers: REQ-338
+#[test]
+fn the_audio_menu_lists_every_track_and_the_first_plays_by_default() {
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    // no video: nothing to choose
+    assert!(p.audio_tracks().is_empty());
+    open(&mut p, file(d.path(), "sounds.mkv"));
+    let names: Vec<String> = p.audio_tracks().into_iter().map(|t| t.1).collect();
+    assert_eq!(names, ["English (stereo)", "Italian — Film (6 channels)"]);
+    assert_eq!(p.audio_track(), 0, "track 1 plays first");
+    // a one-track video lists one entry
+    open(&mut p, file(d.path(), "one.mp4"));
+    assert_eq!(p.audio_tracks().len(), 1);
+    assert_eq!(p.audio_track(), 0);
+}
+
+// covers: REQ-338
+#[test]
+fn choosing_a_track_changes_the_sound_of_the_clip_and_is_kept_in_the_session_only() {
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    let sounds = file(d.path(), "sounds.mkv");
+    open(&mut p, sounds.clone());
+    p.dispatch(Command::ChooseAudio(1), now());
+    assert_eq!(p.audio_track(), 1);
+    assert_eq!(p.project.timeline.clips[0].audio_track, 1);
+    // a track that does not exist is refused and nothing changes
+    p.dispatch(Command::ChooseAudio(5), now());
+    assert_eq!(p.audio_track(), 1);
+    // another video and back: the choice is kept while the program runs
+    open(&mut p, file(d.path(), "one.mp4"));
+    assert_eq!(p.audio_track(), 0);
+    open(&mut p, sounds.clone());
+    assert_eq!(
+        p.audio_track(),
+        1,
+        "the same file keeps its track in the session"
+    );
+    // nothing is saved: a new run starts with the first track
+    let mut q = player(d.path());
+    open(&mut q, sounds);
+    assert_eq!(q.audio_track(), 0);
+    assert!(
+        !std::fs::read_dir(d.path()).unwrap().any(|e| e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with("vlproj"))
+    );
+}
+
+// covers: REQ-338
+#[test]
+fn the_audio_menu_has_no_track_for_a_video_without_sound() {
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    open(&mut p, file(d.path(), "sphere.mp4"));
+    assert!(
+        p.audio_tracks().is_empty(),
+        "a video without sound has no track"
+    );
+    p.dispatch(Command::ChooseAudio(0), now());
+    assert_eq!(p.audio_track(), 0);
 }

@@ -372,6 +372,7 @@ fn the_pre_pass_runs_far_faster_than_real_time() {
                 videolore::camera::Camera::new(9000, 2000, 9000),
             ),
         ],
+        track: 0,
     };
     let dir = env.dir.path().join("pre");
     std::fs::create_dir_all(&dir).unwrap();

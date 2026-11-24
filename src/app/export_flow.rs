@@ -58,6 +58,7 @@ impl AppState {
             frame_effects_360,
             has_clips: !videos.is_empty(),
             has_subtitles: self.has_shown_subtitles(),
+            subtitles_as_track: self.project.subtitles.preset == Preset::AsTrack,
             all_360: !videos.is_empty() && videos.iter().all(|v| *v),
             encoders: self.encoders(),
             auto_extension: self.export_extension(),

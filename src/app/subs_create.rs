@@ -66,6 +66,7 @@ impl AppState {
         }
         self.pending_create = Some(CreateRequest {
             clip,
+            audio: self.popups.subtitle_audio,
             ..Default::default()
         });
         self.continue_create()
@@ -156,6 +157,11 @@ impl AppState {
                 range: *range,
                 mode,
                 track_language: track.and_then(|t| t.language.clone()),
+                audio: if usize::from(req.audio) < self.audio_track_count(*media) {
+                    req.audio
+                } else {
+                    0
+                },
             });
         }
         if jobs.is_empty() {
@@ -300,6 +306,7 @@ impl AppState {
                 m.is_ready()
                     && !m.missing
                     && (changed.contains(&m.id)
+                        || m.format.audio_tracks.is_none()
                         || (m.has_video()
                             && (m.format.subtitle_tracks.is_none()
                                 || m.format.spherical.is_none())))
@@ -332,10 +339,15 @@ impl AppState {
                     .as_ref()
                     .and_then(|m| m.format.subtitle_tracks.clone())
                     .unwrap_or_default();
+                let audio = probed
+                    .as_ref()
+                    .and_then(|m| m.format.audio_tracks.clone())
+                    .unwrap_or_default();
                 let probed = changed.contains(&id).then_some(probed).flatten();
                 let check = TrackCheck {
                     id,
                     tracks,
+                    audio,
                     spherical,
                     probed,
                 };
@@ -395,6 +407,7 @@ impl AppState {
             let TrackCheck {
                 id,
                 tracks,
+                audio,
                 spherical,
                 probed,
             } = check;
@@ -408,6 +421,10 @@ impl AppState {
                 if m.format.subtitle_tracks.is_none() {
                     m.format.subtitle_tracks = Some(tracks.clone());
                     self.saved.set_subtitle_tracks(id, tracks);
+                }
+                if m.format.audio_tracks.is_none() {
+                    m.format.audio_tracks = Some(audio.clone());
+                    self.saved.set_audio_tracks(id, audio);
                 }
                 if m.format.spherical.is_none() {
                     m.format.spherical = Some(spherical);

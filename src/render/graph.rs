@@ -60,13 +60,21 @@ pub(super) fn fan_out(
     parts: &mut Vec<String>,
     input: usize,
     kind: char,
+    track: u8,
     users: usize,
 ) -> Vec<String> {
-    let stream = format!("[{input}:{kind}:0]");
+    let stream = format!("[{input}:{kind}:{track}]");
     if users <= 1 {
         return vec![stream];
     }
-    let labels: Vec<String> = (0..users).map(|j| format!("[{kind}{input}s{j}]")).collect();
+    let tag = if track == 0 {
+        String::new()
+    } else {
+        format!("t{track}")
+    };
+    let labels: Vec<String> = (0..users)
+        .map(|j| format!("[{kind}{input}{tag}s{j}]"))
+        .collect();
     let filter = if kind == 'a' { "asplit" } else { "split" };
     parts.push(format!("{stream}{filter}={users}{}", labels.concat()));
     labels
@@ -465,23 +473,28 @@ pub fn build_graph_pics(
             .count()
     };
     let mut vlabels: Vec<Vec<String>> = Vec::new();
-    let mut alabels: Vec<Vec<String>> = Vec::new();
+    let mut alabels: Vec<std::collections::BTreeMap<u8, Vec<String>>> = Vec::new();
     for k in 0..offset {
         vlabels.push(if spec.video {
-            fan_out(&mut parts, k, 'v', count(k, &|_| true))
+            fan_out(&mut parts, k, 'v', 0, count(k, &|_| true))
         } else {
             Vec::new()
         });
-        alabels.push(if spec.audio {
-            fan_out(
-                &mut parts,
-                k,
-                'a',
-                count(k, &|s| s.has_audio && !spatial_on(s)),
-            )
-        } else {
-            Vec::new()
-        });
+        // one stream per audio track the clips of this input play (REQ-340)
+        let mut by_track: std::collections::BTreeMap<u8, Vec<String>> = Default::default();
+        if spec.audio {
+            let tracks: std::collections::BTreeSet<u8> = idx
+                .iter()
+                .zip(segs)
+                .filter(|(i, s)| **i == k && s.has_audio && !spatial_on(s))
+                .map(|(_, s)| s.audio_track)
+                .collect();
+            for t in tracks {
+                let users = count(k, &|s| s.has_audio && !spatial_on(s) && s.audio_track == t);
+                by_track.insert(t, fan_out(&mut parts, k, 'a', t, users));
+            }
+        }
+        alabels.push(by_track);
     }
     // the picture-based subtitle stream of an input, one label for each clip that draws it
     // (REQ-253); the stream is the one the clips choose (they share the project's choice)
@@ -510,11 +523,8 @@ pub fn build_graph_pics(
             }
         })
         .collect();
-    let (mut vused, mut aused, mut sused) = (
-        vec![0usize; offset],
-        vec![0usize; offset],
-        vec![0usize; offset],
-    );
+    let (mut vused, mut sused) = (vec![0usize; offset], vec![0usize; offset]);
+    let mut aused: std::collections::BTreeMap<(usize, u8), usize> = Default::default();
     let g = &spec.geometry;
     let mut command_files: Vec<(String, String)> = Vec::new();
     let mut lut_files: Vec<std::sync::Arc<crate::lut::Lut>> = Vec::new();
@@ -716,8 +726,9 @@ pub fn build_graph_pics(
                 let (src, off) = match spatial_input[i] {
                     Some(n) => (format!("[{n}:a:0]"), s.to_src(s.skip).ff()),
                     None => {
-                        aused[k] += 1;
-                        (alabels[k][aused[k] - 1].clone(), off.clone())
+                        let n = aused.entry((k, s.audio_track)).or_default();
+                        *n += 1;
+                        (alabels[k][&s.audio_track][*n - 1].clone(), off.clone())
                     }
                 };
                 format!(
@@ -824,7 +835,7 @@ pub fn build_graph_pics(
                 continue;
             }
             first_of.push(*k);
-            mlabels.push(fan_out(&mut parts, offset + k, 'a', users[j]));
+            mlabels.push(fan_out(&mut parts, offset + k, 'a', 0, users[j]));
         }
         let mut mused = vec![0usize; mlabels.len()];
         let mut bed_in = String::new();

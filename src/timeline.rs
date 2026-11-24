@@ -107,6 +107,14 @@ pub struct Clip {
     /// Playing speed in thousandths: 1000 = normal, 500..2000 (REQ-281; absent = 1000).
     #[serde(default = "normal_speed", skip_serializing_if = "is_normal_speed")]
     pub speed: u16,
+    /// The audio track the clip plays, its ordinal among the file's audio streams (3.1.0,
+    /// REQ-340; absent = 0, the first).
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub audio_track: u8,
+}
+
+fn is_zero_u8(v: &u8) -> bool {
+    *v == 0
 }
 
 /// Normal playing speed, in thousandths.
@@ -153,6 +161,7 @@ impl Clip {
             fade_in: false,
             fade_out: false,
             speed: NORMAL_SPEED,
+            audio_track: 0,
         }
     }
 
@@ -271,6 +280,9 @@ pub enum EditError {
     #[error("the picture has no such effect")]
     NoSuchEffect,
 }
+
+/// Merge refused: the clips play different audio tracks (REQ-340).
+pub const DIFFERENT_AUDIO_TRACKS: &str = "The clips play different audio tracks";
 
 /// Why two clips cannot be merged although they are parts of the same file.
 pub const DIFFERENT_VOLUMES: &str = "The clips have different volumes";
@@ -736,6 +748,8 @@ impl Timeline {
             Some(DIFFERENT_SPEEDS)
         } else if (a.volume, a.muted) != (b.volume, b.muted) {
             Some(DIFFERENT_VOLUMES)
+        } else if a.audio_track != b.audio_track {
+            Some(DIFFERENT_AUDIO_TRACKS)
         } else if a.clean_audio != b.clean_audio
             || a.clean_strength != b.clean_strength
             || a.speech_enhance != b.speech_enhance
@@ -1497,6 +1511,13 @@ impl Timeline {
         let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
         self.clips[i].volume = volume.min(FULL_VOLUME);
         self.clips[i].muted = muted;
+        Ok(())
+    }
+
+    /// Chooses the audio track a clip plays (REQ-340).
+    pub fn set_audio_track(&mut self, id: ClipId, track: u8) -> Result<(), EditError> {
+        let i = self.index_of(id).ok_or(EditError::NoSuchClip)?;
+        self.clips[i].audio_track = track;
         Ok(())
     }
 

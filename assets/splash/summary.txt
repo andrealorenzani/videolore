@@ -1,6 +1,6 @@
 New in this version
-Overlap media puts a PNG, GIF or MOV with transparency over a clip, with its own time and a box you drag in the preview.
-Change speed and Volume are effects of their own, and Volume takes keyframes; each clip can be set to Fit or to an empty space.
-Crop is removed: a crop in an older project is dropped when it opens, with one message.
-Enlarge word keeps the other words in place; a stored Never start-screen choice now shows once per version.
-Projects are saved in format 14: 2.2.0 and older refuse them, and formats 13 and older open as before.
+Enlarge word grows from the base of the word, and the words around it move apart; the line keeps its centre.
+As subtitle track writes the lines as a separate switchable subtitle track in the export.
+Volume is now Volume and track, with an audio track choice; Overlap media has its own row in the Effects list.
+The Subtitles effect uses the clip's own audio and subtitle tracks; the blurred fill shows in the preview.
+Projects are saved in format 15: 3.0.x and older refuse them, and formats 14 and older open as before.

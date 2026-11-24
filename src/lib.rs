@@ -66,6 +66,7 @@ pub mod subtitles;
 pub mod text;
 pub mod time;
 pub mod timeline;
+pub mod word_layout;
 pub mod word_styles;
 
 pub mod ui;

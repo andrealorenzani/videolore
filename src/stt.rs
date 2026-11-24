@@ -432,13 +432,14 @@ impl ModelStore {
     }
 }
 
-/// ffmpeg arguments extracting the first audio stream as 16 kHz mono f32 (video sound only:
-/// the music track is never part of it). With `range` only that part of the source
-/// (`[from, to)`, source time) is read.
+/// ffmpeg arguments extracting the audio track `track` (0 = the first) as 16 kHz mono f32
+/// (video sound only: the music track is never part of it). With `range` only that part of
+/// the source (`[from, to)`, source time) is read. The track number is videolore's own (REQ-339).
 pub fn extraction_args(
     source: &Path,
     out: &Path,
     range: Option<(Micros, Micros)>,
+    track: u8,
 ) -> Vec<OsString> {
     let mut a = argv([
         "-hide_banner",
@@ -459,9 +460,8 @@ pub fn extraction_args(
     }
     a.extend(argv(["-i"]));
     a.push(file_arg(source));
-    a.extend(argv([
-        "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le",
-    ]));
+    a.extend(argv(["-map".to_string(), format!("0:a:{track}")]));
+    a.extend(argv(["-vn", "-ac", "1", "-ar", "16000", "-f", "f32le"]));
     a.push(file_arg(out));
     a
 }
@@ -557,6 +557,8 @@ pub struct RangeJob {
     pub mode: Mode,
     /// Language code of the subtitle track used (as found in the file).
     pub track_language: Option<String>,
+    /// The audio track the speech is taken from (REQ-339; 0 = the first).
+    pub audio: u8,
 }
 
 impl RangeJob {
@@ -740,7 +742,10 @@ fn recognise_with_level(
     let audio = work.join("audio.f32");
     let name = crate::media::display_name(&r.path);
     let out = runner
-        .run(&job.ffmpeg, &extraction_args(&r.path, &audio, r.range))
+        .run(
+            &job.ffmpeg,
+            &extraction_args(&r.path, &audio, r.range, r.audio),
+        )
         .map_err(|e| match e.kind() {
             io::ErrorKind::Interrupted => SttError::Cancelled,
             _ => SttError::Extraction(name.clone()),
@@ -1375,6 +1380,7 @@ pub(crate) mod tests {
             range,
             mode,
             track_language: None,
+            audio: 0,
         }
     }
 
@@ -1752,7 +1758,7 @@ pub(crate) mod tests {
         assert!(!j.is_matching() && j.needs_model());
         // without a range the whole file is read
         assert!(
-            !extraction_args(Path::new("/a.mp4"), Path::new("/o"), None).contains(&"-ss".into())
+            !extraction_args(Path::new("/a.mp4"), Path::new("/o"), None, 0).contains(&"-ss".into())
         );
     }
 

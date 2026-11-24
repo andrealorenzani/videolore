@@ -47,8 +47,8 @@ Each document is a short business description with its requirements (REQ-NNN) an
 
 ### Effects and frame
 - [Effects](business-effects.md) — the Effects list and popups, applying to a clip or the whole video, markers on the timeline.
-- [Effects and frame options](business-effects-frame.md) — fades, music effects, Clean audio, Enhance speech, easing, Volume, blur strength, LUT strength, Change speed, Fit and empty space, PNG picture items.
-- [Frame](business-frame.md) — Change aspect (4:3, 16:9, 9:16; Fit on width or height; empty space as colour or blurred video), Scale and Move with keyframes.
+- [Effects and frame options](business-effects-frame.md) — fades, music effects, Clean audio, Enhance speech, easing, Volume (planned: Volume and track), blur strength, LUT strength, Change speed, Fit and empty space, PNG picture items.
+- [Frame](business-frame.md) — Change aspect (4:3, 16:9, 9:16; Fit on width or height; empty space as colour or blurred video; planned fix of the blurred fill), Scale and Move with keyframes.
 - [Whole-video and keyframe clarity](business-keyframes.md) — whole-video keyframe copies shown apart, notice for clips added later, copying keyframes between clips.
 - [Applied effects](business-applied-effects.md) — the column on the right of the preview: order of the effects of the selected clip, reorder inside each group, Change speed fixed.
 - [Overlap media](business-overlap.md) — PNG, GIF and MOV with transparency over one video clip, with its own start, end and box; one shared lane on the timeline.
@@ -56,9 +56,9 @@ Each document is a short business description with its requirements (REQ-NNN) an
 
 ### Text and subtitles
 - [Text](business-text.md) — multiline texts with Fade IN, Fade OUT, Blink and Slide in, time to live, colour, installed fonts, readability, size fitted to the box, Align and Reset.
-- [Subtitles](business-subtitles.md) — automatic offline subtitles, speech model download, editing, reuse of a video's own subtitles, moving lines on screen, multi-selection.
+- [Subtitles](business-subtitles.md) — automatic offline subtitles, speech model download, editing, reuse of a video's own subtitles, moving lines on screen, multi-selection; planned: the Subtitles effect takes its audio track and subtitle track from the clip.
 - [Subtitle accuracy](business-subtitle-accuracy.md) — long recognition has no lost words; the accuracy target of reused subtitles (REQ-177) is not met (see the [roadmap](roadmap.md)).
-- [Subtitle styles](business-subtitle-styles.md) — Classic, Box, Word highlight (two colours), Enlarge word, Typewriter; shadows for texts and subtitles.
+- [Subtitle styles](business-subtitle-styles.md) — Classic, Box, Word highlight (two colours), Enlarge word, Typewriter; shadows for texts and subtitles; planned: As subtitle track, Enlarge word keeping its base.
 - [Subtitle files and fonts](business-subtitle-files.md) — `.srt`, `.vtt` and ASS export, a switchable subtitle track, importing `.srt` and `.vtt`, fonts for Arabic and Devanagari.
 
 ### Picture, 360 and LUT
@@ -75,16 +75,20 @@ Each document is a short business description with its requirements (REQ-NNN) an
 - [Continuous quality and cache](business-quality.md) — preview cache limit, project page, engineering quality goals.
 
 ### Player and installation
-- [Video player](business-player.md) — the separate player: one video, 360 view, subtitles, full screen, start screen, playlist, "Open with" entries.
+- [Video player](business-player.md) — the separate player: one video, 360 view, subtitles, planned audio track menu, full screen, start screen, playlist, "Open with" entries.
 - [Splash screen](business-splash.md) — the start screen of the editor and the player: fixed pictures, summary of the version, "Show the start screen".
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, notices, first-launch steps.
 - [Release verification](business-verification.md) — checks of a release on real systems; a manual checklist, not a blocker.
+
+## Version 3.1.0
+Seven requirements, implemented (REQ-334 to REQ-340), each with its acceptance in the document named: Enlarge word keeps its base; As subtitle track style; blurred fill fix; Overlap media as its own Effects list row; player audio track menu; Subtitles effect with the clip's audio and subtitle tracks; Volume and track. REQ-333 is replaced by REQ-334.
+Accepted deviations (Andrea, 2026-11-24): the Subtitles effect's audio track choice is popup state and is not stored in the project; the blurred fill defect (REQ-335) was in the preview, not the export; the "As subtitle track" preview uses the Classic look; a file not yet analysed shows "Track 1".
 
 ## Known limitations
 The list for users is in the [README](../README.md#known-limitations). The open items are in the [roadmap](roadmap.md); the cleaned hand-off of each release is in the release notes of the [releases](../releases/) folder.
 
 ## Out of scope
-- Multiple video tracks; picture-in-picture only as an overlap bound to one clip.
+- Multiple video tracks; picture-in-picture only as an overlap bound to one clip; mixing several audio tracks of one clip into one sound (one track is chosen per clip, REQ-340).
 - Colour grading other than applying a LUT file; keyframe animation other than Scale, Move and Volume; transitions other than fade through black.
 - Editing, saving or exporting in the video player.
 - Accounts, cloud storage, sync, collaboration, direct upload to social networks, mobile versions.

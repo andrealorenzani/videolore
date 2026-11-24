@@ -172,9 +172,32 @@ fn the_word_colours_are_the_primary_and_secondary_colours_of_the_style() {
     );
 }
 
+/// The words drawn while each word is spoken: `(left, bottom, size, text)` of every event,
+/// `n` per spoken word.
+fn drawn(doc: &str, n: usize) -> Vec<Vec<(f64, f64, i64, String)>> {
+    let all: Vec<(f64, f64, i64, String)> = doc
+        .lines()
+        .filter(|l| l.starts_with("Dialogue"))
+        .map(|l| {
+            let tags = l.split("\\pos(").nth(1).unwrap();
+            let (x, rest) = tags.split_once(',').unwrap();
+            let (y, rest) = rest.split_once(')').unwrap();
+            let size = rest.split("\\fs").nth(1).unwrap();
+            let (size, text) = size.split_once('}').unwrap();
+            (
+                x.parse().unwrap(),
+                y.parse().unwrap(),
+                size.parse().unwrap(),
+                text.to_string(),
+            )
+        })
+        .collect();
+    all.chunks(n).map(<[_]>::to_vec).collect()
+}
+
 // covers: REQ-309
 #[test]
-fn enlarge_word_writes_two_events_per_word_with_the_larger_size() {
+fn enlarge_word_writes_one_event_per_word_for_each_spoken_word_with_the_larger_size() {
     let l = [spoken()];
     let st = StyleSettings {
         enlarge: 20,
@@ -182,56 +205,110 @@ fn enlarge_word_writes_two_events_per_word_with_the_larger_size() {
     };
     let d = document_styled(&l, Preset::EnlargeWord, &st, 1920, 1080, Micros::ZERO, &[]);
     let events: Vec<&str> = d.lines().filter(|l| l.starts_with("Dialogue")).collect();
-    assert_eq!(events.len(), 6);
-    let base = font_size(1920, 1080);
-    assert!(
-        events[1].contains(&format!("\\fs{}", base + 20)),
-        "{}",
-        events[1]
-    );
-    assert!(events[1].contains("0:00:00.00,0:00:01.00"));
+    assert_eq!(events.len(), 9);
+    let base = i64::from(font_size(1920, 1080));
+    let groups = drawn(&d, 3);
+    for (i, g) in groups.iter().enumerate() {
+        for (j, w) in g.iter().enumerate() {
+            let want = if i == j { base + 20 } else { base };
+            assert_eq!(w.2, want, "word {j} while word {i} is spoken");
+        }
+    }
+    // the group of the second word is shown from 1 s to 2 s
+    assert!(events[3].contains("0:00:01.00,0:00:02.00"));
     // at 720 the growth is scaled with the height: 20 px -> 13
     let d = document_styled(&l, Preset::EnlargeWord, &st, 1280, 720, Micros::ZERO, &[]);
     assert!(d.contains(&format!("\\fs{}", font_size(1280, 720) + 13)));
-    // the other words keep their size: only the second event sets one
-    assert!(!events[0].contains("\\fs"));
 }
 
-// covers: REQ-333, REQ-309
+// covers: REQ-334, REQ-309
 #[test]
-fn the_enlarged_word_is_drawn_at_its_measured_centre_inside_two_percent_of_the_height() {
-    let l = [spoken()];
-    let st = StyleSettings::default();
-    let d = document_styled(&l, Preset::EnlargeWord, &st, 1920, 1080, Micros::ZERO, &[]);
-    let events: Vec<&str> = d.lines().filter(|l| l.starts_with("Dialogue")).collect();
-    // the big event is the word alone at an own position; the base keeps the whole line
-    let big = events[1];
-    assert!(big.contains("\\an5\\pos("), "{big}");
-    assert!(big.ends_with("}one"), "{big}");
-    assert!(!events[0].contains("\\pos"), "{}", events[0]);
-    // the centre of every word is on the line's own height (single line): the style's place
-    let h = 1080.0;
+fn the_enlarged_word_keeps_its_base_and_its_centre_and_the_neighbours_make_room() {
+    let l = spoken();
+    let (h, w) = (1080.0, 1920.0);
     let px = f64::from(font_size(1920, 1080));
-    let expect_y = h - margin_v(Preset::EnlargeWord, 1080) - px / 2.0;
-    for e in events.iter().skip(1).step_by(2) {
-        let at = e.split("\\pos(").nth(1).unwrap();
-        let (x, rest) = at.split_once(',').unwrap();
-        let y: f64 = rest.split(')').next().unwrap().parse().unwrap();
-        assert!((y - expect_y).abs() < 0.02 * h, "{e}");
-        let x: f64 = x.parse().unwrap();
-        assert!(x > 0.0 && x < 1920.0);
-    }
-    // words go left to right
-    let xs: Vec<f64> = events
-        .iter()
-        .skip(1)
-        .step_by(2)
-        .map(|e| {
-            let at = e.split("\\pos(").nth(1).unwrap();
-            at.split_once(',').unwrap().0.parse().unwrap()
+    let timed: Vec<crate::word_styles::Timed> = words_of(&l)
+        .into_iter()
+        .map(|x| crate::word_styles::Timed {
+            start: x.start,
+            end: x.end,
+            text: x.text,
         })
         .collect();
-    assert!(xs.windows(2).all(|w| w[0] < w[1]), "{xs:?}");
+    // the line at its normal size: the reference of every check
+    let block = word_block(
+        &l,
+        &timed,
+        Preset::EnlargeWord,
+        font_size(1920, 1080),
+        1920,
+        1080,
+    )
+    .expect("the words can be measured");
+    let normal = block.with_enlarged(99, px);
+    let widths: Vec<f64> = block.slots.iter().map(|s| s.width).collect();
+    // the largest growth
+    let st = StyleSettings {
+        enlarge: 40,
+        ..StyleSettings::default()
+    };
+    let d = document_styled(
+        &[l],
+        Preset::EnlargeWord,
+        &st,
+        1920,
+        1080,
+        Micros::ZERO,
+        &[],
+    );
+    let g = drawn(&d, 3);
+    let big = g[1][1].2 as f64;
+    assert!(big > px + 30.0, "{big}");
+    let extra = widths[1] * (big / px - 1.0);
+    let descent = block.descent;
+    // the base: the bottom of the letters is where it is at normal size (2% of the height)
+    let baseline = |bottom: f64, size: f64| bottom - descent * size;
+    for i in 0..3 {
+        let spoken = &g[i][i];
+        let at_normal = baseline(normal[i].bottom, px);
+        assert!(
+            (baseline(spoken.1, spoken.2 as f64) - at_normal).abs() < 0.02 * h,
+            "word {i}"
+        );
+    }
+    // its centre is where the word's centre is at normal size (0.5% of the width)
+    let centre = |left: f64, width: f64| left + width / 2.0;
+    let was = centre(normal[1].left, widths[1]);
+    let now = centre(g[1][1].0, widths[1] * big / px);
+    assert!((was - now).abs() < 0.005 * w, "{was} {now}");
+    // the word before moves left and the word after right, by half the extra width (1%)
+    let before = normal[0].left - g[1][0].0;
+    let after = g[1][2].0 - normal[2].left;
+    assert!((before - extra / 2.0).abs() < 0.01 * w, "{before} {extra}");
+    assert!((after - extra / 2.0).abs() < 0.01 * w, "{after} {extra}");
+    // at the largest growth no two words overlap, whichever word is spoken
+    for (i, row) in g.iter().enumerate() {
+        for j in 0..2 {
+            let right = row[j].0 + widths[j] * row[j].2 as f64 / px;
+            assert!(
+                right <= row[j + 1].0 + 0.5,
+                "words {j} and {} at {i}",
+                j + 1
+            );
+        }
+    }
+    // the line keeps its centre
+    let mid = |row: &[(f64, f64, i64, String)]| {
+        (row[0].0 + row[2].0 + widths[2] * row[2].2 as f64 / px) / 2.0
+    };
+    let mid_normal = (normal[0].left + normal[2].left + widths[2]) / 2.0;
+    for row in &g {
+        assert!(
+            (mid(row) - mid_normal).abs() < 1.0,
+            "{} {mid_normal}",
+            mid(row)
+        );
+    }
     // a line with its own place and size is centred on that place
     let mut own = spoken();
     own.position = Some(crate::base::pos::Pos { x: 5000, y: 2500 });
@@ -245,25 +322,9 @@ fn the_enlarged_word_is_drawn_at_its_measured_centre_inside_two_percent_of_the_h
         Micros::ZERO,
         &[],
     );
-    let big = d
-        .lines()
-        .filter(|l| l.starts_with("Dialogue"))
-        .nth(1)
-        .unwrap();
-    assert!(big.contains("\\bord"), "{big}");
-    let y: f64 = big
-        .split("\\pos(")
-        .nth(1)
-        .unwrap()
-        .split_once(',')
-        .unwrap()
-        .1
-        .split(')')
-        .next()
-        .unwrap()
-        .parse()
-        .unwrap();
-    assert!((y - 270.0).abs() < 0.02 * h, "{big}");
+    assert!(d.contains("\\bord"), "a sized line keeps its outline");
+    let g = drawn(&d, 3);
+    assert!((g[0][0].1 - 270.0).abs() < 0.1 * h, "{:?}", g[0][0]);
 }
 
 // covers: REQ-310

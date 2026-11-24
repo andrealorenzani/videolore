@@ -17,6 +17,7 @@ videolore is a Rust desktop application (edition 2024, MSRV 1.100) built on egui
 | [code-lut.md](code-lut.md) | Apply LUT: the `.cube` parser, the filter graph, missing files, project format 8 (1.6.0) |
 | [code-features.md](code-features.md) | 2.0.4: subtitle files and fonts, gestures and autosave, hardware reach and decoding, speed, platforms, interface settings, player, 360 additions, effects, quality items |
 | [code-layers.md](code-layers.md) | 2.1.0 to 2.3.0: large LUTs, text and subtitle styles, whole video as copies, the order of the effects (overlay stage, step builder), overlap media, project formats 12 to 14 |
+| [code-audio-tracks.md](code-audio-tracks.md) | 3.1.0: audio tracks (model, popups, render, player), Enlarge word from its base (`word_layout`), As subtitle track, the blurred fill fix, the Overlap media row, project format 15 |
 | [code-measurements.md](code-measurements.md) | Every measurement: blur, order spikes, overlap memory, LUT start times, Faster on integrated graphics, speech regions, spatial pre-pass |
 | [code-splash-icons.md](code-splash-icons.md) | Splash screens and icons (Phosphor) |
 | [code-player.md](code-player.md) | The workspace and videolore player |

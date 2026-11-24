@@ -49,7 +49,7 @@ fn clip_nodes(h: &Harness) -> Vec<Node> {
 #[test]
 fn dragging_apply_lut_on_clip_2_opens_its_popup_and_choosing_a_file_sets_it() {
     let (_d, app, lut) = setup();
-    let mut h = Harness::new(app, 1280.0, 800.0);
+    let mut h = Harness::new(app, 1280.0, 1000.0);
     let clips = clip_nodes(&h);
     assert_eq!(clips.len(), 3);
     let ids: Vec<_> = h.app.project.timeline.clips.iter().map(|c| c.id).collect();
@@ -131,7 +131,7 @@ fn dragging_apply_lut_on_clip_2_opens_its_popup_and_choosing_a_file_sets_it() {
 #[test]
 fn a_double_click_gives_each_clip_its_own_lut_and_its_marker() {
     let (_d, app, lut) = setup();
-    let mut h = Harness::new(app, 1280.0, 800.0);
+    let mut h = Harness::new(app, 1280.0, 1000.0);
     let row = h.find("Apply LUT").unwrap();
     h.double_click(row.rect.center());
     assert_eq!(
@@ -202,7 +202,7 @@ fn the_effects_menu_and_the_clip_menu_offer_apply_lut() {
 #[test]
 fn change_aspect_dropped_on_a_clip_gives_it_its_own_aspect_and_has_its_own_tooltip() {
     let (_d, app, _) = setup();
-    let mut h = Harness::new(app, 1280.0, 800.0);
+    let mut h = Harness::new(app, 1280.0, 1000.0);
     let clips = clip_nodes(&h);
     let second = h.app.project.timeline.clips[1].id;
     let row = h.find("Change aspect").unwrap();
@@ -233,7 +233,7 @@ fn change_aspect_dropped_on_a_clip_gives_it_its_own_aspect_and_has_its_own_toolt
 #[test]
 fn a_favourite_lut_is_listed_after_a_restart_applies_with_one_click_and_a_missing_one_is_marked() {
     let (dir, app, lut) = setup();
-    let mut h = Harness::new(app, 1280.0, 800.0);
+    let mut h = Harness::new(app, 1280.0, 1000.0);
     let now = Instant::now();
     let clip = h.app.project.timeline.clips[1].id;
     let target = FrameTarget::Clip(clip);

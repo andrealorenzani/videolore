@@ -424,7 +424,9 @@ pub fn plan_export_choice(
     }
     let geometry = Geometry::of(&settings);
     let all_lines = project.subtitles.project(&project.timeline);
-    let track = (choice.subtitles == format::SubtitleMode::Separate)
+    // "As subtitle track" never draws the lines, whatever the Export dialog says (REQ-337)
+    let as_track = project.subtitles.preset == crate::subtitles::Preset::AsTrack;
+    let track = (choice.subtitles == format::SubtitleMode::Separate || as_track)
         .then(|| {
             let track_lines: Vec<_> = all_lines
                 .iter()
@@ -439,8 +441,8 @@ pub fn plan_export_choice(
         })
         .flatten()
         .map(Box::new);
-    let subtitles =
-        subtitles_doc_ordered(project, &geometry, Micros::ZERO, track.is_none(), !sphere);
+    let burn = track.is_none() && !as_track;
+    let subtitles = subtitles_doc_ordered(project, &geometry, Micros::ZERO, burn, !sphere);
     let bed = music_bed(project, Micros::ZERO)?;
     if !sphere {
         overlay::attach(
@@ -449,7 +451,7 @@ pub fn plan_export_choice(
             &geometry,
             Micros::ZERO,
             Source::Export,
-            track.is_none(),
+            burn,
             true,
         )?;
     }
@@ -466,6 +468,7 @@ pub fn plan_export_choice(
         && !project.timeline.any_clean_audio()
         && !project.timeline.any_lut()
         && project.timeline.clips.iter().all(|c| !c.has_volume())
+        && project.timeline.clips.iter().all(|c| c.audio_track == 0)
         && !project.timeline.any_volume_keys()
         && !project.timeline.any_speed()
         && pics.is_empty()

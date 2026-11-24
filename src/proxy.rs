@@ -28,7 +28,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 
 /// Bump when the proxy encoding changes, so old cache entries are not reused.
-pub const PARAMS_VERSION: u32 = 2;
+pub const PARAMS_VERSION: u32 = 3;
 /// Proxies fit inside this size.
 pub const MAX_WIDTH: u32 = 960;
 pub const MAX_HEIGHT: u32 = 540;
@@ -274,7 +274,7 @@ pub fn proxy_args(
     a.extend(hwaccel.iter().cloned());
     a.push("-i".into());
     a.push(file_arg(source));
-    a.extend(argv(["-map", "0:v:0", "-map", "0:a:0?"]));
+    a.extend(argv(["-map", "0:v:0", "-map", "0:a?"]));
     a.extend(argv([
         "-vf".to_string(),
         format!("scale={w}:{h},setsar=1"),

@@ -62,6 +62,8 @@ Status: GATE = checked by a test (fails the build); ESTIMATE = design figure, no
 | Applied column share | 80 to 300 thousandths; default 150 | [effects](architecture-effects.md) |
 | Installer fonts | Arabic and Devanagari faces, a few MB; CJK not bundled | [packaging](architecture-packaging.md) |
 
+- 3.1.0 planned: audio tracks per file 32 (listed; the clip's track is 0 to 31); Enlarge word of a line: per-word events only for a line with an enlarged word (no change for other lines); a non-first audio track is re-encoded on export (time cost not measured); proxies keep every audio stream (size not measured). Acceptance figures are the ones of REQ-334 to 340 (docs/business*.md); none is measured yet.
+
 ## Security targets
 - No shell; `file:` prefix; `file` and `pipe` protocols only (GATE). Hostile project and settings files: no crash, a clear refusal, nothing written, sources unchanged (GATE). Full list: [security](architecture-security.md).
 - No network except the consented speech download; no telemetry; HTTPS-only table test; the HTTP client only in `stt` builds; the player graph without `ureq` or `whisper-rs` (CI).

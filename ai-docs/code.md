@@ -2,11 +2,12 @@
 
 <!-- AI-only. Owner: principal-engineer. Find a paragraph: grep -n here, then sed -n 'A,Bp' <doc>. Regenerate the index: scripts/doc-index.sh docs/code*.md. Code facts: scripts/code-map.sh, req-code.sh, symbol.sh, module-deps.sh (docs/scripts.md). History of earlier versions: git and releases/. -->
 
-## State (2.3.0 release consolidation, done)
-- Suite green: fmt, clippy -D warnings (default, no-default, all features, aarch64-apple-darwin and x86_64-pc-windows-msvc no-default), 997 lib (3 ignored), 118 integration (5 ignored), 7 module_cycles, 2 page, 44 + 4 player; line 95.1 %, feature 320/320; workspace `cargo test` 127 s (139 s before).
-- Refactors: `app/effect_kind.rs` (`EffectKind`, `SPECS`, `Target`; was in app.rs + 4 matches), `DISPATCH_AREAS` table in app.rs (8 areas; new `dispatch_effects.rs`, `dispatch_objects.rs`; `PickExportSrt`/`ExportSrt`/`ChooseSubtitleSource` moved to subtitles, `DropFiles` to project), `ActionId::effect` + `EffectUse` (one mapping for 23 effect actions: command and icon), `effect_order::NAMED`/`WITH_ID` (row names once), the AV1/VP9 hw test runs its codecs in parallel. Recipe: docs/code.md § How to add an effect or a command.
-- Deps: lock at latest compatible; behind only by majors: harfrust 0.12→0.16.1, skrifa 0.44→0.50 (pinned to epaint 0.37's; a bump adds a second copy: not now), syn 2→3 (dev; 3.0.10 already in the lock via another crate; module_cycles uses syn 2 API: not now).
-- Library estimates (not now): strum (derive the variant lists/names of EffectKind/ActionId; proc-macro dep, MIT; the tables are enough); insta (snapshot golden argv; our fixture files work); nextest (per-test process isolation; suite is CPU-bound); egui_kittest (pulls a renderer; our accesskit harness works headless).
+## State (3.1.0, built)
+- Suite green: fmt, clippy -D warnings (workspace, all targets), 1026 lib (3 ignored), 123 integration (5 ignored), 7 module_cycles, 2 page, 48 + 4 player; line 95.1 %; feature script 320/320 (it counts only the exact `(implemented)`; REQ-334..340 and many older ones are `(implemented; ...)` and are NOT counted by it: counted by hand 338/338 with a `covers:`; script left unchanged, not mine). Run once at the end (rule 7); system ffmpeg 6.1.1 (no `ff9/` this time).
+- 3.1.0 map (docs/code-audio-tracks.md): `AudioTrack`, `Clip.audio_track`, `SetClipAudioTrack`, `SetSubtitleAudio` (popup state, not stored), `Preset::AsTrack`, `word_layout.rs`, `FrameKey.own_aspect/audio_track`, `SpatialJob.track`, `RangeJob.audio`, `PARAMS_VERSION` 3, `SCHEMA_VERSION` 15, player `ChooseAudio`. Deviation: ADR-253 says the audio is an argument of the Subtitles command; built as popup state (`Popups.subtitle_audio`) read by `create_subtitles`, because the menu entry and the ApplyEffect command have no argument.
+- REQ-335 root cause: the preview's kept blurred background (REQ-223) of a clip's own aspect (frame smaller than the output); export was right. Fixed by `FrameKey.own_aspect` (no kept background).
+- Deps: lock unchanged apart from the version bump; notices regenerated (player file only).
+- Earlier (2.3.0 consolidation): refactors `app/effect_kind.rs`, `DISPATCH_AREAS`, `ActionId::effect`, `effect_order::NAMED`; deps behind only by majors: harfrust 0.12→0.16.1, skrifa 0.44→0.50 (pinned to epaint 0.37's), syn 2→3 (dev). Library estimates (not now): strum, insta, nextest, egui_kittest.
 
 ## Local env (dev box)
 - Every cargo run through scratchpad `run.sh` (`systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 timeout 2400`), `env.sh`: alsa pkg-config from a dpkg-deb extract, `LIBCLANG_PATH=/usr/lib/llvm-18/lib`, pinned ffmpeg 9.0.2 in `ff9/` as `VIDEOLORE_FFMPEG/FFPROBE` + PATH, `VIDEOLORE_REQUIRE_FFMPEG=1`, `CARGO_INCREMENTAL=0`. Test binaries: `target/debug/build/videolore/<hash>/out/`. Never two suites at once (hw_tests timing gates fail). /home is ~97 % full: delete `target/debug/incremental`, `target/llvm-cov-target` after coverage.
@@ -19,9 +20,13 @@
 - whisper-rs 0.16 `set_abort_callback_safe` is UB (reads heap garbage; CI "code -6"): own `abort_requested` + `set_cancel_flag`; guarded by `abort_check_of_whisper_ignores_heap_garbage`. whisper build flags in `.cargo/config.toml` (GGML_NATIVE=OFF + explicit AVX2/FMA/F16C/BMI2); after a change `cargo clean -p whisper-rs-sys` and bump rust-cache `v2-rust-ggml-portable` (4 uses).
 - Integration tests share one process: memory tests re-exec the binary on the ignored helper `memory_peak_of_one_preview`. lavfi sine is 1/8 full scale. `Timeline.next_overlap_id` stays 0 until the first overlap. `AppState::edit` is the one place that sees lost overlaps.
 - notices: regenerate after any Cargo.lock change; about.hbs prints no version.
+- The Effects section holds 9 rows at 1280x800 (3.1.0: Add Text and Overlap media are two rows): UI tests that click the lower effect rows (Apply LUT) use a 1000 px window. Accesskit node order is not stable: `Harness::find` by prefix may pick another widget (`click_label("Subtitle")` picked the Subtitles row); click exact labels (`popups::instance_label`).
+- `scripts/feature-coverage.sh` regex `REQ-N \(implemented\)` skips `(implemented; ...)`; coverage of those: grep `covers:` by hand. `scripts/doc-replace.sh text "REQ-N (planned;" "REQ-N (implemented;" <file>` flips a status without reading.
+- The local ffmpeg 6.1.1 runs every integration test; the pinned 9.0.2 is only needed for the version-specific ones.
 
 ## Debt
 - Code: `Command::AddPicture`/picture items stay for tests and clip-less items; MOV overlay size read at add only; overlap lane has no zoom, preview box draws no handles; dialogs.rs untested glue; macOS code compiled only on mac; proxy cache has no LRU beyond `enforce_limit`; whole-video popup shows the first clip only; app.rs ~1900 lines, timeline.rs 2600, stt.rs 2300, project.rs 2050 (split by topic when next touched); `Command`'s undo names, `is_enabled` and the dispatch arms are still three places per command.
+- 3.1.0 limits: the Subtitles popup lists the tracks of the selected (or first) clip's file and its choice applies to every file of a whole-video creation (a file with fewer tracks uses its first); a clip with track ≠ 0 is always re-encoded (T1 `-map 0:a:k -c copy` is future work, ADR-246); a proxy holds every audio stream; the preview of "As subtitle track" is Classic (A-3.1-1); the Effects section scrolls at 800 px.
 - Not met: REQ-315 (8.7 % of 20 %), REQ-177 (43 % of 90 %); docs/code-measurements.md.
 - Manual only: macOS/Windows packaging and menus, Wayland drops, real graphics of other vendors, splash look on a display.
 - Shared file `ai-docs/roadmap-2_0-checkpoint.md` (header: delete after 2.0.4) still holds my stale sections "Principal Engineer", "… 2.1.0", "… 2.2.0".
@@ -42,6 +47,14 @@
 - docs/code-architecture.md § A command, from the click to the undo step — L91-103 (13 lines)
 - docs/code-architecture.md § Threads and channels — L104-131 (28 lines)
 - docs/code-architecture.md § videolore player — L132-147 (16 lines)
+- docs/code-audio-tracks.md § Code — 3.1.0: audio tracks, Enlarge word from its base, As subtitle track, project format 15 — L1-4 (4 lines)
+- docs/code-audio-tracks.md § Audio tracks (REQ-340, 339, 338) — L5-12 (8 lines)
+- docs/code-audio-tracks.md § Enlarge word from its base (REQ-334) — L13-16 (4 lines)
+- docs/code-audio-tracks.md § As subtitle track (REQ-337) — L17-19 (3 lines)
+- docs/code-audio-tracks.md § Blurred fill (REQ-335) — L20-22 (3 lines)
+- docs/code-audio-tracks.md § Overlap media row (REQ-336) — L23-25 (3 lines)
+- docs/code-audio-tracks.md § Project format 15 (REQ-029, 340, 337) — L26-28 (3 lines)
+- docs/code-audio-tracks.md § Tests — L29-31 (3 lines)
 - docs/code-effects.md § Code — effects on clips, the video's own subtitles, positions, SRT (1.2.0) — L1-4 (4 lines)
 - docs/code-effects.md § Applying an effect — L5-27 (23 lines)
 - docs/code-effects.md § Fades at the video's edges — L28-41 (14 lines)
@@ -128,15 +141,15 @@
 - docs/code-lut.md § Verification of `lut3d` — L70-77 (8 lines)
 - docs/code-lut.md § Tests — L78-85 (8 lines)
 - docs/code-lut.md § Known limits — L86-89 (4 lines)
-- docs/code.md § Code — L1-29 (29 lines)
-- docs/code.md § How to add an effect or a command — L30-34 (5 lines)
-- docs/code.md § Build, test, run — L35-49 (15 lines)
-- docs/code.md § System requirements for building — L50-55 (6 lines)
-- docs/code.md § Settings and machine detection — L56-58 (3 lines)
-- docs/code.md § CPU baseline for speech recognition — L59-61 (3 lines)
-- docs/code.md § Cargo features — L62-69 (8 lines)
-- docs/code.md § Finding ffmpeg — L70-72 (3 lines)
-- docs/code.md § Dependencies — L73-95 (23 lines)
+- docs/code.md § Code — L1-30 (30 lines)
+- docs/code.md § How to add an effect or a command — L31-35 (5 lines)
+- docs/code.md § Build, test, run — L36-50 (15 lines)
+- docs/code.md § System requirements for building — L51-56 (6 lines)
+- docs/code.md § Settings and machine detection — L57-59 (3 lines)
+- docs/code.md § CPU baseline for speech recognition — L60-62 (3 lines)
+- docs/code.md § Cargo features — L63-70 (8 lines)
+- docs/code.md § Finding ffmpeg — L71-73 (3 lines)
+- docs/code.md § Dependencies — L74-96 (23 lines)
 - docs/code-measurements.md § Code — measurements — L1-4 (4 lines)
 - docs/code-measurements.md § Rendering — L5-11 (7 lines)
 - docs/code-measurements.md § LUTs — L12-15 (4 lines)
@@ -178,11 +191,11 @@
 - docs/code-testing.md § Code — tests and CI — L1-4 (4 lines)
 - docs/code-testing.md § Kinds of tests — L5-16 (12 lines)
 - docs/code-testing.md § Golden output — L17-20 (4 lines)
-- docs/code-testing.md § Integration tests (real ffmpeg) — L21-38 (18 lines)
-- docs/code-testing.md § Coverage — L39-41 (3 lines)
-- docs/code-testing.md § Running the suite on a small machine — L42-44 (3 lines)
-- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L45-57 (13 lines)
-- docs/code-testing.md § Suite size and time — L58-59 (2 lines)
+- docs/code-testing.md § Integration tests (real ffmpeg) — L21-39 (19 lines)
+- docs/code-testing.md § Coverage — L40-42 (3 lines)
+- docs/code-testing.md § Running the suite on a small machine — L43-45 (3 lines)
+- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L46-58 (13 lines)
+- docs/code-testing.md § Suite size and time — L59-60 (2 lines)
 - docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-12 (12 lines)
 - docs/code-text.md § Where things are — L13-25 (13 lines)
 - docs/code-text.md § Model and file — L26-40 (15 lines)

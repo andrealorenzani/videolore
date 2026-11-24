@@ -42,6 +42,8 @@ pub struct Segment {
     pub media: MediaId,
     pub path: PathBuf,
     pub has_audio: bool,
+    /// The audio track the clip plays (REQ-340): `[n:a:<track>]` in the graph.
+    pub audio_track: u8,
     pub src_in: Micros,
     /// Full clip length (fades are positioned against it).
     pub len: Micros,
@@ -235,6 +237,7 @@ pub fn segments(project: &Project, from: Micros, src: Source) -> Result<Vec<Segm
                 media: m.id,
                 path: src.path_of(m),
                 has_audio: m.format.has_audio(),
+                audio_track: c.audio_track,
                 src_in: c.src_in,
                 len: c.len(),
                 skip: (from - start).max(Micros::ZERO),
@@ -449,7 +452,7 @@ fn spatial_job(
     path: &[Pov],
     src: Source,
 ) -> Option<crate::spatial::SpatialJob> {
-    if !crate::spatial::is_ambisonic(&m.format) {
+    if !crate::spatial::is_ambisonic_track(&m.format, c.audio_track) {
         return None;
     }
     let len = c.src_len();
@@ -461,6 +464,7 @@ fn spatial_job(
         src_in: c.src_in,
         len,
         path: start_path(m, path),
+        track: c.audio_track,
     })
 }
 

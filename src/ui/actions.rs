@@ -281,7 +281,12 @@ pub const ACTIONS: &[Action] = &[
         [],
         "Subtitle style, language and lines"
     ),
-    action!(Volume, "Volume…", [], "Video sound and music volume"),
+    action!(
+        Volume,
+        "Volume and track…",
+        [],
+        "Video sound and music volume, and the audio track"
+    ),
     action!(
         CleanAudio,
         "Clean audio…",
@@ -356,9 +361,9 @@ pub const ACTIONS: &[Action] = &[
     ),
     action!(
         ApplyClipVolume,
-        "Volume",
+        "Volume and track",
         [],
-        "Set the sound level of the selected clip"
+        "Set the sound level and the audio track of the selected clip"
     ),
     action!(
         ApplyClipCleanAudio,
@@ -398,7 +403,7 @@ pub const ACTIONS: &[Action] = &[
     ),
     action!(
         ApplyWholeVolume,
-        "Volume",
+        "Volume and track",
         [],
         "Set the sound levels of the whole video"
     ),

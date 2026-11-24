@@ -132,6 +132,8 @@ pub struct CreateRequest {
     pub source: Option<SourceChoice>,
     /// The labels of the subtitle tracks offered (dialog list).
     pub labels: Vec<String>,
+    /// The audio track the speech is taken from (REQ-339; 0 = the first).
+    pub audio: u8,
     /// Reuse the tracks without matching words to the speech.
     pub spread: bool,
     /// Speech recognition level for this creation only (`None`: the setting).
@@ -260,7 +262,7 @@ impl Popup {
             Popup::Settings => settings::SETTINGS_TITLE,
             Popup::Fades => "Fade IN/OUT",
             Popup::Subtitles => "Subtitles",
-            Popup::Volume => "Volume",
+            Popup::Volume => "Volume and track",
             Popup::CleanAudio => "Clean audio",
             Popup::ClipDetails => "Clip details",
             Popup::Instance => "Selected effect",
@@ -337,6 +339,9 @@ pub struct Popups {
     pub targets: Vec<(Popup, Target)>,
     /// The keyframe selected in the Scale or Move popup (its key time).
     pub key: Option<Micros>,
+    /// The audio track chosen in the Subtitles popup (REQ-339): a setting of the next
+    /// creation, not stored in the project.
+    pub subtitle_audio: u8,
 }
 
 impl Popups {
@@ -449,6 +454,7 @@ pub struct ExportStatus {
 struct TrackCheck {
     id: MediaId,
     tracks: Vec<media::SubtitleTrack>,
+    audio: Vec<media::AudioTrack>,
     spherical: bool,
     probed: Option<MediaItem>,
 }
@@ -1960,3 +1966,5 @@ pub(crate) mod tests;
 mod text_tests;
 #[cfg(test)]
 mod ux_tests;
+#[cfg(test)]
+mod v31_tests;

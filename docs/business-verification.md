@@ -50,3 +50,7 @@ Hardware export on real graphics cards stays with QG-05 (see [Settings, performa
 33. **Off-view arrows** (REQ-260): in a 360 clip, an item outside the view shows an arrow at the nearest picture edge; a click turns the view to it.
 34. **Per-clip camera paths** (REQ-268): split a 360 clip, give each part another camera path, undo, redo, save and reopen: each part keeps its own path; a project saved by 2.0.3 opens with the same paths.
 35. **Picture subtitles in the player** (REQ-253): a real Blu-ray rip (PGS) and a DVD rip opened in the player: the track is listed marked "picture", its lines are drawn at their times and scale with the window; a line already on screen when playback or a jump starts appears at the next change (known limitation).
+
+## Manual checks of 3.1.0 (not a blocker)
+36. **Player audio menu on a real two-track file** (REQ-338): open an MP4 and an MKV that each have two audio tracks (for example two languages) in the player. Expected: the Audio menu lists both tracks, the first one plays by default; choosing the second changes the sound at once; opening another file starts again on the first track. Result: pending.
+37. **Subtitle track switch-off in a real player** (REQ-337, REQ-182): export a project with the "As subtitle track" style to MP4, MOV and MKV; open each in a player that can switch subtitles off. Expected: the picture has no lines; the track lists the project language with its lines at their times; switching it off hides them. Result: pending.

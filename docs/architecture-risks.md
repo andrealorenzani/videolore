@@ -8,7 +8,8 @@ Part of [Architecture](architecture.md). Each entry names its area document. Pro
 - **QG-05 export speed at 1080p (NOT MET, 0.4.0):** −14 % to +41 % against a 40 % target on Intel Iris Plus G7; quality and size pass. [export](architecture-export.md).
 - **Camera export speed (MEASURED):** about one third of real time or less at 1080p; target of half real time not met; accepted. [360](architecture-360.md).
 
-## Open product decisions
+## Product decisions with accepted risk
+- **Format 15 for every save (3.1.0, decided by Andrea, Q-F1):** every save writes format 15 (one rule, as 2.3.0), so 3.0.x cannot open any project saved by 3.1.0 or later; the release notes say so. [projects](architecture-projects.md).
 - **Blur divisor (REQ-222):** the requirement names a quarter; the build uses an eighth (measured faster). **Decision:** keep the eighth and change the requirement wording, or revert. [performance](architecture-performance.md).
 - **Picture items limits (ADR-192):** the plan's 20 items, 8 MiB file and 16 megapixels are not enforced by the code (only the header is read). **Decision:** enforce or drop the limits. [text](architecture-text.md), [NFR](architecture-nfr.md).
 - **Default 360 choice in export:** 360 video (assumption). [export](architecture-export.md).
@@ -19,6 +20,7 @@ Part of [Architecture](architecture.md). Each entry names its area document. Pro
 - **Container and no-metadata 360 files:** a file without spherical information stays flat (since 1.4.0); a choice at import is a roadmap item. [360](architecture-360.md).
 - **Boxed shadow design (2.1.0):** design A (box colour from `OutlineColour`, a spike) or design B (vector box behind the text); the choice follows the spike. [subtitles](architecture-subtitles.md).
 - **Enlarge word:** the in-house layout must match libass at 1080 px (spike). [subtitles](architecture-subtitles.md).
+- **Planned 3.1.0 risks:** a non-first audio track re-encodes the clip (time cost); proxies grow by one stream per track and are rebuilt once; "As subtitle track" differs between the preview and the export on purpose (the player decides the look of the track); the blurred fill cause is in the clip path (to be located, ADR-250); Enlarge word moves words of old projects. [subtitles](architecture-subtitles.md), [effects](architecture-effects.md), [picture](architecture-picture.md).
 
 ## Technical risks
 - **Bundled ffmpeg 9.x not checked for:** time-dependent Scale and Move sizes (accepted by 6.1.1 in the spike), `lut3d` options, `reset_rot` and the 360 commands, the camera timings. The 2.0.2 run repeated the camera timings on 9.0.2. [picture](architecture-picture.md), [360](architecture-360.md), [build](architecture-build.md).

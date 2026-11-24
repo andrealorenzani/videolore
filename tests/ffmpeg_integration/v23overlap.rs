@@ -221,24 +221,22 @@ fn a_changed_shape_crops_a_video_to_the_box_and_stretches_a_picture_to_it() {
     );
 }
 
-/// The number and the centre of the pixels that have ink in `with` and none in `without` (two
-/// gray pictures `w` wide): what one word adds to a picture. The centre of mass is not moved
-/// by the few edge pixels that anti-aliasing turns on or off.
-fn added_ink(with: &[u8], without: &[u8], w: usize) -> (usize, f64, f64) {
-    let (mut n, mut sx, mut sy) = (0usize, 0.0, 0.0);
-    for (i, (a, c)) in with.iter().zip(without).enumerate() {
-        if *a > 128 && *c <= 128 {
-            n += 1;
-            sx += (i % w) as f64;
-            sy += (i / w) as f64;
+/// The box of the pixels that have ink in a gray picture `w` wide: `(left, right, top, bottom)`
+/// and their number.
+fn ink_box(pic: &[u8], w: usize) -> (usize, usize, usize, usize, usize) {
+    let (mut l, mut r, mut t, mut b, mut n) = (usize::MAX, 0, usize::MAX, 0, 0);
+    for (i, a) in pic.iter().enumerate() {
+        if *a > 128 {
+            let (x, y) = (i % w, i / w);
+            (l, r, t, b, n) = (l.min(x), r.max(x), t.min(y), b.max(y), n + 1);
         }
     }
-    (n, sx / n.max(1) as f64, sy / n.max(1) as f64)
+    (l, r, t, b, n)
 }
 
-// covers: REQ-333, REQ-309
+// covers: REQ-334, REQ-309
 #[test]
-fn the_enlarged_word_keeps_its_centre_and_the_other_words_do_not_move_in_a_real_render() {
+fn the_enlarged_word_keeps_its_base_and_centre_and_makes_room_in_a_real_render() {
     use videolore::ass;
     use videolore::subtitles::{LineId, Preset, ShownLine, StyleSettings, Word};
     let Some(env) = setup() else { return };
@@ -261,14 +259,14 @@ fn the_enlarged_word_keeps_its_centre_and_the_other_words_do_not_move_in_a_real_
         size: None,
         anchor: None,
     };
-    // the document 1.5 s in (the middle word is the one that is spoken), as the 2.3.0 build
-    // writes it
-    let doc = |enlarge: u8| {
+    // the document 1.5 s in (the middle word is the one that is spoken), with one word only
+    // of the three events kept
+    let doc = |enlarge: u8, keep: usize| {
         let st = StyleSettings {
             enlarge,
             ..StyleSettings::default()
         };
-        ass::document_styled(
+        let d = ass::document_styled(
             std::slice::from_ref(&line),
             Preset::EnlargeWord,
             &st,
@@ -276,48 +274,45 @@ fn the_enlarged_word_keeps_its_centre_and_the_other_words_do_not_move_in_a_real_
             1080,
             Micros(1_500_000),
             &[],
-        )
-    };
-    let render =
-        |doc: &str| super::v204::render_ass_sized(&env, doc, &ass::BUNDLED_FACES, (1920, 1080));
-    let base_only = |d: &str| {
-        // without the events of the enlarged word (they have their own place)
+        );
+        let mut n = 0;
         d.lines()
-            .filter(|l| !l.contains("\\an5\\pos("))
+            .filter(|l| {
+                !l.starts_with("Dialogue") || {
+                    n += 1;
+                    n == keep + 1
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let enlarged = doc(12);
-    assert!(enlarged.contains("\\an5\\pos("), "{enlarged}");
-    // the line with the other words only, the line as it is at normal size (the hidden word shown
-    // and no enlarged event), and the enlarged word on top of the base line
-    let others = render(&base_only(&enlarged));
-    let normal = render(
-        &base_only(&enlarged)
-            .replace("{\\alpha&HFF&}", "")
-            .replace("{\\alpha&H00&}", ""),
+    let render =
+        |doc: &str| super::v204::render_ass_sized(&env, doc, &ass::BUNDLED_FACES, (1920, 1080));
+    // the middle word at the growth of 1 px (nearly its normal size) and at 40 px
+    let (small, large) = (render(&doc(1, 1)), render(&doc(40, 1)));
+    let (s, l) = (ink_box(&small, 1920), ink_box(&large, 1920));
+    assert!(s.4 > 500, "the word has ink: {s:?}");
+    assert!(l.4 > s.4 * 3 / 2, "larger: {s:?} {l:?}");
+    // the base: the bottom of the letters within 2% of the height (21 px)
+    assert!(s.3.abs_diff(l.3) <= 21, "base: {s:?} {l:?}");
+    // the centre within 0.5% of the width (9 px)
+    let (cs, cl) = ((s.0 + s.1) / 2, (l.0 + l.1) / 2);
+    assert!(cs.abs_diff(cl) <= 9, "centre: {s:?} {l:?}");
+    // it grows upwards: the top is higher
+    assert!(l.2 < s.2, "{s:?} {l:?}");
+    // the word before is further left by about half the extra width (within 1%)
+    let (first_s, first_l) = (
+        ink_box(&render(&doc(1, 0)), 1920),
+        ink_box(&render(&doc(40, 0)), 1920),
     );
-    let big = render(&enlarged);
-    // the other words did not move: the enlarged picture has all their ink
-    let lost = others
-        .iter()
-        .zip(&big)
-        .filter(|(o, b)| **o > 128 && **b <= 128)
-        .count();
-    // (the outline of the larger word may cover a few pixels at the edge of its neighbours)
-    let ink = others.iter().filter(|o| **o > 128).count();
-    assert!(
-        lost * 20 < ink,
-        "{lost} of {ink} pixels of the other words are gone"
+    let extra = (l.1 - l.0) as f64 - (s.1 - s.0) as f64;
+    let moved = first_s.0 as f64 - first_l.0 as f64;
+    assert!((moved - extra / 2.0).abs() <= 19.0, "{moved} {extra}");
+    // and the word after is further right
+    let (last_s, last_l) = (
+        ink_box(&render(&doc(1, 2)), 1920),
+        ink_box(&render(&doc(40, 2)), 1920),
     );
-    // the word at its normal size and enlarged: the same centre, and larger
-    let (nb, eb) = (
-        added_ink(&normal, &others, 1920),
-        added_ink(&big, &others, 1920),
-    );
-    assert!(nb.0 > 500, "the word at normal size has ink: {nb:?}");
-    assert!(eb.0 > nb.0 + nb.0 / 5, "larger: {nb:?} {eb:?}");
-    // the plan allows 2% of the height (21 px); the measured place is within 4 px
-    assert!((nb.1 - eb.1).abs() <= 4.0, "x: {nb:?} {eb:?}");
-    assert!((nb.2 - eb.2).abs() <= 4.0, "y: {nb:?} {eb:?}");
+    let moved = last_l.0 as f64 - last_s.0 as f64;
+    assert!((moved - extra / 2.0).abs() <= 19.0, "{moved} {extra}");
 }

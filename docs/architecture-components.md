@@ -14,15 +14,15 @@ Part of [Architecture](architecture.md). The module graph, threads, channels and
 
 ## Module roles
 - `time`: exact time arithmetic and timestamps (no floating point in cut maths).
-- `media`: facts of a file from ffprobe (analysing, ready, rejected; video or audio-only; text tracks 1.2.0; 360 flag 1.2.6; overlay-file facts).
+- `media`: facts of a file from ffprobe (analysing, ready, rejected; video or audio-only; text tracks 1.2.0; 360 flag 1.2.6; overlay-file facts; audio tracks 3.1.0 planned, ADR-245).
 - `timeline`: clips, in and out points, order, cuts, fades (edge fades as clip flags, 1.6.1), volume, clean audio, speed (2.0.4), overlaps (`clip_overlaps`), order rows (`clip_order`), per-clip aspects; the validity rules.
 - `export::choice` (1.4.0): pure model of the Export dialog (mode, formats, 360 choice, name and target rules, reasons, mapping to the plan).
 - `music`: the music track; clips never overlap; place, move, trim, split, delete.
 - `subtitles`: lines stored against the source speech, their timeline appearance, position (1.2.0), `StyleSettings` (2.1.0). `srt` (1.2.0): SRT reader and writer. `align` (1.2.0): matches track words to the speech (2.0.3 sound correction). `speech_regions` (2.2.0): the REQ-177 speech-region method (not frozen).
 - `camera` (1.2.6): 360 camera maths (limits, POV path, drag and zoom, the `v360` command file with absolute commands and changed values); sphere projection (1.3.0); start view (2.0.4).
-- `ass`: the ASS subtitle file for each style; shadows (2.1.0); `word_centres` (2.3.0). `word_styles` (2.1.0): pure word plans; does not import `ass`.
+- `ass`: the ASS subtitle file for each style; shadows (2.1.0); `word_centres` (2.3.0). `word_styles` (2.1.0): pure word plans; does not import `ass`. `word_layout` (3.1.0 planned, ADR-248): pure positions of the words of a line for Enlarge word from its base; imports nothing (widths are given to it).
 - `history`: undo and redo of the whole edit; each step named (1.1.0).
-- `project`: versioned JSON, formats 1 to 14 (writer 14), `v9` and `v13` conversions in memory, `order`; unsaved-changes tracking. [projects](architecture-projects.md).
+- `project`: versioned JSON, formats 1 to 15 (writer 15 from 3.1.0; planned), `v9` and `v13` conversions in memory, `order`; unsaved-changes tracking. [projects](architecture-projects.md).
 - `overlap` (2.3.0): pure overlap model (type, clamp, cut, split, removal of an edit, speed rescale).
 - `effect_order`, `order_chain` (2.1.0, 2.2.0): movable rows and their order; the sound group. [effects](architecture-effects.md).
 - `format`: output formats, codecs, encoders with fallbacks.

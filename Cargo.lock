@@ -3470,7 +3470,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "videolore"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "cpal",
  "directories",
@@ -3497,7 +3497,7 @@ dependencies = [
 
 [[package]]
 name = "videolore-player"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "directories",
  "eframe",

@@ -116,5 +116,18 @@ Part of [Architecture](architecture.md). One line per decision: the choice and i
 - **Timing tests use the best of up to five samples; product limits unchanged** (QG-09).
 - **Speech fixture committed and checked by SHA-256; espeak-ng removed from CI** (2.0.4, QG-14).
 
+## Planned for 3.1.0 (ADR-244 to 254)
+- **Format 15 on every save, refused by older programs (ADR-244; Andrea chose this for Q-F1: every save writes 15, so 3.0.x cannot open 3.1.0 saves).**
+- **An audio track is its ordinal among the file's audio streams; a clip stores it (ADR-245).**
+- **A non-first audio track is an effect for export: re-encode, no stream copy (ADR-246).**
+- **Proxies keep all audio streams; the preview restarts the sound on a track change (ADR-247).**
+- **Enlarge word grows from its base, in a pure `word_layout` module (ADR-248; replaces REQ-333's centre rule).**
+- **"As subtitle track" writes the lines as a switchable track and burns none; the editor preview still draws them (ADR-249).**
+- **The blurred fill of a clip's Change aspect uses the same chain as the whole video (ADR-250).**
+- **Overlap media has its own Effects row (ADR-251).**
+- **The player's Audio menu sets the in-memory clip's track; nothing is saved (ADR-252).**
+- **The Subtitles popup's Audio track is a command argument, not stored (ADR-253).**
+- **Volume and track: the track is a clip field read by preview, export, merge and the 360 pre-pass (ADR-254).**
+
 ## Open choices
 Listed in [risks](architecture-risks.md#open-product-decisions): the blur divisor, the picture item limits, the Faster target, REQ-177, the boxed shadow design, the default 360 choice.

@@ -270,7 +270,7 @@ impl AppState {
             .sound_order(id)
             .into_iter()
             .map(|r| match r {
-                Row::Volume => (r, "Volume", Instance::ClipVolume(id)),
+                Row::Volume => (r, "Volume and track", Instance::ClipVolume(id)),
                 _ => (r, "Clean audio", Instance::CleanAudio(id)),
             })
             .collect();

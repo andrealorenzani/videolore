@@ -44,6 +44,8 @@ pub struct SpatialJob {
     pub src_in: Micros,
     pub len: Micros,
     pub path: Vec<Pov>,
+    /// The audio track read (`-map 0:a:<track>`, REQ-340; 0 = the first).
+    pub track: u8,
 }
 
 impl SpatialJob {
@@ -65,7 +67,22 @@ impl SpatialJob {
 /// True for the media whose sound is read as first-order ambisonics: a 360 picture with four
 /// audio channels (assumption: no other four-channel layout is common on a 360 clip).
 pub fn is_ambisonic(format: &crate::media::MediaFormat) -> bool {
-    format.is_360() && format.has_audio() && format.channels == Some(CHANNELS as u32)
+    is_ambisonic_track(format, 0)
+}
+
+/// The same for the audio track `track` of the file (REQ-340): the first track is judged by
+/// the file's channel count, another one by its own (a file not analysed has only the first).
+pub fn is_ambisonic_track(format: &crate::media::MediaFormat, track: u8) -> bool {
+    let channels = if track == 0 {
+        format.channels
+    } else {
+        format
+            .audio_tracks
+            .as_ref()
+            .and_then(|v| v.iter().find(|t| t.ordinal == track))
+            .map(|t| t.channels)
+    };
+    format.is_360() && format.has_audio() && channels == Some(CHANNELS as u32)
 }
 
 /// A frame of the sound field `[W, Y, Z, X]` turned for a camera looking at `yaw` (to the
@@ -157,7 +174,7 @@ pub fn wav_header(frames: u64) -> [u8; 44] {
     h
 }
 
-/// The ffmpeg arguments that decode the first audio stream of the job's clip as raw 32-bit
+/// The ffmpeg arguments that decode the audio track of the job's clip as raw 32-bit
 /// float, four channels, [`RATE`] Hz, on stdout.
 pub fn decode_args(job: &SpatialJob) -> Vec<std::ffi::OsString> {
     let mut a = argv([
@@ -178,7 +195,7 @@ pub fn decode_args(job: &SpatialJob) -> Vec<std::ffi::OsString> {
     a.push(file_arg(&job.source));
     a.extend(argv([
         "-map",
-        "0:a:0",
+        &format!("0:a:{}", job.track),
         "-vn",
         "-ac",
         "4",
@@ -396,6 +413,7 @@ mod tests {
             src_in: Micros(2_000_000),
             len: Micros(500_000),
             path,
+            track: 0,
         }
     }
 
@@ -406,6 +424,12 @@ mod tests {
         let mut b = job(vec![]);
         b.src_in = Micros(2_000_001);
         assert_ne!(a.wav_name(), b.wav_name());
+        // covers: REQ-340
+        let mut t = job(vec![]);
+        t.track = 1;
+        assert_ne!(a.wav_name(), t.wav_name(), "the track is in the key");
+        assert!(decode_args(&t).windows(2).any(|w| w == ["-map", "0:a:1"]));
+        assert!(decode_args(&a).windows(2).any(|w| w == ["-map", "0:a:0"]));
         let c = job(vec![Pov::new(Micros::ZERO, Camera::new(100, 0, 9000))]);
         assert_ne!(a.wav_name(), c.wav_name());
         assert!(a.wav_name().starts_with("spatial-") && a.wav_name().ends_with(".wav"));

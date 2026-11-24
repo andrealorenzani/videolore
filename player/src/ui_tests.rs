@@ -245,7 +245,7 @@ fn open_video(h: &mut Harness, dir: &Path, name: &str) {
 fn the_window_has_menus_and_controls_each_with_an_icon() {
     let d = tempfile::tempdir().unwrap();
     let mut h = Harness::new(state(d.path()));
-    for menu in ["File", "View", "Subtitles", "Help"] {
+    for menu in ["File", "View", "Audio", "Subtitles", "Help"] {
         assert!(h.has(menu), "{menu}: {:#?}", h.labels());
     }
     // the controls: every button shows its icon
@@ -362,6 +362,30 @@ fn the_subtitles_menu_lists_none_the_tracks_and_the_opened_files() {
     h.click_label("film.srt (file)");
     assert!(h.app.project.picture_sub.is_none());
     assert_eq!(h.app.project.subtitles.lines.len(), 2);
+}
+
+// covers: REQ-338
+#[test]
+fn the_audio_menu_lists_the_tracks_and_choosing_one_runs_its_command() {
+    let d = tempfile::tempdir().unwrap();
+    let mut h = Harness::new(state(d.path()));
+    // no video: nothing to choose
+    h.click_label("Audio");
+    assert!(h.find("No audio track").unwrap().disabled);
+    h.key(Key::Escape);
+    h.click(pos2(480.0, 300.0));
+    h.idle(2);
+    open_video(&mut h, d.path(), "sounds.mkv");
+    h.click_label("Audio");
+    for name in ["English (stereo)", "Italian — Film (6 channels)"] {
+        assert!(h.has(name), "{name}: {:#?}", h.labels());
+    }
+    h.click_label("Italian — Film (6 channels)");
+    assert_eq!(h.app.audio_track(), 1);
+    // the menu shows the playing track as the chosen one
+    h.click_label("Audio");
+    h.click_label("English (stereo)");
+    assert_eq!(h.app.audio_track(), 0);
 }
 
 // covers: REQ-141

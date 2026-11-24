@@ -26,6 +26,7 @@ The command passes: the **target version**, the part (`business`, `architecture`
 5. **Consistency**: run `scripts/docs-check.sh` and fix every problem it prints. Read in full only the doc files this development changed, and check them against the change (stale facts, contradictions). Record any inconsistency you could not fix.
 6. **README** (`close` part, or whenever a user-facing change was delivered): update Latest changes (last 3 user-facing versions) and anything else it shows that changed. Do not change the poem (only the **POEM** mode of `/release` does).
 7. **Workflow**: if `.claude/` or `AGENTS.md` changed in this development, make sure `docs/workflow*.md` says so.
+7b. To change a requirement, an ADR or a version/number/word in a doc when you already know the new text, use `scripts/doc-replace.sh` (see rule 13b in `AGENTS.md`) instead of reading the old paragraph; never read a line just to change it.
 8. Finish with `scripts/version.sh check`, then update `ai-docs/notes.md` (one line per development).
 
 ## Roadmap rules (`docs/roadmap.md`)

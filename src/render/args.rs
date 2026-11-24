@@ -591,6 +591,9 @@ pub struct FrameKey {
     /// Change aspect and the picture's scale and place at this position, in millionths
     /// (1.5.0); `None` with no frame effect.
     pub placement: Option<FramePlacement>,
+    /// The Change aspect is the clip's own (REQ-286): its frame is smaller than the output,
+    /// so the kept background cannot be used (REQ-335).
+    pub own_aspect: bool,
     /// Fingerprint of the clip's Apply LUT table (1.6.0): a changed file re-renders the
     /// picture once.
     pub luts: Option<String>,
@@ -599,6 +602,8 @@ pub struct FrameKey {
     /// The overlaps of the clip on screen, with the frame index since their start for an
     /// animation (REQ-325).
     pub overlaps: Vec<(crate::overlap::Overlap, i64)>,
+    /// The audio track the clip plays (REQ-340): a change restarts what is shown and heard.
+    pub audio_track: u8,
 }
 
 impl FrameKey {
@@ -612,7 +617,10 @@ impl FrameKey {
         let (Some(aspect), _) = self.placement.as_ref()? else {
             return None;
         };
-        if !matches!(aspect.fill, frame::Fill::Blur) || self.camera.is_some() || self.fade.is_some()
+        if !matches!(aspect.fill, frame::Fill::Blur)
+            || self.camera.is_some()
+            || self.fade.is_some()
+            || self.own_aspect
         {
             return None;
         }
@@ -697,6 +705,8 @@ pub fn frame_key(
         })
         .collect();
     Some(FrameKey {
+        own_aspect: tl.own_aspect(c.id).is_some(),
+        audio_track: c.audio_track,
         luts,
         order,
         overlaps,

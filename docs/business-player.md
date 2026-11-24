@@ -9,6 +9,7 @@ Back to the [index](business.md).
 - **Playback**: Play/Pause (Space), a seek bar, volume and mute; the file name in the title.
 - **360 video**: drag the picture to turn the camera, as in the editor (see [Boxes on the picture and 360 video](business-picture.md)).
 - **Subtitles**: a Subtitles menu chooses None, a subtitle track of the video, or a `.srt` file opened with Subtitles > Open .srt…; a line can be dragged on the picture.
+- **Audio track** (3.1.0): an Audio menu chooses which audio track of the video plays; the first one by default (REQ-338).
 - **Full screen**: only the picture and its controls remain; Esc leaves it.
 - **Start screen**: a splash screen like the editor's (REQ-150).
 
@@ -22,6 +23,9 @@ Back to the [index](business.md).
 
 ### Subtitles
 - REQ-140 (implemented): The Subtitles menu lists None, every text subtitle track embedded in the video (named by its title or language), and every `.srt` file opened in this session with Subtitles > Open .srt…; the chosen one is shown on the picture at the video's time, drawn as in the editor preview. A subtitle line is dragged to another place as in REQ-089; the place is a fraction of the picture, kept while the player is open and not saved. On a 360 video the lines stay fixed on the screen. Acceptance: choosing an embedded track shows its lines at their times; Open .srt adds the file and selects it; dragging a line moves it, and reopening the file gives the default place.
+
+### Audio track
+- REQ-338 (implemented; Andrea, 2026-11-24): An **Audio** menu lists every audio track of the video, each named by its language or title and its channel count (MINOR). The first track is chosen by default; the chosen one is the sound that plays, and it stays chosen while the same file is open in the session (as REQ-251); it is not saved (REQ-252 keeps only the volume, mute and folder). The subtitle choice of REQ-140 and REQ-253 is unchanged and is the "enable or select a subtitle" menu. Acceptance: a video with two audio tracks lists both, track 1 plays first; choosing track 2 plays its sound in step with the picture (within 100 ms, REQ-256); a one-track video lists one entry; reopening the file in the session keeps the choice; after a restart the first track is used.
 
 ### Full screen
 - REQ-141 (implemented): View > Full screen, F11 or F switches full screen on and off. In full screen the menu bar, the title and the status information are hidden; the picture and its controls remain, and the controls hide after 2 seconds without pointer movement and show again when the pointer moves. When full screen is entered, a popup says "Press Esc to exit full screen" with an OK button; it closes with OK or after 5 seconds, and shows again at the next entry. Esc always leaves full screen, and while a popup is open it closes the popup first. Acceptance: entering full screen hides the menu and the title; the popup appears; Esc returns to the normal window; F11 toggles both ways.

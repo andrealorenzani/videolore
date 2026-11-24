@@ -71,7 +71,13 @@ pub const SPECS: [EffectSpec; 9] = {
             Popup::Subtitles,
             false,
         ),
-        spec(E::Volume, "Volume", "Volume", Popup::Volume, false),
+        spec(
+            E::Volume,
+            "Volume and track",
+            "Volume",
+            Popup::Volume,
+            false,
+        ),
         spec(
             E::CleanAudio,
             "Clean audio",

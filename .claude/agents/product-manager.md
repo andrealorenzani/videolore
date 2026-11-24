@@ -43,3 +43,5 @@ Run after the Documenter's RELEASE-CLEAN. Read by path: `ai-docs/notes.md` § `R
 4. **Page data**: append a `## Product Manager` section to the temporary file `github_page/after release.md` (quote the name; git-ignored): the value for users, the main features and what each is for, the roadmap highlights (the next batches of `docs/roadmap_tasks.md`) in user words. Facts only.
 Return the usual format (`## Questions` `none`, `## Changed`, `## Future work`).
 
+## Replacing text
+To change a requirement, an ADR or a version/number/word when you know the new text, use `scripts/doc-replace.sh` (`req`, `adr`, `line`, `text`; rule 13b in `AGENTS.md`); never read the old paragraph first. If it prints `+N lines` with N≠0, refresh your `ai-docs` index with `scripts/doc-index.sh`.

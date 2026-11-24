@@ -57,6 +57,7 @@ pub mod icon {
     pub const OPEN: &str = i::FOLDER_OPEN;
     pub const QUIT: &str = i::SIGN_OUT;
     pub const FULLSCREEN: &str = i::CORNERS_OUT;
+    pub const AUDIO: &str = i::SPEAKER_HIGH;
     pub const SUBTITLES: &str = i::SUBTITLES;
     pub const NO_SUBTITLES: &str = i::X;
     pub const OPEN_SRT: &str = i::FILE_VIDEO;
@@ -249,6 +250,7 @@ fn menu_bar(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
                 ui.close();
             }
         });
+        ui.menu_button("Audio", |ui| audio_menu(ui, app, cmds));
         ui.menu_button("Subtitles", |ui| subtitles_menu(ui, app, cmds));
         ui.menu_button("Help", |ui| {
             if ui
@@ -260,6 +262,22 @@ fn menu_bar(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
             }
         });
     });
+}
+
+/// The audio tracks of the video, the playing one marked (REQ-338).
+fn audio_menu(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
+    let tracks = app.audio_tracks();
+    if tracks.is_empty() {
+        ui.add_enabled(false, Button::new(label(icon::MUTED, "No audio track")));
+        return;
+    }
+    for (ordinal, name) in tracks {
+        let b = Button::selectable(app.audio_track() == ordinal, label(icon::AUDIO, &name));
+        if ui.add(b).clicked() {
+            cmds.push(Command::ChooseAudio(ordinal));
+            ui.close();
+        }
+    }
 }
 
 fn subtitles_menu(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {

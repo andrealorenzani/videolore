@@ -9,7 +9,7 @@ Back to the [index](code.md). How the modules of the editor (`src/`) and of vide
 | Interface | `ui` (sub-modules per area: `actions`, `menu`, `toolbar`, `keymap`, `effects`, `popups`, `frame_popups`, `text_popup`, `lut_popup`, `applied_effects`, `timeline`, `overlap_lane`, `overlap_box`, `picture`, `boxes`, `placement`, `layout`, `place`, `theme`, `strings`, `splash_window`…), `dialogs`; the player's `ui`, `fullscreen` |
 | Application | `app`: `AppState`, `Command` (`command`), the effect table (`effect_kind`), the dispatcher and its areas (`dispatch_project`, `dispatch_subtitles`, `dispatch_settings`, `dispatch_interface`, `dispatch_playback`, `dispatch_view`, `dispatch_effects`, `dispatch_objects`), `enabled`, `tick`, and the behaviour files (`effects`, `frame`, `lut`, `overlap`, `applied`, `texts`, `placing`, `sphere`, `stops`, `subs_create`, `subs_import`, `export_flow`, `recovery`); the player's `app`, `subs` |
 | Engine (threads, processes) | `export` (+ `choice`), `outcheck`, `hwenc`, `hwdec`, `preview`, `proxy`, `stt`, `jobs`, `ffmpeg`, `scratch`, `autosave`, `instance` (one window), `desktop`, `siblings` |
-| Rendering (pure) | `render` (`segments`, `inputs`, `graph`, `plan`, `args`, `overlay`, `steps`), `spatial`, `format`, `ass`, `word_styles`, `camera`, `frame`, `keyframes`, `lut` (`parse`, `store`), `spherical`, `mp4tracks`, `picture` |
+| Rendering (pure) | `render` (`segments`, `inputs`, `graph`, `plan`, `args`, `overlay`, `steps`), `spatial`, `format`, `ass`, `word_styles`, `word_layout`, `camera`, `frame`, `keyframes`, `lut` (`parse`, `store`), `spherical`, `mp4tracks`, `picture` |
 | Model (pure) | `project` (+ `v9`, `v13`, `order`), `timeline`, `overlap`, `effect_order`, `order_chain`, `music`, `subtitles`, `text` (+ `timing`, `layout`, `events`), `selection`, `history`, `media`, `srt`, `align`, `speech_regions`, `measure`, `placement` |
 | Configuration and notices | `settings` (+ `interface`), `fonts`, `notices`, `packaging`, `splash`, `machine` |
 | Shared helpers | `base` (`io`, `private`, `pos`, `names`, `language`, `shadow`, `font`, `testing`): uses no other module, so it is in no cycle; `time` |
@@ -46,7 +46,7 @@ flowchart TD
   order_chain --> effect_order
   overlap --> picture
   text --> subtitles & ass & fonts & measure & picture
-  ass --> measure & word_styles & subtitles
+  ass --> measure & word_styles & word_layout & subtitles
   fonts --> ass
   placement --> project & subtitles & text & selection & ass
   subtitles --> timeline & media

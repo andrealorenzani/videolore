@@ -169,30 +169,35 @@ pub fn effects_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     }
 }
 
-/// The row of the things that are not effects to drop on a clip, only a click: Add Text and
-/// Overlap media (REQ-325) share one row, wrapped when the section is narrow. It is the first
-/// row of the Effects section, so the nine effects below it may scroll.
+/// The two rows of the things that are not effects to drop on a clip, only a click: Add Text
+/// and Overlap media (REQ-325). Each is a row of its own, drawn like the effect rows (REQ-336).
+/// They are the first rows of the Effects section, so the nine effects below them may scroll.
 fn new_object_row(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
-    ui.horizontal_wrapped(|ui| {
-        let r = ui
-            .add(Button::selectable(
+    let w = ui.available_width();
+    let r = ui
+        .add(
+            Button::selectable(
                 app.popups.is_open(crate::app::Popup::Text),
                 super::icons::label(super::icons::TEXT_T, ADD_TEXT_ROW),
-            ))
-            .on_hover_text(ADD_TEXT_TOOLTIP);
-        if r.clicked() {
-            cmds.push(Command::OpenNewText);
-        }
-        let r = ui
-            .add(Button::new(super::icons::label(
-                super::icons::IMAGE,
-                OVERLAP_MEDIA_ROW,
-            )))
-            .on_hover_text(OVERLAP_MEDIA_TOOLTIP);
-        if r.clicked() {
-            cmds.push(Command::AddOverlap(None));
-        }
-    });
+            )
+            .min_size(egui::vec2(w, 0.0)),
+        )
+        .on_hover_text(ADD_TEXT_TOOLTIP);
+    if r.clicked() {
+        cmds.push(Command::OpenNewText);
+    }
+    let r = ui
+        .add(
+            Button::selectable(
+                false,
+                super::icons::label(super::icons::IMAGE, OVERLAP_MEDIA_ROW),
+            )
+            .min_size(egui::vec2(w, 0.0)),
+        )
+        .on_hover_text(OVERLAP_MEDIA_TOOLTIP);
+    if r.clicked() {
+        cmds.push(Command::AddOverlap(None));
+    }
 }
 
 /// Text of a fade in lists and the chooser.
@@ -430,6 +435,7 @@ pub fn subtitles_body(ui: &mut Ui, app: &AppState, cache: &mut UiCache, cmds: &m
             });
     });
     style_settings(ui, subs, cmds);
+    subtitle_audio_choice(ui, app, cmds);
     ui.horizontal_wrapped(|ui| {
         ui.label(tr!(Language));
         let current = match (&subs.language, subs.language_overridden) {
@@ -627,6 +633,81 @@ pub fn clip_volume_controls(
     }
 }
 
+/// The Audio track choice of a clip (REQ-340): its media's tracks, the clip's own chosen.
+fn audio_track_choice(
+    ui: &mut Ui,
+    app: &AppState,
+    clip: crate::timeline::ClipId,
+    cmds: &mut Vec<Command>,
+) {
+    let Some(c) = app.project.timeline.get(clip) else {
+        return;
+    };
+    let tracks = app.audio_track_labels(c.media);
+    if tracks.is_empty() {
+        return;
+    }
+    let current = tracks
+        .iter()
+        .find(|(o, _)| *o == c.audio_track)
+        .map_or_else(|| tracks[0].1.clone(), |(_, l)| l.clone());
+    ui.horizontal_wrapped(|ui| {
+        ui.label(AUDIO_TRACK);
+        egui::ComboBox::from_id_salt("clip-audio-track")
+            .selected_text(current)
+            .show_ui(ui, |ui| {
+                for (ordinal, label) in &tracks {
+                    if ui
+                        .selectable_label(c.audio_track == *ordinal, label)
+                        .clicked()
+                    {
+                        cmds.push(Command::SetClipAudioTrack {
+                            clip,
+                            track: *ordinal,
+                        });
+                    }
+                }
+            });
+    });
+}
+
+/// The Audio track choice of the Subtitles popup (REQ-339): the tracks of the clip the
+/// effect applies to (the first clip for the whole video); the speech is taken from it.
+fn subtitle_audio_choice(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
+    let clip = app
+        .target_clip()
+        .or_else(|| app.project.timeline.clips.first().map(|c| c.id));
+    let Some(media) = clip
+        .and_then(|id| app.project.timeline.get(id))
+        .map(|c| c.media)
+    else {
+        return;
+    };
+    let tracks = app.audio_track_labels(media);
+    if tracks.is_empty() {
+        return;
+    }
+    let chosen = app.popups.subtitle_audio;
+    let current = tracks
+        .iter()
+        .find(|(o, _)| *o == chosen)
+        .map_or_else(|| tracks[0].1.clone(), |(_, l)| l.clone());
+    ui.horizontal_wrapped(|ui| {
+        ui.label(AUDIO_TRACK);
+        egui::ComboBox::from_id_salt("subtitle-audio-track")
+            .selected_text(current)
+            .show_ui(ui, |ui| {
+                for (ordinal, label) in &tracks {
+                    if ui.selectable_label(chosen == *ordinal, label).clicked() {
+                        cmds.push(Command::SetSubtitleAudio(*ordinal));
+                    }
+                }
+            });
+    });
+}
+
+pub const AUDIO_TRACK: &str = "Audio track";
+
 /// The popup of one clip's volume.
 pub fn clip_volume_body(
     ui: &mut Ui,
@@ -638,6 +719,7 @@ pub fn clip_volume_body(
     if let Some(name) = app.clip_name(clip) {
         ui.add(egui::Label::new(format!("Clip: {name}")).truncate());
     }
+    audio_track_choice(ui, app, clip, cmds);
     ui.weak("The video's volume (Volume, whole video) multiplies this level.");
     let tl = &app.project.timeline;
     let keys = tl.volume_keys(clip);

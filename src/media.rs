@@ -31,6 +31,10 @@ pub struct MediaFormat {
     pub audio_bit_rate: Option<u64>,
     pub sample_rate: Option<u32>,
     pub channels: Option<u32>,
+    /// Every audio track of the file (3.1.0, REQ-340). `None`: not checked yet (media
+    /// imported before 3.1.0); `Some(empty)`: checked, there is no sound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_tracks: Option<Vec<AudioTrack>>,
     /// Text subtitle tracks inside the file (1.2.0). `None`: not checked yet (media
     /// imported before 1.2.0); `Some(empty)`: checked, there are none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -114,6 +118,8 @@ pub fn spherical_of(video: &Value) -> bool {
 
 /// Most subtitle tracks recorded for one file.
 pub const MAX_SUBTITLE_TRACKS: usize = 16;
+/// Most audio tracks of a file that are kept (REQ-340).
+pub const MAX_AUDIO_TRACKS: usize = 32;
 /// Longest track title kept (characters).
 pub const MAX_TRACK_TITLE: usize = 64;
 
@@ -155,6 +161,81 @@ pub struct SubtitleTrack {
     /// Title from the file, sanitised for display.
     #[serde(default)]
     pub title: Option<String>,
+}
+
+/// An audio track inside a video file (3.1.0, REQ-340).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AudioTrack {
+    /// Position among the file's audio streams (`-map 0:a:<ordinal>`).
+    pub ordinal: u8,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Number of channels (0 when unknown).
+    #[serde(default)]
+    pub channels: u32,
+}
+
+impl AudioTrack {
+    /// Makes stored values safe (a project file is untrusted input).
+    pub fn sanitised(self) -> AudioTrack {
+        let t = SubtitleTrack {
+            ordinal: self.ordinal,
+            codec: TextCodec::Text,
+            language: self.language,
+            title: self.title,
+        }
+        .sanitised();
+        AudioTrack {
+            ordinal: self.ordinal,
+            language: t.language,
+            title: t.title,
+            channels: self.channels.min(64),
+        }
+    }
+
+    /// How the track is named to the user: the subtitle rule, then the channel count.
+    pub fn label(&self) -> String {
+        let name = SubtitleTrack {
+            ordinal: self.ordinal,
+            codec: TextCodec::Text,
+            language: self.language.clone(),
+            title: self.title.clone(),
+        }
+        .label();
+        match self.channels {
+            0 => name,
+            1 => format!("{name} (mono)"),
+            2 => format!("{name} (stereo)"),
+            n => format!("{name} ({n} channels)"),
+        }
+    }
+}
+
+/// Reads every audio track of an ffprobe `streams` list; at most [`MAX_AUDIO_TRACKS`].
+pub fn audio_tracks(streams: &[Value]) -> Vec<AudioTrack> {
+    let auds = streams
+        .iter()
+        .filter(|s| s.get("codec_type").and_then(Value::as_str) == Some("audio"));
+    auds.take(MAX_AUDIO_TRACKS)
+        .enumerate()
+        .map(|(ordinal, s)| {
+            let tag = |k: &str| {
+                s.get("tags")
+                    .and_then(|t| t.get(k))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            };
+            AudioTrack {
+                ordinal: ordinal as u8,
+                language: tag("language"),
+                title: tag("title"),
+                channels: s.get("channels").and_then(num_u64).unwrap_or(0) as u32,
+            }
+            .sanitised()
+        })
+        .collect()
 }
 
 /// A picture-based subtitle track inside a video file (REQ-253): its lines are bitmaps.
@@ -585,6 +666,7 @@ pub fn parse_ffprobe(json: &str, path: &Path) -> Result<(Micros, MediaFormat), M
     };
     let tracks = subtitle_tracks(&streams);
     let mut f = MediaFormat {
+        audio_tracks: Some(audio_tracks(&streams)),
         subtitle_tracks: Some(tracks),
         picture_tracks: picture_tracks(&streams),
         container: normalize_container(
@@ -978,6 +1060,54 @@ pub(crate) mod tests {
             (ok.language, ok.title.as_deref()),
             (None, Some("a\u{FFFD}b"))
         );
+    }
+
+    // covers: REQ-340
+    #[test]
+    fn every_audio_track_is_recorded_with_its_language_title_and_channels() {
+        let probe = |audio: &str| {
+            let json = format!(
+                r#"{{"streams": [
+                  {{"codec_type": "video", "codec_name": "h264", "width": 64, "height": 64}}
+                  {audio}],
+                  "format": {{"format_name": "matroska,webm", "duration": "2"}}}}"#
+            );
+            parse_ffprobe(&json, Path::new("/a/film.mkv")).unwrap().1
+        };
+        // no sound, one track, two tracks
+        assert_eq!(probe("").audio_tracks, Some(vec![]));
+        let one = probe(r#", {"codec_type": "audio", "codec_name": "aac", "channels": 2}"#);
+        let t = one.audio_tracks.unwrap();
+        assert_eq!(t.len(), 1);
+        assert_eq!((t[0].ordinal, t[0].channels), (0, 2));
+        assert_eq!(t[0].label(), "Track 1 (stereo)");
+        let two = probe(
+            r#", {"codec_type": "audio", "codec_name": "aac", "channels": 2,
+                  "tags": {"language": "eng", "title": "Main\u0007"}},
+                {"codec_type": "subtitle", "codec_name": "subrip"},
+                {"codec_type": "audio", "codec_name": "ac3", "channels": 6,
+                  "tags": {"language": "bad code!"}},
+                {"codec_type": "audio", "codec_name": "aac", "channels": 1}"#,
+        );
+        let t = two.audio_tracks.unwrap();
+        // the ordinal counts the audio streams only (-map 0:a:N)
+        assert_eq!(t.iter().map(|x| x.ordinal).collect::<Vec<_>>(), [0, 1, 2]);
+        assert_eq!(t[0].label(), "English — Main\u{FFFD} (stereo)");
+        assert_eq!(t[1].language, None, "a bad language code is dropped");
+        assert_eq!(t[1].label(), "Track 2 (6 channels)");
+        assert_eq!(t[2].label(), "Track 3 (mono)");
+        // hostile: more tracks than the cap, a huge title
+        let mut streams = Vec::new();
+        for _ in 0..100 {
+            streams.push(
+                serde_json::json!({"codec_type": "audio", "codec_name": "aac",
+                "channels": 99999, "tags": {"title": "x".repeat(100_000)}}),
+            );
+        }
+        let t = audio_tracks(&streams);
+        assert_eq!(t.len(), MAX_AUDIO_TRACKS);
+        assert!(t[0].title.as_ref().unwrap().chars().count() <= MAX_TRACK_TITLE);
+        assert_eq!(t[0].channels, 64);
     }
 
     // covers: REQ-086, REQ-057

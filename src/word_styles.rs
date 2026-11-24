@@ -111,51 +111,20 @@ pub fn typewriter(
 /// Enlarge word (REQ-309): two events per word. The base event shows the whole line with
 /// the word hidden; the second shows only the word, `fs` pixels in size, with the other
 /// words hidden at their normal size. The line is centred, so the word grows around its own
-/// centre and no other word moves.
-///
-/// With `anchors` (REQ-333) the enlarged event is the word alone, drawn at its own measured
-/// centre (`\an5\pos`), so it grows around the place it has at normal size and no other word
-/// moves; `bord` is the outline tag the big word keeps (empty or `\bord..`). Without them
-/// (the text cannot be measured) the word grows inside the line.
+/// centre and no other word moves. This in-line form is used only when the text cannot be
+/// measured (see [`enlarge_placed`]).
 pub fn enlarge(
     words: &[Timed],
     line: (Micros, Micros),
     tag: &str,
     fs: u32,
     esc: &dyn Fn(&str) -> String,
-    anchors: Option<(&[(f64, f64)], &str)>,
 ) -> Vec<Event> {
     let at = spans(words, line.0, line.1);
     let mut out = Vec::with_capacity(words.len() * 2);
     for (i, (from, to)) in at.iter().enumerate() {
         let mut base = String::from(tag);
         let mut big = String::from(tag);
-        if let Some((centres, bord)) = anchors.filter(|(c, _)| c.len() == words.len()) {
-            for (j, w) in words.iter().enumerate() {
-                let space = if j + 1 < words.len() { " " } else { "" };
-                let text = esc(&w.text);
-                if j == i {
-                    base.push_str(&format!("{{\\alpha&HFF&}}{text}{{\\alpha&H00&}}{space}"));
-                } else {
-                    base.push_str(&format!("{text}{space}"));
-                }
-            }
-            let (x, y) = centres[i];
-            let big = format!(
-                "{{\\an5\\pos({},{}){bord}\\fs{fs}}}{}",
-                x.round() as i64,
-                y.round() as i64,
-                esc(&words[i].text)
-            );
-            for text in [base, big] {
-                out.push(Event {
-                    start: *from,
-                    end: *to,
-                    text,
-                });
-            }
-            continue;
-        }
         for (j, w) in words.iter().enumerate() {
             let space = if j + 1 < words.len() { " " } else { "" };
             let text = esc(&w.text);
@@ -172,6 +141,46 @@ pub fn enlarge(
                 start: *from,
                 end: *to,
                 text,
+            });
+        }
+    }
+    out
+}
+
+/// A word drawn at its own place: left edge, bottom of its line box and font size, pixels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct At {
+    pub left: f64,
+    pub bottom: f64,
+    pub size: f64,
+}
+
+/// Enlarge word from its base (REQ-334, ADR-248): while word `i` is spoken, every word of the
+/// line is its own event, anchored bottom-left at `spots[i][j]` (the places `word_layout`
+/// computes), so the enlarged word keeps its baseline and grows upwards and its neighbours
+/// make room. `bord` is the outline tag every word keeps (empty or `\bord..`).
+pub fn enlarge_placed(
+    words: &[Timed],
+    line: (Micros, Micros),
+    spots: &[Vec<At>],
+    bord: &str,
+    esc: &dyn Fn(&str) -> String,
+) -> Vec<Event> {
+    let at = spans(words, line.0, line.1);
+    let mut out = Vec::with_capacity(words.len() * words.len());
+    for (i, (from, to)) in at.iter().enumerate() {
+        let Some(row) = spots.get(i) else { break };
+        for (w, s) in words.iter().zip(row) {
+            out.push(Event {
+                start: *from,
+                end: *to,
+                text: format!(
+                    "{{\\an1\\pos({:.1},{:.1}){bord}\\fs{}}}{}",
+                    s.left,
+                    s.bottom,
+                    s.size.round() as i64,
+                    esc(&w.text)
+                ),
             });
         }
     }
@@ -253,7 +262,6 @@ mod tests {
             "{\\an5}",
             52,
             &esc,
-            None,
         );
         assert_eq!(ev.len(), 6);
         assert_eq!(
@@ -267,37 +275,41 @@ mod tests {
         assert_eq!(ev[2].start, ev[3].start);
     }
 
-    // covers: REQ-333
+    // covers: REQ-334
     #[test]
-    fn enlarge_with_anchors_draws_the_word_alone_at_its_centre_and_leaves_the_base() {
-        let centres = [(100.0, 50.4), (200.0, 50.4), (300.4, 50.6)];
-        let ev = enlarge(
+    fn enlarge_placed_writes_every_word_at_its_own_place_for_each_spoken_word() {
+        let spot = |left: f64, size: f64| At {
+            left,
+            bottom: 900.0,
+            size,
+        };
+        let spots = vec![
+            vec![spot(10.04, 70.0), spot(300.0, 50.0), spot(500.0, 50.0)],
+            vec![spot(0.0, 50.0), spot(310.0, 70.0), spot(520.0, 50.0)],
+            vec![spot(0.0, 50.0), spot(290.0, 50.0), spot(510.0, 70.0)],
+        ];
+        let ev = enlarge_placed(
             &words(),
             (Micros::ZERO, Micros(3_000_000)),
-            "{\\an5\\pos(960,900)}",
-            52,
+            &spots,
+            "\\bord3",
             &esc,
-            Some((&centres, "\\bord3")),
         );
-        assert_eq!(ev.len(), 6);
-        // the base event is the same as without anchors; the big word stands alone
-        assert_eq!(
-            ev[2].text,
-            "{\\an5\\pos(960,900)}one {\\alpha&HFF&}typed{\\alpha&H00&} end"
-        );
-        assert_eq!(ev[3].text, "{\\an5\\pos(200,50)\\bord3\\fs52}typed");
-        assert_eq!(ev[5].text, "{\\an5\\pos(300,51)\\bord3\\fs52}end");
-        assert_eq!((ev[2].start, ev[2].end), (ev[3].start, ev[3].end));
-        // a wrong count of anchors is ignored: the in-line form
-        let few = enlarge(
+        assert_eq!(ev.len(), 9);
+        assert_eq!(ev[0].text, "{\\an1\\pos(10.0,900.0)\\bord3\\fs70}one");
+        assert_eq!(ev[4].text, "{\\an1\\pos(310.0,900.0)\\bord3\\fs70}typed");
+        // every word of one spoken word's group has that word's times
+        assert!(ev[3..6].iter().all(|e| e.start == Micros(1_000_000)));
+        assert!(ev[3..6].iter().all(|e| e.end == Micros(2_000_000)));
+        // fewer groups of places than words: the rest is not written
+        let few = enlarge_placed(
             &words(),
             (Micros::ZERO, Micros(3_000_000)),
+            &spots[..1],
             "",
-            52,
             &esc,
-            Some((&centres[..2], "")),
         );
-        assert!(few[3].text.contains("{\\fs52}typed{\\r}"));
+        assert_eq!(few.len(), 3);
     }
 
     // covers: REQ-310

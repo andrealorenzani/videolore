@@ -59,6 +59,8 @@ pub enum Command {
     /// Volume, 0..=100.
     SetVolume(u8),
     ToggleMute,
+    /// Audio menu: the ordinal of the audio track to play (REQ-338).
+    ChooseAudio(u8),
     /// Subtitles menu: `None` = no subtitles, else the source's number.
     ChooseSubtitles(Option<usize>),
     /// Subtitles > Open .srt… (asks for a file).
@@ -170,6 +172,8 @@ pub struct PlayerState {
     pub playlist: Playlist,
     /// Where lines were dragged, by video, for this session only (REQ-251).
     placed_memory: HashMap<PathBuf, HashMap<(usize, usize), Pos>>,
+    /// The audio track chosen for each video, for this session only (REQ-338, not saved).
+    audio_memory: HashMap<PathBuf, u8>,
     /// The video was playing at the last tick (to see it end).
     was_playing: bool,
     /// Start playing as soon as the next video of the playlist is open.
@@ -243,6 +247,7 @@ impl PlayerState {
             settings_path: None,
             playlist: Playlist::default(),
             placed_memory: HashMap::new(),
+            audio_memory: HashMap::new(),
             was_playing: false,
             pending_play: false,
         }
@@ -479,6 +484,7 @@ impl PlayerState {
                 self.project.mix.video_muted = !self.project.mix.video_muted;
                 self.restart_playback(now)
             }
+            Command::ChooseAudio(track) => self.choose_audio(track, now),
             Command::ChooseSubtitles(s) => self.choose_subtitles(s, now),
             Command::PickSrt => match self.dialogs.pick_srt() {
                 Some(p) => self.open_srt(&p, now),
@@ -694,6 +700,13 @@ impl PlayerState {
         if let Some(placed) = self.placed_memory.get(&memory_key(&path)) {
             self.subs.set_placed(placed.clone());
         }
+        // the audio track chosen earlier in this session is played again (REQ-338)
+        if let Some(track) = self.audio_memory.get(&memory_key(&path)).copied()
+            && let Some(c) = p.timeline.clips.first().map(|c| c.id)
+            && usize::from(track) < m.format.audio_tracks.as_ref().map_or(1, Vec::len)
+        {
+            let _ = p.timeline.set_audio_track(c, track);
+        }
         // the volume and the sound are the ones remembered (REQ-252)
         p.mix.video_volume = self.settings.volume;
         p.mix.video_muted = self.settings.muted;
@@ -898,6 +911,52 @@ impl PlayerState {
                 self.status = e;
             }
         }
+    }
+
+    // ---- audio track (REQ-338) ----
+
+    /// The audio tracks of the open video as `(ordinal, name)`; the first one when the
+    /// file was not analysed for tracks; none for a video without sound.
+    pub fn audio_tracks(&self) -> Vec<(u8, String)> {
+        let Some(m) = self.project.media.first() else {
+            return Vec::new();
+        };
+        match &m.format.audio_tracks {
+            Some(v) => v.iter().map(|t| (t.ordinal, t.label())).collect(),
+            None if m.format.has_audio() => vec![(0, "Track 1".to_string())],
+            None => Vec::new(),
+        }
+    }
+
+    /// The audio track the open video plays (0 = the first).
+    pub fn audio_track(&self) -> u8 {
+        self.project
+            .timeline
+            .clips
+            .first()
+            .map_or(0, |c| c.audio_track)
+    }
+
+    fn choose_audio(&mut self, track: u8, now: Instant) -> Result<(), String> {
+        let id = self
+            .project
+            .timeline
+            .clips
+            .first()
+            .map(|c| c.id)
+            .ok_or("Open a video first")?;
+        if !self.audio_tracks().iter().any(|(o, _)| *o == track) {
+            return Err("That audio track no longer exists".into());
+        }
+        self.project
+            .timeline
+            .set_audio_track(id, track)
+            .map_err(|e| e.to_string())?;
+        if let Some(f) = &self.file {
+            self.audio_memory.insert(memory_key(f), track);
+        }
+        // the sound changes at the place the video is at (REQ-256)
+        self.restart_playback(now)
     }
 
     // ---- subtitles ----

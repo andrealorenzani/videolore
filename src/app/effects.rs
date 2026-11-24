@@ -187,6 +187,54 @@ impl AppState {
         })
     }
 
+    /// Chooses the audio track of a clip (REQ-340): one undo step; a track the file does not
+    /// have is refused; nothing when it is the clip's track already.
+    pub(super) fn set_clip_audio_track(
+        &mut self,
+        clip: ClipId,
+        track: u8,
+        now: Instant,
+    ) -> Result<(), String> {
+        let c = self
+            .project
+            .timeline
+            .get(clip)
+            .ok_or(EditError::NoSuchClip.to_string())?;
+        if c.audio_track == track {
+            return Ok(());
+        }
+        let count = self.audio_track_count(c.media);
+        if usize::from(track) >= count.max(1) {
+            return Err("The file has no such audio track".into());
+        }
+        self.edit(now, "Audio track", |e| {
+            e.timeline.set_audio_track(clip, track).map_err(err)
+        })
+    }
+
+    /// The audio tracks of a media file as `(ordinal, label)`: every analysed track; a file not
+    /// analysed yet shows its one sound as "Track 1"; none for a file without sound.
+    pub fn audio_track_labels(&self, media: crate::media::MediaId) -> Vec<(u8, String)> {
+        let Some(m) = self.project.media.iter().find(|m| m.id == media) else {
+            return Vec::new();
+        };
+        match &m.format.audio_tracks {
+            Some(v) => v.iter().map(|t| (t.ordinal, t.label())).collect(),
+            None if m.format.has_audio() => vec![(0, "Track 1".to_string())],
+            None => Vec::new(),
+        }
+    }
+
+    /// The number of audio tracks a media file has (1 when it was not analysed yet).
+    pub fn audio_track_count(&self, media: crate::media::MediaId) -> usize {
+        self.project
+            .media
+            .iter()
+            .find(|m| m.id == media)
+            .and_then(|m| m.format.audio_tracks.as_ref())
+            .map_or(1, Vec::len)
+    }
+
     /// Clean audio on or off for a clip or every clip (REQ-114): one undo step, nothing
     /// when every clip concerned already has that setting.
     pub(super) fn set_clean_audio(

@@ -48,6 +48,7 @@ impl AppState {
             }
             Command::SetMusicEffects { clip, .. } => self.project.music.get(*clip).is_some(),
             Command::SetClipVolume { clip, .. }
+            | Command::SetClipAudioTrack { clip, .. }
             | Command::SetVolumeKey { clip, .. }
             | Command::SetVolumeKeyEase { clip, .. }
             | Command::RemoveVolumeKey { clip, .. }

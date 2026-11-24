@@ -97,7 +97,7 @@ fn the_widget_lists_the_movable_rows_top_first_then_the_fixed_rows() {
         [
             "Text: Hello",
             "Apply LUT: warm.cube",
-            "Volume",
+            "Volume and track",
             "Change speed: 200%"
         ]
     );
@@ -207,7 +207,7 @@ fn a_whole_video_effect_is_an_ordinary_row_on_each_clip_with_no_mark() {
     let before: Vec<_> = ids.iter().map(|c| rows(&mut app, *c)).collect();
     for r in &before {
         let n: Vec<&str> = r.iter().map(|r| r.name.as_str()).collect();
-        for want in ["Scale", "Move", "Clean audio", "Volume"] {
+        for want in ["Scale", "Move", "Clean audio", "Volume and track"] {
             assert!(n.contains(&want), "{want} in {n:?}");
         }
         assert!(n.iter().any(|x| x.starts_with("Apply LUT: ")), "{n:?}");
@@ -349,7 +349,7 @@ fn the_sound_rows_move_inside_their_group_in_one_named_undo_step_and_speed_stays
         [
             "Apply LUT: warm.cube",
             "Clean audio",
-            "Volume",
+            "Volume and track",
             "Change speed: 200%"
         ]
     );
@@ -374,7 +374,7 @@ fn the_sound_rows_move_inside_their_group_in_one_named_undo_step_and_speed_stays
         names(&mut app, c),
         [
             "Apply LUT: warm.cube",
-            "Volume",
+            "Volume and track",
             "Clean audio",
             "Change speed: 200%"
         ]

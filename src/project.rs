@@ -31,6 +31,8 @@ mod v13;
 mod v13_tests;
 #[cfg(test)]
 mod v14_tests;
+#[cfg(test)]
+mod v15_tests;
 pub use v13::Conversion;
 mod v9;
 
@@ -40,7 +42,7 @@ mod v9;
 /// the camera paths; 3 since 1.2.0: clip volumes, fades at the video's edges, subtitle
 /// positions, subtitle tracks of media; 12 since 2.1.0: text shadows and the subtitle
 /// style settings; 14 since 2.3.0: overlap media, no crop). 13 is converted in memory when it is opened (`v13`).
-pub const SCHEMA_VERSION: u64 = 14;
+pub const SCHEMA_VERSION: u64 = 15;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 96 * 1024 * 1024;
@@ -102,6 +104,13 @@ impl ProjectDoc {
     pub fn set_subtitle_tracks(&mut self, id: MediaId, tracks: Vec<crate::media::SubtitleTrack>) {
         if let Some(m) = self.media.iter_mut().find(|m| m.0 == id) {
             m.4.subtitle_tracks = Some(tracks);
+        }
+    }
+
+    /// Records the audio tracks found by a later check of a file (REQ-340, REQ-186).
+    pub fn set_audio_tracks(&mut self, id: MediaId, tracks: Vec<crate::media::AudioTrack>) {
+        if let Some(m) = self.media.iter_mut().find(|m| m.0 == id) {
+            m.4.audio_tracks = Some(tracks);
         }
     }
 
@@ -523,6 +532,12 @@ pub fn from_json_noted(
                 .map(crate::media::SubtitleTrack::sanitised)
                 .collect()
         });
+        format.audio_tracks = format.audio_tracks.map(|v| {
+            v.into_iter()
+                .take(crate::media::MAX_AUDIO_TRACKS)
+                .map(crate::media::AudioTrack::sanitised)
+                .collect()
+        });
         format.picture_tracks = std::mem::take(&mut format.picture_tracks)
             .into_iter()
             .take(crate::media::MAX_SUBTITLE_TRACKS)
@@ -576,6 +591,7 @@ pub fn from_json_noted(
         return Err(invalid("volume above 100%"));
     }
     validate_frames(&mut timeline, &media);
+    validate_audio_tracks(&mut timeline, &media, &mut missing);
     if let Some(old) = legacy {
         v9::apply(&mut timeline, &mut mix, old, &mut missing);
     }
@@ -670,6 +686,30 @@ fn validate_overlaps(tl: &mut crate::timeline::Timeline, notes: &mut Vec<String>
     }
     if dropped > 0 {
         notes.push(format!("{dropped} damaged overlap(s) were removed"));
+    }
+}
+
+/// A clip's audio track the file does not have (or a track above the first when the file was
+/// not analysed) goes back to the first one; the count goes in one line (ADR-245).
+fn validate_audio_tracks(
+    tl: &mut crate::timeline::Timeline,
+    media: &[MediaItem],
+    notes: &mut Vec<String>,
+) {
+    let mut reset = 0usize;
+    for c in tl.clips.iter_mut().filter(|c| c.audio_track != 0) {
+        let count = media
+            .iter()
+            .find(|m| m.id == c.media)
+            .and_then(|m| m.format.audio_tracks.as_ref())
+            .map_or(1, Vec::len);
+        if usize::from(c.audio_track) >= count {
+            c.audio_track = 0;
+            reset += 1;
+        }
+    }
+    if reset > 0 {
+        notes.push(format!("{reset} clip track choices reset"));
     }
 }
 
@@ -1144,14 +1184,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 14"));
+        assert!(text.contains("\"schema_version\": 15"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 15");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 16");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(15));
+        assert_eq!(e, ProjectError::TooNew(16));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -1330,8 +1370,8 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 14"));
-        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(14)));
+        assert!(text.contains("\"schema_version\": 15"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(15)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         assert_eq!(
             opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
@@ -1478,9 +1518,9 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 14"));
+        assert!(text.contains("\"schema_version\": 15"));
         assert!(text.contains("\"camera\"") && !text.contains("\"treat_as_360\""));
-        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(14)));
+        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(15)));
         assert_eq!(load(&file).unwrap().0, q);
         // a project without points of view writes no camera section
         let plain = dir.path().join("plain.vlproj");
@@ -1564,7 +1604,7 @@ pub(crate) mod tests {
         assert!(text.contains("\"texts\"") && text.contains("\"anchor\""));
         assert_eq!(load(&file).unwrap().0, q);
         // 1.2.6 refuses it, untouched
-        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(14)));
+        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(15)));
         // a project of 1.2.6 has no texts
         let old = text.replace("\"schema_version\": 6", "\"schema_version\": 4");
         let mut v: serde_json::Value = serde_json::from_str(&old).unwrap();
@@ -1614,10 +1654,10 @@ pub(crate) mod tests {
         v["subtitles"]["lines"][0]["anchor"]["pitch_cd"] = 99_999.into();
         assert!(from_json(&v.to_string(), dir.path()).is_err());
         // too new
-        let new = text.replace("\"schema_version\": 14", "\"schema_version\": 15");
+        let new = text.replace("\"schema_version\": 15", "\"schema_version\": 16");
         assert_eq!(
             from_json(&new, dir.path()).unwrap_err(),
-            ProjectError::TooNew(15)
+            ProjectError::TooNew(16)
         );
     }
 
@@ -1754,11 +1794,11 @@ pub(crate) mod tests {
         let file = dir.path().join("f.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 14"));
+        assert!(text.contains("\"schema_version\": 15"));
         assert!(text.contains("\"frame_aspect\""));
         assert_eq!(load(&file).unwrap().0, p);
         // 1.4.1 and earlier refuse it
-        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(14)));
+        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(15)));
     }
 
     // covers: REQ-132
@@ -1770,7 +1810,7 @@ pub(crate) mod tests {
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 14", "\"schema_version\": 6");
+            .replace("\"schema_version\": 15", "\"schema_version\": 6");
         assert!(!text.contains("frame_aspect") && !text.contains("clip_frames"));
         let (q, _) = from_json(&text, dir.path()).unwrap();
         assert!(!q.timeline.has_frame_effect());
@@ -1882,19 +1922,19 @@ pub(crate) mod tests {
         let file = dir.path().join("l.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 14"));
+        assert!(text.contains("\"schema_version\": 15"));
         let (q, notes) = load(&file).unwrap();
         assert_eq!(q, p);
         assert!(notes.is_empty());
         // 1.5.x refuses the file with its newer-version message and leaves it alone
-        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(14)));
+        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(15)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         // a project of 1.5 (no LUT keys) opens with no colour effect
         let plain = sample(dir.path());
         save(&plain, &file).unwrap();
         let old = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 14", "\"schema_version\": 7");
+            .replace("\"schema_version\": 15", "\"schema_version\": 7");
         assert!(!old.contains("whole_lut") && !old.contains("clip_luts"));
         let (r, _) = from_json(&old, dir.path()).unwrap();
         assert!(!r.timeline.any_lut());
@@ -2011,7 +2051,7 @@ pub(crate) mod tests {
         assert_eq!(old.texts.items[0].height, DEFAULT_HEIGHT);
         // a 2.0.2 reader refuses a format 10 file (nothing is silently changed)
         let text = std::fs::read_to_string(dir.path().join("f10.vlproj")).unwrap();
-        assert!(text.contains("\"schema_version\": 14"));
+        assert!(text.contains("\"schema_version\": 15"));
     }
 
     // covers: REQ-167

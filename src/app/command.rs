@@ -330,6 +330,9 @@ pub enum Command {
         target: FrameTarget,
         effect: FrameFx,
     },
+    /// Chooses the audio track the Subtitles effect takes the speech from (REQ-339; not an
+    /// edit, not stored).
+    SetSubtitleAudio(u8),
     /// Selects a keyframe of the open Scale or Move popup.
     SelectKey(Option<Micros>),
     /// A value being dragged in the preview (not an edit).
@@ -356,6 +359,12 @@ pub enum Command {
         clip: ClipId,
         volume: u8,
         muted: bool,
+    },
+    /// Chooses the audio track a clip plays (REQ-340): its ordinal among the file's audio
+    /// streams.
+    SetClipAudioTrack {
+        clip: ClipId,
+        track: u8,
     },
     /// Adds or removes the fade at the very start or end of the video.
     SetEdgeFade {
@@ -657,6 +666,7 @@ impl Command {
             }) => "Scale",
             Command::SetPicture(_) => "Move",
             Command::SetClipVolume { .. } => "Clip volume",
+            Command::SetClipAudioTrack { .. } => "Audio track",
             Command::SetCleanStrength { .. } => "Clean audio strength",
             Command::SetSpeechEnhance { on: true, .. } => "Normalise speech",
             Command::SetSpeechEnhance { on: false, .. } => "Remove normalise speech",

@@ -39,6 +39,10 @@ impl AppState {
                 Command::RemoveFrameEffect { target, effect } => {
                     self.remove_frame_effect(target, effect, now)
                 }
+                Command::SetSubtitleAudio(track) => {
+                    self.popups.subtitle_audio = track;
+                    Ok(())
+                }
                 Command::SelectKey(k) => {
                     self.popups.key = k;
                     Ok(())
@@ -53,6 +57,9 @@ impl AppState {
                     volume,
                     muted,
                 } => self.set_clip_volume(clip, volume, muted, now),
+                Command::SetClipAudioTrack { clip, track } => {
+                    self.set_clip_audio_track(clip, track, now)
+                }
                 Command::SetSpeedAll { speed } => self.set_speed_all(speed, now),
                 Command::RemoveVolume { clip } => self.remove_volume(clip, now),
                 Command::SetVolumeKeyEase { clip, at, ease } => {

@@ -5,7 +5,7 @@ Index of the architecture. Each topic is in its own document; read only the one 
 ## Overview
 `videolore` is a desktop video editor with a native window (Linux, macOS, Windows). It does not decode or encode video itself: it drives `ffmpeg` and `ffprobe`, which are **bundled with the installers** and run as separate programs. The edit (clips, cuts, fades, music, effects, Scale and Move, LUTs, texts, subtitles, pictures and overlays) is kept in memory, previewed, and exported with a single `ffmpeg` run. The preview and the export come from the same graph builder, so what is seen is what is exported. The separate player (`videolore-player`) uses the same preview engine for one video, with no editing and no export.
 
-Current build: 2.3.0 (built, not released). Last release: 1.6.3.
+Last release: 2.3.0. In development: 3.1.0 (planned: audio tracks per clip, Enlarge word from its base, "As subtitle track", blurred fill fix, Overlap media row, player audio menu; see the sections marked 3.1.0 planned and [decisions](architecture-decisions.md#planned-for-310-adr-244-to-254)).
 
 ## Sub-documents
 | Topic | Document |
@@ -51,7 +51,7 @@ The module map, its layers and the rule of no module cycle: [components](archite
 The UI never waits on `ffmpeg` or on disk, apart from saving or loading the project file (at most 96 MiB from format 11, 16 MiB before), the settings file (at most 64 KiB) and a few small files at Linux start-up.
 
 ## Projects
-Versioned JSON files; the current format is 14 (2.3.0). Files from a newer version are refused and never modified; loading validates strictly; the unsaved-changes prompt is shown on New, Open, close and Quit. Each older format opens with its documented conversion. See [projects](architecture-projects.md).
+Versioned JSON files; the current format is 14 (2.3.0); 15 from 3.1.0 (planned, ADR-244), written on every save. Files from a newer version are refused and never modified; loading validates strictly; the unsaved-changes prompt is shown on New, Open, close and Quit. Each older format opens with its documented conversion. See [projects](architecture-projects.md).
 
 ## Deviations from the first plan (as built)
 - **Time to live of a text:** a file is refused as damaged only outside 0.1 s to 24 hours; a value longer than the video is accepted, and when a text is added or moved it is limited to the video length. See [text](architecture-text.md#deviations-as-built).

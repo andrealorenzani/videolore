@@ -1,6 +1,7 @@
 # ai-notes: components, module roles, flows (owner: architect; index in ai-docs/architecture.md)
 
 ## Verified structure (2.3.0 built; checked against src/ at the 2.3.0 RELEASE)
+- PLAN 3.1.0 (ADR-244..254, not built): new pure `src/word_layout.rs` (imports nothing; widths passed in; Enlarge from base); `media` gets `audio_tracks: Option<Vec<AudioTrack>>`; `timeline::Clip.audio_track: u8`; `project` SCHEMA 15 (writer 15, no conversion, `v15_tests.rs`); `subtitles::Preset::AsTrack`; `render/graph.rs` `[n:a:k]`, `render/steps.rs` blur gate (ADR-250); `export/choice.rs` T2 for k ≠ 0; `proxy.rs` `-map 0:a?` and key layout; `spatial.rs` and `stt.rs` `0:a:k`; `player/src/app.rs` Audio menu. No module cycle expected (word_layout imports base only; the cycle test stays).
 - Programs: `src/main.rs` → `lib.rs` (`real_app`, `native_options`, `prepare_desktop`); `player/src/main.rs` → `player/src/lib.rs`. Workspace: `videolore` (lib + editor), member `player/` (`videolore-player`); rust-version 1.100, edition 2024.
 - Cycles: none since 2.0.1 (`base/` holds io, private, pos, names, language, shadow, font, testing; base imports nothing). `tests/module_cycles.rs` (syn) enforces it. Pure modules import no render, app, ui.
 - Large files (debt): `app.rs` ≈ 2100 lines core; `render.rs` split into `render/` (2.0.4); `ui/mod.rs` large.
