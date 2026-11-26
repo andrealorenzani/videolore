@@ -100,4 +100,5 @@ Where each important part of the code is, by area: the module, the main types an
 
 ## Packaging, build and quality
 - `src/packaging.rs:release_assets`, `parse_lock`, `ffmpeg_pin` (tests of `build.yml`, installers, NSIS pin, launcher; REQ-030, 040..042, 138, 225..229, 231); `scripts/package.sh`, `fetch-ffmpeg.sh`, `notices.sh`, `icons.sh`, `version.sh`; `.github/workflows/{build,installer-config,advisories,pages}.yml`; `tests/page.rs` (REQ-298, 299)
+- GitHub community files (root `*.md`, `.github/ISSUE_TEMPLATE/`, pull request template) — `tests/community.rs:form_fields`, `forbidden_term`, `mail_addresses` (REQ-359..366)
 - Quality items — `src/ui/tests.rs:sampled` (QG-18), `src/render/golden_tests.rs` (QG-15), `build.rs` (QG-17), `tests/ffmpeg_integration.rs:assert_pinned` (QG-08)

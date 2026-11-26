@@ -74,6 +74,8 @@ Not part of videolore; not linked.
 | ffmpeg (Ubuntu package) | system | Integration tests in CI (x264, x265, libass present) |
 | rsvg-convert or ImageMagick | system | Icon files, once (`scripts/icons.sh`), not needed to build |
 
+3.1.3: yaml-rust2 0.13.2 (MIT OR Apache-2.0, pure Rust, rust-version 1.85) as a dev-dependency only, to parse the GitHub issue forms in the tests. Not shipped.
+
 ## Platform build requirements (from source)
 - All: latest stable Rust (`rust-version` 1.100).
 - Linux: `libasound2-dev`, `pkg-config` (`audio`); `cmake`, `libclang-dev`, C++ compiler (`stt`).

@@ -7,18 +7,20 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business.md § Purpose — L3-7 (5 lines)
 - docs/business.md § Users — L8-14 (7 lines)
 - docs/business.md § Constraints — L15-21 (7 lines)
-- docs/business.md § Key decisions — L22-39 (18 lines)
-- docs/business.md § Documents — L40-42 (3 lines)
-- docs/business.md § Editing and projects — L43-49 (7 lines)
-- docs/business.md § Effects and frame — L50-58 (9 lines)
-- docs/business.md § Text and subtitles — L59-65 (7 lines)
-- docs/business.md § Picture, 360 and LUT — L66-71 (6 lines)
-- docs/business.md § Export, audio and performance — L72-78 (7 lines)
-- docs/business.md § Player and installation — L79-85 (7 lines)
-- docs/business.md § Version 3.1.0 — L86-89 (4 lines)
-- docs/business.md § Version 3.1.2 — L90-92 (3 lines)
-- docs/business.md § Known limitations — L93-95 (3 lines)
-- docs/business.md § Out of scope — L96-101 (6 lines)
+- docs/business.md § Key decisions — L22-40 (19 lines)
+- docs/business.md § Documents — L41-43 (3 lines)
+- docs/business.md § Editing and projects — L44-50 (7 lines)
+- docs/business.md § Effects and frame — L51-59 (9 lines)
+- docs/business.md § Text and subtitles — L60-66 (7 lines)
+- docs/business.md § Picture, 360 and LUT — L67-72 (6 lines)
+- docs/business.md § Export, audio and performance — L73-79 (7 lines)
+- docs/business.md § Player and installation — L80-86 (7 lines)
+- docs/business.md § Community — L87-89 (3 lines)
+- docs/business.md § Version 3.1.0 — L90-93 (4 lines)
+- docs/business.md § Version 3.1.2 — L94-96 (3 lines)
+- docs/business.md § Version 3.1.3 — L97-99 (3 lines)
+- docs/business.md § Known limitations — L100-102 (3 lines)
+- docs/business.md § Out of scope — L103-108 (6 lines)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-13 (9 lines)
 - docs/business-editing.md § Requirements — L14-15 (2 lines)
@@ -278,6 +280,15 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-overlap.md § Key decisions — L23-27 (5 lines)
 - docs/business-overlap.md § Out of scope — L28-31 (4 lines)
 - docs/business-overlap.md § Known limitations — L32-34 (3 lines)
+- docs/business-community.md § title — L1-2 (2 lines)
+- docs/business-community.md § Purpose — L3-5 (3 lines)
+- docs/business-community.md § Users — L6-10 (5 lines)
+- docs/business-community.md § Features (implemented, 3.1.3) — L11-19 (9 lines)
+- docs/business-community.md § Requirements (REQ-359..366) — L20-29 (10 lines)
+- docs/business-community.md § Key decisions — L30-37 (8 lines)
+- docs/business-community.md § Repository settings to set by hand on github.com — L38-46 (9 lines)
+- docs/business-community.md § Out of scope — L47-49 (3 lines)
+- docs/business-community.md § Known limitations — L50-53 (4 lines)
 
 Line range convention: heading to the line before the next heading. Re-check after any edit (grep -n '^#').
 
@@ -464,3 +475,28 @@ Line range convention: heading to the line before the next heading. Re-check aft
 - Result: no open question. Product risks R-SS1, R-SS2 (driver unknown), R-SS3, R-SS5, R-SS6, R-SS7, R-SS8 stay (see "Product risks (3.1.2 plan)").
 - Process: this session had no shell tool; scripts/doc-replace.sh and doc-index.sh were not run; line ranges were counted by hand (grep -n, line counts). Next session with a shell: run scripts/doc-index.sh to confirm.
 - Future work (returned to the command): native Wayland recording (REQ-358 later); region and window capture, pause and resume, hotkeys; one sound source choice or separate sound tracks; level control for the two sources; a start screen for the recorder if wanted; verification on Windows and macOS (manual checks 38-41).
+
+## Plan 3.1.3 (PLAN 2026-11-26; target 3.1.3; not built)
+- Feature: GitHub community standards (Andrea's request: community profile checklist, support, reported-content setting). Human doc: docs/business-community.md (new, indexed above); docs/business.md (Documents, one key decision, section Version 3.1.3 planned).
+- Requirements planned: REQ-359 code of conduct; 360 contributing guide; 361 security policy; 362 support; 363 issue forms; 364 pull request template; 365 community profile complete + README links; 366 no AI/agent/workflow terms in the community files, README, LICENSE (GPL-3.0 text unchanged). Next free ID REQ-367. Acceptances use presence and forbidden-term tests (`// covers:`) and, for the profile, a manual check on github.com.
+- Repository settings are manual (Andrea): description, website, topics, private vulnerability reporting, reported-content setting, community profile check. Listed in docs/business-community.md; no test can read them.
+- [MINOR] Owner gap: root CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, SUPPORT.md, .github/ISSUE_TEMPLATE/ and the pull request template are in no agent's owner list. Default: the documenter writes the text files and templates (docs-type, no owner guardrail); the principal-engineer writes the presence and forbidden-term test. Command to confirm; a workflow change (/change-workflow) if the owner table needs a line.
+- DECIDED (Andrea, REFINE 2026-11-26) Q-C1: conduct reports go to community@andrealorenzani.name (in CODE_OF_CONDUCT.md, REQ-359). Manual step for Andrea: make sure that mailbox receives mail. Security reports: GitHub private vulnerability reporting only; the conduct address is not used for security.
+- Conduct text: Contributor Covenant 2.1 (CC BY 4.0, attribution kept); the text is copied from the official source, not retyped.
+- DECIDED (Andrea, REFINE 2026-11-26) Q-C2: keep the internal workflow files as they are (option a). REQ-366 scope stays: community files, README, LICENSE. The releases/ snapshots and docs/ workflow words are accepted as public.
+- DECIDED (Andrea, REFINE 2026-11-26): owner default accepted for now: documenter writes the community files (root text files, .github templates); principal-engineer writes the presence and forbidden-term tests.
+- [MINOR] Contributions: issues and pull requests welcome, Andrea reviews, no merge promise, no CLA, GPL-3.0 inbound = outbound. Support: GitHub issues only, Discussions off. Supported version: latest release only.
+- [MINOR] Issue forms: blank issues off; chooser links support and private reporting. Bug form asks version, OS, steps, expected and actual result.
+- [MINOR] Version 3.1.3 (next minor after the 3.1.2 development; Andrea named no version).
+- Open questions: none (Q-C1 and Q-C2 decided at REFINE 2026-11-26, see above). Manual for Andrea: the mailbox community@andrealorenzani.name must receive mail; private vulnerability reporting turned on on github.com.
+
+## STATUS 3.1.3 (2026-11-26; version 3.1.3)
+- Implemented: REQ-359..366 (8 requirements); their lines in docs/business-community.md read `(implemented)`; no ID changed; next free REQ-367.
+- Text changed in place (no ID change, no line added): REQ-360 (local checks of the three programs in workspace form, build prerequisites listed); REQ-365 split: tested part = files and README links; the community profile check and repository settings stay manual and pending (not tested). REQ-366 wording as the documenter reworded it with doc-replace, accepted by the PM at STATUS: "no development-tool or internal process wording" in the community files and README; LICENSE unmodified GPL-3.0.
+- docs/business.md: "Version 3.1.3" section now implemented, with the pending manual steps; docs/business-community.md heading "Features (implemented, 3.1.3)".
+- Process: no shell tool in this session; scripts/doc-replace.sh and doc-index.sh were not run; edits were made with the file edit tool, line counts unchanged, so the indexes stay valid.
+- Future work (to return to the command): manual checks on github.com (Insights > Community, private vulnerability reporting, mailbox community@andrealorenzani.name, reported-content setting, repository description, website, topics); docs-check.sh coverage of the root community files and .github templates (workflow change, if wanted); native Wayland recording and the other 3.1.2 items stay in the roadmap.
+- Risks: R-GH1 public files show internal workflow (Q-C2); R-GH2 no conduct channel until Q-C1 is answered; R-GH3 private reporting is off by default on github.com (a report can be lost until Andrea turns it on); R-GH4 covenant text must be exact (copy the official text).
+- Assumptions: GitHub's community profile items are as listed in the docs (menu names on github.com may differ; check by hand); the Principal Engineer has no network access during the build, so the covenant text comes from Andrea or the official source in a later step if needed.
+- Future work (to return to the command): README "Community" section and the 3.1.3 changelog entry (documenter); presence and forbidden-term test (principal-engineer); docs-check.sh to cover the root community files and .github templates (workflow change); the owner line of Open question owner gap.
+- Process: no shell tool in this session; scripts/doc-replace.sh and doc-index.sh were not run; indexes counted by hand (grep -n '^#', line counts). Next session with a shell: run scripts/doc-index.sh.

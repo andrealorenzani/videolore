@@ -7,7 +7,7 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
 - Planned: REQ-177 (accuracy target, not met) and REQ-315 (integrated graphics, not met). Both carry their measured result in the text. 3.1.0 (implemented at STATUS 2026-11-24): REQ-334 (Enlarge word from its base; replaces the placement rule of 333), 335 (blurred fill fix of 126/326), 336 (Overlap media own row; amends 325), 337 (As subtitle track style), 338 (player Audio menu), 339 (Subtitles effect audio and subtitle track), 340 (Volume and track; amends 280, 084, 008).
 - REQ-333 is implemented (2.3.0); its line reads "(implemented; replaces ... replaced by REQ-334)" since 3.1.0, so feature coverage no longer requires it.
 - Implemented at STATUS 3.1.2 (2026-11-26): REQ-341..352 and 357, 358 (videolore-screen-spy, screen-spy doc; 357 sound; 358 Linux X11/XWayland), REQ-355, 356 (player playlist; 356 amends 254). REQ-353, 354 unassigned. Windows and macOS not verified on hardware (manual checks 38-41 pending; not blocking).
-- Next free ID: REQ-359.
+- Implemented at STATUS 3.1.3 (2026-11-26): REQ-359..366 (GitHub community files, README Community section, no workflow terms in public files; docs/business-community.md). REQ-365 is tested on files and README links only; the community profile check and repository settings are manual (Andrea), pending. Next free ID: REQ-367.
 - Amended in place in 2.3.0 (texts in the human docs): 280 (Volume keyframed effect), 281 (Change speed), 286 and 326 (Fit and empty space), 287 (Add Picture replaced by Overlap media), 295 ("Never" removed), 320-322 (order: no Crop, Overlap media in, Change speed fixed), 332 (conversion of 2.2.0 projects).
 - Earlier amendments kept: 076, 083, 116, 129, 131, 147, 148, 156, 157, 200-202, 302, 303, 304, 311 (2.2.0); 300, 301, 303-310 (2.1.0); 183, 195, 202, 222, 244, 248, 253, 257-260, 268, 273, 281, 287, 293 (2.0.4 as built).
 
@@ -18,6 +18,7 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
 - applied effects: 302-305, 311, 320-322 (applied-effects)
 - subtitle styles: 306-310, 333, 334, 337 (subtitle-styles)
 - ui: 024, 025, 066-074, 078-081, 093; interface 234-247 (interface)
+- community: 359-366 (community)
 - subtitles: 014-018, 044, 085-092, 095, 339; placement 168-176; subtitle files 180-188 (subtitle-files)
 - player audio track: 338 (player)
 - subtitle accuracy: 177 (planned), 178, 179 (subtitle-accuracy)

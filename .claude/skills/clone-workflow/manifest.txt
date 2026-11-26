@@ -26,7 +26,7 @@ template .claude/agents/analyst.md fc34b5ead8dfd130
 template .claude/agents/documenter.md e7955d0f820c55c4
 template .claude/agents/principal-engineer.md 25ef3be2e0320ab9
 template .claude/commands/release.md 102f691e2b009bd4
-template docs/workflow.md ab8a62b947998fa4
+template docs/workflow.md bf98f16eecd584df
 template .github/workflows/build.yml 4b051f347886243d
 template scripts/code-map.sh c2a80a4a3d09e171
 template scripts/collect-release.sh 8993b6ac11aaa105
@@ -41,6 +41,8 @@ template scripts/test-annotations.sh b213d73306798c3e
 template scripts/version.sh 687ae9a6b6fb2cb0
 skip .github/workflows/advisories.yml
 skip .github/workflows/installer-config.yml
+skip .github/ISSUE_TEMPLATE/*
+skip .github/pull_request_template.md
 skip scripts/fetch-ffmpeg.sh
 skip scripts/icons.sh
 skip scripts/make-spherical-fixture.sh

@@ -49,6 +49,11 @@ Part of [Architecture](architecture.md). Installers: [packaging](architecture-pa
 ## Test-suite memory cap (1.6.2, development machine)
 - Every build and test run on the 15 GB development machine is capped: `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 <command>` (e.g. `… cargo test --locked --workspace`); child processes (rustc, test binaries, ffmpeg) stay in the scope; coverage too. A run killed by the cap is a failure reported with the memory cause; the cap is raised only with a written reason. CI runners are not capped by this rule. The 8 GB value is an assumption to check on the first full run.
 
+## GitHub community files (3.1.3)
+- Plain files at the root (CODE_OF_CONDUCT.md, CONTRIBUTING.md, SECURITY.md, SUPPORT.md) and under `.github/` (issue forms in ISSUE_TEMPLATE, pull_request_template.md). Written by hand; the conduct text is Contributor Covenant 2.1 copied from upstream.
+- `tests/community.rs` checks that the files exist, that the YAML issue forms parse (yaml-rust2, dev-dependency only), that the licence file is the unmodified GPL-3.0 text, and that the public files and the README contain no internal wording.
+- No CI, packaging or release-snapshot change: `cargo test` runs the checks; the installers do not include the files; sources.zip does.
+
 ## Risks
 - Pinned ffmpeg downloads add CI time and depend on the download site (cache by lock hash).
 - Integration tests run on Linux only with the pinned build; Windows and macOS builds of 9.0.2 are not tested by the suite.

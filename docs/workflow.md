@@ -174,3 +174,4 @@ Never cloned: sources, `Cargo.*`, `README.md`, release snapshots, sub-documents,
 - 2026-11-24 — v3.1.0: `scripts/doc-replace.sh` replaces requirements, ADRs and versions without reading them (rule 13b, all owner agents); the Principal Engineer runs the quality suite once, at the end of all the code of a development, not while coding (rule 7).
 - 2026-11-26 — cloning moved into the `clone-workflow` skill (manifest, generic templates, placeholders, `clone.sh`, `check.sh`), replacing the command; `/change-workflow` keeps it complete (rule 6b).
 - 2026-11-26 — v3.1.2: CI, the version, coverage, feature coverage and code lookup scripts cover the screen recorder (`screen-spy/`); clone templates reviewed, unchanged because these changes are specific to this project.
+- 2026-11-26 — v3.1.3: the clone skill manifest skips the community templates (issue forms and pull request template, specific to this project); the community files are project files, not workflow files.

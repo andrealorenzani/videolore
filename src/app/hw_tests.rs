@@ -629,9 +629,10 @@ fn a_candidate_that_ran_out_of_time_twice_is_skipped_until_the_restart() {
         "tried again"
     );
     // "Try video hardware again" is a new chance too
+    // counted before the command: its check runs on its own thread
+    let n = nvenc_calls.load(Ordering::SeqCst);
     app.dispatch(Command::TryHardwareAgain, Instant::now())
         .unwrap();
-    let n = nvenc_calls.load(Ordering::SeqCst);
     settled(&mut app);
     assert!(nvenc_calls.load(Ordering::SeqCst) > n);
 }
@@ -845,6 +846,27 @@ fn preview_runs(f: &FakeRunner) -> Vec<String> {
         .collect()
 }
 
+/// The runs of playback only: the picture of a paused preview (`-frames:v`) is made by
+/// another thread and may be recorded at any time.
+fn playback_runs(f: &FakeRunner) -> Vec<String> {
+    let mut runs = preview_runs(f);
+    runs.retain(|l| !l.contains("-frames:v"));
+    runs
+}
+
+/// Waits for the `n`th playback run (it is started by the playback thread).
+fn wait_for_playback(f: &FakeRunner, n: usize) -> Vec<String> {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        let runs = playback_runs(f);
+        if runs.len() >= n {
+            return runs;
+        }
+        assert!(Instant::now() < deadline, "no playback run: {runs:?}");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
 /// With Faster the preview decodes with the hardware decoder the check found; with Best
 /// quality it never does.
 // covers: REQ-214
@@ -857,6 +879,7 @@ fn the_preview_decodes_with_the_hardware_only_with_faster() {
     let now = Instant::now();
     // Best quality: no hardware decoding, whatever the computer has
     app.dispatch(Command::PlayPause, now).unwrap();
+    wait_for_playback(&f, 1);
     assert!(preview_runs(&f).iter().all(|l| !l.contains("-hwaccel")));
     app.dispatch(Command::PlayPause, now).unwrap();
     assert!(!app.preview.uses_hw_decoding());
@@ -866,9 +889,9 @@ fn the_preview_decodes_with_the_hardware_only_with_faster() {
     checked(&mut app);
     assert_eq!(app.hw_decoders[&Codec::H264].method(), "vaapi");
     assert!(app.preview.uses_hw_decoding());
-    let before = preview_runs(&f).len();
+    let before = playback_runs(&f).len();
     app.dispatch(Command::PlayPause, now).unwrap();
-    let runs = preview_runs(&f);
+    let runs = wait_for_playback(&f, before + 1);
     assert!(
         runs[before..]
             .iter()
@@ -880,10 +903,10 @@ fn the_preview_decodes_with_the_hardware_only_with_faster() {
     app.dispatch(Command::SetExport(ExportChoice::BestQuality), now)
         .unwrap();
     assert!(app.hw_decoders.is_empty() && !app.preview.uses_hw_decoding());
-    let before = preview_runs(&f).len();
+    let before = playback_runs(&f).len();
     app.dispatch(Command::PlayPause, now).unwrap();
     assert!(
-        preview_runs(&f)[before..]
+        wait_for_playback(&f, before + 1)[before..]
             .iter()
             .all(|l| !l.contains("-hwaccel"))
     );
@@ -922,9 +945,9 @@ fn a_failing_hardware_decoder_falls_back_without_a_message() {
         app.tick(Instant::now());
         std::thread::sleep(Duration::from_millis(2));
     }
-    let runs = preview_runs(&f);
-    assert!(runs[0].contains("-hwaccel"));
-    assert!(runs.len() >= 2 && !runs[1].contains("-hwaccel"), "{runs:?}");
+    let runs = wait_for_playback(&f, 2);
+    assert!(runs[0].contains("-hwaccel"), "{runs:?}");
+    assert!(!runs[1].contains("-hwaccel"), "{runs:?}");
     assert!(app.preview.error.is_none(), "no message");
     assert!(app.notice.is_none());
     assert!(app.hw_decoders.is_empty());

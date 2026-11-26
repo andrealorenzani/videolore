@@ -2,7 +2,15 @@
 
 <!-- AI-only. Owner: principal-engineer. Find a paragraph: grep -n here, then sed -n 'A,Bp' <doc>. Regenerate the index: scripts/doc-index.sh docs/code*.md. Code facts: scripts/code-map.sh, req-code.sh, symbol.sh, module-deps.sh (docs/scripts.md). History of earlier versions: git and releases/. -->
 
-## State (3.1.2, built)
+## State (3.1.3, built)
+- REQ-359..366: community files written by the documenter; code part is only `tests/community.rs` (9 tests) + dev-dependency `yaml-rust2` 0.13.2 with `default-features = false` (no `encoding_rs`; plan table showed the plain form). REQ-366 list = `forbidden_term` (ADR-274). README's `git@github.com:...videolore.git` has the shape of a mail address: `GIT_REMOTE` is removed before the address rule. REQ-365's GitHub community profile and settings are manual. REQ-360 test reads CONTRIBUTING.md § Local checks (workspace commands, feature coverage) and § Build prerequisites (Rust version from `Cargo.toml`, ffmpeg version from `packaging/ffmpeg.lock`: a toolchain or ffmpeg pin bump must update that guide). It also requires `libxcb-randr0-dev` and a C++ compiler.
+- A version bump changes `packaging/notices/rust-crates-{player,screen-spy}.txt` (they name the program version): run `scripts/notices.sh`.
+- Timing flakes seen under load (load average ~10, desktop apps): three `app::hw_tests` fixed (paused-frame runs recorded late by another thread: `playback_runs` / `wait_for_playback`; a call count read after `TryHardwareAgain`). Still timing gates: `lut_tests::a_lut_is_prepared_in_the_background_...` (200 ms tick, not `best_of`).
+
+### Requirement -> test (3.1.3)
+- 359..365: `tests/community.rs` `conduct_is_covenant_2_1`, `contributing_names_checks_and_licence`, `security_policy_names_private_channel`, `support_links_forms_and_readme`, `issue_forms_parse_and_require_fields`, `pull_request_template_lists_four_checks`, `community_files_exist_and_readme_links_them`; 366: `public_files_have_no_internal_wording`, `licence_is_unmodified_gpl3`.
+
+## Earlier state (3.1.2, screen recorder)
 - Suite green (pinned ffmpeg 9.0.2): fmt, clippy (default, no-default, all features; cross win/mac for screen-spy), 1027 lib (3 ignored), 123 integration (5 ignored), 7 module_cycles, 2 page, 50 + 4 player, 48 + 5 screen-spy; real_x11 capture (Xvfb 21 + private pulseaudio 16.1) green; line 95.0 %; feature script 336/336 (counts exact `(implemented)` only); notices, deny, version check ok.
 - REQ-341..352, 355..358 implemented (screen recorder `screen-spy/`, player playlist); docs/code-screen-spy.md. Editor change: one fix, `AppState.probe_rejected` (refusals of an import arriving over several frames were lost; showed as a flaky `dropped_files_follow_the_drop_rules`).
 - Deviations from plan 3.1.2 / ADR: recorder depends on `videolore` with NO features (not `audio`), cpal is its own dep on windows/macos only; new deps `jiff` 1.0 (local time) and, macOS only, `block2`, `objc2-core-audio`, `objc2-core-foundation`; macOS computer sound is our own tap + private device (`macos::SystemTap`), not cpal loopback (it records the inputs of an output that has some); sources opened first, screen last, `-isync <screen>` on pulse inputs (ADR-257/259 text order differs; without it audio was 0.26-2.2 s off); avfoundation input by name `Capture screen N` (ADR-258's index counts cameras first); TCP audio is always stereo; weak CoreAudio via `.cargo/config.toml` `-weak_framework` (not dlsym), CI `nm -m` check; all `unsafe` is in `macos.rs`.
@@ -108,6 +116,9 @@
 - docs/code-frame.md § Interface (REQ-124, 127..130) — L64-80 (17 lines)
 - docs/code-frame.md § Tests — L81-88 (8 lines)
 - docs/code-frame.md § Known limits — L89-96 (8 lines)
+- docs/code-hardware-qg05.md § Code — hardware export: real-hardware verification (QG-05) — L1-5 (5 lines)
+- docs/code-hardware-qg05.md § Checklist — L6-32 (27 lines)
+- docs/code-hardware-qg05.md § Results — L33-59 (27 lines)
 - docs/code-hardware.md § Code — hardware export ("Export: Faster") — L1-7 (7 lines)
 - docs/code-hardware.md § Modules — L8-19 (12 lines)
 - docs/code-hardware.md § Methods and arguments — L20-60 (41 lines)
@@ -118,9 +129,6 @@
 - docs/code-hardware.md § Tests — L152-158 (7 lines)
 - docs/code-hardware.md § Real-hardware verification — L159-163 (5 lines)
 - docs/code-hardware.md § Known limitations — L164-181 (18 lines)
-- docs/code-hardware-qg05.md § Code — hardware export: real-hardware verification (QG-05) — L1-5 (5 lines)
-- docs/code-hardware-qg05.md § Checklist — L6-32 (27 lines)
-- docs/code-hardware-qg05.md § Results — L33-59 (27 lines)
 - docs/code-index.md § Code — index — L1-4 (4 lines)
 - docs/code-index.md § Programs and start-up — L5-15 (11 lines)
 - docs/code-index.md § Application core — L16-25 (10 lines)
@@ -136,7 +144,7 @@
 - docs/code-index.md § Interface — L88-94 (7 lines)
 - docs/code-index.md § videolore player — L95-97 (3 lines)
 - docs/code-index.md § videolore screen spy ([code-screen-spy.md](code-screen-spy.md)) — L98-100 (3 lines)
-- docs/code-index.md § Packaging, build and quality — L101-103 (3 lines)
+- docs/code-index.md § Packaging, build and quality — L101-104 (4 lines)
 - docs/code-layers.md § Code — effect order, overlaps and project formats 12 to 14 (2.1.0 to 2.3.0) — L1-4 (4 lines)
 - docs/code-layers.md § Large LUTs and their preparation (REQ-300, 301, 312) — L5-16 (12 lines)
 - docs/code-layers.md § Text and subtitle styles (REQ-306 to 310, 318, 319, 323, 333) — L17-22 (6 lines)
@@ -154,15 +162,6 @@
 - docs/code-lut.md § Verification of `lut3d` — L70-77 (8 lines)
 - docs/code-lut.md § Tests — L78-85 (8 lines)
 - docs/code-lut.md § Known limits — L86-89 (4 lines)
-- docs/code.md § Code — L1-31 (31 lines)
-- docs/code.md § How to add an effect or a command — L32-36 (5 lines)
-- docs/code.md § Build, test, run — L37-51 (15 lines)
-- docs/code.md § System requirements for building — L52-57 (6 lines)
-- docs/code.md § Settings and machine detection — L58-60 (3 lines)
-- docs/code.md § CPU baseline for speech recognition — L61-63 (3 lines)
-- docs/code.md § Cargo features — L64-71 (8 lines)
-- docs/code.md § Finding ffmpeg — L72-74 (3 lines)
-- docs/code.md § Dependencies — L75-100 (26 lines)
 - docs/code-measurements.md § Code — measurements — L1-4 (4 lines)
 - docs/code-measurements.md § Rendering — L5-11 (7 lines)
 - docs/code-measurements.md § LUTs — L12-15 (4 lines)
@@ -210,13 +209,13 @@
 - docs/code-splash-icons.md § Icons — L38-57 (20 lines)
 - docs/code-splash-icons.md § Tests — L58-64 (7 lines)
 - docs/code-testing.md § Code — tests and CI — L1-4 (4 lines)
-- docs/code-testing.md § Kinds of tests — L5-17 (13 lines)
-- docs/code-testing.md § Golden output — L18-21 (4 lines)
-- docs/code-testing.md § Integration tests (real ffmpeg) — L22-40 (19 lines)
-- docs/code-testing.md § Coverage — L41-43 (3 lines)
-- docs/code-testing.md § Running the suite on a small machine — L44-46 (3 lines)
-- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L47-59 (13 lines)
-- docs/code-testing.md § Suite size and time — L60-62 (3 lines)
+- docs/code-testing.md § Kinds of tests — L5-18 (14 lines)
+- docs/code-testing.md § Golden output — L19-22 (4 lines)
+- docs/code-testing.md § Integration tests (real ffmpeg) — L23-41 (19 lines)
+- docs/code-testing.md § Coverage — L42-44 (3 lines)
+- docs/code-testing.md § Running the suite on a small machine — L45-47 (3 lines)
+- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L48-60 (13 lines)
+- docs/code-testing.md § Suite size and time — L61-64 (4 lines)
 - docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-12 (12 lines)
 - docs/code-text.md § Where things are — L13-25 (13 lines)
 - docs/code-text.md § Model and file — L26-40 (15 lines)
@@ -235,3 +234,12 @@
 - docs/code-ui.md § Settings file — L108-114 (7 lines)
 - docs/code-ui.md § Since 1.2.0 — L115-125 (11 lines)
 - docs/code-ui.md § Preview picture (1.2.6) — L126-134 (9 lines)
+- docs/code.md § Code — L1-31 (31 lines)
+- docs/code.md § How to add an effect or a command — L32-36 (5 lines)
+- docs/code.md § Build, test, run — L37-51 (15 lines)
+- docs/code.md § System requirements for building — L52-57 (6 lines)
+- docs/code.md § Settings and machine detection — L58-60 (3 lines)
+- docs/code.md § CPU baseline for speech recognition — L61-63 (3 lines)
+- docs/code.md § Cargo features — L64-71 (8 lines)
+- docs/code.md § Finding ffmpeg — L72-74 (3 lines)
+- docs/code.md § Dependencies — L75-101 (27 lines)

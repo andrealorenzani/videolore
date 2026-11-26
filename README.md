@@ -1,6 +1,6 @@
 # videolore
 
-![version](https://img.shields.io/badge/version-3.1.2-blue)
+![version](https://img.shields.io/badge/version-3.1.3-blue)
 ![rust](https://img.shields.io/badge/rust-1.100%2B-orange?logo=rust)
 ![license](https://img.shields.io/badge/license-GPL--3.0-green)
 ![coverage](https://img.shields.io/badge/coverage-95.0%25-brightgreen)
@@ -61,7 +61,7 @@ Choose one of the two files:
 The first start adds videolore to the application menu and associates `.vlproj` files with it. To remove that entry, use **Remove from application menu** in the About screen; deleting the AppImage or folder uninstalls the program, and your projects are kept.
 
 ### From source
-Requires Rust 1.100 or newer (`rustup update`). On Linux install the ALSA headers, cmake, a C++ compiler and libclang first (`sudo apt install libasound2-dev pkg-config cmake libclang-dev`). A source build uses the ffmpeg and ffprobe 4.4 or newer found on your system (`PATH`, or `VIDEOLORE_FFMPEG` / `VIDEOLORE_FFPROBE`). To build without sound and subtitles, which needs neither ALSA nor cmake, use `--no-default-features`.
+Requires Rust 1.100 or newer (`rustup update`). On Linux install the ALSA headers, cmake, libclang, the XCB RandR headers (screen recorder) and a C++ compiler first, with `sudo apt install libasound2-dev pkg-config cmake libclang-dev libxcb-randr0-dev g++`. A source build uses the ffmpeg and ffprobe 4.4 or newer found on your system (`PATH`, or `VIDEOLORE_FFMPEG` / `VIDEOLORE_FFPROBE`). To build only the editor without sound and subtitles, use `cargo build --no-default-features`: it needs neither ALSA nor cmake, but the rest of the workspace still needs ALSA and libxcb-randr0-dev.
 ```sh
 git clone git@github.com:andrealorenzani/videolore.git
 cd videolore
@@ -209,6 +209,12 @@ Screen recorder
 - **3.1.0** — Enlarge word grows from the base of the word and the words around it move apart; a new subtitle style, As subtitle track, writes the lines as a separate switchable subtitle track in the export; the blurred fill of Fit empty with blurred video shows in the preview; Overlap media has its own Effects row; Volume is now Volume and track, with an audio track choice; the Subtitles effect uses the clip's own audio and subtitle tracks; the player has an Audio menu for its audio track; project format 15 (versions up to 3.0.x refuse it and leave the file untouched).
 - **2.3.0** — overlap media: PNG, GIF and MOV files with transparency placed over a clip, with their own time and box, in one shared lane on the timeline; Change speed and Volume as effects (Volume with keyframes); Fit and empty space for each clip; Crop removed (an old crop is dropped on opening); Enlarge word keeps the other words in place; project format 14 (versions up to 2.2.0 refuse it and leave the file untouched).
 Older changes: [changelog](docs/changelog.md) and the release notes in [releases](releases/).
+
+## Community
+- [Code of conduct](CODE_OF_CONDUCT.md): how everyone is expected to behave; conduct reports go to community@andrealorenzani.name.
+- [Contributing](CONTRIBUTING.md): how to report a problem, propose a change and run the local checks.
+- [Security policy](SECURITY.md): the supported version and how to report a vulnerability privately.
+- [Support](SUPPORT.md): where to ask questions; [open an issue](https://github.com/andrealorenzani/videolore/issues/new/choose) with the issue forms.
 
 ## License
 Copyright (C) 2026 Andrea Lorenzani.

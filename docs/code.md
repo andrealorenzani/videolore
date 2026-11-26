@@ -97,4 +97,5 @@ The project follows the latest stable Rust; `rust-version` (**1.100**) is raised
 | jiff | 1.0 | Recorder: local date and time of the default file name |
 | block2, objc2-core-audio, objc2-core-foundation, objc2-core-graphics | 0.6, 0.3 | Recorder, macOS only: the microphone question, the tap of the computer's sound, the screen permission |
 | syn (dev) | 2 | `tests/module_cycles.rs` |
+| yaml-rust2 (dev) | 0.13.2 (no default features) | Parses the GitHub issue forms in `tests/community.rs` |
 | Phosphor Icons | 2.1.2 (font, MIT) | The icons (`assets/icons`, not a crate) |

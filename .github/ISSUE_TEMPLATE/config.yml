@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support
+    url: https://github.com/andrealorenzani/videolore/blob/main/SUPPORT.md
+    about: Ask a question or find out where to get help.
+  - name: Report a security vulnerability
+    url: https://github.com/andrealorenzani/videolore/security/advisories/new
+    about: Report a security problem privately. Do not open a public issue for it.

@@ -2,6 +2,21 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 3.1.3 — 2026-11-26 21:01 +0000
+### Added
+- Business definition of the GitHub community standards (REQ-359 to REQ-366): code of conduct, contributing guide, security policy, support, issue forms, pull request template and community profile checks; see `docs/business-community.md`.
+- Code of conduct `CODE_OF_CONDUCT.md` (REQ-359): Contributor Covenant 2.1 with its attribution; conduct reports go to community@andrealorenzani.name.
+- Contributing guide `CONTRIBUTING.md` (REQ-360): how to report, how to propose a change, the local checks of the three programs (formatting, clippy, tests, coverage gate of 85%, feature coverage), the build prerequisites and the GPL-3.0 licence of contributions.
+- Security policy `SECURITY.md` (REQ-361): the latest release is supported; private reporting through GitHub private vulnerability reporting; no public issue for a vulnerability.
+- Support `SUPPORT.md` (REQ-362): where to ask questions and report bugs, what to include, no response time promised.
+- Issue forms `.github/ISSUE_TEMPLATE/` (REQ-363): bug report and feature request forms; blank issues off; the chooser links support and private security reporting.
+- Pull request template `.github/pull_request_template.md` (REQ-364): checklist of the local checks, tests, user-facing notes and the licence header.
+- README `Community` section (REQ-365) links the community files.
+- Tests of the community files (`tests/community.rs`, REQ-359 to REQ-366): the Covenant text, the contributing checks, the private security channel, the support links, the issue forms, the pull request checklist, the README links, the absence of internal wording and the unmodified GPL-3.0 text.
+### Fixed
+- Two flaky hardware timing tests of the editor no longer fail on a loaded machine.
+- Build and test prerequisites of the contributing guide and README: the Linux packages now include `libxcb-randr0-dev` and a C++ compiler; `cargo build --no-default-features` builds only the editor; the ffmpeg version check applies to the editor tests and only with `VIDEOLORE_REQUIRE_FFMPEG=1`; the real X11 capture test runs only with `VIDEOLORE_REQUIRE_CAPTURE=1`; the pull request checklist names the same five checks.
+
 ## 3.1.2 — 2026-11-26 19:03 +0000
 ### Added
 - **videolore-screen-spy**, a new program that records one screen to a video file, with a live preview, the screen list, an output file with Choose…, a video format, and computer sound and microphone mixed into one track (REQ-341 to REQ-352, REQ-357; see `docs/business-screen-spy.md`). It has its own installers for Windows, macOS and Linux, and the editor's installer contains no recorder.

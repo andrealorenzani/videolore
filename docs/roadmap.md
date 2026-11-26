@@ -175,6 +175,10 @@ Why: keeps the code and tests healthy, replaces assumed numbers with measured on
 - **Test memory cap as a workflow rule (8 GB).** (source: 1.6.2)
 - **Package list for the player on crates.io** — only if published. (source: 1.6.2)
 
+- **Timing test of the editor on a loaded machine** — the test of the LUT preparation in `src/app` has a 200 ms limit and can fail when the machine is busy; measure it on a loaded machine and give it a limit that does not depend on the load, or run it alone (source: 3.1.3, flaky test noted during the development).
+- **Documentation check for community files** — `scripts/docs-check.sh` does not scan the community files in the root (`CONTRIBUTING.md`, `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`) and the `.github` templates for forbidden terms and broken links (source: 3.1.3, known limitation of the check).
+- **Stricter pull request template test** — `tests/community.rs` checks that the pull request checklist names the five local checks; it could compare the list with the commands in `CONTRIBUTING.md` and `.github/workflows/build.yml` so that a change to one of them fails the test (source: 3.1.3, community tests).
+
 ## Priority 13 — Screen recorder
 Why: the options left out of the screen recorder of 3.1.2, and its checks on real systems; each needs its own design and measurements.
 - **Native Wayland recording** — the first version needs X11 or XWayland and refuses native Wayland with a message; add it when a portal or capture route is chosen. (source: 3.1.2, Linux session decision)

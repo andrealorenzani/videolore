@@ -36,6 +36,7 @@ Not the target: professional editors who need multitrack video, colour grading b
 - Project files are versioned; a project saved by a newer format is refused by an older program with a message and left untouched.
 - Older processors get a clear message for subtitles instead of a fallback speech engine.
 - The screen recorder (3.1.2) is a third separate program, like the player, so that a simple recording tool stays simple; it has no editing (see [Screen recorder](business-screen-spy.md)).
+- The public repository follows GitHub's community standards (3.1.3, planned); conduct reports go to community@andrealorenzani.name, security reports through GitHub's private reporting (see [GitHub community standards](business-community.md)).
 
 ## Documents
 Each document is a short business description with its requirements (REQ-NNN) and acceptance criteria. Status of each requirement: `scripts/reqs-status.sh`; text: `scripts/req.sh REQ-NNN`.
@@ -83,12 +84,18 @@ Each document is a short business description with its requirements (REQ-NNN) an
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, notices, first-launch steps.
 - [Release verification](business-verification.md) — checks of a release on real systems; a manual checklist, not a blocker.
 
+### Community
+- [GitHub community standards](business-community.md) — code of conduct, contributing guide, security policy, support, issue forms, pull request template, repository settings (3.1.3).
+
 ## Version 3.1.0
 Seven requirements, implemented (REQ-334 to REQ-340), each with its acceptance in the document named: Enlarge word keeps its base; As subtitle track style; blurred fill fix; Overlap media as its own Effects list row; player audio track menu; Subtitles effect with the clip's audio and subtitle tracks; Volume and track. REQ-333 is replaced by REQ-334.
 Accepted deviations (Andrea, 2026-11-24): the Subtitles effect's audio track choice is popup state and is not stored in the project; the blurred fill defect (REQ-335) was in the preview, not the export; the "As subtitle track" preview uses the Classic look; a file not yet analysed shows "Track 1".
 
 ## Version 3.1.2
 Sixteen requirements are implemented: the new program videolore-screen-spy (REQ-341 to REQ-352, REQ-357 and REQ-358, [Screen recorder](business-screen-spy.md); the recorder records computer sound and the microphone mixed into one track; WAV is saved as MKV; Linux X11 and XWayland only; computer sound on macOS needs 14.6 or later; decisions of 2026-11-26 by Andrea) and the player's several videos from Open… and add at any time (REQ-355, REQ-356; Open… replaces the list, REQ-356 amends REQ-254). The player's REQ-138 wording follows REQ-355. The recorder's sound checks: Cancel start while the checks run; on Linux a monitor as default input refuses Start; on macOS the microphone question is answered before recording. Windows and macOS are not verified on real hardware: manual checks 38 to 41 stay pending (not a blocker).
+
+## Version 3.1.3
+Eight requirements, implemented (REQ-359 to REQ-366): the GitHub community files (code of conduct, contributing guide, security policy, support, issue forms, pull request template), the README Community section, and the rule that these public files carry no internal workflow terms. Details in [GitHub community standards](business-community.md). Not yet done, by hand on github.com (Andrea): the repository settings and the community profile check (REQ-365 is tested on the files and README links only).
 
 ## Known limitations
 The list for users is in the [README](../README.md#known-limitations). The open items are in the [roadmap](roadmap.md); the cleaned hand-off of each release is in the release notes of the [releases](../releases/) folder.
