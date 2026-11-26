@@ -35,6 +35,12 @@ Part of [Architecture](architecture.md). Requirements: [player](business-player.
 - **Splash option (REQ-295, ADR-199):** the same `should_show` rule as the editor.
 - **Audio menu (REQ-338, planned 3.1.0, ADR-252):** lists every audio track of the video (`MediaFormat.audio_tracks`, language or title, channel count); the first is chosen by default. The choice sets the in-memory clip's `audio_track` and is kept while the file stays open in the session; it is never saved. Subtitles keep their own menu (REQ-140, REQ-253). No network code is added.
 
+## Several videos (3.1.2, REQ-355, 356; ADR-267)
+- **File > Open…** takes several videos at once and replaces the list; they play in the order the dialog gives (name order when it gives none). A single file is a list of one.
+- **File > Add to playlist** can be used while a video plays: the chosen videos are added at the end, in the chosen order; the current video keeps playing. Duplicates are refused as before. After the last video has ended, an added video does not start by itself (assumption).
+- The window title reads "name (n of m)" when the list has more than one video. The list is kept for the session only (REQ-254).
+- Code: `player/src/playlist.rs` (`replace`, `add`), commands `OpenVideos` and `AddToPlaylistPaths`; no new crate. As built: a video opened by itself (drop, command line) heads the list it starts.
+
 ## Installers and identity
 - `scripts/package.sh <target> player`: AppImage and tar.gz (Linux), NSIS setup (Windows), disk image (macOS); the same pinned ffmpeg and ffprobe as the editor; own notices (`rust-crates-player.txt`). Identifier `io.github.andrealorenzani.videolore-player` (editor `…videolore`), so both install side by side. No file association and no Linux menu entry written by the program (2.0.4: "Open with" only).
 - Icon: the same artwork as the editor (decided 2026-11-19).

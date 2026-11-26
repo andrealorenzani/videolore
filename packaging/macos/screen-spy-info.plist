@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- What macOS shows when videolore screen spy asks for the microphone and for the
+     computer's sound; merged into the app's Info.plist by cargo-packager. -->
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>videolore screen spy records the microphone into the video of your screen.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>videolore screen spy records the computer's sound into the video of your screen.</string>
+</dict>
+</plist>

@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Andrea Lorenzani
 #
-# Builds the installers of one product (the editor by default, or videolore player) for one
-# target from an already built release executable (cargo build --release --locked, with
-# -p videolore-player for the player) and the pinned ffmpeg (scripts/fetch-ffmpeg.sh).
+# Builds the installers of one product (the editor by default, videolore player or
+# videolore screen spy) for one target from an already built release executable (cargo build
+# --release --locked, with -p videolore-player or -p videolore-screen-spy) and the pinned
+# ffmpeg (scripts/fetch-ffmpeg.sh).
 #   scripts/package.sh linux-x86_64 [player]    -> <name>-${VERSION}-linux-x86_64.AppImage
 #                                                  <name>-${VERSION}-linux-x86_64.tar.gz
 #   scripts/package.sh windows-x86_64 [player]  -> <name>-${VERSION}-windows-x86_64-setup.exe
@@ -18,12 +19,12 @@
 #   scripts/package.sh tool NAME                -> downloads the pinned tool NAME of
 #                                                  packaging/tools.lock and checks its SHA-256
 #                                                  (VIDEOLORE_TOOLS_LOCK names another lock file)
-# <name> is videolore (editor) or videolore-player. Output goes to dist/. Tools:
+# <name> is videolore (editor), videolore-player or videolore-screen-spy. Output goes to dist/. Tools:
 # cargo-packager (Windows, macOS; version in packaging/tools.lock), appimagetool + type2
 # runtime (Linux, pinned by SHA-256), curl, git.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-target="${1:?usage: package.sh linux-x86_64|windows-x86_64|macos-aarch64|sources|tool [editor|player] [--config-only]}"
+target="${1:?usage: package.sh linux-x86_64|windows-x86_64|macos-aarch64|sources|tool [editor|player|screen-spy] [--config-only]}"
 shift
 toolslock="${VIDEOLORE_TOOLS_LOCK:-packaging/tools.lock}"
 product=editor
@@ -31,7 +32,7 @@ config_only=0
 stub=0
 for a in "$@"; do
     case "$a" in
-    editor | player) product="$a" ;;
+    editor | player | screen-spy) product="$a" ;;
     --config-only) config_only=1 ;;
     --stub) stub=1 ;;
     *) if [[ "$target" == tool ]]; then product="$a"; else echo "unknown argument $a" >&2; exit 2; fi ;;
@@ -41,7 +42,7 @@ VERSION=$(scripts/version.sh get)
 dist=dist
 # stub packages are only a check of the packaging: never mixed with real output
 [[ $stub -eq 0 ]] || dist=dist/stub
-# One product, one set of names (the two installers differ only by these).
+# One product, one set of names (the installers differ mainly by these).
 if [[ "$product" == player ]]; then
     pname=videolore-player
     pdisplay="videolore player"
@@ -50,6 +51,14 @@ if [[ "$product" == player ]]; then
     pcrates=rust-crates-player.txt
     pthird=third-party-player.txt
     stage="$dist/stage-$target-player"
+elif [[ "$product" == screen-spy ]]; then
+    pname=videolore-screen-spy
+    pdisplay="videolore screen spy"
+    pident=io.github.andrealorenzani.videolore-screen-spy
+    pdesc="Records the screen with the computer sound and the microphone"
+    pcrates=rust-crates-screen-spy.txt
+    pthird=third-party-screen-spy.txt
+    stage="$dist/stage-$target-screen-spy"
 else
     pname=videolore
     pdisplay=videolore
@@ -107,6 +116,15 @@ hw_encoders() {
     esac
 }
 
+# What the screen recorder captures with on each system.
+capture_devices() {
+    case "$1" in
+    linux-x86_64) echo x11grab pulse ;;
+    windows-x86_64) echo gdigrab ;;
+    macos-aarch64) echo avfoundation ;;
+    esac
+}
+
 # The bundled ffmpeg must have everything videolore needs.
 smoke_test() {
     local ff="$1"
@@ -120,19 +138,32 @@ smoke_test() {
     for f in subtitles amix alimiter psnr afftdn lut3d; do
         grep -qw "$f" <<<"$filters" || { echo "bundled ffmpeg lacks filter $f" >&2; exit 1; }
     done
+    if [[ "$product" == screen-spy ]]; then
+        local devices
+        devices=$("$ff" -hide_banner -devices)
+        for d in $(capture_devices "$target"); do
+            grep -qw "$d" <<<"$devices" || { echo "bundled ffmpeg lacks capture device $d" >&2; exit 1; }
+        done
+        for e in aac pcm_s16le; do
+            grep -qw "$e" <<<"$enc" || { echo "bundled ffmpeg lacks encoder $e" >&2; exit 1; }
+        done
+    fi
     echo "smoke test passed: $ff"
 }
 
 # Notices and the subtitle font licence shipped with every package.
 stage_notices() {
-    mkdir -p "$1/notices" "$1/fonts" "$1/icons"
+    mkdir -p "$1/notices" "$1/icons"
     # each program names its own components (the player has no speech engine)
     cp "packaging/notices/$pthird" "$1/notices/third-party.txt"
     cp LICENSE "$1/notices/"
     cp "packaging/notices/$pcrates" "$1/notices/"
     cp packaging/ffmpeg.lock "$1/notices/ffmpeg-builds.txt"
-    cp assets/fonts/OFL.txt assets/fonts/SOURCE.txt "$1/fonts/"
     cp assets/icons/LICENSE-Phosphor.txt assets/icons/SOURCE.txt "$1/icons/"
+    # the screen recorder draws no subtitles: it carries no subtitle font
+    [[ "$product" != screen-spy ]] || return 0
+    mkdir -p "$1/fonts"
+    cp assets/fonts/OFL.txt assets/fonts/SOURCE.txt "$1/fonts/"
     # the subtitle fonts are compiled into the program: report what they add (REQ-187: at
     # most 25 MB for the scripts added since 2.0.3; the Latin face is the 2.0.3 baseline)
     local added=0 f
@@ -162,7 +193,8 @@ packager_config() {
     local root res formats dll licence
     root=$(native_path "$PWD")
     res=$(native_path "$stage/res")
-    local resources='"'"$res/notices"'", "'"$res/fonts"'", "'"$res/icons"'"'
+    local resources='"'"$res/notices"'", "'"$res/icons"'"'
+    [[ "$product" == screen-spy ]] || resources+=', "'"$res/fonts"'"'
     if [[ "$target" == windows-x86_64 ]]; then
         # the DLLs of the shared ffmpeg build go next to ffmpeg.exe (the install folder)
         for dll in "$ffdir"/*.dll; do
@@ -177,7 +209,12 @@ packager_config() {
     # (REQ-248): macOS lists it under "Open With" with the Viewer role, which never makes
     # it the default by itself
     local assoc=""
-    if [[ "$product" == editor ]]; then
+    # the screen recorder opens no files: no association; macOS shows its two sound
+    # permission texts
+    local plist=""
+    if [[ "$product" == screen-spy ]]; then
+        plist='info-plist-path = "'"$(native_path "$PWD/packaging/macos/screen-spy-info.plist")"'"'
+    elif [[ "$product" == editor ]]; then
         assoc='file-associations = [
     { extensions = ["vlproj"], name = "videolore project", description = "videolore project", mime-type = "application/x-videolore-project", role = "editor" },
 ]'
@@ -228,6 +265,7 @@ ${nsis_template}
 
 [macos]
 minimum-system-version = "11.0"
+${plist}
 TOML
 }
 
@@ -285,7 +323,9 @@ HERE="\$(dirname "\$(readlink -f "\$0")")"
 exec "\$HERE/usr/bin/$pname" "\$@"
 APPRUN
     chmod 0755 "$appdir/AppRun"
-    if [[ "$product" == player ]]; then
+    if [[ "$product" == screen-spy ]]; then
+        cp packaging/linux/screen-spy.desktop "$appdir/$pname.desktop"
+    elif [[ "$product" == player ]]; then
         cat >"$appdir/$pname.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
@@ -329,7 +369,22 @@ DESKTOP
     chmod 0755 "$folder/$pname.sh"
     sed -e "s/@NAME@/$pname/g" -e "s/@DISPLAY@/$pdisplay/g" packaging/linux/launcher.desktop >"$folder/$pname.desktop"
     chmod 0755 "$folder/$pname.desktop"
-    if [[ "$product" == player ]]; then
+    if [[ "$product" == screen-spy ]]; then
+        cat >"$folder/README.txt" <<README
+videolore screen spy ${VERSION} for Linux (x86_64)
+
+Double-click "videolore-screen-spy" in this folder to start it, or run
+./videolore-screen-spy from a terminal in this folder.
+
+If double-clicking does not start it, right-click "videolore-screen-spy" and choose "Run",
+or double-click "videolore-screen-spy.sh" (a launcher) or "videolore-screen-spy.desktop" (a
+menu entry for file managers that start those).
+
+It records one screen of an X11 session (or XWayland) with the computer sound and the
+microphone. Recording on a Wayland session is not possible yet. To uninstall, delete this
+folder.
+README
+    elif [[ "$product" == player ]]; then
         # the player does not add itself to the application menu: it says how to start
         cat >"$folder/README.txt" <<README
 videolore player ${VERSION} for Linux (x86_64)
@@ -341,7 +396,7 @@ If double-clicking does not start it, right-click "videolore-player" and choose 
 double-click "videolore-player.sh" (a launcher) or "videolore-player.desktop" (a menu entry
 for file managers that start those).
 
-videolore player plays one video at a time. It never changes your files. To uninstall,
+videolore player plays your videos one after the other. It never changes your files. To uninstall,
 delete this folder.
 README
     else

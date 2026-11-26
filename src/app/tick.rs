@@ -145,7 +145,6 @@ impl AppState {
         if results.is_empty() {
             return;
         }
-        let mut rejected = Vec::new();
         for (id, r) in results {
             if self.probe_cancel.remove(&id).is_none() {
                 continue; // removed meanwhile
@@ -163,12 +162,14 @@ impl AppState {
                 }
                 Err(e) => {
                     slot.status = MediaStatus::Rejected(e.clone());
-                    rejected.push(e);
+                    self.probe_rejected.push(e);
                 }
             }
         }
         self.refresh_import_offers();
         if self.probe_cancel.is_empty() {
+            // the results come in over several frames: all the refusals are told
+            let rejected = std::mem::take(&mut self.probe_rejected);
             self.status = if rejected.is_empty() {
                 "Import finished".into()
             } else {

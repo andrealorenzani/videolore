@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! videolore player: a small program that plays one video file, with the 360 view,
+//! videolore player: a small program that plays video files, one after the other, with the 360 view,
 //! subtitles from a file or from the video, and full screen. It reuses the editor's
 //! engine (`videolore`, without speech-to-text) and has no network code.
 //!
@@ -39,11 +39,12 @@ impl NativeDialogs {
 }
 
 impl app::Dialogs for NativeDialogs {
-    fn pick_video(&mut self) -> Option<PathBuf> {
+    fn pick_videos(&mut self) -> Vec<PathBuf> {
         self.dialog()
             .add_filter("Video", VIDEO_EXT)
             .add_filter("All files", &["*"])
-            .pick_file()
+            .pick_files()
+            .unwrap_or_default()
     }
 
     fn pick_srt(&mut self) -> Option<PathBuf> {

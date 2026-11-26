@@ -18,8 +18,8 @@ use videolore_player::app::{Command, Dialogs, Folders, PlayerState};
 struct NoDialogs;
 
 impl Dialogs for NoDialogs {
-    fn pick_video(&mut self) -> Option<PathBuf> {
-        None
+    fn pick_videos(&mut self) -> Vec<PathBuf> {
+        Vec::new()
     }
     fn pick_srt(&mut self) -> Option<PathBuf> {
         None

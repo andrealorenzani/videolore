@@ -2,15 +2,25 @@
 
 <!-- AI-only. Owner: principal-engineer. Find a paragraph: grep -n here, then sed -n 'A,Bp' <doc>. Regenerate the index: scripts/doc-index.sh docs/code*.md. Code facts: scripts/code-map.sh, req-code.sh, symbol.sh, module-deps.sh (docs/scripts.md). History of earlier versions: git and releases/. -->
 
-## State (3.1.0, built)
-- Suite green: fmt, clippy -D warnings (workspace, all targets), 1026 lib (3 ignored), 123 integration (5 ignored), 7 module_cycles, 2 page, 48 + 4 player; line 95.1 %; feature script 320/320 (it counts only the exact `(implemented)`; REQ-334..340 and many older ones are `(implemented; ...)` and are NOT counted by it: counted by hand 338/338 with a `covers:`; script left unchanged, not mine). Run once at the end (rule 7); system ffmpeg 6.1.1 (no `ff9/` this time).
-- 3.1.0 map (docs/code-audio-tracks.md): `AudioTrack`, `Clip.audio_track`, `SetClipAudioTrack`, `SetSubtitleAudio` (popup state, not stored), `Preset::AsTrack`, `word_layout.rs`, `FrameKey.own_aspect/audio_track`, `SpatialJob.track`, `RangeJob.audio`, `PARAMS_VERSION` 3, `SCHEMA_VERSION` 15, player `ChooseAudio`. Deviation: ADR-253 says the audio is an argument of the Subtitles command; built as popup state (`Popups.subtitle_audio`) read by `create_subtitles`, because the menu entry and the ApplyEffect command have no argument.
-- REQ-335 root cause: the preview's kept blurred background (REQ-223) of a clip's own aspect (frame smaller than the output); export was right. Fixed by `FrameKey.own_aspect` (no kept background).
-- Deps: lock unchanged apart from the version bump; notices regenerated (player file only).
-- Earlier (2.3.0 consolidation): refactors `app/effect_kind.rs`, `DISPATCH_AREAS`, `ActionId::effect`, `effect_order::NAMED`; deps behind only by majors: harfrust 0.12→0.16.1, skrifa 0.44→0.50 (pinned to epaint 0.37's), syn 2→3 (dev). Library estimates (not now): strum, insta, nextest, egui_kittest.
+## State (3.1.2, built)
+- Suite green (pinned ffmpeg 9.0.2): fmt, clippy (default, no-default, all features; cross win/mac for screen-spy), 1027 lib (3 ignored), 123 integration (5 ignored), 7 module_cycles, 2 page, 50 + 4 player, 48 + 5 screen-spy; real_x11 capture (Xvfb 21 + private pulseaudio 16.1) green; line 95.0 %; feature script 336/336 (counts exact `(implemented)` only); notices, deny, version check ok.
+- REQ-341..352, 355..358 implemented (screen recorder `screen-spy/`, player playlist); docs/code-screen-spy.md. Editor change: one fix, `AppState.probe_rejected` (refusals of an import arriving over several frames were lost; showed as a flaky `dropped_files_follow_the_drop_rules`).
+- Deviations from plan 3.1.2 / ADR: recorder depends on `videolore` with NO features (not `audio`), cpal is its own dep on windows/macos only; new deps `jiff` 1.0 (local time) and, macOS only, `block2`, `objc2-core-audio`, `objc2-core-foundation`; macOS computer sound is our own tap + private device (`macos::SystemTap`), not cpal loopback (it records the inputs of an output that has some); sources opened first, screen last, `-isync <screen>` on pulse inputs (ADR-257/259 text order differs; without it audio was 0.26-2.2 s off); avfoundation input by name `Capture screen N` (ADR-258's index counts cameras first); TCP audio is always stereo; weak CoreAudio via `.cargo/config.toml` `-weak_framework` (not dlsym), CI `nm -m` check; all `unsafe` is in `macos.rs`.
+- Not verified here: anything running on Windows/macOS (only `cargo clippy --target`), installers, `package.sh` real packaging, CI steps as YAML (Xvfb/pulse commands were reproduced locally with extracted debs, not on a runner), A/V offset on Windows/macOS.
+- clone-workflow templates are stale for build.yml and scripts code-map, coverage, feature-coverage, req-code, symbol, version (`check.sh` fails, 7): /change-workflow territory, not touched.
+
+## Screen recorder map and traps
+- Start: quick checks on the UI thread (screen list and permission must be there on macOS), then `Checks` on a thread, `Phase::Starting`, `poll_start`. `Sound` is Send + Sync, `open(&self, ffmpeg, cancel)`; test fake `FakeSound` (hold/deaf/panics), `Rig::run` settles unless held.
+- cpal streams live on the thread of `audio::hold`. A big text replacement in `app.rs` once cut the file: `Checks` and `RecorderState` share method names.
+- cargo-about takes ~40 s wall (5 CPU-minutes) for the recorder graph.
+- `app.rs` injected `Deps`; tests: `app_tests::{rig, rig_with, Options, World, Scripted}` (also the fake `Runner`: `ffmpeg::fake` is cfg(test) of the lib only).
+- Test of `wait_for` loops: assert `message == None` AFTER the wait too, a stop timeout hides behind a playable fragmented file.
+- display-info: Linux divides by Xft scale, macOS points, Windows pixels (`screens::physical`). Its Linux build needs `libxcb-randr0-dev`.
+- `pulse` with only monitors: "no microphone"; CI/local server needs `module-remap-source` for a non-monitor source.
 
 ## Local env (dev box)
-- Every cargo run through scratchpad `run.sh` (`systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 timeout 2400`), `env.sh`: alsa pkg-config from a dpkg-deb extract, `LIBCLANG_PATH=/usr/lib/llvm-18/lib`, pinned ffmpeg 9.0.2 in `ff9/` as `VIDEOLORE_FFMPEG/FFPROBE` + PATH, `VIDEOLORE_REQUIRE_FFMPEG=1`, `CARGO_INCREMENTAL=0`. Test binaries: `target/debug/build/videolore/<hash>/out/`. Never two suites at once (hw_tests timing gates fail). /home is ~97 % full: delete `target/debug/incremental`, `target/llvm-cov-target` after coverage.
+- Disk: /home ~99 % full: build with `CARGO_TARGET_DIR=<scratchpad>/target` (on /, ~25 GB used), no removal needed. `libxcb-randr0-dev`, Xvfb, pulseaudio are not installed: `apt-get download` + `dpkg-deb -x` into scratchpad, `LIBRARY_PATH=<sysroot>/usr/lib/x86_64-linux-gnu`, point the `libxcb-randr.so` link at the system `.so.0`; private pulseaudio: `-n --dl-search-path=<modules>`, native-protocol-tcp on 127.0.0.1:47999, `--disable-shm=true` (never the desktop server: it records the real microphone).
+- Every cargo run through a scratchpad `run.sh` (`systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 timeout 2400`) with `env.sh`: `LIBCLANG_PATH=/usr/lib/llvm-18/lib`, pinned ffmpeg 9.0.2 (`TMPDIR=<scratchpad> scripts/fetch-ffmpeg.sh linux-x86_64 <scratchpad>/ff9`) as `VIDEOLORE_FFMPEG/FFPROBE` + PATH, `VIDEOLORE_REQUIRE_FFMPEG=1`, `CARGO_INCREMENTAL=0`. Test binaries: `$CARGO_TARGET_DIR/debug/build/<package>/<hash>/out/`. Never two suites at once (hw_tests timing gates fail).
 - cargo-deny 0.20.2, cargo-about 0.9.3 (`--features cli`) in ~/.cargo/bin. Cross clippy: `--target <t> --no-default-features`.
 
 ## Gotchas
@@ -26,6 +36,7 @@
 
 ## Debt
 - Code: `Command::AddPicture`/picture items stay for tests and clip-less items; MOV overlay size read at add only; overlap lane has no zoom, preview box draws no handles; dialogs.rs untested glue; macOS code compiled only on mac; proxy cache has no LRU beyond `enforce_limit`; whole-video popup shows the first clip only; app.rs ~1900 lines, timeline.rs 2600, stt.rs 2300, project.rs 2050 (split by topic when next touched); `Command`'s undo names, `is_enabled` and the dispatch arms are still three places per command.
+- 3.1.2 limits: docs/code-screen-spy.md § Known limits.
 - 3.1.0 limits: the Subtitles popup lists the tracks of the selected (or first) clip's file and its choice applies to every file of a whole-video creation (a file with fewer tracks uses its first); a clip with track ≠ 0 is always re-encoded (T1 `-map 0:a:k -c copy` is future work, ADR-246); a proxy holds every audio stream; the preview of "As subtitle track" is Classic (A-3.1-1); the Effects section scrolls at 800 px.
 - Not met: REQ-315 (8.7 % of 20 %), REQ-177 (43 % of 90 %); docs/code-measurements.md.
 - Manual only: macOS/Windows packaging and menus, Wayland drops, real graphics of other vendors, splash look on a display.
@@ -46,7 +57,8 @@
 - docs/code-architecture.md § Import → timeline → preview → export — L60-90 (31 lines)
 - docs/code-architecture.md § A command, from the click to the undo step — L91-103 (13 lines)
 - docs/code-architecture.md § Threads and channels — L104-131 (28 lines)
-- docs/code-architecture.md § videolore player — L132-147 (16 lines)
+- docs/code-architecture.md § videolore player — L132-148 (17 lines)
+- docs/code-architecture.md § videolore screen spy — L149-167 (19 lines)
 - docs/code-audio-tracks.md § Code — 3.1.0: audio tracks, Enlarge word from its base, As subtitle track, project format 15 — L1-4 (4 lines)
 - docs/code-audio-tracks.md § Audio tracks (REQ-340, 339, 338) — L5-12 (8 lines)
 - docs/code-audio-tracks.md § Enlarge word from its base (REQ-334) — L13-16 (4 lines)
@@ -123,7 +135,8 @@
 - docs/code-index.md § Hardware export ([code-hardware.md](code-hardware.md)) — L82-87 (6 lines)
 - docs/code-index.md § Interface — L88-94 (7 lines)
 - docs/code-index.md § videolore player — L95-97 (3 lines)
-- docs/code-index.md § Packaging, build and quality — L98-100 (3 lines)
+- docs/code-index.md § videolore screen spy ([code-screen-spy.md](code-screen-spy.md)) — L98-100 (3 lines)
+- docs/code-index.md § Packaging, build and quality — L101-103 (3 lines)
 - docs/code-layers.md § Code — effect order, overlaps and project formats 12 to 14 (2.1.0 to 2.3.0) — L1-4 (4 lines)
 - docs/code-layers.md § Large LUTs and their preparation (REQ-300, 301, 312) — L5-16 (12 lines)
 - docs/code-layers.md § Text and subtitle styles (REQ-306 to 310, 318, 319, 323, 333) — L17-22 (6 lines)
@@ -141,15 +154,15 @@
 - docs/code-lut.md § Verification of `lut3d` — L70-77 (8 lines)
 - docs/code-lut.md § Tests — L78-85 (8 lines)
 - docs/code-lut.md § Known limits — L86-89 (4 lines)
-- docs/code.md § Code — L1-30 (30 lines)
-- docs/code.md § How to add an effect or a command — L31-35 (5 lines)
-- docs/code.md § Build, test, run — L36-50 (15 lines)
-- docs/code.md § System requirements for building — L51-56 (6 lines)
-- docs/code.md § Settings and machine detection — L57-59 (3 lines)
-- docs/code.md § CPU baseline for speech recognition — L60-62 (3 lines)
-- docs/code.md § Cargo features — L63-70 (8 lines)
-- docs/code.md § Finding ffmpeg — L71-73 (3 lines)
-- docs/code.md § Dependencies — L74-96 (23 lines)
+- docs/code.md § Code — L1-31 (31 lines)
+- docs/code.md § How to add an effect or a command — L32-36 (5 lines)
+- docs/code.md § Build, test, run — L37-51 (15 lines)
+- docs/code.md § System requirements for building — L52-57 (6 lines)
+- docs/code.md § Settings and machine detection — L58-60 (3 lines)
+- docs/code.md § CPU baseline for speech recognition — L61-63 (3 lines)
+- docs/code.md § Cargo features — L64-71 (8 lines)
+- docs/code.md § Finding ffmpeg — L72-74 (3 lines)
+- docs/code.md § Dependencies — L75-100 (26 lines)
 - docs/code-measurements.md § Code — measurements — L1-4 (4 lines)
 - docs/code-measurements.md § Rendering — L5-11 (7 lines)
 - docs/code-measurements.md § LUTs — L12-15 (4 lines)
@@ -161,13 +174,14 @@
 - docs/code-modules.md § Conventions — L23-29 (7 lines)
 - docs/code-modules.md § Machine, recommendation and "How hard videolore works" — L30-43 (14 lines)
 - docs/code-packaging.md § Code — installers, notices and known limitations — L1-2 (2 lines)
-- docs/code-packaging.md § Release assets — L3-18 (16 lines)
-- docs/code-packaging.md § cargo-packager configuration (Windows and macOS) — L19-44 (26 lines)
-- docs/code-packaging.md § Bundled ffmpeg — L45-59 (15 lines)
-- docs/code-packaging.md § Notices — L60-70 (11 lines)
-- docs/code-packaging.md § Desktop integration — L71-93 (23 lines)
-- docs/code-packaging.md § Manual checklist per OS (before publishing a release) — L94-116 (23 lines)
-- docs/code-packaging.md § Known limitations — L117-134 (18 lines)
+- docs/code-packaging.md § Release assets — L3-19 (17 lines)
+- docs/code-packaging.md § cargo-packager configuration (Windows and macOS) — L20-45 (26 lines)
+- docs/code-packaging.md § Bundled ffmpeg — L46-60 (15 lines)
+- docs/code-packaging.md § videolore screen spy (3.1.2) — L61-67 (7 lines)
+- docs/code-packaging.md § Notices — L68-79 (12 lines)
+- docs/code-packaging.md § Desktop integration — L80-102 (23 lines)
+- docs/code-packaging.md § Manual checklist per OS (before publishing a release) — L103-125 (23 lines)
+- docs/code-packaging.md § Known limitations — L126-143 (18 lines)
 - docs/code-player.md § Code — videolore player and the workspace (1.6.0, start screen 1.6.2) — L1-4 (4 lines)
 - docs/code-player.md § Workspace — L5-20 (16 lines)
 - docs/code-player.md § Modules of `player/src` — L21-32 (12 lines)
@@ -184,18 +198,25 @@
 - docs/code-readable-text.md § Commands and handles (REQ-159 to 162) — L87-97 (11 lines)
 - docs/code-readable-text.md § Placement (REQ-168 to 176) — L98-113 (16 lines)
 - docs/code-readable-text.md § Subtitle accuracy (REQ-177 to 179) — L114-133 (20 lines)
+- docs/code-screen-spy.md § Code — videolore screen spy and the player's playlist (3.1.2) — L1-4 (4 lines)
+- docs/code-screen-spy.md § The program — L5-7 (3 lines)
+- docs/code-screen-spy.md § Modules of `screen-spy/src` — L8-23 (16 lines)
+- docs/code-screen-spy.md § How it works — L24-32 (9 lines)
+- docs/code-screen-spy.md § Tests — L33-36 (4 lines)
+- docs/code-screen-spy.md § Player: playlist (REQ-355, 356) — L37-39 (3 lines)
+- docs/code-screen-spy.md § Known limits — L40-46 (7 lines)
 - docs/code-splash-icons.md § Code — splash screen and icons (1.6.0, splash shared with the player in 1.6.2) — L1-4 (4 lines)
 - docs/code-splash-icons.md § Splash — L5-37 (33 lines)
 - docs/code-splash-icons.md § Icons — L38-57 (20 lines)
 - docs/code-splash-icons.md § Tests — L58-64 (7 lines)
 - docs/code-testing.md § Code — tests and CI — L1-4 (4 lines)
-- docs/code-testing.md § Kinds of tests — L5-16 (12 lines)
-- docs/code-testing.md § Golden output — L17-20 (4 lines)
-- docs/code-testing.md § Integration tests (real ffmpeg) — L21-39 (19 lines)
-- docs/code-testing.md § Coverage — L40-42 (3 lines)
-- docs/code-testing.md § Running the suite on a small machine — L43-45 (3 lines)
-- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L46-58 (13 lines)
-- docs/code-testing.md § Suite size and time — L59-60 (2 lines)
+- docs/code-testing.md § Kinds of tests — L5-17 (13 lines)
+- docs/code-testing.md § Golden output — L18-21 (4 lines)
+- docs/code-testing.md § Integration tests (real ffmpeg) — L22-40 (19 lines)
+- docs/code-testing.md § Coverage — L41-43 (3 lines)
+- docs/code-testing.md § Running the suite on a small machine — L44-46 (3 lines)
+- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L47-59 (13 lines)
+- docs/code-testing.md § Suite size and time — L60-62 (3 lines)
 - docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-12 (12 lines)
 - docs/code-text.md § Where things are — L13-25 (13 lines)
 - docs/code-text.md § Model and file — L26-40 (15 lines)

@@ -4,7 +4,7 @@ Back to the [index](code.md). Requirements REQ-138 to REQ-141, REQ-150 (start sc
 
 ## Workspace
 
-The root `Cargo.toml` is a workspace: `members = ["player"]`, `default-members = ["."]`, `resolver = "3"`. The root package
+The root `Cargo.toml` is a workspace: `members = ["player", "screen-spy"]` (the recorder: [code-screen-spy.md](code-screen-spy.md)), `default-members = ["."]`, `resolver = "3"`. The root package
 `videolore` (library and the editor) is unchanged; `player/` is the package `videolore-player` (library + a thin `main.rs`).
 `videolore-player` depends on `videolore` with `default-features = false, features = ["audio"]`: no whisper-rs, no ureq, no
 cmake or libclang. CI (and a unit test) check with `cargo tree -p videolore-player -e normal` that neither `ureq`, `whisper-rs`,
@@ -69,9 +69,9 @@ configuration of both products for Windows and macOS and checks keys, distinct i
 
 ## Known limits
 
-No player settings (volume and window size are not remembered), no playlist, no file association, no bitmap subtitles, subtitle
+The playlist of several videos is in [code-screen-spy.md](code-screen-spy.md). Subtitle
 styling is the editor's default, no preview copy shown in the UI (the copy is made silently). The installer carries a second ffmpeg
-(size). The About text shares `third-party.txt` with the editor, which also describes the editor's speech files. A 360 video wider
+(size). A 360 video wider
 than the editor's limit is refused like in the editor.
 
 ## Start screen (1.6.2, REQ-150)

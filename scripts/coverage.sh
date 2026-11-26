@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Line coverage of the Rust code of the whole workspace (the editor and videolore player;
-# src/main.rs and player/src/main.rs excluded: they only wire their libraries).
+# Line coverage of the Rust code of the whole workspace (the editor, videolore player and
+# screen-spy/; every src/main.rs excluded: they only wire their libraries).
 #   scripts/coverage.sh                    print coverage, e.g. 86.2
 #   scripts/coverage.sh --update-readme    also rewrite the README coverage badge
 #   scripts/coverage.sh --fail-under 85    exit 1 if below the threshold

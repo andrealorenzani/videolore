@@ -26,19 +26,19 @@ template .claude/agents/analyst.md fc34b5ead8dfd130
 template .claude/agents/documenter.md e7955d0f820c55c4
 template .claude/agents/principal-engineer.md 25ef3be2e0320ab9
 template .claude/commands/release.md 102f691e2b009bd4
-template docs/workflow.md cb66869c3291e9d8
-template .github/workflows/build.yml 0b7b9ed48aaa4f71
-template scripts/code-map.sh f2009d663a84e307
+template docs/workflow.md ab8a62b947998fa4
+template .github/workflows/build.yml 4b051f347886243d
+template scripts/code-map.sh c2a80a4a3d09e171
 template scripts/collect-release.sh 8993b6ac11aaa105
-template scripts/coverage.sh 8427737e8d754da7
+template scripts/coverage.sh 36c9f9b5490da175
 template scripts/docs-check.sh ac7215976b8487b4
-template scripts/feature-coverage.sh 1b31f0f9f951d39b
+template scripts/feature-coverage.sh 324cae6aa108e71f
 template scripts/module-deps.sh bfda17be7fd4925f
-template scripts/req-code.sh 6c12c823a4eef234
+template scripts/req-code.sh c8f7c08c20cdeefd
 template scripts/req.sh a6e10bef9fceaa09
-template scripts/symbol.sh 49d7be4df053d4c6
+template scripts/symbol.sh 5a3f953c3827a59d
 template scripts/test-annotations.sh b213d73306798c3e
-template scripts/version.sh 3372d22a6febc41b
+template scripts/version.sh 687ae9a6b6fb2cb0
 skip .github/workflows/advisories.yml
 skip .github/workflows/installer-config.yml
 skip scripts/fetch-ffmpeg.sh

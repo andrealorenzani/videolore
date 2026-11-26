@@ -204,7 +204,7 @@ fn menu_bar(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
                 (
                     icon::PLAYLIST,
                     "Add to playlist…",
-                    "Add a video to play after the others",
+                    "Add videos to play after the others",
                     Command::AddToPlaylist,
                     true,
                 ),

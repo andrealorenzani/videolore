@@ -46,10 +46,13 @@ pub const SKIP: Micros = Micros(5_000_000);
 /// What the user can ask. There is no save, export or edit here, on purpose.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
-    /// File > Open… (asks for a file).
+    /// File > Open… (asks for one or several files).
     PickOpen,
-    /// Opens this file (argument, drop, or the dialog's answer).
+    /// Opens this file (argument or drop).
     Open(PathBuf),
+    /// The answer of Open…: these videos become the playlist and the first one plays
+    /// (REQ-355).
+    OpenVideos(Vec<PathBuf>),
     PlayPause,
     Seek(Micros),
     /// Moves by whole frames (negative = back).
@@ -93,9 +96,10 @@ pub enum Command {
     ShowAbout,
     CloseAbout,
     DismissNotice,
-    /// File > Add to playlist… (asks for a file), or this file.
+    /// File > Add to playlist… (asks for one or several files).
     AddToPlaylist,
-    AddToPlaylistPath(PathBuf),
+    /// Adds these videos at the end of the playlist (REQ-356).
+    AddToPlaylistPaths(Vec<PathBuf>),
     /// File > Open folder… (asks for a folder), or this folder: its videos in name order.
     OpenFolder,
     OpenFolderPath(PathBuf),
@@ -109,7 +113,8 @@ pub enum Command {
 
 /// Native file dialogs (faked in tests).
 pub trait Dialogs {
-    fn pick_video(&mut self) -> Option<PathBuf>;
+    /// The videos chosen, in the dialog's order; empty when cancelled.
+    fn pick_videos(&mut self) -> Vec<PathBuf>;
     fn pick_srt(&mut self) -> Option<PathBuf>;
     /// Asks for a folder (the dialogs of the player start in the last one used).
     fn pick_folder(&mut self) -> Option<PathBuf> {
@@ -306,15 +311,23 @@ impl PlayerState {
         }
     }
 
-    /// The window title: the file's name and the program's.
     /// Opens the start screen (REQ-150): at a start without a video on the command line.
     pub fn show_splash(&mut self) {
         self.splash = true;
     }
 
+    /// The window title: the file's name, its place in a playlist of several videos
+    /// (REQ-356) and the program's name.
     pub fn title(&self) -> String {
         match &self.file {
-            Some(p) => format!("{} — videolore player", display_name(p)),
+            Some(p) => {
+                let place = self
+                    .playlist
+                    .place()
+                    .map(|(n, m)| format!(" ({n} of {m})"))
+                    .unwrap_or_default();
+                format!("{}{place} — videolore player", display_name(p))
+            }
             None => "videolore player".to_string(),
         }
     }
@@ -430,13 +443,54 @@ impl PlayerState {
         self.sync_settings();
     }
 
-    fn add_to_playlist(&mut self, p: PathBuf, now: Instant) -> Result<(), String> {
-        if crate::playlist::is_video(&p) && !is_project_file(&p) && self.playlist.add(p.clone()) {
-            self.status = format!("Added {} to the playlist", display_name(&p));
-            // with nothing playing, the first video added starts
-            if !self.has_video() && self.probe.is_none() {
-                return self.open(p, now);
+    /// Open…: the videos chosen replace the playlist and the first one plays (REQ-355).
+    fn open_videos(&mut self, files: Vec<PathBuf>, now: Instant) -> Result<(), String> {
+        let (projects, videos): (Vec<_>, Vec<_>) =
+            files.into_iter().partition(|p| is_project_file(p));
+        if videos.is_empty() {
+            // only projects: the refusal of REQ-138; nothing chosen: nothing happens
+            return projects
+                .into_iter()
+                .next()
+                .map_or(Ok(()), |p| self.open(p, now));
+        }
+        self.playlist.replace(videos);
+        let first = self.playlist.items[0].clone();
+        self.open(first, now)?;
+        // a missing ffmpeg opens nothing: nothing is waiting to play
+        self.pending_play = self.probe.is_some();
+        Ok(())
+    }
+
+    /// Adds videos at the end of the playlist; the one playing goes on (REQ-356).
+    fn add_to_playlist(&mut self, files: Vec<PathBuf>, now: Instant) -> Result<(), String> {
+        // a video opened by itself is the first of the list it starts
+        if self.playlist.items.is_empty()
+            && let Some(open) = self
+                .probe
+                .as_ref()
+                .map(|(_, _, p)| p.clone())
+                .or_else(|| self.file.clone())
+        {
+            self.playlist.add(open.clone());
+            self.playlist.play(&open);
+        }
+        let mut added = Vec::new();
+        for p in files {
+            if crate::playlist::is_video(&p) && !is_project_file(&p) && self.playlist.add(p.clone())
+            {
+                added.push(p);
             }
+        }
+        match added.as_slice() {
+            [] => return Ok(()),
+            [one] => self.status = format!("Added {} to the playlist", display_name(one)),
+            many => self.status = format!("Added {} videos to the playlist", many.len()),
+        }
+        // with nothing open, the first video added starts
+        if !self.has_video() && self.probe.is_none() {
+            let first = added.swap_remove(0);
+            return self.open(first, now);
         }
         Ok(())
     }
@@ -463,12 +517,11 @@ impl PlayerState {
         match cmd {
             Command::PickOpen => {
                 self.dialogs.start_in(self.settings.last_folder.clone());
-                match self.dialogs.pick_video() {
-                    Some(p) => self.open(p, now),
-                    None => Ok(()),
-                }
+                let files = self.dialogs.pick_videos();
+                self.open_videos(files, now)
             }
             Command::Open(p) => self.open(p, now),
+            Command::OpenVideos(files) => self.open_videos(files, now),
             Command::PlayPause => self.play_pause(now),
             Command::Seek(t) => self.seek(t, now),
             Command::Step(n) => {
@@ -546,12 +599,10 @@ impl PlayerState {
             }
             Command::AddToPlaylist => {
                 self.dialogs.start_in(self.settings.last_folder.clone());
-                match self.dialogs.pick_video() {
-                    Some(p) => self.add_to_playlist(p, now),
-                    None => Ok(()),
-                }
+                let files = self.dialogs.pick_videos();
+                self.add_to_playlist(files, now)
             }
-            Command::AddToPlaylistPath(p) => self.add_to_playlist(p, now),
+            Command::AddToPlaylistPaths(files) => self.add_to_playlist(files, now),
             Command::OpenFolder => {
                 self.dialogs.start_in(self.settings.last_folder.clone());
                 match self.dialogs.pick_folder() {

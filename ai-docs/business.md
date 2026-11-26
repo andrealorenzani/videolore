@@ -5,19 +5,20 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 ## Index (human docs, one line per heading; read a range with sed -n 'A,Bp')
 - docs/business.md § title — L1-2 (2 lines)
 - docs/business.md § Purpose — L3-7 (5 lines)
-- docs/business.md § Users — L8-13 (6 lines)
-- docs/business.md § Constraints — L14-20 (7 lines)
-- docs/business.md § Key decisions — L21-37 (17 lines)
-- docs/business.md § Documents — L38-40 (3 lines)
-- docs/business.md § Editing and projects — L41-47 (7 lines)
-- docs/business.md § Effects and frame — L48-56 (9 lines)
-- docs/business.md § Text and subtitles — L57-63 (7 lines)
-- docs/business.md § Picture, 360 and LUT — L64-69 (6 lines)
-- docs/business.md § Export, audio and performance — L70-76 (7 lines)
-- docs/business.md § Player and installation — L77-82 (6 lines)
-- docs/business.md § Version 3.1.0 — L83-86 (4 lines)
-- docs/business.md § Known limitations — L87-89 (3 lines)
-- docs/business.md § Out of scope — L90-95 (6 lines)
+- docs/business.md § Users — L8-14 (7 lines)
+- docs/business.md § Constraints — L15-21 (7 lines)
+- docs/business.md § Key decisions — L22-39 (18 lines)
+- docs/business.md § Documents — L40-42 (3 lines)
+- docs/business.md § Editing and projects — L43-49 (7 lines)
+- docs/business.md § Effects and frame — L50-58 (9 lines)
+- docs/business.md § Text and subtitles — L59-65 (7 lines)
+- docs/business.md § Picture, 360 and LUT — L66-71 (6 lines)
+- docs/business.md § Export, audio and performance — L72-78 (7 lines)
+- docs/business.md § Player and installation — L79-85 (7 lines)
+- docs/business.md § Version 3.1.0 — L86-89 (4 lines)
+- docs/business.md § Version 3.1.2 — L90-92 (3 lines)
+- docs/business.md § Known limitations — L93-95 (3 lines)
+- docs/business.md § Out of scope — L96-101 (6 lines)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-13 (9 lines)
 - docs/business-editing.md § Requirements — L14-15 (2 lines)
@@ -153,10 +154,25 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-player.md § Audio track (REQ-338) — L27-29 (3 lines)
 - docs/business-player.md § Full screen (REQ-141) — L30-32 (3 lines)
 - docs/business-player.md § Start screen (REQ-150) — L33-35 (3 lines)
-- docs/business-player.md § Opening, preferences and playlist (REQ-248..256) — L36-46 (11 lines)
-- docs/business-player.md § Key decisions — L47-52 (6 lines)
-- docs/business-player.md § Known limitations — L53-59 (7 lines)
-- docs/business-player.md § Out of scope — L60-63 (4 lines)
+- docs/business-player.md § Opening, preferences and playlist (REQ-248..256, 355, 356) — L36-48 (13 lines)
+- docs/business-player.md § Key decisions — L49-54 (6 lines)
+- docs/business-player.md § Known limitations — L55-61 (7 lines)
+- docs/business-player.md § Out of scope — L62-65 (4 lines)
+- docs/business-screen-spy.md § intro — L1-6 (6 lines)
+- docs/business-screen-spy.md § Features (3.1.2) — L7-15 (9 lines)
+- docs/business-screen-spy.md § Requirements (intro) — L16-17 (2 lines)
+- docs/business-screen-spy.md § The program (REQ-341) — L18-20 (3 lines)
+- docs/business-screen-spy.md § Window and preview (REQ-342, 343) — L21-24 (4 lines)
+- docs/business-screen-spy.md § Screen (REQ-344) — L25-27 (3 lines)
+- docs/business-screen-spy.md § Output file (REQ-345, 346) — L28-31 (4 lines)
+- docs/business-screen-spy.md § Formats (REQ-347, 348) — L32-35 (4 lines)
+- docs/business-screen-spy.md § Sound (REQ-357) — L36-38 (3 lines)
+- docs/business-screen-spy.md § Platforms (REQ-358) — L39-41 (3 lines)
+- docs/business-screen-spy.md § Recording (REQ-349..351) — L42-46 (5 lines)
+- docs/business-screen-spy.md § Settings (REQ-352) — L47-49 (3 lines)
+- docs/business-screen-spy.md § Key decisions (3.1.2) — L50-58 (9 lines)
+- docs/business-screen-spy.md § Known limitations — L59-72 (14 lines)
+- docs/business-screen-spy.md § Out of scope — L73-78 (6 lines)
 - docs/business-icons.md § intro — L1-6 (6 lines)
 - docs/business-icons.md § Features — L7-13 (7 lines)
 - docs/business-icons.md § Requirements — L14-15 (2 lines)
@@ -168,7 +184,8 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-verification.md § Automated (2.0.2 and later) — L7-12 (6 lines)
 - docs/business-verification.md § Manual checklist (2.0.2; items 1-8) — L13-24 (12 lines)
 - docs/business-verification.md § Manual checks of 2.0.4 (items 9-35; not a blocker) — L25-53 (29 lines)
-- docs/business-verification.md § Manual checks of 3.1.0 (items 36-37; not a blocker) — L54-56 (3 lines)
+- docs/business-verification.md § Manual checks of 3.1.0 (items 36-37; not a blocker) — L54-57 (4 lines)
+- docs/business-verification.md § Manual checks of 3.1.2 (items 38-41; not a blocker) — L58-62 (5 lines)
 - docs/business-subtitle-files.md § intro — L1-4 (4 lines)
 - docs/business-subtitle-files.md § Requirements (REQ-180..188) — L5-15 (11 lines)
 - docs/business-subtitle-files.md § Key decisions — L16-21 (6 lines)
@@ -266,10 +283,10 @@ Line range convention: heading to the line before the next heading. Re-check aft
 
 ## Sub-documents (owner: product-manager)
 - ai-docs/business-requirements.md — REQ map by document, status, amendments, early requirements 001-044.
-  - § Status and map — L5-12 (8 lines)
-  - § REQ -> human doc — L13-40 (28 lines)
-  - § Coverage rule — L42-44 (3 lines)
-  - § Early requirements — L45-65 (21 lines)
+  - § Status and map — L5-13 (9 lines)
+  - § REQ -> human doc — L14-43 (30 lines)
+  - § Coverage rule — L44-46 (3 lines)
+  - § Early requirements — L47-67 (21 lines)
 - ai-docs/business-decisions.md — standing rules, closed questions, MINOR defaults in force, rejected or considered ideas, product risks.
   - § Standing rules (C, D numbers kept) — L5-23 (19 lines)
   - § Closed questions — L24-32 (9 lines)
@@ -382,3 +399,68 @@ Line range convention: heading to the line before the next heading. Re-check aft
 - docs/business-player.md, docs/business-subtitle-styles.md, docs/business-frame.md: "(planned, 3.1.0)" wording removed; the Enlarge word limitation and the frame defect line now say fixed in 3.1.0.
 - docs/business.md: section "Version 3.1.0" with the accepted deviations; docs/business-verification.md: manual checks 36-37 (player audio menu on a two-track file; subtitle track switch-off in a real player).
 - ai-docs/business-requirements.md: status and next ID (341) lines.
+
+## Plan 3.1.2 (PLAN 2026-11-25; target 3.1.2; built, see STATUS 3.1.2 at the end)
+- REFINE 2026-11-26 (Andrea): the pending plan is finished and released as 3.1.2 (not 3.2.0); no other scope change. All "3.2.0" mentions of this plan replaced by 3.1.2 (docs/business.md, docs/business-player.md, docs/business-screen-spy.md, docs/business-verification.md, ai-docs/business-requirements.md). Requirements stay planned; the architect plans it next. Version 3.1.1 is skipped (Andrea named 3.1.2; [MINOR] no other pending development uses 3.1.1, to confirm at the version step). Consistency check: IDs (REQ-341..352, 355..357; next free REQ-358), amended lines and open questions unchanged; 15 requirements; index line ranges unchanged (in-place edits only).
+- Feature: videolore-screen-spy, a third separate program (screen recorder: preview, screen list, output file name and folder, four video formats, three audio formats, start/stop button); plus the player's several videos from Open… and add-at-any-time playlist.
+- IDs: screen-spy REQ-341..352 and REQ-357 (sound, added at REFINE; docs/business-screen-spy.md); player REQ-355 (Open… multi-select, replaces the list) and REQ-356 (Add to playlist any time, amends REQ-254). REQ-353 and REQ-354 unassigned. Next free ID: REQ-358.
+- Amended text (no ID change): REQ-138 sentence "opens one video file at a time" now points to REQ-355; player feature bullet "One video at a time" carries the planned 3.1.2 wording.
+- Index: docs/business.md (Version 3.1.2 section, Users bullet, Key decisions bullet, Player and installation bullets), docs/business-player.md (REQ-355, 356), docs/business-verification.md (manual checks 38-39, planned), docs/business-screen-spy.md (new sub-document).
+- REFINE 2026-11-25: REQ-357 added (screen-spy doc "Sound" section); REQ-348 amended (its sound is the mixed track); Key decisions, Known limitations, Out of scope and feature bullet of docs/business-screen-spy.md updated; docs/business.md (3.1.2 section, recorder bullet) and docs/business-player.md (REQ-355 without MINOR) updated.
+- Process note: this session had no shell tool; scripts/doc-replace.sh and scripts/doc-index.sh were NOT run. Edits were made with the file edit tool and the indexes refreshed by hand from grep -n '^#' and line counts. The next session with a shell should run scripts/doc-index.sh to confirm the ranges.
+
+### Decisions (MINOR defaults taken)
+- Separate program, own executable and installers for Windows, macOS, Linux, built like the player (REQ-341); same release and version as the project (architect decides the build layout).
+- Screen: one screen chosen from the list, first by default; no region, window or webcam (REQ-344; out of scope).
+- Default folder: the system's video folder (Movies on macOS, Videos elsewhere; Andrea 2026-11-26 clarification); default name "screen-recording" plus date and time; extension follows the audio format: mp4 for AAC and MP3, mkv for WAV (REQ-345 as amended 2026-11-26).
+- Existing file: Replace or Cancel popup, Cancel starts nothing (REQ-346).
+- Video formats (REQ-347): 1280x720 30 fps MP4; 1920x1080 30 fps MP4 (default); 1920x1080 60 fps MP4; 4K UHD 2160p (3840x2160) 30 fps MP4. Four choices, confirmed by Andrea at REFINE 2026-11-25.
+- Audio formats (REQ-348): AAC (default), MP3, WAV; sound inside the video file; container follows the format (AAC, MP3 in MP4; WAV in MKV, Andrea 2026-11-26 option A). No pair refused any more (MINOR, consequence of A; the earlier refusal rule of 2026-11-25 is removed).
+- Preview at a low frame rate, not in the file (REQ-343). Window: four parts, File menu with Quit and About (REQ-342).
+- Failure during recording keeps the written part and names the cause (REQ-350). Close while recording asks Stop and close or Cancel (REQ-351).
+- Settings of the recorder (folder and formats) remembered outside the recording folder, as REQ-252 (REQ-352).
+- No start screen for the recorder (not requested; minimal).
+- Player: Open… replaces the current list with the selected videos (REQ-355, decided by Andrea at REFINE); Add to playlist appends several files at any time without stopping playback; the title shows "n of N" (REQ-356).
+
+### Decisions at REFINE (2026-11-25, Andrea)
+- Q-SS1 closed: (c) computer sound and microphone mixed into one track; REQ-357 added (sound); REQ-348 is the audio format of that track.
+- [MINOR] REQ-357: a missing source (no microphone, or computer sound not available or not permitted) stops the start with a message naming it; no silent single-source recording.
+- Open… replacing the list confirmed (REQ-355 unchanged). The four video formats confirmed (REQ-347).
+
+### REFINE 2026-11-26 (Andrea answers to the architect's SEVERE questions; decided)
+- (A) WAV kept; WAV recordings are saved as .mkv (REQ-348, REQ-347 container, REQ-345 extension). Other pairs unchanged. The architect's ADR assumption "WAV dropped" is superseded.
+- (B) Linux: X11 and XWayland only in 3.1.2; a native Wayland session shows a message before Start and records nothing; Wayland recording later. New REQ-358 (Platforms section); REQ-341 acceptance names it.
+- (C) macOS: computer sound needs macOS 14.6 or later; older Macs get a message at Start (REQ-357 amended). [MINOR] The recorder's installer minimum is therefore NOT 14.6 (older Macs open the program and read the message); architect's default "packager minimum 14.6" must change. The editor and player minimum macOS versions are unchanged.
+- REQ-345 "Videos folder" = the system's video folder (Movies on macOS). Confirmed as clarification.
+- No new open questions. Next free ID: REQ-359.
+
+### Open questions
+- none
+
+### Product risks (3.1.2 plan)
+- R-SS1 Screen capture permission on macOS: first use may fail until approved; the message must say so. On Linux only X11 and XWayland are supported (REQ-358), so no Wayland permission prompt is expected.
+- R-SS2 Computer sound on macOS needs 14.6 or later (decided); older Macs cannot record. Computer sound may still need an extra system driver on some systems (architect to confirm); there the start is refused with a message (REQ-357).
+- R-SS7 WAV in MKV: some players or phones may open MKV less readily than MP4; a user may expect MP4 for every format (state it in the Output and release notes).
+- R-SS8 Linux users on native Wayland (many desktops) get no recording in 3.1.2; the message must say it clearly (REQ-358).
+- R-SS6 A mix of two sources can drown the voice or the computer sound; no level control in 3.1.2; a user may expect separate tracks (out of scope).
+- R-SS3 Open… replacing the list may surprise a user who expected to add; the release notes state it.
+- R-SS4 The four formats are confirmed by Andrea; other sizes may still be asked for after use.
+- R-SS5 A recorder that writes over a file (only after Replace) is a data-loss risk; the Replace popup is the only guard.
+
+### Assumptions
+- The recorder works on Windows, macOS and Linux like the other programs (MINOR).
+- Recording to the system's video folder is what most users expect (MINOR).
+- Recording length: no maximum is set; the disk space is the limit (MINOR; a disk-full case is REQ-350).
+
+### Future work (for the roadmap)
+- Native Wayland recording (after 3.1.2, REQ-358); region and window capture, pause, hotkeys; a choice of one sound source or of separate sound tracks; level control of the two sources; a start screen for the recorder if wanted.
+- For the architect (not a PM decision, passed on by the command): ADR-262 and plan step 3 (WAV dropped) and ADR-259/269 and the installer minimum 14.6 (ADR-264 macOS step) must follow REFINE 2026-11-26; Q-A, Q-B, Q-C are answered.
+
+## STATUS 3.1.2 (2026-11-26; version 3.1.2)
+- Implemented: REQ-341..352, 355, 356, 357, 358 (16 requirements). Their lines already read `(implemented)` in docs/business-screen-spy.md and docs/business-player.md; no ID changed. REQ-353, 354 unassigned; next free REQ-359.
+- Text amended in place (no ID change): REQ-349 (Cancel start while the start checks run: [MINOR] a click stops the start, nothing recorded, choices unlock; acceptance added); REQ-357 (Linux: a monitor as default input refuses Start with a message, the source is the system's default, no source choice; macOS: the microphone question is asked on Start and recording waits for the answer; acceptance added).
+- Known limitations of docs/business-screen-spy.md rebuilt from docs/code-screen-spy.md "Known limits": Windows and macOS not verified on hardware; manual checks 38-40 pending, 41 added (sound sources and Cancel start), none blocking; macOS system-audio permission may give silence the first time (microphone is not silent: it is asked and awaited); Linux monitor default refuses Start; cancelled start waits for the source being tried; 1080p60 and 4K real time not measured; whether computer sound needs an extra driver is unknown (the architect's question stays open in the notes of the architect, not a PM question).
+- Wording of delivered 3.1.0 and 3.1.2 items removed from docs/business.md (feature bullets "planned"), docs/business-player.md, docs/business-screen-spy.md, docs/business-verification.md.
+- Result: no open question. Product risks R-SS1, R-SS2 (driver unknown), R-SS3, R-SS5, R-SS6, R-SS7, R-SS8 stay (see "Product risks (3.1.2 plan)").
+- Process: this session had no shell tool; scripts/doc-replace.sh and doc-index.sh were not run; line ranges were counted by hand (grep -n, line counts). Next session with a shell: run scripts/doc-index.sh to confirm.
+- Future work (returned to the command): native Wayland recording (REQ-358 later); region and window capture, pause and resume, hotkeys; one sound source choice or separate sound tracks; level control for the two sources; a start screen for the recorder if wanted; verification on Windows and macOS (manual checks 38-41).

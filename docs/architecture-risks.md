@@ -22,6 +22,15 @@ Part of [Architecture](architecture.md). Each entry names its area document. Pro
 - **Enlarge word:** the in-house layout must match libass at 1080 px (spike). [subtitles](architecture-subtitles.md).
 - **Planned 3.1.0 risks:** a non-first audio track re-encodes the clip (time cost); proxies grow by one stream per track and are rebuilt once; "As subtitle track" differs between the preview and the export on purpose (the player decides the look of the track); the blurred fill cause is in the clip path (to be located, ADR-250); Enlarge word moves words of old projects. [subtitles](architecture-subtitles.md), [effects](architecture-effects.md), [picture](architecture-picture.md).
 
+## 3.1.2 decisions and risks
+- **WAV audio in the recorder (decided by Andrea):** WAV is recorded into an MKV file, because MP4 cannot hold PCM; the Output text and the release notes say so. [screen recorder](architecture-screen-spy.md).
+- **Wayland (decided by Andrea):** X11 and XWayland only in 3.1.2; a native Wayland session gets a message before Start and records nothing (REQ-358); a portal path is a later version. [screen recorder](architecture-screen-spy.md#platforms).
+- **macOS computer sound (decided by Andrea):** computer sound needs macOS 14.6 or later; older Macs open the recorder (installer minimum 11.0) and get a message at Start. [screen recorder](architecture-screen-spy.md#platforms).
+- **Launch on older macOS:** the editor, the player and the recorder must still start on macOS 11 to 14.5; the CoreAudio symbols are weak imports (CI `nm -m` check); the launch itself is not yet run on macOS 11 to 14.5. [screen recorder](architecture-screen-spy.md#risks).
+- **Audio and video start times:** two clocks; a few hundred milliseconds may differ; not measured yet.
+- **Recorder not run on Windows or macOS:** nothing of the recorder has run on those systems yet (picture offsets, sound sources, permissions, installers, launch on macOS 11 to 14.5); see [screen recorder](architecture-screen-spy.md#not-verified). [screen recorder](architecture-screen-spy.md#risks).
+- **Software encoding cost:** 1080p60 and 4K30 may drop frames on weak computers (libx264 veryfast); hardware encoders are a later candidate. [screen recorder](architecture-screen-spy.md#performance).
+
 ## Technical risks
 - **Bundled ffmpeg 9.x not checked for:** time-dependent Scale and Move sizes (accepted by 6.1.1 in the spike), `lut3d` options, `reset_rot` and the 360 commands, the camera timings. The 2.0.2 run repeated the camera timings on 9.0.2. [picture](architecture-picture.md), [360](architecture-360.md), [build](architecture-build.md).
 - **Hardware paths:** encoder factors and the 25 dB threshold are assumptions until QG-05 is measured on every vendor; only Intel VA-API (CQP) measured; the output check protects files, not speed; damage between samples passes; a hung driver can stop the whole system (not preventable). NVIDIA needs driver 610 or newer; libva older than 2.21 blocks VA-API and Quick Sync with the bundled ffmpeg (Ubuntu 24.04). [export](architecture-export.md).

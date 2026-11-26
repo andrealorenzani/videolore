@@ -36,12 +36,12 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy, llvm-tools-preview
-      - name: System packages (ALSA headers, whisper.cpp build)
+      - name: System packages (ALSA and X11 screen list libraries, whisper.cpp build)
         # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
         # loudly if that ever changes); the package index is refreshed only when needed.
         run: |
           missing=""
-          for p in libasound2-dev libclang-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          for p in libasound2-dev libclang-dev libxcb-randr0-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
           if [[ -n "$missing" ]]; then
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
@@ -94,10 +94,10 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-      - name: cargo test --locked (both programs), with code coverage >= 85% (one instrumented run)
+      - name: cargo test --locked (the three programs), with code coverage >= 85% (one instrumented run)
         # The tests run once, instrumented: the same pass gives the results and the line
-        # coverage of the whole workspace (src/main.rs and player/src/main.rs excluded, as
-        # in scripts/coverage.sh). On failure the failing
+        # coverage of the whole workspace (every src/main.rs excluded, as in
+        # scripts/coverage.sh). On failure the failing
         # tests and their panic messages also become error annotations (readable without
         # logging in, through the public check-run annotations).
         run: |
@@ -116,18 +116,48 @@ jobs:
             echo "no cpu_message test ran" >&2
             exit 1
           }
-      - name: videolore player has no network and no speech code
-        # The player's dependency graph must not contain the speech engine or the HTTP
-        # client (the editor's only network use): the no-network rule is checked here.
+      - name: videolore player and screen spy have no network and no speech code
+        # Their dependency graphs must not contain the speech engine or the HTTP client
+        # (the editor's only network use): the no-network rule is checked here.
         run: |
-          tree=$(cargo tree --locked -p videolore-player -e normal --prefix none)
-          if grep -E '^(ureq|whisper-rs|whisper-rs-sys|rustls) ' <<<"$tree"; then
-            echo "videolore player must not depend on network or speech crates" >&2
-            exit 1
+          for program in videolore-player videolore-screen-spy; do
+            tree=$(cargo tree --locked -p "$program" -e normal --prefix none --target all)
+            if grep -E '^(ureq|whisper-rs|whisper-rs-sys|rustls) ' <<<"$tree"; then
+              echo "$program must not depend on network or speech crates" >&2
+              exit 1
+            fi
+          done
+      - name: The screen recorder records a real X11 screen with PulseAudio sound
+        # An X server without a display (Xvfb) and a PulseAudio server with two null
+        # sinks: one stands for the computer's output, the monitor of the other, remapped,
+        # for the microphone.
+        run: |
+          missing=""
+          for p in xvfb pulseaudio pulseaudio-utils; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          if [[ -n "$missing" ]]; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
           fi
+          Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &
+          pulseaudio --daemonize=yes --exit-idle-time=-1
+          for i in $(seq 1 50); do
+            pactl info >/dev/null 2>&1 && [[ -e /tmp/.X11-unix/X99 ]] && break
+            sleep 0.2
+          done
+          pactl load-module module-null-sink sink_name=computer
+          pactl load-module module-null-sink sink_name=voice
+          pactl load-module module-remap-source master=voice.monitor source_name=microphone
+          pactl set-default-sink computer
+          pactl set-default-source microphone
+          out=$(DISPLAY=:99 XDG_SESSION_TYPE=x11 VIDEOLORE_REQUIRE_CAPTURE=1 \
+            cargo test --locked -p videolore-screen-spy --test ffmpeg real_x11 -- --nocapture 2>&1 | tee /dev/stderr)
+          grep -Eq 'test result: ok\. 1 passed' <<<"$out" || {
+            echo "the real capture test did not run" >&2
+            exit 1
+          }
       - name: Licences, advisories and crate sources (cargo-deny)
         run: cargo deny --locked check
-      - name: Rust crate notices are up to date (editor and player)
+      - name: Rust crate notices are up to date (the three programs)
         run: |
           scripts/notices.sh --check
       - name: Version is the same everywhere
@@ -163,12 +193,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
-      - name: System packages (ALSA headers, whisper.cpp build)
+      - name: System packages (ALSA and X11 screen list libraries, whisper.cpp build)
         # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
         # loudly if that ever changes); the package index is refreshed only when needed.
         run: |
           missing=""
-          for p in libasound2-dev libclang-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          for p in libasound2-dev libclang-dev libxcb-randr0-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
           if [[ -n "$missing" ]]; then
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
@@ -203,13 +233,13 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
-      - name: System packages (ALSA headers, whisper.cpp build)
+      - name: System packages (ALSA and X11 screen list libraries, whisper.cpp build)
         if: runner.os == 'Linux'
         # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
         # loudly if that ever changes); the package index is refreshed only when needed.
         run: |
           missing=""
-          for p in libasound2-dev libclang-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          for p in libasound2-dev libclang-dev libxcb-randr0-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
           if [[ -n "$missing" ]]; then
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
@@ -222,17 +252,31 @@ jobs:
           # Bump when .cargo/config.toml changes the whisper.cpp build flags: whisper-rs-sys
           # does not rebuild on its own, so an old cache would keep the old (native) build.
           prefix-key: v2-rust-ggml-portable
-      - name: Build release executables (the editor and videolore player)
+      - name: Build release executables (the editor, the player and the screen recorder)
         run: cargo build --release --locked --workspace --target ${{ matrix.target }}
       - name: Name the executables
         run: |
           version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "videolore") | .version')
-          for name in videolore videolore-player; do
+          for name in videolore videolore-player videolore-screen-spy; do
             out="${name}-${version}-${{ matrix.target }}${{ matrix.ext }}"
             cp "target/${{ matrix.target }}/release/${name}${{ matrix.ext }}" "$out"
           done
           echo "ASSET=videolore-${version}-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
           echo "PLAYER_ASSET=videolore-player-${version}-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
+          echo "SPY_ASSET=videolore-screen-spy-${version}-${{ matrix.target }}${{ matrix.ext }}" >> "$GITHUB_ENV"
+      - name: The macOS programs still start before macOS 14
+        if: runner.os == 'macOS'
+        # The CoreAudio calls of macOS 14.2 (cpal's recording of the computer's sound)
+        # must be weak imports, or an older macOS refuses to start the program.
+        run: |
+          for name in videolore videolore-player videolore-screen-spy; do
+            imports=$(nm -m "target/${{ matrix.target }}/release/$name" | grep -E '_AudioHardware(Create|Destroy)ProcessTap' || true)
+            echo "$name: ${imports:-no process tap import}"
+            if [[ -n "$imports" ]] && grep -v 'weak' <<<"$imports"; then
+              echo "$name imports a macOS 14.2 symbol strongly" >&2
+              exit 1
+            fi
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.ASSET }}
@@ -241,6 +285,10 @@ jobs:
         with:
           name: ${{ env.PLAYER_ASSET }}
           path: ${{ env.PLAYER_ASSET }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.SPY_ASSET }}
+          path: ${{ env.SPY_ASSET }}
 
   package:
     # Installers with the bundled ffmpeg, on release tags (v*) and on demand.
@@ -265,13 +313,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: stable
-      - name: System packages (ALSA headers, whisper.cpp build)
+      - name: System packages (ALSA and X11 screen list libraries, whisper.cpp build)
         if: runner.os == 'Linux'
         # Only what the runner image lacks (cmake and pkg-config are on the image; the build fails
         # loudly if that ever changes); the package index is refreshed only when needed.
         run: |
           missing=""
-          for p in libasound2-dev libclang-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+          for p in libasound2-dev libclang-dev libxcb-randr0-dev; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
           if [[ -n "$missing" ]]; then
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
             sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends $missing
@@ -289,12 +337,14 @@ jobs:
         run: cargo install cargo-packager --locked --version 0.11.8
       - name: Fetch the pinned ffmpeg (SHA-256 checked)
         run: scripts/fetch-ffmpeg.sh ${{ matrix.target }} dist/ffmpeg-${{ matrix.target }}
-      - name: Build release executables (the editor and videolore player)
+      - name: Build release executables (the editor, the player and the screen recorder)
         run: cargo build --release --locked --workspace
       - name: Build the installers of the editor (with the ffmpeg smoke test)
         run: scripts/package.sh ${{ matrix.target }}
       - name: Build the installers of videolore player (same pinned ffmpeg, own name and identifier)
         run: scripts/package.sh ${{ matrix.target }} player
+      - name: Build the installers of videolore screen spy (its capture devices smoke tested)
+        run: scripts/package.sh ${{ matrix.target }} screen-spy
       - name: Third-party source archive
         if: runner.os == 'Linux'
         run: scripts/package.sh sources

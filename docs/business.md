@@ -8,6 +8,7 @@ All edits are non-destructive: source files are never modified. The separate **v
 ## Users
 - **Social content creators** who are not editing experts and want a publishable clip quickly, often with captions and music.
 - **Hobbyists** editing personal videos.
+- **People who record their screen** for demos and tutorials, who want a quick recording without an editor (3.1.2, [screen recorder](business-screen-spy.md)).
 
 Not the target: professional editors who need multitrack video, colour grading beyond LUTs or advanced effects.
 
@@ -34,6 +35,7 @@ Not the target: professional editors who need multitrack video, colour grading b
 - Crop is removed (REQ-283); Speed is the Change speed effect, not keyframed (REQ-281); Volume is its own keyframable effect (REQ-280).
 - Project files are versioned; a project saved by a newer format is refused by an older program with a message and left untouched.
 - Older processors get a clear message for subtitles instead of a fallback speech engine.
+- The screen recorder (3.1.2) is a third separate program, like the player, so that a simple recording tool stays simple; it has no editing (see [Screen recorder](business-screen-spy.md)).
 
 ## Documents
 Each document is a short business description with its requirements (REQ-NNN) and acceptance criteria. Status of each requirement: `scripts/reqs-status.sh`; text: `scripts/req.sh REQ-NNN`.
@@ -47,8 +49,8 @@ Each document is a short business description with its requirements (REQ-NNN) an
 
 ### Effects and frame
 - [Effects](business-effects.md) — the Effects list and popups, applying to a clip or the whole video, markers on the timeline.
-- [Effects and frame options](business-effects-frame.md) — fades, music effects, Clean audio, Enhance speech, easing, Volume (planned: Volume and track), blur strength, LUT strength, Change speed, Fit and empty space, PNG picture items.
-- [Frame](business-frame.md) — Change aspect (4:3, 16:9, 9:16; Fit on width or height; empty space as colour or blurred video; planned fix of the blurred fill), Scale and Move with keyframes.
+- [Effects and frame options](business-effects-frame.md) — fades, music effects, Clean audio, Enhance speech, easing, Volume and track, blur strength, LUT strength, Change speed, Fit and empty space, PNG picture items.
+- [Frame](business-frame.md) — Change aspect (4:3, 16:9, 9:16; Fit on width or height; empty space as colour or blurred video; blurred fill fixed in 3.1.0), Scale and Move with keyframes.
 - [Whole-video and keyframe clarity](business-keyframes.md) — whole-video keyframe copies shown apart, notice for clips added later, copying keyframes between clips.
 - [Applied effects](business-applied-effects.md) — the column on the right of the preview: order of the effects of the selected clip, reorder inside each group, Change speed fixed.
 - [Overlap media](business-overlap.md) — PNG, GIF and MOV with transparency over one video clip, with its own start, end and box; one shared lane on the timeline.
@@ -56,9 +58,9 @@ Each document is a short business description with its requirements (REQ-NNN) an
 
 ### Text and subtitles
 - [Text](business-text.md) — multiline texts with Fade IN, Fade OUT, Blink and Slide in, time to live, colour, installed fonts, readability, size fitted to the box, Align and Reset.
-- [Subtitles](business-subtitles.md) — automatic offline subtitles, speech model download, editing, reuse of a video's own subtitles, moving lines on screen, multi-selection; planned: the Subtitles effect takes its audio track and subtitle track from the clip.
+- [Subtitles](business-subtitles.md) — automatic offline subtitles, speech model download, editing, reuse of a video's own subtitles, moving lines on screen, multi-selection; the Subtitles effect takes its audio track and subtitle track from the clip.
 - [Subtitle accuracy](business-subtitle-accuracy.md) — long recognition has no lost words; the accuracy target of reused subtitles (REQ-177) is not met (see the [roadmap](roadmap.md)).
-- [Subtitle styles](business-subtitle-styles.md) — Classic, Box, Word highlight (two colours), Enlarge word, Typewriter; shadows for texts and subtitles; planned: As subtitle track, Enlarge word keeping its base.
+- [Subtitle styles](business-subtitle-styles.md) — Classic, Box, Word highlight (two colours), Enlarge word, Typewriter; shadows for texts and subtitles; As subtitle track; Enlarge word keeps its base.
 - [Subtitle files and fonts](business-subtitle-files.md) — `.srt`, `.vtt` and ASS export, a switchable subtitle track, importing `.srt` and `.vtt`, fonts for Arabic and Devanagari.
 
 ### Picture, 360 and LUT
@@ -75,7 +77,8 @@ Each document is a short business description with its requirements (REQ-NNN) an
 - [Continuous quality and cache](business-quality.md) — preview cache limit, project page, engineering quality goals.
 
 ### Player and installation
-- [Video player](business-player.md) — the separate player: one video, 360 view, subtitles, planned audio track menu, full screen, start screen, playlist, "Open with" entries.
+- [Video player](business-player.md) — the separate player: one video, 360 view, subtitles, audio track menu, full screen, start screen, playlist (3.1.2: several videos from Open…, add at any time), "Open with" entries.
+- [Screen recorder](business-screen-spy.md) — the separate videolore-screen-spy program (3.1.2): preview, screen choice, output file, video and audio formats, start and stop recording; computer sound and the microphone mixed into one track (REQ-357).
 - [Splash screen](business-splash.md) — the start screen of the editor and the player: fixed pictures, summary of the version, "Show the start screen".
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, notices, first-launch steps.
 - [Release verification](business-verification.md) — checks of a release on real systems; a manual checklist, not a blocker.
@@ -83,6 +86,9 @@ Each document is a short business description with its requirements (REQ-NNN) an
 ## Version 3.1.0
 Seven requirements, implemented (REQ-334 to REQ-340), each with its acceptance in the document named: Enlarge word keeps its base; As subtitle track style; blurred fill fix; Overlap media as its own Effects list row; player audio track menu; Subtitles effect with the clip's audio and subtitle tracks; Volume and track. REQ-333 is replaced by REQ-334.
 Accepted deviations (Andrea, 2026-11-24): the Subtitles effect's audio track choice is popup state and is not stored in the project; the blurred fill defect (REQ-335) was in the preview, not the export; the "As subtitle track" preview uses the Classic look; a file not yet analysed shows "Track 1".
+
+## Version 3.1.2
+Sixteen requirements are implemented: the new program videolore-screen-spy (REQ-341 to REQ-352, REQ-357 and REQ-358, [Screen recorder](business-screen-spy.md); the recorder records computer sound and the microphone mixed into one track; WAV is saved as MKV; Linux X11 and XWayland only; computer sound on macOS needs 14.6 or later; decisions of 2026-11-26 by Andrea) and the player's several videos from Open… and add at any time (REQ-355, REQ-356; Open… replaces the list, REQ-356 amends REQ-254). The player's REQ-138 wording follows REQ-355. The recorder's sound checks: Cancel start while the checks run; on Linux a monitor as default input refuses Start; on macOS the microphone question is answered before recording. Windows and macOS are not verified on real hardware: manual checks 38 to 41 stay pending (not a blocker).
 
 ## Known limitations
 The list for users is in the [README](../README.md#known-limitations). The open items are in the [roadmap](roadmap.md); the cleaned hand-off of each release is in the release notes of the [releases](../releases/) folder.

@@ -71,6 +71,11 @@ Two self-contained options, chosen by Andrea:
 ## Bundled ffmpeg refresh (0.3.0)
 - FFmpeg 9.0.2 is the latest release; macOS keeps the Martin Riedl 9.0.2 build. Linux and Windows moved to the newest BtbN build of the 9.0 branch (2026-11-13, version 9.0.2-57), pinned by SHA-256 in `packaging/ffmpeg.lock`. It is a daily build kept for a shorter time than month-end builds: if it disappears, the package job fails and the pin moves to the 2026-11-30 month-end build. Each release refreshes the pin (ffmpeg parses untrusted media).
 
+## Third program: the screen recorder (3.1.2)
+- `scripts/package.sh <target> screen-spy` builds the recorder's installers the same way as the player's: AppImage and tar.gz (Linux), NSIS setup (Windows), disk image (macOS). Identifier `io.github.andrealorenzani.videolore-screen-spy`; own notices `rust-crates-screen-spy.txt` and `third-party-screen-spy.txt`; no file association, no desktop entry written by the program; the default NSIS template; macOS minimum system version 11.0, as the editor and the player: the recorder must open on older Macs to show its message (computer sound needs macOS 14.6, checked at Start).
+- Each recorder installer bundles its own pinned ffmpeg (REQ-040) and is about 70 to 130 MB (estimate). The smoke test of the bundled build also checks the capture devices (`gdigrab`, `avfoundation`, `x11grab`, `pulse`) and the encoders (`libx264`, `aac`, `libmp3lame`).
+- CI: the executables job names the recorder's executable; the package matrix calls it; `installer-config.yml` checks its packager files; the network check covers it; version and feature-coverage scripts include it; the Linux runner runs a real capture test under Xvfb with a PulseAudio null sink.
+
 ## Assets in packages (1.6.2, 1.6.3)
 - Splash pictures and summaries are compiled into the programs: packages gain no new file. The notices name `assets/splash/splash.gif` (editor) and `splash-player.gif` (player): the author's own work, MIT (recorded from 1.6.3).
 - Icon: see above; the splash: [UI](architecture-ui.md#splash-160-162-204).

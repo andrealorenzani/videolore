@@ -6,7 +6,8 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
 - Implemented: all REQ-001..176, 178..179, 180..299, 300..311, 312..314, 316..323, 324..333 (all `(implemented)` after 2.3.0). 309 stays implemented and is fixed by REQ-333. REQ-283 is removed (line kept, "removed in 2.3.0").
 - Planned: REQ-177 (accuracy target, not met) and REQ-315 (integrated graphics, not met). Both carry their measured result in the text. 3.1.0 (implemented at STATUS 2026-11-24): REQ-334 (Enlarge word from its base; replaces the placement rule of 333), 335 (blurred fill fix of 126/326), 336 (Overlap media own row; amends 325), 337 (As subtitle track style), 338 (player Audio menu), 339 (Subtitles effect audio and subtitle track), 340 (Volume and track; amends 280, 084, 008).
 - REQ-333 is implemented (2.3.0); its line reads "(implemented; replaces ... replaced by REQ-334)" since 3.1.0, so feature coverage no longer requires it.
-- Next free ID: REQ-341.
+- Implemented at STATUS 3.1.2 (2026-11-26): REQ-341..352 and 357, 358 (videolore-screen-spy, screen-spy doc; 357 sound; 358 Linux X11/XWayland), REQ-355, 356 (player playlist; 356 amends 254). REQ-353, 354 unassigned. Windows and macOS not verified on hardware (manual checks 38-41 pending; not blocking).
+- Next free ID: REQ-359.
 - Amended in place in 2.3.0 (texts in the human docs): 280 (Volume keyframed effect), 281 (Change speed), 286 and 326 (Fit and empty space), 287 (Add Picture replaced by Overlap media), 295 ("Never" removed), 320-322 (order: no Crop, Overlap media in, Change speed fixed), 332 (conversion of 2.2.0 projects).
 - Earlier amendments kept: 076, 083, 116, 129, 131, 147, 148, 156, 157, 200-202, 302, 303, 304, 311 (2.2.0); 300, 301, 303-310 (2.1.0); 183, 195, 202, 222, 244, 248, 253, 257-260, 268, 273, 281, 287, 293 (2.0.4 as built).
 
@@ -30,7 +31,8 @@ Sub-document of [business index](business.md). Requirement texts live in the hum
 - 360: 257-273 (360-video)
 - frame: 124-132, 145, 148; 326, 335 (frame)
 - lut: 135-137, 300, 301 (lut)
-- player: 138-141, 150, 248-256 (player)
+- player: 138-141, 150, 248-256, 355, 356 (player)
+- screen recorder: 341-352, 357, 358 (screen-spy)
 - splash: 133, 134, 154, 295 (splash)
 - icons: 142, 143
 - install: 030, 031, 040-042

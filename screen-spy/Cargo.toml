@@ -1,0 +1,40 @@
+[package]
+name = "videolore-screen-spy"
+version = "3.1.2"
+edition = "2024"
+rust-version = "1.100"
+license = "GPL-3.0-only"
+authors = ["Andrea Lorenzani"]
+readme = "../README.md"
+description = "Records one screen with the computer sound and the microphone to a video file, with ffmpeg"
+
+[lib]
+doctest = false
+
+[dependencies]
+# The ffmpeg lookup, the file helpers, the icons and the notices of the editor's library,
+# without its sound output and without speech-to-text: no network code (checked in CI).
+videolore = { path = "..", default-features = false }
+directories = "6.0.0"
+display-info = "0.5.10"
+eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "glow", "default_fonts", "wayland", "x11"] }
+jiff = "1.0.3"
+rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+# The two sound sources on Windows and macOS (on Linux ffmpeg reads them itself).
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+cpal = "0.18.2"
+
+# The macOS version and the permissions; the same versions as the editor's graph.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+objc2 = "0.6.5"
+objc2-core-audio = { version = "0.3.2", default-features = false, features = ["std", "AudioHardware", "objc2", "objc2-foundation"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFDictionary"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGWindow"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSDictionary", "NSProcessInfo", "NSString", "NSUUID", "NSValue"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

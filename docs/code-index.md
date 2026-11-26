@@ -93,7 +93,10 @@ Where each important part of the code is, by area: the module, the main types an
 - Popups and dialogs — `src/ui/popups.rs` (`clip_aspect_rows`), `modals.rs`, `settings.rs` (`INTEGRATED_NOTE`, `REPEATING`, graphics card), `status.rs`; `src/dialogs.rs` (native, rfd), `src/app.rs:Dialogs` (faked in tests)
 
 ## videolore player
-- `player/src/lib.rs:real_app`; `player/src/app.rs:PlayerState`, `Command`; `player/src/ui.rs:PlayerApp`, `audio_menu`; `PlayerState::audio_tracks`, `choose_audio` (REQ-338); `player/src/subs.rs:Subs`, `Source::Picture`; `player/src/fullscreen.rs`; `player/src/settings.rs`, `player/src/playlist.rs`; tests `player/src/tests.rs`, `player/src/ui_tests.rs`, `player/tests/ffmpeg.rs` (REQ-138..142, 150, 248..256, 338)
+- `player/src/lib.rs:real_app`; `player/src/app.rs:PlayerState`, `Command`; `player/src/ui.rs:PlayerApp`, `audio_menu`; `PlayerState::audio_tracks`, `choose_audio` (REQ-338); `player/src/subs.rs:Subs`, `Source::Picture`; `player/src/fullscreen.rs`; `player/src/settings.rs`, `player/src/playlist.rs:Playlist::replace`, `place`, `Command::OpenVideos`, `AddToPlaylistPaths`; tests `player/src/tests.rs`, `player/src/ui_tests.rs`, `player/tests/ffmpeg.rs` (REQ-138..142, 150, 248..256, 338, 355, 356)
+
+## videolore screen spy ([code-screen-spy.md](code-screen-spy.md))
+- `screen-spy/src/app.rs:RecorderState`, `start`, `finish` (REQ-346, 349..351); `plan.rs:record_args`, `preview_args`, `VideoFormat`, `AudioFormat`, `file_name` (REQ-343, 345, 347, 348); `session.rs:Platform::detect` (REQ-357, 358); `screens.rs` (REQ-344); `audio.rs:PulseSound`, `DeviceSound`, `hold`, `Feeder`; `session.rs:microphone_gate`; `macos.rs:SystemTap` (REQ-357); `process.rs:failure_cause` (REQ-350); `settings.rs` (REQ-352); `ui.rs`, `about.rs` (REQ-342); `macos.rs`; packaging (REQ-341); tests `screen-spy/src/{tests,app_tests,ui_tests}.rs`, `screen-spy/tests/ffmpeg.rs`
 
 ## Packaging, build and quality
 - `src/packaging.rs:release_assets`, `parse_lock`, `ffmpeg_pin` (tests of `build.yml`, installers, NSIS pin, launcher; REQ-030, 040..042, 138, 225..229, 231); `scripts/package.sh`, `fetch-ffmpeg.sh`, `notices.sh`, `icons.sh`, `version.sh`; `.github/workflows/{build,installer-config,advisories,pages}.yml`; `tests/page.rs` (REQ-298, 299)

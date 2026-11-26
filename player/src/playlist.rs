@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Andrea Lorenzani
 
-//! The playlist (REQ-254): the videos to play one after the other. It exists only while
+//! The playlist (REQ-254, 355, 356): the videos to play one after the other. It exists only while
 //! the player is open and is never written anywhere.
 
 use std::path::{Path, PathBuf};
@@ -64,6 +64,26 @@ impl Playlist {
         self.items = list_folder(dir);
         self.current = None;
         self.items.len()
+    }
+
+    /// Replaces the list with these videos in the order given (once each, at most
+    /// [`MAX_ENTRIES`]), none playing yet (REQ-355). Returns how many it holds.
+    pub fn replace(&mut self, paths: Vec<PathBuf>) -> usize {
+        self.clear();
+        let mut seen = std::collections::HashSet::new();
+        self.items = paths
+            .into_iter()
+            .filter(|p| seen.insert(p.clone()))
+            .take(MAX_ENTRIES)
+            .collect();
+        self.items.len()
+    }
+
+    /// Where the playing video is in the list, from 1, and how long the list is; `None`
+    /// when the list has one video at most or the playing one is not in it (REQ-356).
+    pub fn place(&self) -> Option<(usize, usize)> {
+        let len = self.items.len();
+        self.current.filter(|_| len > 1).map(|i| (i + 1, len))
     }
 
     /// Marks `p` as the video playing (adding it when it is not in the list).

@@ -12,10 +12,10 @@ for req in "$@"; do
   n=${req#REQ-}
   echo "== $req"
   echo "-- named in the code (not tests):"
-  grep -rlE "REQ-$n\b" src player/src 2>/dev/null | grep -vE '(_tests|/tests)\.rs$' | sort | sed 's/^/  /' || true
+  grep -rlE "REQ-$n\b" src player/src screen-spy/src 2>/dev/null | grep -vE '(_tests|/tests)\.rs$' | sort | sed 's/^/  /' || true
   echo "-- tests (// covers:):"
   # a covers line names REQ-325 or 325 in a list ("covers: REQ-325, 327" or "REQ-320..322" is not expanded)
-  grep -rnE "// covers:.*(REQ-$n\b|[ ,]$n\b)" src tests player 2>/dev/null | while IFS=: read -r file line _; do
+  grep -rnE "// covers:.*(REQ-$n\b|[ ,]$n\b)" src tests player screen-spy 2>/dev/null | while IFS=: read -r file line _; do
     name=$(awk -v s="$line" 'NR>s && /fn [a-z0-9_]+/ {match($0, /fn [a-z0-9_]+/); print substr($0, RSTART+3, RLENGTH-3); exit}' "$file")
     echo "  $file:$line $name"
   done

@@ -51,6 +51,9 @@ Status tags: GATE (test fails the build), ESTIMATE, ASSUMPTION, MEASURED, NOT ME
 - Splash: decode ≤ 100 ms per program (ESTIMATE); summary fit once per open and on scale change; each picture about 1 MB RGBA.
 - Preview copy cache enforcement < 100 ms for 1000 copies (ESTIMATE, measured once, REQ-297).
 
+## Screen recorder (3.1.2, built)
+- Preview change ≤ 1 s (5 fps, 640 px); one ffmpeg child; preview reader never blocks recording (GATE by fake child test). Killed file playable (GATE, Linux tests incl. tests/ffmpeg.rs killed recordings; built). Stop ≤ 15 s then kill. Linux A/V offset with -isync 17 to 39 ms (MEASURED by hand, flash and tone; 0.26 to 2.2 s without). 1080p30 real time on 4 cores (ASSUMPTION A-3.1.2-7, NOT MEASURED); 4K30 and 1080p60 may drop frames (NOT MEASURED). Start to first frame ~2 s (ESTIMATE, NOT MEASURED). A/V start few hundred ms (ASSUMPTION; Windows and macOS NOT MEASURED). Installers 70 to 130 MB each, 3 products (ESTIMATE, NOT MEASURED). [3.1.2]
+
 ## Platforms, build, verification
 - Platforms: Linux x86_64 (Ubuntu 24.04 and 26.04 LTS, current Fedora; glibc 2.39 max, `package.sh` fails above); macOS Apple Silicon; Windows x86_64. Intel Mac, ARM Windows and ARM Linux out of scope (REQ-040 unchanged).
 - STT on x86-64 needs AVX2, FMA, F16C, BMI2 (+SSE4.2, AVX); without them a message, never a crash (ADR-027, ADR-031). aarch64: features assumed.

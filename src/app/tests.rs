@@ -298,6 +298,42 @@ fn fifty_operations_can_be_undone() {
 
 // covers: REQ-002, REQ-032
 #[test]
+fn a_refusal_that_arrives_before_the_last_file_is_still_told() {
+    let release = Arc::new(AtomicBool::new(false));
+    let held = Arc::clone(&release);
+    let slow = FakeRunner::default().on(move |_, a| {
+        if !a.last()?.ends_with("late.mp4") {
+            return crate::ffmpeg::fake::fail("Invalid data found");
+        }
+        while !held.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        ok(MP4_JSON)
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let late = dir.path().join("late.mp4");
+    let bad = dir.path().join("notes.txt");
+    std::fs::write(&late, "x").unwrap();
+    std::fs::write(&bad, "x").unwrap();
+    let mut app = state_with(FakeDialogs::default(), slow);
+    app.dispatch(Command::Import(vec![bad, late]), Instant::now())
+        .unwrap();
+    let end = Instant::now() + Duration::from_secs(10);
+    while !matches!(app.project.media[0].status, MediaStatus::Rejected(_)) {
+        app.tick(Instant::now());
+        assert!(Instant::now() < end);
+    }
+    release.store(true, Ordering::SeqCst);
+    settle(&mut app);
+    assert!(
+        app.status.contains("could not be imported"),
+        "{}",
+        app.status
+    );
+}
+
+// covers: REQ-002, REQ-032
+#[test]
 fn unreadable_files_are_rejected_in_the_list_without_crashing() {
     let dir = tempfile::tempdir().unwrap();
     let bad = dir.path().join("notes.txt");

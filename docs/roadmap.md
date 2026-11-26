@@ -175,6 +175,22 @@ Why: keeps the code and tests healthy, replaces assumed numbers with measured on
 - **Test memory cap as a workflow rule (8 GB).** (source: 1.6.2)
 - **Package list for the player on crates.io** — only if published. (source: 1.6.2)
 
+## Priority 13 — Screen recorder
+Why: the options left out of the screen recorder of 3.1.2, and its checks on real systems; each needs its own design and measurements.
+- **Native Wayland recording** — the first version needs X11 or XWayland and refuses native Wayland with a message; add it when a portal or capture route is chosen. (source: 3.1.2, Linux session decision)
+- **Region and window capture** — the first version records a whole screen only. (source: 3.1.2, postponed from the screen recorder request)
+- **Pause and resume** — stop and start a recording without losing the file. (source: 3.1.2, postponed from the screen recorder request)
+- **Hotkeys** — start and stop the recording from the keyboard while another program has focus. (source: 3.1.2, postponed from the screen recorder request)
+- **Choice of sound source or separate tracks** — pick the microphone and the computer sound, or record them as separate tracks. (source: 3.1.2, postponed from the screen recorder request)
+- **Level control** — a volume control or meter for each sound source. (source: 3.1.2, postponed from the screen recorder request)
+- **Hardware encoders for the recorder** — use the graphics or system encoders where available, with measurements against the software encoder. (source: 3.1.2, postponed from the screen recorder plan)
+- **Wait for the macOS system-audio permission** — Start does not yet wait for macOS's answer to the computer-sound permission, as it does for the microphone question. (source: 3.1.2, macOS sound check)
+- **Faster Start** — the sound sources are opened twice, once by the checks and again by the recording process, so a few seconds pass between Start and the recording. (source: 3.1.2, Start checks)
+- **Linux default-source check when ffmpeg marks none** — when ffmpeg's list marks no default source, the monitor check only probes the default. (source: 3.1.2, Linux sound check)
+- **Measure the recorder on Windows and macOS** — picture and sound offset at the start, performance at 1080p30, 4K30 and 1080p60, start time and installer sizes. (source: 3.1.2, measurements not made)
+- **Real-system checks of the recorder** — manual checks 38 to 41 in the verification list, and the launch on macOS 11 to 14.5. (source: 3.1.2, not verified on real hardware)
+- **Automated capture test for Windows and macOS** — the real-recording test runs on Linux only (X11 with PulseAudio). (source: 3.1.2, test coverage)
+
 ## Accepted limits (explained, not planned)
 - **Subtitles need AVX2, FMA and F16C on Windows and Linux** — older processors get a message. (source: 0.3.0)
 - **Text items use installed fonts** — a missing font falls back to the bundled font with a note. (source: 1.3.0)

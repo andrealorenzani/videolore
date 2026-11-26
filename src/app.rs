@@ -618,6 +618,8 @@ pub struct AppState {
     pub machine: Machine,
     probes: Pool<ProbeJob, ProbeResult>,
     probe_cancel: HashMap<MediaId, Arc<AtomicBool>>,
+    /// Why files of the running import were refused, told when the last one is done.
+    probe_rejected: Vec<String>,
     proxy_pool: Pool<ProxyJob, ()>,
     proxy_events: (Sender<ProxyEvent>, Receiver<ProxyEvent>),
     proxy_jobs: HashMap<MediaId, (String, Arc<AtomicBool>)>,
@@ -877,6 +879,7 @@ impl AppState {
             speech_files_size: 0,
             probes: probe_pool(&sched, &runner),
             probe_cancel: HashMap::new(),
+            probe_rejected: Vec::new(),
             proxy_pool: proxy_pool(),
             proxy_events: channel(),
             proxy_jobs: HashMap::new(),
@@ -1635,6 +1638,9 @@ impl AppState {
         let info = self.ffmpeg.as_ref().map_err(|e| e.clone())?;
         let ffprobe = info.ffprobe.clone();
         let n = files.len();
+        if self.probe_cancel.is_empty() {
+            self.probe_rejected.clear();
+        }
         for path in files {
             let id = self.project.new_media_id();
             self.project.add_media(MediaItem::analysing(id, &path));

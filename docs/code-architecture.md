@@ -1,6 +1,6 @@
 # Code — module architecture
 
-Back to the [index](code.md). How the modules of the editor (`src/`) and of videolore player (`player/src/`) depend on each other and how data and threads flow between them. Every box is a real module; the arrows are real `use crate::…` dependencies (checked with `scripts/module-deps.sh`, which prints the full list, the users of a module with `-r`, or the whole graph with `--mermaid`). Where a feature is: [code-index.md](code-index.md); the patterns: [code-modules.md](code-modules.md).
+Back to the [index](code.md). How the modules of the editor (`src/`), of videolore player (`player/src/`) and of the screen recorder (`screen-spy/src/`) depend on each other and how data and threads flow between them. Every box is a real module; the arrows are real `use crate::…` dependencies (checked with `scripts/module-deps.sh`, which prints the full list, the users of a module with `-r`, or the whole graph with `--mermaid`). Where a feature is: [code-index.md](code-index.md); the patterns: [code-modules.md](code-modules.md).
 
 ## Layers
 | Layer | Modules |
@@ -145,3 +145,23 @@ flowchart LR
 ```
 
 The player builds its own `Project` of one clip in memory (never saved) and reuses the editor's engine; it is built without the `stt` feature, so it has no speech engine and no network code (checked in CI with `cargo tree`).
+
+## videolore screen spy
+```mermaid
+flowchart LR
+  RUI["ui::RecorderApp"] --> APP["app::RecorderState<br/>(Command, tick)"]
+  RUI --> ABT["about"] --> NOT["videolore::notices"]
+  APP --> PLAN["plan (ffmpeg arguments)"] --> DEV["devices"]
+  APP --> SES["session::Platform"]
+  APP --> SCR["screens (display-info)"]
+  APP --> SET["settings"]
+  APP --> PRO["process::Spawner<br/>(one ffmpeg capture)"]
+  PRO -->|"raw frames on stdout"| PRV["preview::Feed (thread, newest only)"] --> APP
+  APP --> AUD["audio::Sound"]
+  AUD -->|"Linux: -f pulse inputs"| PRO
+  AUD -->|"Windows, macOS: cpal callback, channel, Feeder thread, TCP 127.0.0.1"| PRO
+  APP -->|"start checks (thread, one-shot channel)"| RUN["videolore ffmpeg::Runner<br/>(-devices, -encoders, source checks)"]
+  AUD -->|"macOS"| TAP["macos::SystemTap, microphone_gate"]
+```
+
+Threads: the UI thread; one thread per start for the checks (it calls `Sound::open`); per capture one preview reader and one stderr reader; on Windows and macOS one thread that owns the cpal streams (`audio::hold`), the system's audio thread and a feeder thread per source. The UI thread never waits for the checks or the capture: `tick` polls them, and Stop has a 15 s deadline.

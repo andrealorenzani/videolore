@@ -129,5 +129,23 @@ Part of [Architecture](architecture.md). One line per decision: the choice and i
 - **The Subtitles popup's Audio track is a command argument, not stored (ADR-253).**
 - **Volume and track: the track is a clip field read by preview, export, merge and the 360 pre-pass (ADR-254).**
 
+## Built in 3.1.2 (ADR-255 to 270)
+- **Screen recorder as a third program with its own crate and installers (ADR-255).**
+- **Picture by ffmpeg's own screen inputs (gdigrab, avfoundation, x11grab); one capture for preview and recording (ADR-256, 257).**
+- **Screens listed with display-info; no capture crate for frames (ADR-258).**
+- **Sound: ffmpeg pulse on Linux; cpal WASAPI loopback on Windows; the program's own CoreAudio tap on macOS 14.6 or later (cpal's loopback is not used); microphone by cpal on Windows and macOS; mixed by ffmpeg; computer sound on macOS needs 14.6 (ADR-259, decided by Andrea).**
+- **Sound transport over a loopback TCP connection, 127.0.0.1 only (ADR-260).**
+- **Fragmented MP4 written to the chosen path; stop by `q` on stdin (ADR-261).**
+- **H.264 with AAC or MP3 in MP4; WAV in MKV, because MP4 cannot hold PCM (ADR-262, decided by Andrea).**
+- **Settings file version 1 in the configuration folder; default folder the system's video folder (ADR-263).**
+- **Permission and missing-source messages before Start; macOS screen recording preflight, then the system prompt once (ADR-264).**
+- **X11 and XWayland only in 3.1.2; a native Wayland session gets a message before Start (ADR-265, REQ-358, decided by Andrea).**
+- **The bundled ffmpeg's devices and encoders checked at start (ADR-266).**
+- **Player: several videos from File > Open…, Add to playlist at any time, title "n of m" (ADR-267; amends REQ-254).**
+- **Platform code behind pure builders tested on Linux; a real capture test under Xvfb (ADR-268).**
+- **Packaging as the player's pipeline; the recorder's own notices and installers; macOS minimum 11.0 as the others, so older Macs see the message (ADR-269).**
+- **Editor icon artwork, no start splash, About with its own components (ADR-270).**
+- **Deviations as built:** the recorder uses the library without features (no `audio`); avfoundation takes the screen by name; sound inputs open before the screen and `-isync` ties the Linux pulse inputs to the picture (17 to 39 ms apart, 0.26 to 2.2 s without it); the CoreAudio symbols are linked weakly (`-weak_framework`, CI `nm -m` check), not through `dlsym`; the recorder's `unsafe` is one file, `macos.rs`.
+
 ## Open choices
 Listed in [risks](architecture-risks.md#open-product-decisions): the blur divisor, the picture item limits, the Faster target, REQ-177, the boxed shadow design, the default 360 choice.

@@ -62,13 +62,21 @@ Part of [Architecture](architecture.md). Dependencies and supply chain: [depende
 - **Speech fixture:** committed and checked by SHA-256; no synthesiser runs in tests; `VIDEOLORE_REQUIRE_STT=1` makes a missing model a failure (2.0.3).
 
 ## Unsafe code
-Rust `unsafe` is forbidden in the whole program (compiler-enforced since 0.3.0) except three reviewed places: the cancel callback given to whisper.cpp (`stt.rs`); `desktop.rs` for the macOS "open document" handler; and since 2.0.4 (ADR-183, amends ADR-034) the one allow-listed call that builds the macOS menu bar.
+Rust `unsafe` is forbidden in the whole program (compiler-enforced since 0.3.0) except three reviewed places: the cancel callback given to whisper.cpp (`stt.rs`); `desktop.rs` for the macOS "open document" handler; and since 2.0.4 (ADR-183, amends ADR-034) the one allow-listed call that builds the macOS menu bar. The recorder (3.1.2) adds one file, `screen-spy/src/macos.rs`, the only place where its library allows unsafe code.
 
 ## Signing and supply chain
 - Installers are not code-signed (decided by Andrea; postponed, not rejected): Windows and macOS warn on first launch; the README explains the steps; the macOS app carries an ad-hoc seal only ([packaging](architecture-packaging.md#macos)).
 - `Cargo.lock` committed; release builds use `--locked`. `cargo-deny` in CI: licence allow-list (MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, Unicode-3.0, Unlicense, CDLA-Permissive-2.0, BSL-1.0, MPL-2.0), advisories, yanked versions (0.3.0), banned crates; an advisory is ignored only with a written reason (the list is empty); a weekly advisory run.
 - `cargo-about` regenerates `packaging/notices/rust-crates.txt`; CI fails when it is out of date. ffmpeg archives and `appimagetool` are pinned by SHA-256 (`packaging/ffmpeg.lock`, `packaging/tools.lock`). CI jobs are read-only; only the release job writes; third-party actions pinned to commits (ADR-036).
 - Assumption: the GPL source-offer approach for ffmpeg is not reviewed by a lawyer ([engine](architecture-engine.md#bundled-ffmpeg)).
+
+## Screen recorder (3.1.2)
+- **Arguments:** numbers, closed lists, the chosen folder and file name, and the screen geometry only; no text from a file or the system reaches ffmpeg; no shell; protocols `file`, `pipe` and `tcp` only.
+- **Loopback audio:** the TCP listener binds 127.0.0.1 on an ephemeral port, accepts one connection per source and only from 127.0.0.1; the PCM is never stored or sent.
+- **Output:** written to the path the user chose; an existing file is replaced only after confirmation (`-y` only then); fragmented MP4 so a cut recording stays readable.
+- **Settings:** the recorder's own file, a regular file of at most 64 KiB, never next to a recording (corpus test as the player's).
+- **Unsafe code:** one file more, `screen-spy/src/macos.rs`, for the microphone permission and the computer sound tap on macOS (seven SAFETY-commented sites); the screen recording check uses safe CoreGraphics bindings.
+- **Privacy:** no network code and no telemetry; the recording contains what the screen showed and is kept only where the user saved it.
 
 ## Security by version
 0.2.x: no shell, `file:` prefix, protocol whitelist, bounded reads (ADR-034). 0.3.0: private work folders 0700, unsafe in three sites, pinned downloads, FIFO refusal. 0.4.0: hardware check with synthetic input, renderD devices only. 1.2.0: subtitle track and SRT validation. 1.4.0: export name rules and data-loss guard. 1.6.0: LUT input and player rules. 2.0.4: pictures, speed and volume keys, speech fixture, menu call. 2.1.0: LUT streaming, order validation. 2.3.0: overlay media limits, format 14 validation.

@@ -1,3 +1,4 @@
 New in this version
-An Audio menu chooses which audio track of the video plays; the first one is used by default.
-The chosen track stays while the same file is open; after a restart the first track is used again.
+File > Open… now takes several videos at once: they play one after the other.
+File > Add to playlist adds videos at any time, without stopping the one playing.
+With more than one video, the window title shows the place, such as (2 of 5).

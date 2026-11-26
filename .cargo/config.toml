@@ -19,3 +19,11 @@ GGML_AVX2 = "ON"
 GGML_FMA = "ON"
 GGML_F16C = "ON"
 GGML_BMI2 = "ON"
+
+# videolore screen spy records the computer's sound with CoreAudio calls that exist since
+# macOS 14.2 (through cpal). Linked normally they would stop a program from starting on an
+# older macOS (the programs run from macOS 11): every symbol of CoreAudio is linked weakly,
+# so a missing one is only an error if it is called, which the recorder never does below
+# macOS 14.6 (REQ-357). CI checks the imports of the built programs.
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "link-arg=-Wl,-weak_framework,CoreAudio"]

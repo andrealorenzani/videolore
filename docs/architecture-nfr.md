@@ -64,11 +64,18 @@ Status: GATE = checked by a test (fails the build); ESTIMATE = design figure, no
 
 - 3.1.0 planned: audio tracks per file 32 (listed; the clip's track is 0 to 31); Enlarge word of a line: per-word events only for a line with an enlarged word (no change for other lines); a non-first audio track is re-encoded on export (time cost not measured); proxies keep every audio stream (size not measured). Acceptance figures are the ones of REQ-334 to 340 (docs/business*.md); none is measured yet.
 
+## Screen recorder (3.1.2)
+- Preview shows a change within 1 s (5 frames per second); one ffmpeg child at a time; the preview reader never blocks the recording (GATE by test with a fake child; built).
+- A recording killed is still playable (GATE; Linux tests, `tests/ffmpeg.rs` killed recordings); stop finishes within 15 s, then the process is killed (built).
+- 1080p at 30 fps in real time on a four-core machine (ASSUMPTION, NOT MEASURED yet); 4K at 30 fps and 1080p at 60 fps: NOT MEASURED, may drop frames.
+- Start to first frame about 2 s (ESTIMATE, NOT MEASURED). Audio and video start within a few hundred milliseconds (ASSUMPTION, NOT MEASURED on Windows or macOS).
+- Installers about 70 to 130 MB each, three products (ESTIMATE, NOT MEASURED).
+
 ## Security targets
 - No shell; `file:` prefix; `file` and `pipe` protocols only (GATE). Hostile project and settings files: no crash, a clear refusal, nothing written, sources unchanged (GATE). Full list: [security](architecture-security.md).
 - No network except the consented speech download; no telemetry; HTTPS-only table test; the HTTP client only in `stt` builds; the player graph without `ureq` or `whisper-rs` (CI).
 - Work folders 0700 and files 0600 on Linux and macOS; partial files removed after crash or cancel.
-- Unsafe code: three reviewed sites ([security](architecture-security.md#unsafe-code)).
+- Unsafe code: three reviewed sites in the editor, one file in the recorder ([security](architecture-security.md#unsafe-code)).
 
 ## Portability
 - Linux x86_64 (glibc 2.39 maximum), macOS Apple Silicon, Windows x86_64. Intel Macs, ARM Windows and ARM Linux out of scope.

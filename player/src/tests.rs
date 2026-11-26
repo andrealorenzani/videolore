@@ -141,13 +141,13 @@ impl Runner for Fake {
 }
 
 pub(crate) struct FakeDialogs {
-    pub video: Option<PathBuf>,
+    pub videos: Vec<PathBuf>,
     pub srt: Option<PathBuf>,
 }
 
 impl Dialogs for FakeDialogs {
-    fn pick_video(&mut self) -> Option<PathBuf> {
-        self.video.clone()
+    fn pick_videos(&mut self) -> Vec<PathBuf> {
+        self.videos.clone()
     }
     fn pick_srt(&mut self) -> Option<PathBuf> {
         self.srt.clone()
@@ -188,7 +188,7 @@ pub(crate) fn player(work: &Path) -> PlayerState {
     player_with(
         Ok(info()),
         FakeDialogs {
-            video: None,
+            videos: Vec::new(),
             srt: None,
         },
         work,
@@ -245,7 +245,7 @@ fn a_video_opens_as_a_one_clip_project_and_names_the_window() {
     let mut q = player_with(
         Ok(info()),
         FakeDialogs {
-            video: Some(file(d.path(), "dialog.mp4")),
+            videos: vec![file(d.path(), "dialog.mp4")],
             srt: None,
         },
         d.path(),
@@ -308,7 +308,7 @@ fn files_that_cannot_be_played_are_refused_with_a_message() {
     let mut q = player_with(
         Err("not found".into()),
         FakeDialogs {
-            video: None,
+            videos: Vec::new(),
             srt: None,
         },
         d.path(),
@@ -329,6 +329,7 @@ fn the_player_has_no_save_export_or_edit_command() {
         match c {
             Command::PickOpen
             | Command::Open(_)
+            | Command::OpenVideos(_)
             | Command::PlayPause
             | Command::Seek(_)
             | Command::Step(_)
@@ -351,7 +352,7 @@ fn the_player_has_no_save_export_or_edit_command() {
             | Command::CloseAbout
             | Command::DismissNotice
             | Command::AddToPlaylist
-            | Command::AddToPlaylistPath(_)
+            | Command::AddToPlaylistPaths(_)
             | Command::OpenFolder
             | Command::OpenFolderPath(_)
             | Command::Next
@@ -494,7 +495,7 @@ fn an_srt_file_is_opened_chosen_and_listed() {
     let mut q = player_with(
         Ok(info()),
         FakeDialogs {
-            video: None,
+            videos: Vec::new(),
             srt: Some(srt),
         },
         d.path(),
@@ -667,31 +668,31 @@ fn a_playlist_plays_in_order_goes_next_and_back_and_stops_after_the_last() {
     let mut p = player(d.path());
     let names = ["a.mp4", "b.mp4", "c.mp4"];
     for n in names {
-        p.dispatch(Command::AddToPlaylistPath(file(d.path(), n)), now());
+        p.dispatch(Command::AddToPlaylistPaths(vec![file(d.path(), n)]), now());
         settle(&mut p);
     }
     // the first one added started playing; the list is in the order added
-    assert_eq!(p.title(), "a.mp4 — videolore player");
+    assert_eq!(p.title(), "a.mp4 (1 of 3) — videolore player");
     assert_eq!(p.playlist.items.len(), 3);
     p.dispatch(Command::Next, now());
     settle(&mut p);
-    assert_eq!(p.title(), "b.mp4 — videolore player");
+    assert_eq!(p.title(), "b.mp4 (2 of 3) — videolore player");
     p.dispatch(Command::Previous, now());
     settle(&mut p);
-    assert_eq!(p.title(), "a.mp4 — videolore player");
+    assert_eq!(p.title(), "a.mp4 (1 of 3) — videolore player");
     p.dispatch(Command::Previous, now());
     assert!(p.status.contains("first video"));
     // the end of a video starts the next; after the last it stops
     assert!(p.after_end(now()));
     settle(&mut p);
-    assert_eq!(p.title(), "b.mp4 — videolore player");
+    assert_eq!(p.title(), "b.mp4 (2 of 3) — videolore player");
     assert!(p.after_end(now()));
     settle(&mut p);
-    assert_eq!(p.title(), "c.mp4 — videolore player");
+    assert_eq!(p.title(), "c.mp4 (3 of 3) — videolore player");
     assert!(!p.after_end(now()));
     p.dispatch(Command::Next, now());
     assert!(p.status.contains("last video"));
-    assert_eq!(p.title(), "c.mp4 — videolore player");
+    assert_eq!(p.title(), "c.mp4 (3 of 3) — videolore player");
     // a folder is a playlist in name order; the list is not kept by a new run
     let folder = d.path().join("shows");
     std::fs::create_dir(&folder).unwrap();
@@ -700,11 +701,141 @@ fn a_playlist_plays_in_order_goes_next_and_back_and_stops_after_the_last() {
     }
     p.dispatch(Command::OpenFolderPath(folder.clone()), now());
     settle(&mut p);
-    assert_eq!(p.title(), "m.mp4 — videolore player");
+    assert_eq!(p.title(), "m.mp4 (1 of 2) — videolore player");
     assert_eq!(p.playlist.items.len(), 2);
     p.dispatch(Command::OpenFolderPath(d.path().join("none")), now());
     assert!(p.status.contains("no videos"));
     assert!(player(d.path()).playlist.items.is_empty());
+}
+
+// covers: REQ-355
+#[test]
+fn open_with_several_videos_plays_them_in_order_and_open_again_replaces_the_list() {
+    let d = tempfile::tempdir().unwrap();
+    let three: Vec<PathBuf> = ["c.mp4", "a.mp4", "b.mp4"]
+        .iter()
+        .map(|n| file(d.path(), n))
+        .collect();
+    let mut p = player_with(
+        Ok(info()),
+        FakeDialogs {
+            videos: three.clone(),
+            srt: None,
+        },
+        d.path(),
+    );
+    p.dispatch(Command::PickOpen, now());
+    settle(&mut p);
+    // the dialog's order, the first one playing
+    assert_eq!(p.playlist.items, three);
+    assert_eq!(p.title(), "c.mp4 (1 of 3) — videolore player");
+    assert!(p.is_playing(), "playback starts with the first file");
+    p.dispatch(Command::Next, now());
+    settle(&mut p);
+    assert_eq!(p.title(), "a.mp4 (2 of 3) — videolore player");
+    assert!(p.after_end(now()));
+    settle(&mut p);
+    assert_eq!(p.title(), "b.mp4 (3 of 3) — videolore player");
+    assert!(p.is_playing());
+    assert!(!p.after_end(now()));
+    p.dispatch(Command::Previous, now());
+    settle(&mut p);
+    assert_eq!(p.title(), "a.mp4 (2 of 3) — videolore player");
+    // a fourth Open with one file leaves one file; no place in the title
+    p.dispatch(Command::OpenVideos(vec![file(d.path(), "d.mp4")]), now());
+    settle(&mut p);
+    assert_eq!(p.playlist.items.len(), 1);
+    assert_eq!(p.title(), "d.mp4 — videolore player");
+    // twice the same file is kept once
+    let twice = vec![three[0].clone(), three[0].clone(), three[1].clone()];
+    p.dispatch(Command::OpenVideos(twice), now());
+    settle(&mut p);
+    assert_eq!(p.playlist.items.len(), 2);
+    // a cancelled dialog changes nothing; a project is left out, alone it is refused
+    p.dispatch(Command::OpenVideos(Vec::new()), now());
+    assert_eq!(p.playlist.items.len(), 2);
+    p.dispatch(
+        Command::OpenVideos(vec!["/x/y.vlproj".into(), three[2].clone()]),
+        now(),
+    );
+    settle(&mut p);
+    assert_eq!(p.playlist.items, [three[2].clone()]);
+    p.dispatch(Command::OpenVideos(vec!["/x/y.vlproj".into()]), now());
+    assert_eq!(p.notice.as_deref(), Some(PROJECT_REFUSED));
+    assert_eq!(p.playlist.items, [three[2].clone()]);
+    // without ffmpeg nothing waits to play
+    let mut q = player_with(
+        Err("no ffmpeg".into()),
+        FakeDialogs {
+            videos: three,
+            srt: None,
+        },
+        d.path(),
+    );
+    q.dispatch(Command::PickOpen, now());
+    assert_eq!(q.notice.as_deref(), Some(NO_FFMPEG));
+    assert!(!q.opening() && !q.is_playing());
+}
+
+// covers: REQ-356
+#[test]
+fn videos_added_while_one_plays_follow_the_list_without_stopping_it() {
+    let d = tempfile::tempdir().unwrap();
+    let files: Vec<PathBuf> = ["a.mp4", "b.mp4", "c.mp4", "d.mp4"]
+        .iter()
+        .map(|n| file(d.path(), n))
+        .collect();
+    let mut p = player(d.path());
+    p.dispatch(Command::OpenVideos(files[..2].to_vec()), now());
+    settle(&mut p);
+    let serial = p.frame_serial;
+    assert!(p.is_playing());
+    p.dispatch(
+        Command::AddToPlaylistPaths(vec![
+            files[3].clone(),
+            files[2].clone(),
+            files[0].clone(),
+            d.path().join("notes.txt"),
+        ]),
+        now(),
+    );
+    // the current video goes on; the title shows the place
+    assert!(p.is_playing() && !p.opening());
+    assert_eq!(p.frame_serial, serial);
+    assert_eq!(p.title(), "a.mp4 (1 of 4) — videolore player");
+    assert_eq!(p.status, "Added 2 videos to the playlist");
+    let order = [&files[0], &files[1], &files[3], &files[2]];
+    assert!(p.playlist.items.iter().eq(order));
+    // a video opened by itself (dropped, or given to the program) heads the list
+    let mut q = player(d.path());
+    q.dispatch(Command::Open(files[0].clone()), now());
+    q.dispatch(Command::AddToPlaylistPaths(vec![files[1].clone()]), now());
+    settle(&mut q);
+    assert_eq!(q.title(), "a.mp4 (1 of 2) — videolore player");
+    assert!(q.after_end(now()));
+    settle(&mut q);
+    assert_eq!(q.title(), "b.mp4 (2 of 2) — videolore player");
+    // with the last video at rest, an added one does not start by itself
+    assert!(!q.after_end(now()));
+    q.dispatch(Command::PlayPause, now());
+    q.dispatch(Command::AddToPlaylistPaths(vec![files[2].clone()]), now());
+    assert!(!q.opening() && !q.is_playing());
+    assert_eq!(q.title(), "b.mp4 (2 of 3) — videolore player");
+    // the dialog's answer is added; a cancelled dialog adds nothing
+    let mut r = player_with(
+        Ok(info()),
+        FakeDialogs {
+            videos: files[1..3].to_vec(),
+            srt: None,
+        },
+        d.path(),
+    );
+    r.dispatch(Command::AddToPlaylist, now());
+    settle(&mut r);
+    assert_eq!(r.title(), "b.mp4 (1 of 2) — videolore player");
+    let mut s = player(d.path());
+    s.dispatch(Command::AddToPlaylist, now());
+    assert!(s.playlist.items.is_empty() && !s.opening());
 }
 
 // covers: REQ-250

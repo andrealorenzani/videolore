@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=videolore screen spy
+Comment=Record the screen with the computer sound and the microphone
+Exec=videolore-screen-spy
+Icon=videolore-screen-spy
+Terminal=false
+Categories=AudioVideo;Video;Recorder;

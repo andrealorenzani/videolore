@@ -81,7 +81,8 @@ pub fn current_target() -> &'static str {
 }
 
 /// The files attached to the release of `version`: the editor's installers, the third-party
-/// source archive, and the installers of videolore player (1.6.0).
+/// source archive, and the installers of videolore player (1.6.0) and of videolore screen
+/// spy (3.1.2).
 pub fn release_assets(version: &str) -> Vec<String> {
     let mut v = vec![
         format!("videolore-{version}-windows-x86_64-setup.exe"),
@@ -95,6 +96,12 @@ pub fn release_assets(version: &str) -> Vec<String> {
         format!("videolore-player-{version}-macos-aarch64.dmg"),
         format!("videolore-player-{version}-linux-x86_64.AppImage"),
         format!("videolore-player-{version}-linux-x86_64.tar.gz"),
+    ]);
+    v.extend([
+        format!("videolore-screen-spy-{version}-windows-x86_64-setup.exe"),
+        format!("videolore-screen-spy-{version}-macos-aarch64.dmg"),
+        format!("videolore-screen-spy-{version}-linux-x86_64.AppImage"),
+        format!("videolore-screen-spy-{version}-linux-x86_64.tar.gz"),
     ]);
     v
 }
@@ -156,11 +163,11 @@ mod tests {
         assert_eq!(get("cargo-packager").get("version"), Some("0.11.8"));
     }
 
-    // covers: REQ-042, REQ-040, REQ-138
+    // covers: REQ-042, REQ-040, REQ-138, REQ-341
     #[test]
     fn release_has_three_installers_per_program_plus_archive_and_sources() {
         let a = release_assets("1.2.3");
-        assert_eq!(a.len(), 9);
+        assert_eq!(a.len(), 13);
         let editor: Vec<_> = a
             .iter()
             .filter(|n| n.starts_with("videolore-1.2.3-"))
@@ -169,8 +176,12 @@ mod tests {
             .iter()
             .filter(|n| n.starts_with("videolore-player-1.2.3-"))
             .collect();
-        assert_eq!((editor.len(), player.len()), (5, 4));
-        for set in [&editor, &player] {
+        let spy: Vec<_> = a
+            .iter()
+            .filter(|n| n.starts_with("videolore-screen-spy-1.2.3-"))
+            .collect();
+        assert_eq!((editor.len(), player.len(), spy.len()), (5, 4, 4));
+        for set in [&editor, &player, &spy] {
             assert_eq!(set.iter().filter(|n| n.ends_with("setup.exe")).count(), 1);
             assert_eq!(set.iter().filter(|n| n.ends_with(".dmg")).count(), 1);
             assert_eq!(set.iter().filter(|n| n.ends_with(".AppImage")).count(), 1);
@@ -182,11 +193,9 @@ mod tests {
             let in_script = if name.contains("third-party-source") {
                 name.clone()
             } else {
-                name.replacen("videolore-player", "${pname}", 1).replacen(
-                    "videolore-${VERSION}",
-                    "${pname}-${VERSION}",
-                    1,
-                )
+                name.replacen("videolore-player", "${pname}", 1)
+                    .replacen("videolore-screen-spy", "${pname}", 1)
+                    .replacen("videolore-${VERSION}", "${pname}-${VERSION}", 1)
             };
             assert!(
                 script.contains(&in_script),
@@ -398,7 +407,7 @@ mod tests {
     fn the_licence_file_of_the_windows_installer_starts_with_a_byte_order_mark() {
         let _one = STAGE.lock().unwrap_or_else(|e| e.into_inner());
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        for product in ["editor", "player"] {
+        for product in ["editor", "player", "screen-spy"] {
             let out = std::process::Command::new("bash")
                 .arg(root.join("scripts/package.sh"))
                 .args(["windows-x86_64", product, "--config-only"])
@@ -410,14 +419,17 @@ mod tests {
                 "{}",
                 String::from_utf8_lossy(&out.stderr)
             );
-            let suffix = if product == "player" { "-player" } else { "" };
+            let suffix = match product {
+                "editor" => String::new(),
+                other => format!("-{other}"),
+            };
             let dir = root.join(format!("dist/stage-windows-x86_64{suffix}"));
             let made = std::fs::read(dir.join("third-party-licence.txt")).unwrap();
             assert_eq!(&made[..3], b"\xEF\xBB\xBF");
-            let plain: &[u8] = if product == "player" {
-                include_bytes!("../packaging/notices/third-party-player.txt")
-            } else {
-                include_bytes!("../packaging/notices/third-party.txt")
+            let plain: &[u8] = match product {
+                "player" => include_bytes!("../packaging/notices/third-party-player.txt"),
+                "screen-spy" => include_bytes!("../packaging/notices/third-party-screen-spy.txt"),
+                _ => include_bytes!("../packaging/notices/third-party.txt"),
             };
             assert_eq!(&made[3..], plain, "the text is the notices, unchanged");
             let config = std::fs::read_to_string(dir.join("Packager.toml")).unwrap();
@@ -632,7 +644,7 @@ mod tests {
             "installer_mode",
             "template",
         ];
-        let macos = ["minimum-system-version"];
+        let macos = ["minimum-system-version", "info-plist-path"];
         // (product, package name, identifier, stage folder suffix, number of associations)
         let products = [
             (
@@ -648,6 +660,13 @@ mod tests {
                 "io.github.andrealorenzani.videolore-player",
                 "-player",
                 5,
+            ),
+            (
+                "screen-spy",
+                "videolore-screen-spy",
+                "io.github.andrealorenzani.videolore-screen-spy",
+                "-screen-spy",
+                0,
             ),
         ];
         let mut identifiers = Vec::new();
@@ -742,6 +761,12 @@ mod tests {
             if product == "editor" {
                 assert_eq!(get("{}", "extensions"), ["[\"vlproj\"]"]);
                 assert!(text.contains("file-associations"));
+            } else if product == "screen-spy" {
+                // REQ-341: it opens no file; it tells macOS why it asks for the sound
+                assert!(!text.contains("file-associations"));
+                assert!(get("nsis", "template").is_empty());
+                assert_eq!(get("macos", "info-plist-path").len(), 1);
+                assert!(!text.contains("fonts\""), "no subtitle font");
             } else {
                 for ext in ["mp4", "mov", "mkv", "webm", "m4v", "avi"] {
                     assert!(exts.contains(&format!("\"{ext}\"")), "{target}: {ext}");
@@ -774,7 +799,7 @@ mod tests {
         // the two installers have different identifiers (they can be installed together)
         identifiers.sort();
         identifiers.dedup();
-        assert_eq!(identifiers.len(), 2);
+        assert_eq!(identifiers.len(), 3);
     }
 
     // covers: REQ-248

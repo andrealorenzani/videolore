@@ -9,7 +9,7 @@ uses=0
 if [[ "${1:-}" == "-u" ]]; then uses=1; shift; fi
 [[ $# -eq 1 && "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "usage: $0 [-u] Name" >&2; exit 2; }
 name=$1
-dirs=(src player/src tests player/tests)
+dirs=(src player/src screen-spy/src tests player/tests screen-spy/tests)
 echo "-- defined:"
 grep -rnE "^\s*(pub(\([a-z]+\))? )?((const |async |unsafe )*fn|struct|enum|trait|type|const|static|mod|macro_rules!) $name\b" "${dirs[@]}" 2>/dev/null | sed 's/^/  /' | cut -c1-200 || true
 if [[ $uses -eq 1 ]]; then

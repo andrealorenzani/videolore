@@ -3,6 +3,10 @@
 Resolved items are removed. [OPEN] needs a decision or measurement; [TECH] technical risk accepted; [MANUAL] checked by hand only. The human list: docs/architecture-risks.md.
 
 ## Open decisions and measurements
+- [DECIDED, Andrea, REFINE 2026-11-26] Q-A: WAV into MKV (ADR-262). Q-B: X11 and XWayland only; native Wayland refused at Start with a message (ADR-265, REQ-358). Q-C: computer sound needs macOS 14.6 at Start; installer minimum 11.0 (ADR-259, ADR-269).
+- [TECH, 3.1.2 built] Launch on macOS 11 to 14.5: CoreAudio linked weakly through .cargo/config.toml (`-weak_framework`, not dlsym; CI `nm -m` check of the process-tap symbols); NOT RUN on macOS 11 to 14.5 yet (A-3.1.2-13).
+- [TECH, 3.1.2 built] A-3.1.2 checks: Linux (pinned ffmpeg devices, pulse `@DEFAULT_MONITOR@`, Xvfb and PulseAudio capture test, amix, MP4 and MKV recordings) done on the dev box and in CI; NOT verified: avfoundation (screen by name `Capture screen N`, ADR-258), gdigrab negative offsets, cpal loopback on Windows, the macOS tap, display-info MSRV (none declared), libx264 real time (not measured), playlist after end (A-3.1.2-12 as built, ADR-267).
+- [TECH, 3.1.2 built] macOS Info.plist keys in `packaging/macos/screen-spy-info.plist` (NOT verified on macOS: prompts unchecked); CGPreflight and CGRequest screen capture access use safe objc2-core-graphics bindings (no unsafe block).
 - [TECH, accepted, Andrea Q-F1 2026-11-24, 3.1.0] format 15 on every save (ADR-244): 3.0.x refuses every project saved by 3.1.0 or later; release note line required.
 - [TECH, PE, 3.1.0] blurred fill cause in the clip path (ADR-250: steps.rs frame_row gate or SegFrame aspect; UI popup as fallback A-3.1-3); Enlarge baseline anchor from the font descent (A-3.1-4, ADR-248); proxy layout bump re-encodes proxies once (ADR-247); T2 for a non-first track is a time cost (ADR-246, future: `-map 0:a:k` copy).
 - [OPEN, Andrea] REQ-177 subtitle timing (2.0.3 D56, 2.2.0): NOT MET (10 of 23 = 43 %, target 90 %; FROZEN None). A second clip (about 30 s real speech) is the next check; a pace-aware method is needed. Continuous speech may fail the frozen setting.

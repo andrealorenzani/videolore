@@ -3,7 +3,7 @@
 Part of [Architecture](architecture.md). The module graph, threads, channels and the import, preview, export and command flows: [code-architecture](code-architecture.md). Where a feature lives: [code-index](code-index.md).
 
 ## Layers and rules
-- **Programs:** `src/main.rs` → `lib.rs` (`real_app`, `native_options`, `prepare_desktop`); `player/src/main.rs` → `player/src/lib.rs`.
+- **Programs:** `src/main.rs` → `lib.rs` (`real_app`, `native_options`, `prepare_desktop`); `player/src/main.rs` → `player/src/lib.rs`. 3.1.2: `screen-spy/src/main.rs` → `lib.rs` (the screen recorder, its modules in [screen recorder](architecture-screen-spy.md#components-screen-spysrc)).
 - **Interface (`ui`):** windows, panels, popups, Settings; kept thin; one action table (`ui::actions`) shared by menus, toolbar and shortcuts. Splash: [UI](architecture-ui.md#splash-160-162-204).
 - **Application (`app`):** `AppState`, `Command`, the dispatch areas, behaviour files; wires the UI to the workers.
 - **Engine (threads, processes):** `export`, `outcheck`, `hwenc`, `hwdec`, `preview`, `proxy`, `stt`, `jobs`, `ffmpeg`, `scratch`, `autosave`, `instance`, `desktop`, `siblings`.

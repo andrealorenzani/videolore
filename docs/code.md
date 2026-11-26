@@ -1,6 +1,6 @@
 # Code
 
-videolore is a Rust desktop application (edition 2024, MSRV 1.100) built on egui/eframe 0.37. It never decodes video itself: every read and render is done by the `ffmpeg` and `ffprobe` programs, started as child processes (at most three at a time by default, up to six at "Maximum speed"). The installers ship their own copy of ffmpeg; speech recognition for subtitles is compiled in (whisper.cpp). The repository is a Cargo workspace with a second program, **videolore player** (`player/`, no speech engine and no network code), that shares the editor's engine.
+videolore is a Rust desktop application (edition 2024, MSRV 1.100) built on egui/eframe 0.37. It never decodes video itself: every read and render is done by the `ffmpeg` and `ffprobe` programs, started as child processes (at most three at a time by default, up to six at "Maximum speed"). The installers ship their own copy of ffmpeg; speech recognition for subtitles is compiled in (whisper.cpp). The repository is a Cargo workspace with two more programs that share the editor's library and have no speech engine and no network code: **videolore player** (`player/`) and **videolore screen spy** (`screen-spy/`, the screen recorder).
 
 | Document | Contents |
 |---|---|
@@ -21,6 +21,7 @@ videolore is a Rust desktop application (edition 2024, MSRV 1.100) built on egui
 | [code-measurements.md](code-measurements.md) | Every measurement: blur, order spikes, overlap memory, LUT start times, Faster on integrated graphics, speech regions, spatial pre-pass |
 | [code-splash-icons.md](code-splash-icons.md) | Splash screens and icons (Phosphor) |
 | [code-player.md](code-player.md) | The workspace and videolore player |
+| [code-screen-spy.md](code-screen-spy.md) | 3.1.2: videolore screen spy (modules, capture, sound, tests, limits) and the player's playlist |
 | [code-ui.md](code-ui.md) | Menus, toolbar, sections, shortcuts, popups, markers, status bar, recent projects, drag and drop |
 | [code-packaging.md](code-packaging.md) | Installers, bundled ffmpeg, notices, release assets, manual checklist per OS |
 | [code-hardware.md](code-hardware.md) | "Export: Faster": hardware methods and arguments, the check, the output check and redo, failure memory |
@@ -36,20 +37,20 @@ Read-only helper scripts that print code facts (module map, where a requirement 
 ## Build, test, run
 | What | Command |
 |---|---|
-| Build | `cargo build` (editor, the default member); `cargo build --workspace` also builds the player (release: `cargo build --release --locked --workspace`) |
-| Run | `cargo run [-- path/to/project.vlproj]`; the player: `cargo run -p videolore-player -- video.mp4` |
+| Build | `cargo build` (editor, the default member); `cargo build --workspace` also builds the player and the screen recorder (release: `cargo build --release --locked --workspace`) |
+| Run | `cargo run [-- path/to/project.vlproj]`; the player: `cargo run -p videolore-player -- video.mp4`; the recorder: `cargo run -p videolore-screen-spy` |
 | Tests | `cargo test --workspace` (integration fixtures generated once, reused from `target/tmp/fixtures`) |
 | Format / lint | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` (CI also with `--no-default-features` and `--all-features`) |
 | Line coverage (≥ 85%) | `scripts/coverage.sh --fail-under 85` (needs `cargo-llvm-cov` and `rustup component add llvm-tools-preview`) |
 | Feature coverage (100%) | `scripts/feature-coverage.sh` |
 | CI failure annotations | `scripts/test-annotations.sh <saved cargo test output>` |
 | Licences and advisories | `cargo deny check` (cargo-deny 0.20.2, `deny.toml`) |
-| Rust crate notices | `scripts/notices.sh` (rewrites `rust-crates.txt`, `rust-crates-player.txt`) / `--check` (CI); needs `cargo install --locked cargo-about --version 0.9.3 --features cli`; rerun after any `Cargo.lock` change |
+| Rust crate notices | `scripts/notices.sh` (rewrites `rust-crates.txt`, `rust-crates-player.txt`, `rust-crates-screen-spy.txt`) / `--check` (CI); needs `cargo install --locked cargo-about --version 0.9.3 --features cli`; rerun after any `Cargo.lock` change |
 | Icons | `scripts/icons.sh` (after changing `assets/icon/videolore.svg`) |
-| Installers | `scripts/fetch-ffmpeg.sh <target> <dir>`, `scripts/package.sh <target> [player]` ([code-packaging.md](code-packaging.md)) |
+| Installers | `scripts/fetch-ffmpeg.sh <target> <dir>`, `scripts/package.sh <target> [player\|screen-spy]` ([code-packaging.md](code-packaging.md)) |
 
 ### System requirements for building
-- **Linux:** `sudo apt install libasound2-dev pkg-config cmake libclang-dev` (ALSA for the preview sound; cmake, a C++ compiler and libclang for whisper.cpp).
+- **Linux:** `sudo apt install libasound2-dev libxcb-randr0-dev pkg-config cmake libclang-dev` (ALSA for the preview sound; XCB RandR for the recorder's screen list; cmake, a C++ compiler and libclang for whisper.cpp).
 - **macOS:** Xcode command line tools and cmake. **Windows:** MSVC, cmake and LLVM (`LIBCLANG_PATH=C:\Program Files\LLVM\bin` if bindgen does not find libclang).
 - **ffmpeg** (≥ 4.4 with the usual filters) on `PATH` for a source build and the integration tests; installed copies use the bundled one. The integration tests in CI use the pinned build of `packaging/ffmpeg.lock` (9.0.2).
 - Cross-checking the macOS and Windows code from Linux: `rustup target add aarch64-apple-darwin x86_64-pc-windows-msvc`, then `cargo clippy --target <t> --no-default-features --all-targets -- -D warnings`.
@@ -78,7 +79,7 @@ The project follows the latest stable Rust; `rust-version` (**1.100**) is raised
 |---|---|---|
 | eframe / egui | 0.37 | Window and UI (glow renderer, accesskit, no default features) |
 | rfd | 0.18 | Native file dialogs (XDG portal on Linux) |
-| cpal | 0.18 | Preview sound (optional, `audio`) |
+| cpal | 0.18 | Preview sound (optional, `audio`); the recorder's two sources on Windows and macOS |
 | serde, serde_json | 1 | Project and settings files |
 | thiserror | 2 | Error types |
 | directories | 6 | Config, cache and data folders |
@@ -92,5 +93,8 @@ The project follows the latest stable Rust; `rust-version` (**1.100**) is raised
 | skrifa, harfrust | 0.44, 0.12 | Text measured with the font (the versions egui's epaint uses) |
 | objc2, objc2-foundation, objc2-app-kit | 0.6, 0.3, 0.3 | macOS only: Apple Events, the menu bar |
 | winit | 0.30 | macOS only: switching off the default menu so Cmd+Q reaches the program |
+| display-info | 0.5.10 | Recorder: the connected screens |
+| jiff | 1.0 | Recorder: local date and time of the default file name |
+| block2, objc2-core-audio, objc2-core-foundation, objc2-core-graphics | 0.6, 0.3 | Recorder, macOS only: the microphone question, the tap of the computer's sound, the screen permission |
 | syn (dev) | 2 | `tests/module_cycles.rs` |
 | Phosphor Icons | 2.1.2 (font, MIT) | The icons (`assets/icons`, not a crate) |

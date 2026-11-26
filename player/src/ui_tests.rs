@@ -204,7 +204,7 @@ fn state(work: &Path) -> PlayerState {
         Ok(info()),
         Arc::new(Fake),
         Box::new(FakeDialogs {
-            video: None,
+            videos: Vec::new(),
             srt: None,
         }),
         Box::new(videolore::preview::NullSink),
@@ -780,7 +780,7 @@ fn the_file_menu_offers_the_playlist_and_the_editor_and_next_previous_appear_wit
     for n in ["a.mp4", "b.mp4"] {
         let f = d.path().join(n);
         std::fs::write(&f, n).unwrap();
-        app.dispatch(Command::AddToPlaylistPath(f), now);
+        app.dispatch(Command::AddToPlaylistPaths(vec![f]), now);
         let end = Instant::now() + Duration::from_secs(10);
         while !(app.has_video() && app.idle_for_tests()) || app.opening() {
             app.tick(Instant::now());
