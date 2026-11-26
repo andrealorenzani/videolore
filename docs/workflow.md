@@ -25,7 +25,7 @@ How AI agents build this project: who does what, which commands exist, which rul
 |---|---|---|
 | `/add-feature <text>` | `.claude/commands/add-feature.md` | Feature pipeline (below). |
 | `/change-workflow <text>` | `.claude/commands/change-workflow.md` | Changes agents/commands/rules/skills/guardrails. Calls no project agent; may consult an advisor. Updates this file. |
-| `/clone-workflow <dir>` | `.claude/commands/clone-workflow.md` | Exports the workflow to another directory using the manifest below. |
+| `/clone-workflow <dir>` | `.claude/skills/clone-workflow/SKILL.md` | Exports the workflow to another directory (see **Cloning the workflow**). |
 | `/analysis <question>` | `.claude/commands/analysis.md` | Asks the read-only Analyst (haiku; `Read`, `Glob`, `Grep` only) to answer a question about the project from all the documents and the code. Nothing is written by the agent or by the command. |
 | `/release [name]` | `.claude/commands/release.md` | Releases the **current** version (below). |
 
@@ -77,7 +77,7 @@ target version (named by the user, else next-patch)
 4d. **Project page** (`github_page/`, Principal Engineer): every regeneration points to the last release and its artefacts, with a "Download" link right after the project name (`AGENTS.md` rule 4e).
 4e. **Splash files**: fixed names (`splash.gif`, `splash-player.gif`, `summary.txt`, `summary-player.txt`), nothing copied per version (`AGENTS.md` rule 4f).
 5. README is for users: no reference to AI/agents/workflow; "Latest changes" shows only the last 3 versions, by version, never by date. The **poem** at the end of the README is replaced by a new one only by `/release`, when the next major version is opened (Documenter, POEM mode); verses 1-9 end with `\` so GitHub shows one verse per line.
-6. Workflow changes only via `/change-workflow`.
+6. Workflow changes only via `/change-workflow`, which also keeps the clone skill complete (`check.sh` must pass).
 7. **Only the Principal Engineer runs tests**, once, at the end of all the code of the development (not after each step), looping (fix code, rerun) until the suite passes; it reports line coverage and feature coverage, which the Documenter writes into the badge with `scripts/coverage.sh --badge`. No other agent or command runs tests, builds or coverage; `/release` asks the Principal Engineer for a VERIFY run. CI reruns everything independently. Code passes `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`; line coverage ≥ 85% and feature coverage 100% (`REQ-NNN (implemented)` in `docs/business*.md` ↔ `// covers: REQ-NNN` in tests).
 8. Every development ends with a commit with one human-readable line (no prefixes or body) plus the `Co-Authored-By:` trailer as the only other line. Push only on request.
 9. `LICENSE` is the unmodified GPL-3.0 text; Andrea Lorenzani's copyright is in the README and in the header of each `.rs` file.
@@ -95,7 +95,11 @@ The cost is not the number of agents but the notes and docs read in full again a
 Trade-off: a stale fact in an untouched page can survive until the next release.
 
 ## Skills
-None yet. Project skills go in `.claude/skills/<name>/SKILL.md`.
+Project skills go in `.claude/skills/<name>/SKILL.md`.
+
+| Skill | Purpose |
+|---|---|
+| `clone-workflow` | `/clone-workflow <dir>`: copies the workflow into another project |
 
 ## CI
 `.github/workflows/build.yml`: on push to `main`, PRs and `v*` tags. Job `check` (latest stable Rust) runs fmt, clippy (default, no and all features), tests, version consistency, coverage ≥ 85%, feature coverage, release guard; job `msrv` builds all targets with the `rust-version` read from `Cargo.toml` (the tests run in `check`); job `build` runs only if both pass and makes release executables for Linux x86_64, macOS arm64, Windows x86_64 and uploads them as artifacts; on a `v*` tag job `package` builds the installers and creates the GitHub release with them and with `releases/<version> - <name>/RELEASE_NOTES.md` as notes. Owned by the Principal Engineer.
@@ -137,23 +141,19 @@ github_page/             the project page (one static index.html), published by 
 assets/splash/           splash.gif, splash-player.gif, summary.txt, summary-player.txt (fixed names)
 ```
 
-## Workflow manifest
-Used by `/clone-workflow`.
+## Cloning the workflow
+Everything is in `.claude/skills/clone-workflow/`, which is copied too, so a clone can be cloned again.
 
-| Path | On clone |
+| File | Content |
 |---|---|
-| `.claude/agents/`, `.claude/commands/`, `.claude/skills/` | copy verbatim |
-| `.claude/settings.json` | copy verbatim |
-| `scripts/` | copy verbatim |
-| `AGENTS.md` | copy, Project section replaced by a placeholder |
-| `CLAUDE.md` | recreate as symlink to `AGENTS.md` |
-| `docs/workflow.md` | copy, add a "cloned from" history line |
-| `LICENSE` | copy verbatim |
-| `.github/workflows/build.yml` | copy verbatim (binary name is read from `Cargo.toml`) |
-| `.gitignore` | merge the line `github_page/after release.md` (temporary file of `/release`) |
-| `ai-docs/business.md`, `ai-docs/architecture.md`, `ai-docs/code.md`, `ai-docs/notes.md` | create empty template |
-| `docs/business.md`, `docs/architecture.md`, `docs/code.md`, `docs/changelog.md`, `docs/roadmap.md`, `releases/.gitkeep` | create empty template |
-| `docs/<area>-*.md` sub-documents, `ai-docs/<area>-*.md`, `github_page/`, `.github/workflows/pages.yml` (project page), `src/`, `Cargo.*`, `target/`, `README.md`, `releases/<version> - <name>/`, `.git/` (and the `origin` remote) | never copy |
+| `manifest.txt` | the only manifest: for every workflow file `copy`, `template` or `skip`, plus empty files, the `CLAUDE.md` symlink and `.gitignore` lines |
+| `templates/` | generic versions of the project-specific files, with `{{PROJECT_NAME}}`, `{{AUTHOR}}`, `{{REPO_SLUG}}` placeholders |
+| `clone.sh` | copies and fills the placeholders it is given; writes nothing if files exist, unless told to overwrite or skip; in the clone drops the `skip` lines, writes its own word list and records the template hashes |
+| `check.sh` | fails on an unlisted workflow file, a missing template, a templated file changed since its template was reviewed, or a word of `project-terms.txt` in a copied file or template |
+
+`/change-workflow` updates the manifest and templates and runs `check.sh`. Changes made elsewhere (for example CI or scripts edited during a development) are reported by the next `check.sh`.
+
+Never cloned: sources, `Cargo.*`, `README.md`, release snapshots, sub-documents, `github_page/`, `.git/`.
 
 ## Workflow history
 - 2026-11-13 — First draft: 4 agents (Product Manager, Architect, Principal Engineer, Documenter), 3 commands (`/add-feature`, `/change-workflow`, `/clone-workflow`), rules in `AGENTS.md`.
@@ -172,3 +172,4 @@ Used by `/clone-workflow`.
 - 2026-11-17 — v1.2.8: commit messages may carry the `Co-Authored-By:` trailer as their only second line (rule 9).
 - 2026-11-20 — v1.6.3: `/release` reworked: consolidation by every agent before the gate and the snapshot (Documenter cleans docs and README limitations, Product Manager prioritises the roadmap and writes `docs/roadmap_tasks.md`, Principal Engineer on Opus optimises code, tests and libraries and writes the code index and the mermaid architecture, Architect verifies and stores it), architectural plans archived in the snapshot, a temporary git-ignored `github_page/after release.md`, a new README poem and a regenerated project page (last release, Download link) when the next major opens; project page rules (rule 4e); splash files with fixed names (rule 4f); new read-only `/analysis` command and `analyst` agent (haiku).
 - 2026-11-24 — v3.1.0: `scripts/doc-replace.sh` replaces requirements, ADRs and versions without reading them (rule 13b, all owner agents); the Principal Engineer runs the quality suite once, at the end of all the code of a development, not while coding (rule 7).
+- 2026-11-26 — cloning moved into the `clone-workflow` skill (manifest, generic templates, placeholders, `clone.sh`, `check.sh`), replacing the command; `/change-workflow` keeps it complete (rule 6b).

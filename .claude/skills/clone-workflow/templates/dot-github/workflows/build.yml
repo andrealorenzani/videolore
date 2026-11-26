@@ -1,0 +1,95 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only by default; only the job that attaches files to a release may write.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt, clippy, test, coverage, version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: stable
+          components: rustfmt, clippy, llvm-tools-preview
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
+        with:
+          tool: cargo-llvm-cov
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: cargo test, with line coverage >= 85% (one instrumented run)
+        run: |
+          set -o pipefail
+          cargo llvm-cov --locked --workspace --ignore-filename-regex 'src/main\.rs$' \
+            --fail-under-lines 85 --summary-only 2>&1 | tee "$RUNNER_TEMP/cargo-test.txt" || {
+            scripts/test-annotations.sh "$RUNNER_TEMP/cargo-test.txt"
+            exit 1
+          }
+      - name: Version is the same everywhere
+        run: scripts/version.sh check
+      - name: Feature coverage = 100%
+        run: scripts/feature-coverage.sh
+      - name: Released docs are unchanged
+        run: scripts/release-guard.sh "${{ github.event.pull_request.base.sha || github.event.before }}"
+
+  build:
+    name: executable (${{ matrix.target }})
+    needs: [check]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, ext: "" }
+          - { os: macos-15, target: aarch64-apple-darwin, ext: "" }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, ext: ".exe" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Name the executable
+        run: |
+          name=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          version=$(scripts/version.sh get)
+          asset="${name}-${version}-${{ matrix.target }}${{ matrix.ext }}"
+          cp "target/${{ matrix.target }}/release/${name}${{ matrix.ext }}" "$asset"
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
+          notes=docs/changelog.md
+          for f in releases/"$version - "*/RELEASE_NOTES.md; do [[ -f "$f" ]] && notes="$f"; done
+          echo "NOTES=$notes" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+      - name: Attach to the GitHub release (tags v* only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          body_path: ${{ env.NOTES }}
+          files: ${{ env.ASSET }}

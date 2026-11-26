@@ -2,6 +2,11 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 3.1.1 — 2026-11-26 00:20 +0000
+### Workflow
+- `/clone-workflow` is now a skill (`.claude/skills/clone-workflow/`) with one manifest, generic templates with placeholders, `clone.sh` and `check.sh`; it is copied into cloned projects too.
+- `/change-workflow` keeps the manifest and templates up to date (rule 6b).
+
 ## 3.1.0 — 2026-11-24 19:37 +0000
 ### Added
 - Subtitle style **As subtitle track**: the export writes the lines as a separate switchable subtitle track instead of drawing them on the picture (REQ-337).

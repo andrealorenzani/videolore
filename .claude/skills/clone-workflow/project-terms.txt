@@ -1,0 +1,7 @@
+# Words of this project that must not appear in copied files or templates, one per line.
+videolore
+andrea
+lorenzani
+ffmpeg
+whisper
+splash

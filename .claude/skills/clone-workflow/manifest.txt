@@ -1,0 +1,60 @@
+# What /clone-workflow does with every workflow file. One entry per line:
+#   copy <path>            copied as it is (a directory: all its files); must be generic
+#   template <path> <sum>  templates/<path> is installed instead (leading "." is "dot-");
+#                          <sum> is the file's hash when the template was last reviewed (check.sh --ack)
+#   skip <path or glob>    specific to this project, never copied
+#   empty <path> [title]   created with the title only
+#   link <path> <to>       symlink
+#   ignore <line>          merged into .gitignore
+copy .claude/skills/clone-workflow
+copy .claude/skills/.gitkeep
+copy .claude/settings.json
+copy .claude/agents/product-manager.md
+copy .claude/agents/architect.md
+copy .claude/commands/add-feature.md
+copy .claude/commands/analysis.md
+copy .claude/commands/change-workflow.md
+copy .github/workflows/pages.yml
+copy scripts/doc-replace.sh
+copy scripts/doc-index.sh
+copy scripts/doc-section.sh
+copy scripts/release-guard.sh
+copy scripts/reqs-status.sh
+copy LICENSE
+template AGENTS.md f887b108a175d559
+template .claude/agents/analyst.md fc34b5ead8dfd130
+template .claude/agents/documenter.md e7955d0f820c55c4
+template .claude/agents/principal-engineer.md 25ef3be2e0320ab9
+template .claude/commands/release.md 102f691e2b009bd4
+template docs/workflow.md cb66869c3291e9d8
+template .github/workflows/build.yml 0b7b9ed48aaa4f71
+template scripts/code-map.sh f2009d663a84e307
+template scripts/collect-release.sh 8993b6ac11aaa105
+template scripts/coverage.sh 8427737e8d754da7
+template scripts/docs-check.sh ac7215976b8487b4
+template scripts/feature-coverage.sh 1b31f0f9f951d39b
+template scripts/module-deps.sh bfda17be7fd4925f
+template scripts/req-code.sh 6c12c823a4eef234
+template scripts/req.sh a6e10bef9fceaa09
+template scripts/symbol.sh 49d7be4df053d4c6
+template scripts/test-annotations.sh b213d73306798c3e
+template scripts/version.sh 3372d22a6febc41b
+skip .github/workflows/advisories.yml
+skip .github/workflows/installer-config.yml
+skip scripts/fetch-ffmpeg.sh
+skip scripts/icons.sh
+skip scripts/make-spherical-fixture.sh
+skip scripts/notices.sh
+skip scripts/package.sh
+link CLAUDE.md AGENTS.md
+ignore github_page/after release.md
+empty ai-docs/business.md Business notes
+empty ai-docs/architecture.md Architecture notes
+empty ai-docs/code.md Code notes
+empty ai-docs/notes.md Documentation notes
+empty docs/business.md Business
+empty docs/architecture.md Architecture
+empty docs/code.md Code
+empty docs/changelog.md Changelog
+empty docs/roadmap.md Roadmap
+empty releases/.gitkeep
