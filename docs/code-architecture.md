@@ -33,6 +33,10 @@ flowchart TD
   export --> render & outcheck & hwenc & spherical & mp4tracks & spatial & fonts & ass & format & project
   outcheck --> render & hwenc
   preview --> render & export & hwdec & hwenc & jobs & spatial & lut & project
+  app --> nested & strips
+  ui --> strips
+  nested --> export & project & media & jobs & timeline & lut & picture
+  strips --> jobs & ffmpeg & timeline
   proxy --> jobs & settings & media & machine
   stt --> align & srt & jobs & settings & speech_regions & subtitles & media
   hwdec --> hwenc
@@ -86,7 +90,7 @@ flowchart LR
   FF2 -->|"ExportEvent"| T
 ```
 
-The same project value feeds the preview and the export: `render` builds both command lines from it (one graph builder: `render::build_graph`, `compose_frame`, the overlay stage and the step builder), so what is seen is what is exported. Project files go through `project::save` (atomic) and `project::load` (capped, validated; `project::v9` and `project::v13` convert older formats in memory; the writer makes format 14). `autosave` writes a clone of an unsaved project to the cache every two minutes.
+The same project value feeds the preview and the export: `render` builds both command lines from it (one graph builder: `render::build_graph`, `compose_frame`, the overlay stage and the step builder), so what is seen is what is exported. Project files go through `project::save` (atomic) and `project::load` (capped, validated; `project::v9` and `project::v13` convert older formats in memory; the writer makes format 16). `autosave` writes a clone of an unsaved project to the cache every two minutes.
 
 ## A command, from the click to the undo step
 ```mermaid
@@ -120,8 +124,10 @@ flowchart TD
   LUT["LUT load and preparation threads<br/>lut::Load, lut::Prep"] -->|"mpsc: percent, table"| UI
   FNT["font scan thread<br/>fonts::Fonts::start_with"] -->|"Arc Mutex list"| UI
   AUT["autosave worker<br/>autosave::start"] -->|"mpsc: Result"| UI
+  IMP["import thread, one at a time<br/>nested::start (+ its export worker)"] -->|"mpsc: nested::Event"| UI
+  STR["snapshot thread, one at a time<br/>strips::Strips::tick"] -->|"mpsc: Thumb"| UI
   SCH["jobs::Scheduler<br/>(cap 3–6 ffmpeg processes, priorities, preemption)"]
-  PRB & PRX & EXP & STL & PLY & STT & HWP -.->|"Limited runner: a slot per process"| SCH
+  PRB & PRX & EXP & STL & PLY & STT & HWP & IMP & STR -.->|"Limited runner: a slot per process"| SCH
 ```
 
 - Nothing slow runs on the UI thread: `AppState::tick` drains every channel once per frame.
@@ -141,6 +147,9 @@ flowchart LR
   PST --> PRX2["proxy::ProxyWorker"]
   PST --> CAM["camera (360 view)"]
   PST --> SIB["siblings (Open in editor)"]
+  PST --> LST["player playlist<br/>(order, lengths)"]
+  PUI --> SHOT["player screenshot<br/>(crop, PNG)"]
+  PST --> SHOT
   SUBS --> SRT["srt"]
 ```
 

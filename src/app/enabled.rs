@@ -114,7 +114,14 @@ impl AppState {
                 has_ff && !tl.clips.is_empty() && !self.is_exporting()
             }
             Command::CancelExport => self.is_exporting(),
-            Command::PickImport | Command::Import(_) => has_ff,
+            Command::PickImport
+            | Command::Import(_)
+            | Command::PickImportProject
+            | Command::ImportProject(_) => has_ff,
+            Command::ConfirmImportProject => {
+                matches!(self.modal, Some(Modal::ImportProject(_)))
+            }
+            Command::CancelImport => self.imports.busy(),
             Command::OpenInPlayer => self.selected_media.is_some() || self.target_clip().is_some(),
             Command::GenerateSubtitles => {
                 has_ff && stt::available() && !tl.clips.is_empty() && !self.is_generating()

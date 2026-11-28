@@ -39,6 +39,8 @@ pub const SKIP_BACK: &str = "\u{e5a4}";
 pub const SKIP_FORWARD: &str = "\u{e5a6}";
 pub const CARET_LEFT: &str = "\u{e138}";
 pub const CARET_RIGHT: &str = "\u{e13a}";
+pub const CARET_UP: &str = "\u{e13c}";
+pub const CARET_DOWN: &str = "\u{e136}";
 pub const CIRCLE_HALF: &str = "\u{e18c}";
 pub const SPEAKER_HIGH: &str = "\u{e44a}";
 pub const SPEAKER_SLASH: &str = "\u{e45a}";
@@ -122,6 +124,8 @@ pub const ALL: &[&str] = &[
     SKIP_FORWARD,
     CARET_LEFT,
     CARET_RIGHT,
+    CARET_UP,
+    CARET_DOWN,
     CIRCLE_HALF,
     SPEAKER_HIGH,
     SPEAKER_SLASH,

@@ -85,6 +85,16 @@ impl AppState {
                     self.dispatch_inner(Command::Import(files), now)
                 }
                 Command::Import(files) => self.import(files),
+                Command::PickImportProject => match self.dialogs.pick_project_import() {
+                    Some(p) => self.ask_import_project(p),
+                    None => Ok(()),
+                },
+                Command::ImportProject(path) => self.ask_import_project(path),
+                Command::ConfirmImportProject => self.confirm_import_project(),
+                Command::CancelImport => {
+                    self.cancel_imports();
+                    Ok(())
+                }
                 Command::RemoveMedia(id) => self.remove_media(id),
                 Command::SelectMedia(id) => {
                     self.selected_media = id;

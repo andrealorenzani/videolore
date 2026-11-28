@@ -102,6 +102,7 @@ pub fn menus() -> Vec<(&'static str, Vec<Item>)> {
                 A(SaveAs),
                 S,
                 A(Import),
+                A(ImportProject),
                 A(Export),
                 A(ImportSubtitles),
                 A(ExportSubtitles),

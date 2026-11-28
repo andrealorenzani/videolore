@@ -5,7 +5,7 @@ resolver = "3"
 
 [package]
 name = "videolore"
-version = "3.1.3"
+version = "3.2.0"
 edition = "2024"
 rust-version = "1.100"
 license = "GPL-3.0-only"
@@ -35,7 +35,7 @@ directories = "6.0.0"
 eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "glow", "default_fonts", "wayland", "x11"] }
 fontdb = "0.24.0"
 harfrust = "0.12.0"
-image = { version = "0.25.10", default-features = false, features = ["gif"] }
+image = { version = "0.25.10", default-features = false, features = ["gif", "png"] }
 rfd = { version = "0.18.0", default-features = false, features = ["xdg-portal"] }
 skrifa = "0.44.0"
 serde = { version = "1.0.229", features = ["derive"] }

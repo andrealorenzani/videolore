@@ -31,6 +31,16 @@ Part of [Architecture](architecture.md). Each entry names its area document. Pro
 - **Recorder not run on Windows or macOS:** nothing of the recorder has run on those systems yet (picture offsets, sound sources, permissions, installers, launch on macOS 11 to 14.5); see [screen recorder](architecture-screen-spy.md#not-verified). [screen recorder](architecture-screen-spy.md#risks).
 - **Software encoding cost:** 1080p60 and 4K30 may drop frames on weak computers (libx264 veryfast); hardware encoders are a later candidate. [screen recorder](architecture-screen-spy.md#performance).
 
+## 3.2.0 decisions and risks (built)
+- **Project as media changes with its source (R-T1, R-A1):** the item follows the source project's timeline when it is reopened; a rebuild can be slow. The release notes say so. [timeline](architecture-timeline.md#project-as-media-req-371-to-req-373).
+- **Moved source project (R-T2):** the item is refused with the file name until the source is found again.
+- **Older programs refuse 3.2.0 projects (R-A5):** format 16 on every save (ADR-280).
+- **Noise reduction may thin quiet speech (R-T4, R-A4):** checked on the fixture (3 dB); fallback is a filter on the microphone only (ADR-283). Applies to the computer sound too, because the filter is on the mix.
+- **Microphone echo of the computer sound (R-A3, ADR-284):** not handled; echo cancellation would change the system's audio setup.
+- **Linux microphone gain (measured read-only, 2026-11-28):** the internal microphone was at maximum capture gain with its boost (about +50 dB on the mixer scales); the noise is amplified before the recorder reads it. Lowering the system's input gain is a user action, not changed by videolore.
+- **Screenshot shows what is drawn (R-T5, R-A6):** subtitle lines and the 360 view are in the PNG.
+- **Picture strips cost CPU (R-T3):** off by the setting; memory only.
+
 ## Technical risks
 - **Bundled ffmpeg 9.x not checked for:** time-dependent Scale and Move sizes (accepted by 6.1.1 in the spike), `lut3d` options, `reset_rot` and the 360 commands, the camera timings. The 2.0.2 run repeated the camera timings on 9.0.2. [picture](architecture-picture.md), [360](architecture-360.md), [build](architecture-build.md).
 - **Hardware paths:** encoder factors and the 25 dB threshold are assumptions until QG-05 is measured on every vendor; only Intel VA-API (CQP) measured; the output check protects files, not speed; damage between samples passes; a hung driver can stop the whole system (not preventable). NVIDIA needs driver 610 or newer; libva older than 2.21 blocks VA-API and Quick Sync with the bundled ffmpeg (Ubuntu 24.04). [export](architecture-export.md).

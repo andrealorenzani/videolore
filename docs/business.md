@@ -36,13 +36,15 @@ Not the target: professional editors who need multitrack video, colour grading b
 - Project files are versioned; a project saved by a newer format is refused by an older program with a message and left untouched.
 - Older processors get a clear message for subtitles instead of a fallback speech engine.
 - The screen recorder (3.1.2) is a third separate program, like the player, so that a simple recording tool stays simple; it has no editing (see [Screen recorder](business-screen-spy.md)).
-- The public repository follows GitHub's community standards (3.1.3, planned); conduct reports go to community@andrealorenzani.name, security reports through GitHub's private reporting (see [GitHub community standards](business-community.md)).
+- Projects can be imported as media (3.2.0): the imported item follows its source project file and the user is warned that it may look different after a reload (REQ-371, REQ-372).
+- The public repository follows GitHub's community standards (3.1.3); conduct reports go to community@andrealorenzani.name, security reports through GitHub's private reporting (see [GitHub community standards](business-community.md)).
 
 ## Documents
 Each document is a short business description with its requirements (REQ-NNN) and acceptance criteria. Status of each requirement: `scripts/reqs-status.sh`; text: `scripts/req.sh REQ-NNN`.
 
 ### Editing and projects
-- [Editing](business-editing.md) — media list, timeline editing, fades, Add media button, preview, projects, memory use.
+- [Editing](business-editing.md) — media list, timeline editing, fades, Add media button, preview, projects, projects as media (3.2.0), memory use.
+- [Timeline precision](business-timeline.md) — ruler marks that follow the zoom, a pointer line, picture strips in the clips with a setting (3.2.0).
 - [Editing gestures, autosave and safety](business-editing-gestures.md) — autosave and crash recovery, timeline gestures, undo on file removal, guides and safe areas.
 - [Window, menus and effects](business-ui.md) — window layout, menus, toolbar, shortcuts, status bar, clip details, right-click menus, recent projects, drag and drop.
 - [Interface](business-interface.md) — remembered window and popups, hidden or docked sections, workspaces, toolbar, shortcuts, themes, text size, accessibility, English only.
@@ -78,8 +80,8 @@ Each document is a short business description with its requirements (REQ-NNN) an
 - [Continuous quality and cache](business-quality.md) — preview cache limit, project page, engineering quality goals.
 
 ### Player and installation
-- [Video player](business-player.md) — the separate player: one video, 360 view, subtitles, audio track menu, full screen, start screen, playlist (3.1.2: several videos from Open…, add at any time), "Open with" entries.
-- [Screen recorder](business-screen-spy.md) — the separate videolore-screen-spy program (3.1.2): preview, screen choice, output file, video and audio formats, start and stop recording; computer sound and the microphone mixed into one track (REQ-357).
+- [Video player](business-player.md) — the separate player: one video, 360 view, subtitles, audio track menu, full screen, start screen, playlist (3.1.2: several videos from Open…, add at any time; 3.2.0: Playlist menu to move and remove, list total length, Take screenshot), "Open with" entries.
+- [Screen recorder](business-screen-spy.md) — the separate videolore-screen-spy program (3.1.2): preview, screen choice, output file, video and audio formats, start and stop recording; computer sound and the microphone mixed into one track (REQ-357); 3.2.0: noise reduction of the sound (REQ-377).
 - [Splash screen](business-splash.md) — the start screen of the editor and the player: fixed pictures, summary of the version, "Show the start screen".
 - [Installation](business-install.md) — installers per operating system, bundled ffmpeg, file association and icon, notices, first-launch steps.
 - [Release verification](business-verification.md) — checks of a release on real systems; a manual checklist, not a blocker.
@@ -97,10 +99,14 @@ Sixteen requirements are implemented: the new program videolore-screen-spy (REQ-
 ## Version 3.1.3
 Eight requirements, implemented (REQ-359 to REQ-366): the GitHub community files (code of conduct, contributing guide, security policy, support, issue forms, pull request template), the README Community section, and the rule that these public files carry no internal workflow terms. Details in [GitHub community standards](business-community.md). Not yet done, by hand on github.com (Andrea): the repository settings and the community profile check (REQ-365 is tested on the files and README links only).
 
+## Version 3.2.0
+Eleven requirements are implemented (REQ-367 to REQ-377), from Andrea's request for 3.2.0: the editor's timeline (ruler marks that follow the zoom, a pointer line, picture strips in the clips with a setting to turn them off; [Timeline precision](business-timeline.md)); projects imported as media with a reload warning ([Editing](business-editing.md)); the player's Playlist menu, the list total length in brackets and Take screenshot ([Video player](business-player.md)); noise reduction of the screen recorder's sound ([Screen recorder](business-screen-spy.md)). All are MINOR-defaulted; no question is open. Accepted limits: a project file over 96 MiB is refused, one import takes at most 64 projects, and the list total shows dashes until every length is known. Not yet checked by hand (not a blocker): manual checks 42 to 50 in [Release verification](business-verification.md).
+
 ## Known limitations
 The list for users is in the [README](../README.md#known-limitations). The open items are in the [roadmap](roadmap.md); the cleaned hand-off of each release is in the release notes of the [releases](../releases/) folder.
 
 ## Out of scope
+- Effects in the timeline's picture strips (source frames only, REQ-369); a project imported as media is not frozen at the time of import (REQ-371).
 - Multiple video tracks; picture-in-picture only as an overlap bound to one clip; mixing several audio tracks of one clip into one sound (one track is chosen per clip, REQ-340).
 - Colour grading other than applying a LUT file; keyframe animation other than Scale, Move and Volume; transitions other than fade through black.
 - Editing, saving or exporting in the video player.

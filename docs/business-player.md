@@ -46,6 +46,11 @@ Back to the [index](business.md).
 - REQ-355 (implemented): 3.1.2. **File > Open…** accepts several video files at once in its file dialog (multi-selection). The selected videos become the playlist, in the order the dialog gives (name order when it gives none), and play one after the other; a single file is a list of one. Open… replaces the current list (decided by Andrea); the list is kept for the session only (REQ-254). Acceptance: select three files in Open…: they play in order, Next and Previous move between them; a fourth Open… with one file leaves one file in the list.
 - REQ-356 (implemented): 3.1.2; amends REQ-254. **File > Add to playlist** can be used at any time, also while a video plays, and adds one or more selected videos at the end of the list without stopping the current video (MINOR). The title shows the file name and its place in the list ("2 of 5"). Acceptance: while the first of two videos plays, add two more: the current video keeps playing, and the two added play after the last video of the list, in the chosen order.
 
+### Playlist and picture (3.2.0)
+- REQ-374 (implemented): Amends REQ-254 and REQ-356. A **Playlist** menu shows the list in its order. The chosen video can be moved up or down, or removed; the order changes at once and Next and Previous follow it. Removing the playing video starts the next one, or stops after the last one (MINOR). Acceptance: with three videos, move the third to the first place: Next and Previous follow the new order; remove the second: it is not played; remove the playing video: the next one plays.
+- REQ-375 (implemented): When a list of two or more videos is open, the time shown after the current video's total length is the total length of the whole list in brackets, `[hh:mm:ss]`, for example "00:01:30 / 00:03:00 [01:15:00]". It changes when the list changes. Until the length of every video in the list is known, the bracket shows dashes instead of a time, never a partial total (MINOR). A single video shows no bracket (MINOR). Acceptance: a 1-minute and a 2-minute video show [00:03:00]; removing the 2-minute video changes it to [00:01:00].
+- REQ-376 (implemented): The player's menu has **Take screenshot**: it saves the picture on the screen at the current moment, as shown (subtitle lines drawn, the 360 view as turned), to a PNG file chosen in a save dialog. The dialog opens in the Pictures folder with the name "video name" plus the time of the frame (MINOR). Nothing is written next to the video (REQ-251, REQ-252). Acceptance: pause on a frame with a subtitle line and choose Take screenshot: the PNG shows the same picture and line; the video's folder has no new file.
+
 ## Key decisions
 - The player is a separate program so that people who only watch videos get a small, simple tool.
 - The player has a start screen like the editor's (REQ-150, 1.6.2).
@@ -58,6 +63,7 @@ Back to the [index](business.md).
 - Picture-based subtitle tracks are not drawn on 360 clips, and a picture subtitle already on screen when a run starts appears at its next change (REQ-253).
 - A big video is played through a preview copy that the player makes in the background without a status message.
 - The player's Windows, macOS and Linux builds are not yet run on real systems (see [Release verification](business-verification.md)).
+- The list total shows dashes until every video's length is known; the Playlist menu and Take screenshot are not yet checked by hand on a real display (manual checks 45 and 46, pending).
 
 ## Out of scope
 - Editing, cutting, effects, export, streaming, network sources, subtitle styling in the player.

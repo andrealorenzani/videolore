@@ -1170,3 +1170,5 @@ mod v22order;
 mod v23overlap;
 #[path = "ffmpeg_integration/v31.rs"]
 mod v31;
+#[path = "ffmpeg_integration/v32.rs"]
+mod v32;

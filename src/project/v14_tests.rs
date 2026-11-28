@@ -64,7 +64,7 @@ fn an_overlap_is_written_in_format_14_with_its_clip_and_read_back() {
     let id = p.timeline.new_overlap_id();
     p.timeline.add_overlap(c, overlap(id, 1, 3)).unwrap();
     let json = json_of(&p);
-    assert!(json.contains("\"schema_version\": 15"), "{json}");
+    assert!(json.contains("\"schema_version\": 16"), "{json}");
     assert!(json.contains("clip_overlaps"));
     let (q, notes, conv) = reopened(&json);
     assert!(notes.is_empty(), "{notes:?}");
@@ -81,11 +81,11 @@ fn an_overlap_is_written_in_format_14_with_its_clip_and_read_back() {
 // covers: REQ-029
 #[test]
 fn format_15_is_the_newest_and_a_16_is_refused_untouched() {
-    assert_eq!(SCHEMA_VERSION, 15);
-    let json = json_of(&two_clips()).replace("\"schema_version\": 15", "\"schema_version\": 16");
+    assert_eq!(SCHEMA_VERSION, 16);
+    let json = json_of(&two_clips()).replace("\"schema_version\": 16", "\"schema_version\": 17");
     assert_eq!(
         from_json(&json, std::path::Path::new("/tmp")).unwrap_err(),
-        ProjectError::TooNew(16)
+        ProjectError::TooNew(17)
     );
 }
 
@@ -204,7 +204,7 @@ fn a_format_13_project_is_converted_in_memory_with_one_status_line() {
     assert!(notes.is_empty(), "{notes:?}");
     // saved again it is format 14 and converts no more
     let again = json_of(&p);
-    assert!(again.contains("\"schema_version\": 15") && !again.contains("\"crop\""));
+    assert!(again.contains("\"schema_version\": 16") && !again.contains("\"crop\""));
     let (_, _, conv) = reopened(&again);
     assert_eq!(conv, None);
 }
@@ -212,7 +212,7 @@ fn a_format_13_project_is_converted_in_memory_with_one_status_line() {
 // covers: REQ-332, REQ-330
 #[test]
 fn a_project_with_nothing_to_convert_opens_unchanged_and_with_no_line() {
-    let json = json_of(&two_clips()).replace("\"schema_version\": 15", "\"schema_version\": 13");
+    let json = json_of(&two_clips()).replace("\"schema_version\": 16", "\"schema_version\": 13");
     let (p, notes, conv) = reopened(&json);
     assert_eq!(conv, None);
     assert!(notes.is_empty());

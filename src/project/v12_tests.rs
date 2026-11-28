@@ -37,7 +37,7 @@ fn reopened(json: &str) -> Project {
 #[test]
 fn shadows_and_style_settings_are_saved_and_read_back() {
     let json = to_json(&with_settings(), std::path::Path::new("/tmp/x.vlproj")).unwrap();
-    assert!(json.contains("\"schema_version\": 15"));
+    assert!(json.contains("\"schema_version\": 16"));
     assert!(json.contains("enlarge_word"), "{json}");
     let p = reopened(&json);
     assert_eq!(p.texts.items[0].shadow.px, 8);
@@ -71,12 +71,12 @@ fn a_project_of_format_11_opens_with_no_shadow_and_the_2_0_4_colours() {
 
 // covers: REQ-311
 #[test]
-fn a_project_of_format_16_is_refused_and_out_of_range_values_are_brought_inside() {
+fn a_project_of_format_17_is_refused_and_out_of_range_values_are_brought_inside() {
     let json = to_json(&with_settings(), std::path::Path::new("/tmp/x.vlproj")).unwrap();
-    let newer = json.replace("\"schema_version\": 15", "\"schema_version\": 16");
+    let newer = json.replace("\"schema_version\": 16", "\"schema_version\": 17");
     assert_eq!(
         from_json(&newer, std::path::Path::new("/tmp")).unwrap_err(),
-        ProjectError::TooNew(16)
+        ProjectError::TooNew(17)
     );
     let wild = json
         .replace("\"px\": 8", "\"px\": 200")

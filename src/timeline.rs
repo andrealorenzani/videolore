@@ -1807,6 +1807,7 @@ pub(crate) mod tests {
             missing: false,
             status: Default::default(),
             proxy: Default::default(),
+            from: None,
         }
     }
 

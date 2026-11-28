@@ -9,6 +9,7 @@ use super::markers::{self, HIT_TOLERANCE, MarkerKind};
 use super::strings::tr;
 use super::{UiCache, ruler, scroll_body, zoom};
 use crate::app::{AppState, Axis, Command, Edge, EffectKind, Instance, Popup, Target};
+use crate::strips;
 use crate::subtitles::LineEdge;
 use crate::time::Micros;
 use crate::timeline::{ClipEdge, ClipId, Timeline};
@@ -72,7 +73,9 @@ const MUSIC_COLOR: Color32 = Color32::from_rgb(40, 130, 130);
 const LINE_COLOR: Color32 = Color32::from_rgb(230, 200, 90);
 /// Share of the track area used by the video track (the rest is music).
 pub const VIDEO_SHARE: f32 = 0.62;
-pub const RULER_H: f32 = 14.0;
+pub const RULER_H: f32 = 15.0;
+/// Height of the small marks at the bottom of the ruler (the labels are above them).
+pub const MARK_H: f32 = 3.0;
 pub const LANE_H: f32 = 16.0;
 pub const VIDEO_MIN_H: f32 = 40.0;
 pub const MUSIC_MIN_H: f32 = 24.0;
@@ -307,6 +310,18 @@ fn tracks(
         .x;
     let t0 = f64::from(((visible.min.x - x0) / z).max(0.0));
     let t1 = f64::from(((visible.max.x - x0) / z).max(0.0)).min(f64::from(rect.width() / z));
+    // small marks under the labels, their step following the zoom (REQ-367)
+    let (marks, _) = ruler::marks(t0, t1, z, app.fps().as_f64());
+    for s in marks {
+        let x = x0 + (s * f64::from(z)) as f32;
+        painter.line_segment(
+            [
+                pos2(x, rect.min.y + RULER_H - MARK_H),
+                pos2(x, rect.min.y + RULER_H),
+            ],
+            Stroke::new(1.0_f32, Color32::from_gray(110)),
+        );
+    }
     let (ticks, mode) = ruler::ticks(t0, t1, z, char_w);
     for s in ticks {
         let x = x0 + s as f32 * z;
@@ -404,6 +419,9 @@ fn tracks(
         );
     });
 
+    app.strips.begin_frame();
+    cache.strips.clear();
+    let mut shown = std::collections::HashSet::new();
     let mut start = Micros::ZERO;
     for (i, c) in tl.clips.iter().enumerate() {
         let r = Rect::from_min_size(
@@ -452,6 +470,9 @@ fn tracks(
                 Stroke::new(2.0_f32, Color32::YELLOW),
                 StrokeKind::Inside,
             );
+        }
+        if app.settings.show_picture_strips {
+            picture_strip(ui, app, cache, &painter, c, r, z, &mut shown);
         }
         paint_name(
             &painter,
@@ -510,6 +531,8 @@ fn tracks(
             ));
         }
     }
+    // the textures of snapshots that are no longer shown are dropped
+    cache.strip_textures.retain(|k, _| shown.contains(k));
     if effect_payload && !over_clip && ui.rect_contains_pointer(rect) {
         ui.ctx().set_cursor_icon(egui::CursorIcon::NoDrop);
     }
@@ -531,6 +554,83 @@ fn tracks(
         [pos2(xp, rect.min.y), pos2(xp, rect.max.y)],
         Stroke::new(2.0_f32, Color32::RED),
     );
+    // the pointer line: where a click or an edit acts (REQ-368), only while the pointer is
+    // over the timeline
+    cache.pointer_line = ui
+        .input(|i| i.pointer.hover_pos())
+        .filter(|p| rect.contains(*p) && ui.rect_contains_pointer(rect))
+        .map(|p| p.x);
+    if let Some(x) = cache.pointer_line {
+        painter.line_segment(
+            [pos2(x, rect.min.y), pos2(x, rect.max.y)],
+            Stroke::new(1.0_f32, Color32::from_white_alpha(170)),
+        );
+    }
+}
+
+/// The snapshots in the lower half of clip `c`, drawn in `r` (REQ-369): those made are
+/// painted, the visible places are asked for.
+#[allow(clippy::too_many_arguments)]
+fn picture_strip(
+    ui: &Ui,
+    app: &AppState,
+    cache: &mut UiCache,
+    painter: &Painter,
+    c: &crate::timeline::Clip,
+    r: Rect,
+    z: f32,
+    shown: &mut std::collections::HashSet<strips::Key>,
+) {
+    let Some(m) = app
+        .project
+        .media(c.media)
+        .filter(|m| m.is_ready() && !m.missing)
+    else {
+        return;
+    };
+    let half = Rect::from_min_max(pos2(r.min.x, r.center().y), r.max - vec2(0.0, 2.0));
+    let Some((w, h)) = strips::box_size(half.height(), m.format.width, m.format.height) else {
+        return;
+    };
+    let seen = ui.clip_rect().intersect(r);
+    let (places, step) = strips::slots(c, z, w, (seen.min.x - r.min.x, seen.max.x - r.min.x));
+    let path = m.proxy_path().unwrap_or(&m.path);
+    for p in places {
+        let key = strips::Key {
+            media: m.id,
+            at: p.at,
+            width: w,
+            height: h,
+        };
+        app.strips.want(strips::Want {
+            key,
+            step,
+            path: path.to_path_buf(),
+        });
+        let at = Rect::from_min_size(
+            pos2(r.min.x + p.x, half.max.y - h as f32),
+            vec2(w as f32, h as f32),
+        );
+        cache.strips.push((c.id, at, key));
+        let Some(thumb) = app.strips.get(&key) else {
+            continue;
+        };
+        shown.insert(key);
+        let texture = cache.strip_textures.entry(key).or_insert_with(|| {
+            let image = egui::ColorImage::from_rgba_unmultiplied(
+                [thumb.width as usize, thumb.height as usize],
+                &thumb.rgba,
+            );
+            ui.ctx()
+                .load_texture("strip", image, egui::TextureOptions::LINEAR)
+        });
+        painter.image(
+            texture.id(),
+            at,
+            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+    }
 }
 
 /// The two strips at the ends of a clip: dragging one trims the clip in whole frames inside

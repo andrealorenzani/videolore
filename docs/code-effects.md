@@ -148,7 +148,7 @@ File > Export subtitles (.srt)… → `Command::PickExportSrt` → `srt::write` 
 `ui/ruler.rs` (pure): the format follows the time at the right edge of the visible part
 (`≤ 90 s`: "45s"; `≤ 90 min`: "75:30"; beyond: "01:05:00"); ticks are multiples of the first
 step of 1, 2, 5, 10, 15, 30 s, 1, 2, 5, 10, 15, 30 min, 1 h, 2 h, 5 h… whose spacing fits the
-widest label, and only the visible ones are made.
+widest label, and only the visible ones are made. Since 3.2.0 small marks follow the zoom under the labels ([code-timeline-project.md](code-timeline-project.md)).
 
 ## Project format 3
 

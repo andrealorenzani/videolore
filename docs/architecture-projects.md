@@ -29,6 +29,8 @@ Projects are JSON files (`.vlproj`) with a format number. The writer always writ
 - **Format 11 is one format for the whole 2.0.4 development (D58):** later stages add optional fields with defaults; a file from an earlier stage opens with the same result. Read limit rises to 96 MiB (LUT copies of at most 20 MB each, 64 MiB per project).
 - **Format 10 (2.0.3):** texts read as readability None (2.0.2 outline dropped) and box height 20 % (the 2.0.2 box); size fitted again on opening (the status bar says once how many changed and that the outline was removed; not again once saved in format 10).
 
+Built in 3.2.0: format 16 (ADR-280): a media kind "project" (an imported project as a video media, with the link to its source file); every save writes 16; older programs refuse it.
+
 ## Conversions when opening (in memory)
 - **Formats 1 and 2:** give the same picture, sound and export: fades only where they were, every clip at 100 % volume, every subtitle line in its style's usual place. Tests compare export commands of 0.1 and 1.1 projects.
 - **Format 3 to 4 (1.2.6):** versions 1 to 3 open with identical results (no 360 clips, no sizes; golden tests). Media without the 360 flag, and media imported before 1.2.0 without the subtitle-track check, are checked again in the background (no change mark; a subtitle request runs the check first).

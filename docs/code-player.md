@@ -26,6 +26,8 @@ embedded text track; the speech matching uses it too), `videolore::app_icon()`, 
 | `lib.rs` | `real_app` (opens the start screen when no video is given), `native_options`, `file_arg`, native dialogs (rfd) |
 | `app.rs` | `PlayerState`, `Command`, the open rules, transport, 360 camera, subtitle commands, probing and preview copies |
 | `fullscreen.rs` | the full-screen state machine with an injected clock |
+| `playlist.rs` | the list: order, current video, lengths, total |
+| `screenshot.rs` | cuts the picture out of a window capture, proposes the name, writes the PNG |
 | `subs.rs` | subtitle sources (embedded tracks, `.srt` files), session positions, `read_srt` |
 | `ui.rs` | the egui window: menu bar, controls, picture and its drags, popups (the start screen first) |
 | `tests.rs`, `ui_tests.rs`, `tests/ffmpeg.rs` | unit tests with a scripted ffprobe, UI tests, real-ffmpeg tests |
@@ -56,6 +58,12 @@ embedded text track; the speech matching uses it too), `videolore::app_icon()`, 
   ("Press Esc to exit full screen" + OK) closes with OK or after 5 s; Esc closes About, then a notice, then the hint, then leaves.
 - **Writes.** Only the preview-copy cache, the private work folders and the preview's scratch folder; a test and the real-ffmpeg
   tests compare the video's folder before and after.
+
+## Playlist menu, total and screenshot (3.2.0, REQ-374 to REQ-376)
+- Playlist menu: every video with Move up, Move down and Remove (only the rows in view are drawn). `Playlist::move_up`, `move_down`, `remove` keep the current video; removing the one playing (or being opened) opens the next and plays it, after the last one the player closes the video.
+- Total: with two or more videos each length is probed once in the background (`PlayerState::tick_lengths`, one at a time) and kept by path for the session; `ui::time_text` adds `[hh:mm:ss]`, `[--:--:--]` while a length is not known (also when a file cannot be read).
+- File > Take screenshot sets `PlayerState::shooting`; that frame is drawn without anything over the picture (box outlines, floating controls, hint, error text) and the window is asked for a capture (`Context::request_screenshot`). The capture is cropped to the picture's rectangle and `Command::SaveScreenshot` opens the save dialog in Pictures (home if there is none) with `<video> hh.mm.ss.mmm.png`; the path always ends in `.png`. Playback waits while the dialog is open. No answer within 200 frames: a message.
+- Not verified: the capture on a real display of any system.
 
 ## Packaging (ADR-108, 115)
 

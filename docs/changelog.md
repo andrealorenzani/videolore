@@ -2,6 +2,19 @@
 
 Changes since the last release, newest first. Each entry: version and date-time. On release the entries become `releases/<version> - <name>/RELEASE_NOTES.md` and this file is cleaned.
 
+## 3.2.0 — 2026-11-28 15:22 +0000
+### Added
+- Business definition of the timeline ruler marks by zoom, the vertical pointer line, the picture strip on clips and the setting to disable it (REQ-367 to REQ-370); see `docs/business-timeline.md`.
+- Business definition of importing a project as media, with the reload warning popup and self-import refused (REQ-371 to REQ-373); see `docs/business-editing.md`.
+- Business definition of the player Playlist menu (move up/down, remove), the list total as `[hh:mm:ss]` and Take screenshot to PNG (REQ-374 to REQ-376); see `docs/business-player.md`.
+- Business definition of the screen spy noise reduction (REQ-377); see `docs/business-screen-spy.md`.
+- Code of REQ-367 to REQ-377: ruler marks, pointer line, picture strips and their setting, import of a project as media with the reload popup, player Playlist menu, list total, Take screenshot to PNG and the recorder noise reduction; each requirement has a test (feature coverage 355/355, line coverage 95.0%).
+
+### Changed
+- Business documents: index, key decision and out-of-scope list updated for version 3.2.0; manual checks 42 to 50 added to the verification list.
+- Bundled ffmpeg for Linux and Windows is re-pinned to the BtbN build of 2026-11-27 (ffmpeg 9.0.2-982-g836df4e858); the 2026-11-13 build is no longer published, so its links returned 404.
+- Architecture for 3.2.0 (decisions ADR-276 to ADR-284, see `docs/architecture-decisions.md` and `docs/architecture-timeline.md`): the project as media is rendered once to a private intermediate and rebuilt on reopen, self and cyclic imports are refused, project format 16 is saved (programs before 3.2.0 refuse it), picture strips come from one background ffmpeg job with a memory cache, the playlist total is shown once all durations are known, screenshots are saved as PNG without a new crate, and the screen spy noise reduction is an `afftdn` filter on the mixed track (the recorder noise came from a high microphone capture gain with no filter).
+
 ## 3.1.3 — 2026-11-26 21:01 +0000
 ### Added
 - Business definition of the GitHub community standards (REQ-359 to REQ-366): code of conduct, contributing guide, security policy, support, issue forms, pull request template and community profile checks; see `docs/business-community.md`.

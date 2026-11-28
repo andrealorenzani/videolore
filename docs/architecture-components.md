@@ -71,3 +71,9 @@ Part of [Architecture](architecture.md). The module graph, threads, channels and
 - Tests keep their assertions; only `use` lines change when code moves. Pinned names: work-folder names (`job-` prefix, `lock`, `targets`), temporary names (`.<name>.tmp-<pid>`), speech-model names, partial suffixes, cache names.
 - The cycle check (seven tests) runs in about 1.7 s (estimate 1 to 3 s in debug; measured in CI).
 - Platform-specific code (Unix permission bits, Linux and macOS non-blocking open, Windows lock behaviour) moved with its bodies; no new platform code. `#![deny(unsafe_code)]` stays ([security](architecture-security.md#unsafe-code)).
+
+## Modules built in 3.2.0
+- `src/strips.rs` (new): picture strips of the timeline (planner, memory cache, background job). Above render and export, not pure.
+- `src/nested.rs` (new): project as media (load of the source, reference walk, key, intermediate render through `export`). Above export and project.
+- `player/src/screenshot.rs` (new): crop and PNG of the player's picture; the Playlist menu stays in `player/src/playlist.rs` and `player/src/ui.rs`.
+- `src/ui/ruler.rs` gains the mark steps; `src/ui/timeline.rs` gains the pointer line and the strips; `src/scratch.rs` learns the intermediate names; `screen-spy/src/plan.rs` gains the noise filter. The module-cycle rule stays. Details: [timeline](architecture-timeline.md).

@@ -20,6 +20,7 @@ Part of [Architecture](architecture.md). Exact versions: `Cargo.toml` and `Cargo
 | `directories` | 6.0.0 | MIT/Apache-2.0 | Platform folders (settings, caches, work folders, speech models) |
 | `tempfile` | 3.27.0 | MIT/Apache-2.0 | Random-named private files inside videolore's work folder |
 | `sha2` | 0.11.1 | MIT/Apache-2.0 | Cache names, speech model and LUT content hashes, tests proving sources unchanged |
+| `image` | 0.25.10 (`gif`; `png` added in 3.2.0) | MIT/Apache-2.0 | GIF splash; PNG for the player's screenshot (ADR-282). The `png` crate (0.18.1) is already in the tree through eframe: no new crate |
 | `sysinfo` | 0.40.4 (`system` only) | MIT | Physical cores and memory for the recommended settings and the proxy rule; replacing it needs platform unsafe code |
 | `fontdb` | 0.24.0 | MIT | Installed fonts for text items (system folders, fontconfig on Linux; 1.3.0; rejected `font-kit`, `fontique`, direct calls) |
 | `skrifa` | 0.44.0 | MIT/Apache-2.0 | Font metrics and glyph widths for measured text fit (2.0.3) |

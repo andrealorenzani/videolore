@@ -366,6 +366,10 @@ pub struct Settings {
     /// View > Show safe areas (2.0.4, REQ-199); off when missing or not a yes/no.
     #[serde(default, deserialize_with = "lenient_bool_false")]
     pub show_safe_areas: bool,
+    /// Settings > Appearance: show picture strips on the timeline (3.2.0, REQ-370); on when
+    /// missing or not a yes/no.
+    #[serde(default = "boxes_on", deserialize_with = "lenient_bool_true")]
+    pub show_picture_strips: bool,
     /// The video hardware chosen in Settings > Advanced by device name (2.0.4, REQ-216);
     /// `None` = Automatic. A program setting, never part of a project. It is only ever
     /// compared with the names of the devices the check found.
@@ -510,6 +514,7 @@ impl Settings {
             show_boxes: true,
             snap_to_guides: true,
             show_safe_areas: false,
+            show_picture_strips: true,
             graphics_card: None,
             interface: Interface::default(),
             show_splash: SplashOption::Always,

@@ -80,3 +80,10 @@ Rust `unsafe` is forbidden in the whole program (compiler-enforced since 0.3.0) 
 
 ## Security by version
 0.2.x: no shell, `file:` prefix, protocol whitelist, bounded reads (ADR-034). 0.3.0: private work folders 0700, unsafe in three sites, pinned downloads, FIFO refusal. 0.4.0: hardware check with synthetic input, renderD devices only. 1.2.0: subtitle track and SRT validation. 1.4.0: export name rules and data-loss guard. 1.6.0: LUT input and player rules. 2.0.4: pictures, speed and volume keys, speech fixture, menu call. 2.1.0: LUT streaming, order validation. 2.3.0: overlay media limits, format 14 validation.
+
+## Built in 3.2.0
+- **Imported projects are untrusted input:** read with the bounded loader (16 MiB), validated as any project; a self or cyclic import is refused (depth 8); the intermediate render uses the export's ffmpeg arguments with `-protocol_whitelist file,pipe`.
+- **Intermediate files:** in the private work folder (0700), named `<32 hex>.mkv` and `.partial`, so the crash clean-up removes them (ADR-279).
+- **Strips:** thumbnails stay in memory; nothing is written to disk.
+- **Screenshot:** a PNG written only to the path chosen in the save dialog; nothing next to the video (ADR-282).
+- **Recorder noise filter:** a fixed `afftdn` string in the recorder's code, no user text in ffmpeg arguments (ADR-283).

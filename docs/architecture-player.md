@@ -41,6 +41,11 @@ Part of [Architecture](architecture.md). Requirements: [player](business-player.
 - The window title reads "name (n of m)" when the list has more than one video. The list is kept for the session only (REQ-254).
 - Code: `player/src/playlist.rs` (`replace`, `add`), commands `OpenVideos` and `AddToPlaylistPaths`; no new crate. As built: a video opened by itself (drop, command line) heads the list it starts.
 
+## Playlist menu, total and screenshot (3.2.0, built)
+- **Playlist menu:** move up, move down and remove for each video; the playing video stays the playing one after a move; removing it starts the next at the same place, or stops after the last (REQ-374, ADR-281).
+- **Total:** after the current video's total length, `[hh:mm:ss]` for the whole list when it has two or more videos; dashes until every duration is probed (REQ-375).
+- **File > Take screenshot:** the picture as drawn, PNG through a save dialog in the Pictures folder, named after the video and the frame time; nothing written next to the video (REQ-376, ADR-282).
+
 ## Installers and identity
 - `scripts/package.sh <target> player`: AppImage and tar.gz (Linux), NSIS setup (Windows), disk image (macOS); the same pinned ffmpeg and ffprobe as the editor; own notices (`rust-crates-player.txt`). Identifier `io.github.andrealorenzani.videolore-player` (editor `…videolore`), so both install side by side. No file association and no Linux menu entry written by the program (2.0.4: "Open with" only).
 - Icon: the same artwork as the editor (decided 2026-11-19).

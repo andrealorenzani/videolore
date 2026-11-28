@@ -20,6 +20,14 @@ pub enum Command {
     ResolveUnsaved(UnsavedChoice),
     PickImport,
     Import(Vec<PathBuf>),
+    /// File > Import project as media…: asks for a project file (REQ-371).
+    PickImportProject,
+    /// Checks the project and asks the question of REQ-372.
+    ImportProject(PathBuf),
+    /// "OK" to that question: the project becomes a media item.
+    ConfirmImportProject,
+    /// Stops the rendering of imported projects.
+    CancelImport,
     RemoveMedia(MediaId),
     SelectMedia(Option<MediaId>),
     /// Appends the given media (or the selected one) at the end of the track.
@@ -250,6 +258,8 @@ pub enum Command {
     SetFavouriteLut(PathBuf, bool),
     /// When the splash shows (REQ-295).
     SetSplashOption(settings::SplashOption),
+    /// Settings: show picture strips on the timeline (REQ-370).
+    SetPictureStrips(bool),
     /// The most the preview copies may take (REQ-297).
     SetCacheLimit(u64),
     /// Theme and text size (REQ-243, REQ-244).

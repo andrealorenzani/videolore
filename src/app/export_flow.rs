@@ -168,6 +168,9 @@ impl AppState {
         if self.is_exporting() {
             return Err("an export is already running".into());
         }
+        if let Some(name) = self.waiting_import() {
+            return Err(format!("'{name}' is still being rendered from its project"));
+        }
         let info = self.ffmpeg.as_ref().map_err(|e| e.clone())?;
         export::validate_output(&self.project, &path).map_err(|e| e.to_string())?;
         if mode == render::ExportMode::Sphere360 && self.has_flat_clip() {

@@ -47,7 +47,7 @@ fn format_15_is_written_and_read_with_the_tracks() {
     p.timeline.set_audio_track(c, 1).unwrap();
     p.subtitles.preset = Preset::AsTrack;
     let json = json_of(&p);
-    assert!(json.contains("\"schema_version\": 15"), "{json}");
+    assert!(json.contains("\"schema_version\": 16"), "{json}");
     assert!(json.contains("\"audio_track\": 1") && json.contains("as_track"));
     let (q, notes) = reopened(&json);
     assert!(notes.is_empty(), "{notes:?}");
@@ -55,10 +55,10 @@ fn format_15_is_written_and_read_with_the_tracks() {
     assert_eq!(q.subtitles.preset, Preset::AsTrack);
     assert_eq!(q.media[0].format.audio_tracks.as_ref().unwrap().len(), 2);
     // a 16 is refused untouched
-    let newer = json.replace("\"schema_version\": 15", "\"schema_version\": 16");
+    let newer = json.replace("\"schema_version\": 16", "\"schema_version\": 17");
     assert_eq!(
         from_json(&newer, std::path::Path::new("/tmp")).unwrap_err(),
-        ProjectError::TooNew(16)
+        ProjectError::TooNew(17)
     );
 }
 
@@ -74,13 +74,13 @@ fn a_project_without_the_new_settings_writes_none_of_them_and_a_14_file_opens_wi
     // an old project looks the same as before, apart from its number
     assert!(!json.contains("audio_track"), "{json}");
     assert!(!json.contains("as_track"));
-    let old = json.replace("\"schema_version\": 15", "\"schema_version\": 14");
+    let old = json.replace("\"schema_version\": 16", "\"schema_version\": 14");
     let (q, notes) = reopened(&old);
     assert!(notes.is_empty(), "{notes:?}");
     assert_eq!(q.timeline.clips[0].audio_track, 0);
     assert_eq!(q.media[0].format.audio_tracks, None, "not analysed yet");
     // saving it again writes 15
-    assert!(json_of(&q).contains("\"schema_version\": 15"));
+    assert!(json_of(&q).contains("\"schema_version\": 16"));
 }
 
 // covers: REQ-340
@@ -153,4 +153,55 @@ fn a_later_check_of_a_file_records_its_audio_tracks_without_making_the_project_u
     // the project found the same tracks: it equals what was saved, so it is not unsaved
     p.media[0].format.audio_tracks = Some(vec![track(0)]);
     assert_eq!(p.doc(), saved);
+}
+
+// covers: REQ-371, REQ-029
+#[test]
+fn format_16_keeps_the_source_of_an_imported_project_and_format_15_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("source.vlproj");
+    std::fs::write(&source, "{}").unwrap();
+    let mut p = Project::default();
+    let mut item = crate::timeline::tests::media(1, 5, true);
+    item.path = dir.path().join("rendered-elsewhere.mkv");
+    item.from = Some(source.clone());
+    p.add_media(item);
+    let path = dir.path().join("me.vlproj");
+    save(&p, &path).unwrap();
+    let json = std::fs::read_to_string(&path).unwrap();
+    assert!(json.contains("\"schema_version\": 16"), "{json}");
+    let (q, missing) = load(&path).unwrap();
+    assert_eq!(q.media[0].from.as_deref(), Some(source.as_path()));
+    // its video is made again from the source: not a missing file to report
+    assert!(q.media[0].missing && missing.is_empty(), "{missing:?}");
+    // moved with its folder, the source is found beside the project
+    let moved = tempfile::tempdir().unwrap();
+    for n in ["me.vlproj", "source.vlproj"] {
+        std::fs::rename(dir.path().join(n), moved.path().join(n)).unwrap();
+    }
+    let (q, _) = load(&moved.path().join("me.vlproj")).unwrap();
+    assert_eq!(
+        q.media[0].from.as_deref(),
+        Some(moved.path().join("source.vlproj").as_path())
+    );
+    // a file of 3.1 has no such field
+    let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    v["schema_version"] = 15.into();
+    let m = v["media"][0].as_object_mut().unwrap();
+    m.remove("from_abs");
+    m.remove("from_rel");
+    let (q, _) = from_json(&v.to_string(), dir.path()).unwrap();
+    assert_eq!(q.media[0].from, None);
+    // a link that is not absolute is read from the project's folder
+    let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    v["media"][0]["from_abs"] = "other.vlproj".into();
+    v["media"][0]["from_rel"] = serde_json::Value::Null;
+    let (q, _) = from_json(&v.to_string(), dir.path()).unwrap();
+    assert_eq!(q.media[0].from, Some(dir.path().join("other.vlproj")));
+    // a newer file is refused and left untouched
+    let newer = moved.path().join("newer.vlproj");
+    let text = json.replace("\"schema_version\": 16", "\"schema_version\": 17");
+    std::fs::write(&newer, &text).unwrap();
+    assert_eq!(load(&newer), Err(ProjectError::TooNew(17)));
+    assert_eq!(std::fs::read_to_string(&newer).unwrap(), text);
 }

@@ -9,7 +9,7 @@ Back to the [index](business.md).
 - **Screen**: a list of the screens connected to the computer; one is chosen.
 - **Output file**: a text box with the file name and a **Choose…** button for the folder and the name.
 - **Video format**: a short list of the most common formats (four choices).
-- **Sound**: computer sound and the microphone, mixed into one sound track (REQ-357).
+- **Sound**: computer sound and the microphone, mixed into one sound track (REQ-357), with steady background noise reduced (3.2.0, REQ-377).
 - **Audio format**: AAC, MP3 or WAV (WAV is saved as an MKV file).
 - **Start / Stop recording**: one button; when recording it reads "Stop recording"; while the start checks run it reads "Cancel start".
 
@@ -35,6 +35,7 @@ Back to the [index](business.md).
 
 ### Sound
 - REQ-357 (implemented): The recorder's sound is **computer sound and the microphone, mixed into one sound track** of the video file; there is no choice of source (decided by Andrea). Computer sound needs macOS 14.6 or later (decided by Andrea 2026-11-26); an older Mac still runs the recorder, and Start refuses with a message that names the macOS version needed. If one of the two cannot be recorded (no microphone, or computer sound not available or not permitted), **Start recording** does not start and a message names the missing source (MINOR: no silent single-source recording). On Linux the sound comes from the system's default input and default output: when the default input is a monitor (the computer's own sound), Start is refused with a message, because the computer's sound would be recorded twice; the user changes the default input in the system's sound settings. On macOS, a microphone permission not yet asked is asked when Start is pressed, and recording waits for the answer. Acceptance: play a sound on the computer while speaking into the microphone: the file has both in its one sound track; with the microphone denied, the message names the microphone and nothing is recorded; on macOS 14.5 or older, Start shows the message naming macOS 14.6 and nothing is recorded; on Linux with a monitor as default input, Start shows the message and nothing is recorded.
+- REQ-377 (implemented): The mixed sound of the recording has its steady background noise (hiss, hum, fan noise) reduced before it is written, on every platform (MINOR: all platforms, no switch; the first report came from Linux). The picture is not changed. Acceptance: a test recording with added steady noise has its quiet parts at least 10 dB lower than the same recording without the reduction (assumed target, checked on a fixture); the speech stays within 3 dB of its level; on Linux, a recording of the microphone has no more background noise than before (manual check).
 
 ### Platforms
 - REQ-358 (implemented): On Linux the recorder works on an X11 session and on XWayland. A native Wayland session is not supported in 3.1.2 (decided by Andrea 2026-11-26): a message appears before Start that says screen recording needs an X11 session and that Wayland recording comes later; nothing is recorded. Acceptance: on an X11 session a 10-second recording works; on a native Wayland session the message appears before Start, no file is created and the button still reads Start recording.
@@ -63,6 +64,7 @@ Back to the [index](business.md).
 - Linux: a monitor as the default input refuses Start (REQ-357), and the recorder does not let the user pick the source; a cancelled start waits for the source being tried, which can take a few seconds.
 - Linux: X11 and XWayland only; on a native Wayland session the recorder shows a message before Start and records nothing (REQ-358).
 - Linux: the picture and the sound start together; on Windows and macOS the offset between them at the start is not measured.
+- The recording loses the last 25 ms of sound because of the noise filter's delay (REQ-377); picture-sound sync and the noise result are checked by hand (manual checks 47 to 49, pending).
 - Windows and macOS are not verified on real hardware (screen capture offsets and scaling, sound capture, permissions, installers); their manual checks stay pending (see [verification](business-verification.md)). Whether computer sound needs an extra system driver on some systems is not known.
 - Platform permissions for screen capture (macOS) may ask the user for approval on first use; the recorder explains it in the message, not in advance.
 - At 1080p60 and 4K the recording may not keep real time on a weak computer (not measured).

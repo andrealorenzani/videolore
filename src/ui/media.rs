@@ -75,8 +75,10 @@ pub fn media_panel(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
     }
     let w = ui.available_width();
     for m in &app.project.media {
-        let line = status_line(m);
-        let bad = matches!(m.status, MediaStatus::Rejected(_)) || m.missing;
+        let rendering = app.imports.line(m.id);
+        let bad =
+            matches!(m.status, MediaStatus::Rejected(_)) || (m.missing && rendering.is_none());
+        let line = rendering.unwrap_or_else(|| status_line(m));
         let name = if bad {
             RichText::new(&m.name).color(Color32::LIGHT_RED)
         } else {

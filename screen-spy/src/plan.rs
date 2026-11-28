@@ -171,6 +171,22 @@ pub enum AudioInput {
     Tcp { port: u16, rate: u32, channels: u16 },
 }
 
+/// The noise reduction of the recording (REQ-377, ADR-283): ffmpeg's FFT denoiser, the
+/// values of the editor's Clean audio, checked on a synthetic fixture (`tests/ffmpeg.rs`).
+pub const NOISE_REDUCTION: &str = "afftdn=nr=25:nf=-20:tn=0:rf=-60";
+/// How much later the sound leaves [`NOISE_REDUCTION`] than it came in, in samples at
+/// [`SAMPLE_RATE`]: two hops of 12.5 ms, 25 ms (measured by the same test).
+pub const NOISE_DELAY_SAMPLES: u32 = SAMPLE_RATE / 40;
+
+/// The filters of the mixed track: the noise reduction, its delay cut off so that the
+/// sound stays with the picture, then the limiter.
+pub fn mix_filters() -> String {
+    format!(
+        "{NOISE_REDUCTION},atrim=start_sample={NOISE_DELAY_SAMPLES},asetpts=PTS-STARTPTS,\
+         alimiter=level=false"
+    )
+}
+
 /// The two PulseAudio sources (ADR-259).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PulseSource {
@@ -287,7 +303,8 @@ pub struct Recording<'a> {
 }
 
 /// The graph: the screen (the input after the sources) split into the file's picture and
-/// the preview, and the sources mixed into one track that starts with the picture.
+/// the preview, and the sources mixed into one track, its noise reduced, that starts with
+/// the picture.
 pub fn filter_graph(screen: &Capture, video: VideoFormat, sources: usize) -> String {
     let (w, h) = video.size();
     let mut g = format!(
@@ -308,7 +325,8 @@ pub fn filter_graph(screen: &Capture, video: VideoFormat, sources: usize) -> Str
         g.push_str(&format!("[a{i}]"));
     }
     g.push_str(&format!(
-        "amix=inputs={sources}:duration=longest:normalize=0,alimiter=level=false[a]"
+        "amix=inputs={sources}:duration=longest:normalize=0,{}[a]",
+        mix_filters()
     ));
     g
 }

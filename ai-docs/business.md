@@ -7,31 +7,42 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business.md § Purpose — L3-7 (5 lines)
 - docs/business.md § Users — L8-14 (7 lines)
 - docs/business.md § Constraints — L15-21 (7 lines)
-- docs/business.md § Key decisions — L22-40 (19 lines)
-- docs/business.md § Documents — L41-43 (3 lines)
-- docs/business.md § Editing and projects — L44-50 (7 lines)
-- docs/business.md § Effects and frame — L51-59 (9 lines)
-- docs/business.md § Text and subtitles — L60-66 (7 lines)
-- docs/business.md § Picture, 360 and LUT — L67-72 (6 lines)
-- docs/business.md § Export, audio and performance — L73-79 (7 lines)
-- docs/business.md § Player and installation — L80-86 (7 lines)
-- docs/business.md § Community — L87-89 (3 lines)
-- docs/business.md § Version 3.1.0 — L90-93 (4 lines)
-- docs/business.md § Version 3.1.2 — L94-96 (3 lines)
-- docs/business.md § Version 3.1.3 — L97-99 (3 lines)
-- docs/business.md § Known limitations — L100-102 (3 lines)
-- docs/business.md § Out of scope — L103-108 (6 lines)
+- docs/business.md § Key decisions — L22-41 (20 lines)
+- docs/business.md § Documents — L42-44 (3 lines)
+- docs/business.md § Editing and projects — L45-52 (8 lines)
+- docs/business.md § Effects and frame — L53-61 (9 lines)
+- docs/business.md § Text and subtitles — L62-68 (7 lines)
+- docs/business.md § Picture, 360 and LUT — L69-74 (6 lines)
+- docs/business.md § Export, audio and performance — L75-81 (7 lines)
+- docs/business.md § Player and installation — L82-88 (7 lines)
+- docs/business.md § Community — L89-91 (3 lines)
+- docs/business.md § Version 3.1.0 — L92-95 (4 lines)
+- docs/business.md § Version 3.1.2 — L96-98 (3 lines)
+- docs/business.md § Version 3.1.3 — L99-101 (3 lines)
+- docs/business.md § Version 3.2.0 — L102-104 (3 lines)
+- docs/business.md § Known limitations — L105-107 (3 lines)
+- docs/business.md § Out of scope — L108-114 (7 lines)
 - docs/business-editing.md § intro — L1-4 (4 lines)
 - docs/business-editing.md § Features — L5-13 (9 lines)
 - docs/business-editing.md § Requirements — L14-15 (2 lines)
 - docs/business-editing.md § Media and projects (REQ-001..004, 026..029, 094, 105, 113, 123, 149, 324) — L16-31 (16 lines)
 - docs/business-editing.md § Timeline (REQ-005..012, 083) — L32-42 (11 lines)
-- docs/business-editing.md § Preview (REQ-013, 034, 035, 144, 155) — L43-49 (7 lines)
-- docs/business-editing.md § Responsiveness and performance (REQ-032, 033, 038, 039) — L50-55 (6 lines)
-- docs/business-editing.md § Key decisions — L56-64 (9 lines)
-- docs/business-editing.md § Project format history — L65-67 (3 lines)
-- docs/business-editing.md § Known limitations — L68-74 (7 lines)
-- docs/business-editing.md § Out of scope — L75-76 (2 lines)
+- docs/business-editing.md § Project as media (3.2.0, REQ-371..373) — L43-47 (5 lines)
+- docs/business-editing.md § Preview (REQ-013, 034, 035, 144, 155) — L48-54 (7 lines)
+- docs/business-editing.md § Responsiveness and performance (REQ-032, 033, 038, 039) — L55-60 (6 lines)
+- docs/business-editing.md § Key decisions — L61-69 (9 lines)
+- docs/business-editing.md § Project format history — L70-72 (3 lines)
+- docs/business-editing.md § Known limitations — L73-81 (9 lines)
+- docs/business-editing.md § Out of scope — L82-83 (2 lines)
+- docs/business-timeline.md § intro — L1-6 (6 lines)
+- docs/business-timeline.md § Features (3.2.0) — L7-11 (5 lines)
+- docs/business-timeline.md § Requirements — L12-13 (2 lines)
+- docs/business-timeline.md § Ruler marks (REQ-367) — L14-16 (3 lines)
+- docs/business-timeline.md § Pointer line (REQ-368) — L17-19 (3 lines)
+- docs/business-timeline.md § Picture strip (REQ-369, 370) — L20-23 (4 lines)
+- docs/business-timeline.md § Key decisions (3.2.0) — L24-27 (4 lines)
+- docs/business-timeline.md § Out of scope — L28-31 (4 lines)
+- docs/business-timeline.md § Known limitations — L32-33 (2 lines)
 - docs/business-ui.md § intro — L1-6 (6 lines)
 - docs/business-ui.md § Features — L7-21 (15 lines)
 - docs/business-ui.md § Requirements — L22-23 (2 lines)
@@ -157,9 +168,10 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-player.md § Full screen (REQ-141) — L30-32 (3 lines)
 - docs/business-player.md § Start screen (REQ-150) — L33-35 (3 lines)
 - docs/business-player.md § Opening, preferences and playlist (REQ-248..256, 355, 356) — L36-48 (13 lines)
-- docs/business-player.md § Key decisions — L49-54 (6 lines)
-- docs/business-player.md § Known limitations — L55-61 (7 lines)
-- docs/business-player.md § Out of scope — L62-65 (4 lines)
+- docs/business-player.md § Playlist and picture (REQ-374..376, 3.2.0) — L49-53 (5 lines)
+- docs/business-player.md § Key decisions — L54-59 (6 lines)
+- docs/business-player.md § Known limitations — L60-67 (8 lines)
+- docs/business-player.md § Out of scope — L68-71 (4 lines)
 - docs/business-screen-spy.md § intro — L1-6 (6 lines)
 - docs/business-screen-spy.md § Features (3.1.2) — L7-15 (9 lines)
 - docs/business-screen-spy.md § Requirements (intro) — L16-17 (2 lines)
@@ -168,13 +180,13 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-screen-spy.md § Screen (REQ-344) — L25-27 (3 lines)
 - docs/business-screen-spy.md § Output file (REQ-345, 346) — L28-31 (4 lines)
 - docs/business-screen-spy.md § Formats (REQ-347, 348) — L32-35 (4 lines)
-- docs/business-screen-spy.md § Sound (REQ-357) — L36-38 (3 lines)
-- docs/business-screen-spy.md § Platforms (REQ-358) — L39-41 (3 lines)
-- docs/business-screen-spy.md § Recording (REQ-349..351) — L42-46 (5 lines)
-- docs/business-screen-spy.md § Settings (REQ-352) — L47-49 (3 lines)
-- docs/business-screen-spy.md § Key decisions (3.1.2) — L50-58 (9 lines)
-- docs/business-screen-spy.md § Known limitations — L59-72 (14 lines)
-- docs/business-screen-spy.md § Out of scope — L73-78 (6 lines)
+- docs/business-screen-spy.md § Sound (REQ-357, 377) — L36-39 (4 lines)
+- docs/business-screen-spy.md § Platforms (REQ-358) — L40-42 (3 lines)
+- docs/business-screen-spy.md § Recording (REQ-349..351) — L43-47 (5 lines)
+- docs/business-screen-spy.md § Settings (REQ-352) — L48-50 (3 lines)
+- docs/business-screen-spy.md § Key decisions (3.1.2) — L51-59 (9 lines)
+- docs/business-screen-spy.md § Known limitations — L60-74 (15 lines)
+- docs/business-screen-spy.md § Out of scope — L75-80 (6 lines)
 - docs/business-icons.md § intro — L1-6 (6 lines)
 - docs/business-icons.md § Features — L7-13 (7 lines)
 - docs/business-icons.md § Requirements — L14-15 (2 lines)
@@ -188,6 +200,7 @@ AI-only notes. Only the product-manager edits this file and its sub-documents. D
 - docs/business-verification.md § Manual checks of 2.0.4 (items 9-35; not a blocker) — L25-53 (29 lines)
 - docs/business-verification.md § Manual checks of 3.1.0 (items 36-37; not a blocker) — L54-57 (4 lines)
 - docs/business-verification.md § Manual checks of 3.1.2 (items 38-41; not a blocker) — L58-62 (5 lines)
+- docs/business-verification.md § Manual checks of 3.2.0 (items 42-50; not a blocker) — L64-73 (10 lines)
 - docs/business-subtitle-files.md § intro — L1-4 (4 lines)
 - docs/business-subtitle-files.md § Requirements (REQ-180..188) — L5-15 (11 lines)
 - docs/business-subtitle-files.md § Key decisions — L16-21 (6 lines)
@@ -500,3 +513,26 @@ Line range convention: heading to the line before the next heading. Re-check aft
 - Assumptions: GitHub's community profile items are as listed in the docs (menu names on github.com may differ; check by hand); the Principal Engineer has no network access during the build, so the covenant text comes from Andrea or the official source in a later step if needed.
 - Future work (to return to the command): README "Community" section and the 3.1.3 changelog entry (documenter); presence and forbidden-term test (principal-engineer); docs-check.sh to cover the root community files and .github templates (workflow change); the owner line of Open question owner gap.
 - Process: no shell tool in this session; scripts/doc-replace.sh and doc-index.sh were not run; indexes counted by hand (grep -n '^#', line counts). Next session with a shell: run scripts/doc-index.sh.
+
+## Plan 3.2.0 (PLAN 2026-11-28; target 3.2.0 named by Andrea; not built)
+- Requests mapped: timeline ruler marks by zoom -> REQ-367 (amends REQ-093 steps); pointer line -> REQ-368; picture strip in clips -> REQ-369, its setting -> REQ-370 (docs/business-timeline.md, new sub-document); project as media -> REQ-371 (import, rebuilt on reopen), REQ-372 (reload popup), REQ-373 (behaves as media, no self-import); player Playlist menu -> REQ-374 (amends 254, 356); list total `[hh:mm:ss]` -> REQ-375; Take screenshot -> REQ-376; Linux recorder noise -> REQ-377 (all platforms).
+- [MINOR] Project as media is a link: the item is rebuilt from the source file when this project is reopened (the popup's wording "when you reload"); "at that moment" = the timeline at import time. Snapshot semantics not taken (ask Andrea only if he wants it). Project format: new media kind, architect chooses the number; older versions refuse (REQ-029).
+- [MINOR] Picture strip default ON (the request's "Default is blank" read as: empty space stays blank); source frames only, no effects; background generation (REQ-032 style); uses preview copies (REQ-038).
+- [MINOR] Ruler steps: frame, second, minute, 10 minutes, hour; labels of REQ-093 stay; no overlaps.
+- [MINOR] Playlist: list total shown only for two or more videos; removing the playing video plays the next, the last removed stops.
+- [MINOR] Take screenshot: PNG through a save dialog, Pictures folder, name "video name" + time; no shortcut; shows the frame as on screen (subtitle lines, 360 view); nothing written next to the video.
+- [MINOR] REQ-377: noise reduction of the mixed track, all platforms, no switch; 10 dB target is an assumption checked on a fixture; the root cause (monitor source, sample rate, capture settings) is the architect's to confirm on Linux.
+- Open questions: none.
+- Product risks (3.2.0 plan): R-T1 project-as-media rebuild can be slow and changes when the source changes (popup, release note); R-T2 a moved source project gives a missing-source refusal; R-T3 picture strips cost CPU and disk on weak computers (REQ-370 turns them off); R-T4 noise reduction may thin quiet speech (3 dB acceptance); R-T5 screenshots include the drawn subtitle lines (state it); R-T6 the playlist total shows dashes until every video's length is known (aligned with ADR-281; REQ-375); a user may wait for a number on a long list; R-T7 projects saved as format 16 are refused by 3.1.x and older (release notes must say so); R-T8 the 96 MiB file limit and the 64-project import cap may block a large project or import.
+- Assumptions: 10 dB noise target; Pictures folder exists on the three systems; ruler breakpoints chosen by the architect within the stated steps.
+- Future work (to the command): manual checks of 3.2.0 on Linux (noise) and on timeline speed to add to docs/business-verification.md at STATUS; a fixed-copy mode for project as media only if asked (not planned).
+
+## STATUS 3.2.0 (2026-11-28; version 3.2.0)
+- Implemented: REQ-367..377 (11 requirements). Their lines in docs/business-timeline.md, docs/business-editing.md, docs/business-player.md and docs/business-screen-spy.md read `(implemented)`; no ID changed; next free REQ-378.
+- Text changed in place (no ID change, no line added): REQ-371 (limits of this build: project file over 96 MiB refused; one import at most 64 projects); REQ-375 (dashes until every video's length is known, ADR-281); REQ-367, REQ-374 amendment note moved into the text to keep the `(implemented):` form; REQ-377 status only.
+- Human docs: 3.2.0 manual checks 42-50 added to docs/business-verification.md (42 ruler and pointer line; 43 picture strips; 44 import popup; 45 Playlist menu; 46 Take screenshot on X11, Wayland, macOS, Windows with HiDPI crop; 47 recorder noise by ear on Linux; 48 picture-sound sync by ear; 49 effect on computer sound and music; 50 strip responsiveness on a slow computer). All pending, not a blocker.
+- Implementation facts reflected: 96 MiB project size limit and 64-project cap per import (REQ-371, Known limitations of docs/business-editing.md); recorder loses the last 25 ms of sound (filter delay; Known limitations of docs/business-screen-spy.md); project format 16 refused by 3.1.x and older (Known limitations of docs/business-editing.md; release notes must say so).
+- Risk R-T6 aligned with ADR-281 (dashes until every length is known); R-T7 format 16 refusals and R-T8 the build's limits are the release-notes items (see the product risks of 3.2.0).
+- Process: no shell tool in this session; scripts/doc-replace.sh and doc-index.sh were not run; edits made with the edit tool and indexes counted by hand (grep -n '^#', file lengths). Next session with a shell: run scripts/doc-index.sh to confirm.
+- Open questions: none.
+- Future work (to the command): manual checks 42-50 on real systems (pending); native Wayland recording (3.1.2 item, still open); picture strip effects, fixed-copy project as media (only if asked); a sound level control for the recorder (3.1.2 item).

@@ -17,6 +17,7 @@ pub enum ActionId {
     Save,
     SaveAs,
     Import,
+    ImportProject,
     Export,
     ExportSubtitles,
     ImportSubtitles,
@@ -139,6 +140,12 @@ pub const ACTIONS: &[Action] = &[
         "Import media…",
         [cmd(Key::I)],
         "Add video and audio files to the media list"
+    ),
+    action!(
+        ImportProject,
+        "Import project as media…",
+        [],
+        "Add another project to the media list as one video"
     ),
     action!(
         Export,
@@ -642,6 +649,7 @@ impl ActionId {
             Save => Command::SaveProject,
             SaveAs => Command::PickSaveProjectAs,
             Import => Command::PickImport,
+            ImportProject => Command::PickImportProject,
             Export if app.is_exporting() => Command::CancelExport,
             Export => Command::PickExport,
             ExportSubtitles => Command::PickExportSrt,
@@ -744,6 +752,7 @@ impl ActionId {
             Save => i::FLOPPY_DISK,
             SaveAs => i::FLOPPY_DISK_BACK,
             Import => i::DOWNLOAD_SIMPLE,
+            ImportProject => i::FILM_STRIP,
             Export => i::EXPORT,
             ExportSubtitles => i::SUBTITLES,
             ImportSubtitles => i::SUBTITLES,

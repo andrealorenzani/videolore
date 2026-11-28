@@ -364,3 +364,89 @@ fn the_recorder_records_a_real_x11_screen_with_pulseaudio_sound() {
     child.kill();
     assert!(probe(&info, &dir.path().join("killed.mp4")).seconds >= 1.0);
 }
+
+/// Seconds of the noise fixture, and its sample rate.
+const FIXTURE_SECONDS: u32 = 9;
+const RATE: usize = plan::SAMPLE_RATE as usize;
+
+/// The mono samples of the lavfi source `source` after the filters `filters`.
+fn filtered(info: &FfmpegInfo, source: &str, filters: &str) -> Vec<f32> {
+    let graph = format!("{source},aformat=sample_fmts=fltp:channel_layouts=stereo,{filters}[o]");
+    let args = argv([
+        "-v",
+        "error",
+        "-nostdin",
+        "-filter_complex",
+        &graph,
+        "-map",
+        "[o]",
+        "-ac",
+        "1",
+        "-ar",
+        "48000",
+        "-f",
+        "f32le",
+        "pipe:1",
+    ]);
+    let o = SystemRunner.run(&info.ffmpeg, &args).unwrap();
+    assert!(o.success, "{}", o.stderr);
+    let (samples, _) = o.stdout.as_chunks::<4>();
+    samples.iter().map(|&b| f32::from_le_bytes(b)).collect()
+}
+
+/// The level in dB of the samples whose place in their 1.5 s period is in `part`, after the
+/// first 3 s.
+fn level(samples: &[f32], part: std::ops::Range<f64>) -> f64 {
+    let v: Vec<f64> = samples
+        .iter()
+        .enumerate()
+        .skip(3 * RATE)
+        .filter(|(i, _)| part.contains(&((*i as f64 / RATE as f64) % 1.5)))
+        .map(|(_, s)| f64::from(*s) * f64::from(*s))
+        .collect();
+    10.0 * (v.iter().sum::<f64>() / v.len() as f64 + 1e-20).log10()
+}
+
+// covers: REQ-377
+#[test]
+fn steady_noise_is_reduced_and_speech_keeps_its_level() {
+    let Some(info) = setup() else { return };
+    // speech-like bursts (harmonics of a voice, a syllable rhythm) in the last 0.6 s of each
+    // 1.5 s, over steady noise with a fixed seed
+    let speech = "0.18*(sin(2*PI*180*t)+0.6*sin(2*PI*360*t)+0.4*sin(2*PI*720*t)\
+                  +0.25*sin(2*PI*1440*t))*gte(mod(t\\,1.5)\\,0.9)*(0.6+0.4*sin(2*PI*4*t))";
+    for (colour, amplitude) in [("white", 0.005), ("white", 0.05), ("pink", 0.05)] {
+        let source = format!(
+            "aevalsrc={speech}:s={RATE}:d={FIXTURE_SECONDS}[s];\
+             anoisesrc=r={RATE}:d={FIXTURE_SECONDS}:a={amplitude}:c={colour}:seed=7[n];\
+             [s][n]amix=inputs=2:normalize=0"
+        );
+        let plain = filtered(&info, &source, "alimiter=level=false");
+        let clean = filtered(&info, &source, &plan::mix_filters());
+        let quiet = level(&plain, 0.15..0.8) - level(&clean, 0.15..0.8);
+        let voice = level(&clean, 0.95..1.45) - level(&plain, 0.95..1.45);
+        eprintln!("{colour} {amplitude}: noise -{quiet:.1} dB, speech {voice:+.2} dB");
+        assert!(quiet >= 10.0, "{colour} {amplitude}: {quiet}");
+        assert!(voice.abs() <= 3.0, "{colour} {amplitude}: {voice}");
+    }
+}
+
+// covers: REQ-377
+#[test]
+fn the_noise_reduction_does_not_move_the_sound_against_the_picture() {
+    let Some(info) = setup() else { return };
+    // one click at 1 s in silence
+    let source = "aevalsrc=if(between(n\\,48000\\,48479)\\,0.8*sin(2*PI*1000*n/48000)\\,0)\
+                  :s=48000:d=2";
+    let start = |s: &[f32]| {
+        let top = s.iter().fold(0.0f32, |m, x| m.max(x.abs()));
+        assert!(top > 0.3, "the click is heard: {top}");
+        s.iter().position(|x| x.abs() > top / 2.0).unwrap()
+    };
+    let plain = start(&filtered(&info, source, "alimiter=level=false"));
+    let clean = start(&filtered(&info, source, &plan::mix_filters()));
+    let shift = clean.abs_diff(plain);
+    eprintln!("click at {plain} without the reduction, {clean} with it");
+    // far inside one picture at 60 pictures a second (800 samples)
+    assert!(shift <= 48, "{shift} samples");
+}

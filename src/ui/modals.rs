@@ -194,6 +194,26 @@ pub fn modals(ctx: &Context, app: &AppState, cache: &mut UiCache, cmds: &mut Vec
                 });
             });
         }
+        Some(Modal::ImportProject(path)) => {
+            let name = crate::media::display_name(path);
+            egui::Modal::new(egui::Id::unique("import-project")).show(ctx, |ui| {
+                ui.set_max_width(ctx.content_rect().width().min(520.0) - 40.0);
+                ui.heading(super::icons::label(
+                    super::icons::WARNING,
+                    "Import project as media",
+                ));
+                ui.add(egui::Label::new(name).truncate());
+                ui.label(crate::app::imports::IMPORT_PROJECT_QUESTION);
+                ui.horizontal(|ui| {
+                    if ui.button(tr!(OK)).clicked() {
+                        cmds.push(Command::ConfirmImportProject);
+                    }
+                    if ui.button(tr!(Cancel)).clicked() {
+                        cmds.push(Command::CloseModal);
+                    }
+                });
+            });
+        }
         Some(Modal::RemoveOverlaps(n)) => {
             egui::Modal::new(egui::Id::unique("remove-overlaps")).show(ctx, |ui| {
                 ui.heading(super::icons::label(

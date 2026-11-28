@@ -415,6 +415,11 @@ pub fn plan_export_choice(
         }
         settings.aencoder = enc.into();
     }
+    let intermediate = mode == ExportMode::Intermediate;
+    if intermediate {
+        settings =
+            format::intermediate_settings(&chosen, encoders).ok_or(RenderError::NoEncoder)?;
+    }
     if !sphere {
         // the frame of Change aspect is the output size (REQ-125)
         (settings.width, settings.height) = frame::frame_size(
@@ -461,7 +466,8 @@ pub fn plan_export_choice(
     } else {
         picture_overlays(project, &geometry, Micros::ZERO, Source::Export)?
     };
-    let no_effects = !project.timeline.has_any_fade()
+    let no_effects = !intermediate
+        && !project.timeline.has_any_fade()
         && (sphere || !project.timeline.has_frame_effect())
         && preset.is_none()
         && choice.audio == format::AudioChoice::Same

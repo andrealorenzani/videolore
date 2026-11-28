@@ -147,5 +147,15 @@ Part of [Architecture](architecture.md). One line per decision: the choice and i
 - **Editor icon artwork, no start splash, About with its own components (ADR-270).**
 - **Deviations as built:** the recorder uses the library without features (no `audio`); avfoundation takes the screen by name; sound inputs open before the screen and `-isync` ties the Linux pulse inputs to the picture (17 to 39 ms apart, 0.26 to 2.2 s without it); the CoreAudio symbols are linked weakly (`-weak_framework`, CI `nm -m` check), not through `dlsym`; the recorder's `unsafe` is one file, `macos.rs`.
 
+## Built in 3.2.0 (ADR-276 to 284)
+- **Ruler marks by zoom (frame, second, minute, 10 minutes, hour) in a pure function; labels unchanged; pointer line over the timeline (ADR-276).**
+- **Picture strips in the lower half of clips: background thumbnails from the preview copy, in memory only, 32 MiB cap; a program setting, on by default (ADR-277, 278).**
+- **Project as media: a new media kind, rendered once to a private intermediate by the export pipeline (libx264 crf 12), rebuilt on reopen when the source changes; no self import (ADR-279).**
+- **Project format 16 on every save, refused by older programs (ADR-280; same rule as ADR-244).**
+- **Player Playlist menu (move, remove) with durations probed once per item; total in brackets from two videos (ADR-281).**
+- **Take screenshot from the player's File menu: the picture as drawn, PNG through the image crate's png feature (ADR-282).**
+- **Recorder noise (Linux cause: internal microphone at maximum capture gain and boost): afftdn on the mixed track, the picture delayed by the filter's measured delay (ADR-283).**
+- **Open: echo of the computer sound picked up by the microphone is not handled (ADR-284; see risks).**
+
 ## Open choices
 Listed in [risks](architecture-risks.md#open-product-decisions): the blur divisor, the picture item limits, the Faster target, REQ-177, the boxed shadow design, the default 360 choice.

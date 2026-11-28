@@ -104,6 +104,9 @@ impl Runner for Fake {
         let last = a.last().cloned().unwrap_or_default();
         if program.ends_with("ffprobe") {
             return match () {
+                // one and two minutes long
+                _ if last.ends_with("one-minute.mp4") => out(&VIDEO.replace("5.0", "60.0")),
+                _ if last.ends_with("two-minutes.mp4") => out(&VIDEO.replace("5.0", "120.0")),
                 _ if last.ends_with("sphere.mp4") => out(SPHERE),
                 _ if last.ends_with("tracks.mkv") => out(TRACKS),
                 _ if last.ends_with("sounds.mkv") => out(TWO_SOUNDS),
@@ -358,6 +361,15 @@ fn the_player_has_no_save_export_or_edit_command() {
             | Command::Next
             | Command::Previous
             | Command::OpenInEditor
+            // the session's list only
+            | Command::MoveUp(_)
+            | Command::MoveDown(_)
+            | Command::RemoveFromPlaylist(_)
+            // a picture of the screen, in a PNG file the user chooses (REQ-376): never the
+            // video, which no command can change
+            | Command::TakeScreenshot
+            | Command::SaveScreenshot(_)
+            | Command::ScreenshotFailed
             | Command::Quit => true,
         }
     }
@@ -1129,4 +1141,216 @@ fn the_audio_menu_has_no_track_for_a_video_without_sound() {
     );
     p.dispatch(Command::ChooseAudio(0), now());
     assert_eq!(p.audio_track(), 0);
+}
+
+/// The videos `names`, opened together as the playlist (the first one plays).
+fn playlist(p: &mut PlayerState, dir: &Path, names: &[&str]) -> Vec<PathBuf> {
+    let files: Vec<PathBuf> = names.iter().map(|n| file(dir, n)).collect();
+    p.dispatch(Command::OpenVideos(files.clone()), now());
+    settle(p);
+    files
+}
+
+/// Ticks until the lengths of the playlist are known (or known to be unknown).
+fn lengths(p: &mut PlayerState) {
+    let end = Instant::now() + Duration::from_secs(10);
+    while p.playlist.unknown().is_some() || p.busy() && !p.is_playing() && !p.preview.busy() {
+        p.tick(now());
+        assert!(Instant::now() < end, "the lengths did not come");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+// covers: REQ-374
+#[test]
+fn next_and_previous_follow_the_order_after_moving_and_removing() {
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    let f = playlist(&mut p, d.path(), &["a.mp4", "b.mp4", "c.mp4"]);
+    // the third to the first place: the playing one stays the playing one
+    p.dispatch(Command::MoveUp(2), now());
+    p.dispatch(Command::MoveUp(1), now());
+    assert_eq!(p.playlist.items, [f[2].clone(), f[0].clone(), f[1].clone()]);
+    assert_eq!(p.file.as_ref(), Some(&f[0]));
+    assert_eq!(p.title(), "a.mp4 (2 of 3) — videolore player");
+    assert_eq!(p.playlist.previous(), Some(&f[2]));
+    assert_eq!(p.playlist.next(), Some(&f[1]));
+    p.dispatch(Command::Previous, now());
+    settle(&mut p);
+    assert_eq!(p.file.as_ref(), Some(&f[2]));
+    p.dispatch(Command::MoveDown(0), now());
+    assert_eq!(p.playlist.items, [f[0].clone(), f[2].clone(), f[1].clone()]);
+    p.dispatch(Command::Next, now());
+    settle(&mut p);
+    assert_eq!(p.file.as_ref(), Some(&f[1]));
+    // removing a video that is not playing: it is not played, nothing else changes
+    p.dispatch(Command::RemoveFromPlaylist(1), now());
+    assert_eq!(p.file.as_ref(), Some(&f[1]));
+    assert!(!p.opening());
+    p.dispatch(Command::Previous, now());
+    settle(&mut p);
+    assert_eq!(p.file.as_ref(), Some(&f[0]), "c is skipped");
+    // removing the playing video starts the next one
+    p.dispatch(Command::RemoveFromPlaylist(0), now());
+    assert!(p.opening());
+    settle(&mut p);
+    assert_eq!(p.file.as_ref(), Some(&f[1]));
+    assert!(p.is_playing(), "{}", p.status);
+    assert_eq!(p.playlist.current, Some(0));
+    // the one playing was the last: it stops
+    p.dispatch(Command::RemoveFromPlaylist(0), now());
+    assert!(!p.has_video() && !p.is_playing() && !p.opening());
+    assert!(p.playlist.items.is_empty() && p.playlist.current.is_none());
+    p.dispatch(Command::RemoveFromPlaylist(0), now());
+    assert_eq!(p.status, "That video is not in the playlist");
+}
+
+// covers: REQ-374
+#[test]
+fn removing_the_video_being_opened_opens_the_next_one() {
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    let files = vec![file(d.path(), "a.mp4"), file(d.path(), "b.mp4")];
+    p.dispatch(Command::OpenVideos(files.clone()), now());
+    assert!(p.opening());
+    p.dispatch(Command::RemoveFromPlaylist(0), now());
+    settle(&mut p);
+    assert_eq!(p.file.as_ref(), Some(&files[1]));
+}
+
+// covers: REQ-375
+#[test]
+fn the_total_of_a_list_of_two_or_more_is_shown_in_brackets() {
+    use crate::ui::time_text;
+    let d = tempfile::tempdir().unwrap();
+    let mut p = player(d.path());
+    open(&mut p, file(d.path(), "one-minute.mp4"));
+    assert_eq!(time_text(&p), "00:00:00.000 / 00:01:00.000", "one video");
+    p.dispatch(
+        Command::AddToPlaylistPaths(vec![file(d.path(), "two-minutes.mp4")]),
+        now(),
+    );
+    assert!(time_text(&p).ends_with("[--:--:--]"), "{}", time_text(&p));
+    lengths(&mut p);
+    assert_eq!(time_text(&p), "00:00:00.000 / 00:01:00.000 [00:03:00]");
+    // a video whose length cannot be told keeps the dashes
+    p.dispatch(
+        Command::AddToPlaylistPaths(vec![d.path().join("gone-video.avi")]),
+        now(),
+    );
+    lengths(&mut p);
+    assert!(time_text(&p).ends_with("[--:--:--]"));
+    p.dispatch(Command::RemoveFromPlaylist(2), now());
+    assert!(time_text(&p).ends_with("[00:03:00]"));
+    // removing the two-minute video leaves one: no bracket
+    p.dispatch(
+        Command::AddToPlaylistPaths(vec![file(d.path(), "c.mp4")]),
+        now(),
+    );
+    lengths(&mut p);
+    assert!(time_text(&p).ends_with("[00:03:05]"));
+    p.dispatch(Command::RemoveFromPlaylist(1), now());
+    assert!(time_text(&p).ends_with("[00:01:05]"));
+    p.dispatch(Command::RemoveFromPlaylist(1), now());
+    assert!(!time_text(&p).contains('['));
+}
+
+/// The folder and the name each save dialog was opened with.
+type Asked = Arc<std::sync::Mutex<Vec<(Option<PathBuf>, String)>>>;
+
+/// A save dialog that answers `to` and remembers what it was asked.
+struct SaveTo {
+    to: Option<PathBuf>,
+    asked: Asked,
+}
+
+impl Dialogs for SaveTo {
+    fn pick_videos(&mut self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+    fn pick_srt(&mut self) -> Option<PathBuf> {
+        None
+    }
+    fn pick_screenshot(&mut self, folder: Option<PathBuf>, name: &str) -> Option<PathBuf> {
+        self.asked.lock().unwrap().push((folder, name.to_string()));
+        self.to.clone()
+    }
+}
+
+// covers: REQ-376
+#[test]
+fn a_screenshot_is_written_only_where_the_user_chooses() {
+    use crate::screenshot::Shot;
+    let d = tempfile::tempdir().unwrap();
+    let videos = d.path().join("videos");
+    let pictures = d.path().join("chosen");
+    std::fs::create_dir_all(&videos).unwrap();
+    std::fs::create_dir_all(&pictures).unwrap();
+    let shot = Shot {
+        width: 2,
+        height: 1,
+        rgba: vec![1, 2, 3, 255, 4, 5, 6, 255],
+    };
+    for (choice, written) in [(None, None), (Some("still"), Some("still.png"))] {
+        let asked = Asked::default();
+        let dialogs = SaveTo {
+            to: choice.map(|c| pictures.join(c)),
+            asked: Arc::clone(&asked),
+        };
+        let mut p = PlayerState::new(
+            Ok(info()),
+            Arc::new(Fake),
+            Box::new(dialogs),
+            Box::new(NullSink),
+            Machine::detect(),
+            Folders {
+                cache_dir: None,
+                work_root: d.path().join("work"),
+            },
+            now(),
+        );
+        p.dispatch(Command::TakeScreenshot, now());
+        assert_eq!(p.status, "Open a video first");
+        open(&mut p, file(&videos, "holiday.mp4"));
+        // no picture yet
+        p.dispatch(Command::TakeScreenshot, now());
+        assert!(!p.shooting);
+        p.frame = Some(videolore::preview::Frame {
+            pts: Micros(90_500_000),
+            width: 2,
+            height: 1,
+            rgba: vec![0; 8],
+        });
+        let before = listing(&videos);
+        // a capture nobody asked for is ignored
+        p.dispatch(Command::SaveScreenshot(shot.clone()), now());
+        assert!(asked.lock().unwrap().is_empty());
+        p.dispatch(Command::TakeScreenshot, now());
+        assert!(p.shooting && p.busy());
+        p.dispatch(Command::SaveScreenshot(shot.clone()), now());
+        assert!(!p.shooting);
+        let calls = asked.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1, "holiday 00.01.30.500.png");
+        assert_eq!(calls[0].0, crate::screenshot::pictures_folder());
+        assert_eq!(listing(&videos), before, "nothing next to the video");
+        match written {
+            Some(name) => {
+                assert!(pictures.join(name).is_file());
+                assert_eq!(p.status, "Saved still.png");
+            }
+            None => assert_eq!(std::fs::read_dir(&pictures).unwrap().count(), 0),
+        }
+        p.dispatch(Command::TakeScreenshot, now());
+        p.dispatch(Command::ScreenshotFailed, now());
+        assert!(!p.shooting);
+        assert_eq!(p.status, "The screenshot could not be taken");
+        // a folder that is not there: the message says it
+        if choice.is_some() {
+            std::fs::remove_dir_all(&pictures).unwrap();
+            p.dispatch(Command::TakeScreenshot, now());
+            p.dispatch(Command::SaveScreenshot(shot.clone()), now());
+            assert!(p.status.contains("could not be saved"), "{}", p.status);
+        }
+    }
 }

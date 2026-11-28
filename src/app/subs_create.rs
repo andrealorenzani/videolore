@@ -277,7 +277,8 @@ impl AppState {
         self.changed_media.clear();
         self.reanalysed.clear();
         for m in &mut self.project.media {
-            if !m.is_ready() || m.missing {
+            // the video of an imported project is looked after by the imports
+            if !m.is_ready() || m.missing || m.from.is_some() {
                 continue;
             }
             let now = media::FileStat::of(&m.path);

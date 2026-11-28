@@ -133,6 +133,13 @@ impl AppState {
                     self.settings.show_splash = o;
                     self.save_settings()
                 }
+                Command::SetPictureStrips(on) => {
+                    self.settings.show_picture_strips = on;
+                    if !on {
+                        self.strips.clear();
+                    }
+                    self.save_settings()
+                }
                 other => {
                     pass = Some(other);
                     Ok(())

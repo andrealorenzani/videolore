@@ -169,6 +169,7 @@ pub enum Key {
     MoveDown,
     AppliedRowHint,
     AppliedEffectLabel,
+    ShowPictureStrips,
 }
 
 /// The English table, in the order of [`Key`].
@@ -404,6 +405,10 @@ pub const ENGLISH: &[(Key, &str)] = &[
         "Click to open its settings. Drag, or Alt+Up and Alt+Down, to move it: a row higher up is drawn over the rows below it",
     ),
     (Key::AppliedEffectLabel, "Applied effect:"),
+    (
+        Key::ShowPictureStrips,
+        "Show picture strips on the timeline",
+    ),
 ];
 
 /// The text of `key`.

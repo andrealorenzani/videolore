@@ -2,13 +2,30 @@
 
 <!-- AI-only. Owner: principal-engineer. Find a paragraph: grep -n here, then sed -n 'A,Bp' <doc>. Regenerate the index: scripts/doc-index.sh docs/code*.md. Code facts: scripts/code-map.sh, req-code.sh, symbol.sh, module-deps.sh (docs/scripts.md). History of earlier versions: git and releases/. -->
 
-## State (3.1.3, built)
-- REQ-359..366: community files written by the documenter; code part is only `tests/community.rs` (9 tests) + dev-dependency `yaml-rust2` 0.13.2 with `default-features = false` (no `encoding_rs`; plan table showed the plain form). REQ-366 list = `forbidden_term` (ADR-274). README's `git@github.com:...videolore.git` has the shape of a mail address: `GIT_REMOTE` is removed before the address rule. REQ-365's GitHub community profile and settings are manual. REQ-360 test reads CONTRIBUTING.md § Local checks (workspace commands, feature coverage) and § Build prerequisites (Rust version from `Cargo.toml`, ffmpeg version from `packaging/ffmpeg.lock`: a toolchain or ffmpeg pin bump must update that guide). It also requires `libxcb-randr0-dev` and a C++ compiler.
-- A version bump changes `packaging/notices/rust-crates-{player,screen-spy}.txt` (they name the program version): run `scripts/notices.sh`.
-- Timing flakes seen under load (load average ~10, desktop apps): three `app::hw_tests` fixed (paused-frame runs recorded late by another thread: `playback_runs` / `wait_for_playback`; a call count read after `TryHardwareAgain`). Still timing gates: `lut_tests::a_lut_is_prepared_in_the_background_...` (200 ms tick, not `best_of`).
+## State (3.2.0, built)
+- Suite green on the new pin 9.0.2-982-g836df4e858 (`VIDEOLORE_REQUIRE_FFMPEG=1`; clippy default / no-default / all features): 1319 passed + 8 ignored (lib 1054, integration 126, player 61+4, screen spy 49+7, community 9, module_cycles 7, page 2), line 95.0 %, feature 344/344 before the PM flips 367..377, deny, notices, version, docs-check ok. Earlier also green on system 6.1.1. Integration tests that share a cached fixture AND watch its mtime need their own copy (`v32.rs:flashing`): first runs generate it twice and rename over it.
+- REQ-367..377 implemented (PM marks them `(implemented)`; docs/code-timeline-project.md, code-player.md § Playlist menu, code-screen-spy.md sound). New modules `nested`, `strips`, `base/steps`, `app/imports`, `player/src/screenshot`. Dependency: player uses `image` 0.25.10 `png` (png crate was already in the tree); notices regenerated.
+- Deviations from plan 3.2.0: no `MediaKind::Project` (`MediaItem.from: Option<PathBuf>`, JSON `from_abs`/`from_rel`); videos in `<work_root>/imports/<key>.mkv`, partial file is the export's own `.<name>.videolore-partial` (no new scratch pattern); key hashes version tag + source path + bytes + used files' size/mtime + child keys (not only bytes); import loader keeps `MAX_PROJECT_BYTES` 96 MiB (plan said 16); walk also capped at 64 projects; recorder delay is removed from the audio (`atrim=start_sample=1200`, L = 25 ms = 2 x sr/80, same code in FFmpeg d838f9f9) instead of delaying the picture; strips run batches only up to 2 s source step (plan: one child per request); player lengths cached by path (map, not parallel Vec); import check also runs synchronously on the UI thread before the popup.
+- Re-pinned in 3.2.0 (user approval relayed by the command): Linux and Windows = autobuild-2026-11-27-12-42, checked against its `checksums.sha256`; build_scripts_commit = the release tag commit (GitHub API git/ref/tags). 9.1 replaced 9.0 on 2026-11-28, so no later 9.0 build exists; this daily one will be pruned (~mid December 2026): re-pin before that (month-end 2026-10-31 = 9.0.2-39 older; or 9.1; or own mirror). Windows build not run. macOS pin unchanged, URLs 200. docs/architecture-packaging.md still names the old build (architect).
 
-### Requirement -> test (3.1.3)
-- 359..365: `tests/community.rs` `conduct_is_covenant_2_1`, `contributing_names_checks_and_licence`, `security_policy_names_private_channel`, `support_links_forms_and_readme`, `issue_forms_parse_and_require_fields`, `pull_request_template_lists_four_checks`, `community_files_exist_and_readme_links_them`; 366: `public_files_have_no_internal_wording`, `licence_is_unmodified_gpl3`.
+### Traps (3.2.0)
+- Schema bump: `sed` over `schema_version` strings in tests also needs `TooNew(n)` in project*.rs (current and current+1).
+- egui 0.37 screenshot is `Context::request_screenshot(callback)`; tests take the `ViewportCommand::Screenshot` from `FullOutput::viewport_output` and call `complete`.
+- Timeline zoom below "fit" is clamped (a 10 s video cannot go below ~85 pt/s at 1280 wide): UI tests derive spacings from `app.zoom`.
+- AccessKit node order is not stable: pick row buttons by rect y. The player's Escape does not close an open menu: click elsewhere.
+- Settings "Appearance and start-up" needs a wheel scroll before and after opening in UI tests.
+- Imports of tests: `app::imports_tests::runner` (fake rendering), `nested::tests::write_project`, `strips::tests::pictures`.
+
+### Requirement -> test (3.2.0)
+- 367 `ui/ruler.rs` marks_*, `timeline_aids_ux_tests` the_ruler_*; 368 `a_line_follows_the_pointer_*`; 369 `strips/tests.rs`, `each_clip_shows_snapshots_*`, `v32.rs` the_snapshots_*; 370 `the_settings_switch_*`, `imports_tests` the_strip_setting_*.
+- 371..373 `nested/tests.rs`, `imports_tests.rs`, `v15_tests` format_16_*, `v32.rs`; 372 `every_import_asks_first_*`, `the_file_menu_imports_*`.
+- 374 `playlist.rs` order_tests, player `tests.rs` next_and_previous_follow_*, `ui_tests` the_playlist_menu_*; 375 the_total_*; 376 `screenshot.rs`, a_screenshot_is_written_*, take_screenshot_*; 377 screen-spy `tests.rs` the_mixed_track_*, `tests/ffmpeg.rs` steady_noise_*, the_noise_reduction_does_not_move_*.
+- Manual (not verified): screenshot on real displays (X11, Wayland, macOS, Windows; HiDPI crop), recorder microphone noise on the report's machine and A/V sync by ear, strips on a slow computer, import dialog, timeline look.
+- Debt: old videos in `imports/` never removed; rebuild check reads and hashes projects at each open; cancel of a rebuild leaves the item as is until reopen; strips of a re-analysed changed file stay until reload.
+
+## Earlier state (3.1.3)
+- `tests/community.rs` (REQ-359..366, dev-dependency `yaml-rust2`); its REQ-360 test reads CONTRIBUTING.md (toolchain or ffmpeg pin bump must update that guide). A version bump changes `packaging/notices/rust-crates-{player,screen-spy}.txt`: run `scripts/notices.sh`.
+- Timing gate still not `best_of`: `lut_tests::a_lut_is_prepared_in_the_background_...`.
 
 ## Earlier state (3.1.2, screen recorder)
 - Suite green (pinned ffmpeg 9.0.2): fmt, clippy (default, no-default, all features; cross win/mac for screen-spy), 1027 lib (3 ignored), 123 integration (5 ignored), 7 module_cycles, 2 page, 50 + 4 player, 48 + 5 screen-spy; real_x11 capture (Xvfb 21 + private pulseaudio 16.1) green; line 95.0 %; feature script 336/336 (counts exact `(implemented)` only); notices, deny, version check ok.
@@ -27,7 +44,7 @@
 - `pulse` with only monitors: "no microphone"; CI/local server needs `module-remap-source` for a non-monitor source.
 
 ## Local env (dev box)
-- Disk: /home ~99 % full: build with `CARGO_TARGET_DIR=<scratchpad>/target` (on /, ~25 GB used), no removal needed. `libxcb-randr0-dev`, Xvfb, pulseaudio are not installed: `apt-get download` + `dpkg-deb -x` into scratchpad, `LIBRARY_PATH=<sysroot>/usr/lib/x86_64-linux-gnu`, point the `libxcb-randr.so` link at the system `.so.0`; private pulseaudio: `-n --dl-search-path=<modules>`, native-protocol-tcp on 127.0.0.1:47999, `--disable-shm=true` (never the desktop server: it records the real microphone).
+- Disk: /home 86 % full at 3.2.0 (94 GB free): the default `target/` works; coverage used `CARGO_LLVM_COV_TARGET_DIR=<scratchpad>/cov-target` (~4 GB on /). Suite times at load ~12: `cargo test --workspace` 235 s, coverage 335 s, `notices.sh` 2 min. `libxcb-randr0-dev`, Xvfb, pulseaudio are not installed: `apt-get download` + `dpkg-deb -x` into scratchpad, `LIBRARY_PATH=<sysroot>/usr/lib/x86_64-linux-gnu`, point the `libxcb-randr.so` link at the system `.so.0`; private pulseaudio: `-n --dl-search-path=<modules>`, native-protocol-tcp on 127.0.0.1:47999, `--disable-shm=true` (never the desktop server: it records the real microphone).
 - Every cargo run through a scratchpad `run.sh` (`systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 timeout 2400`) with `env.sh`: `LIBCLANG_PATH=/usr/lib/llvm-18/lib`, pinned ffmpeg 9.0.2 (`TMPDIR=<scratchpad> scripts/fetch-ffmpeg.sh linux-x86_64 <scratchpad>/ff9`) as `VIDEOLORE_FFMPEG/FFPROBE` + PATH, `VIDEOLORE_REQUIRE_FFMPEG=1`, `CARGO_INCREMENTAL=0`. Test binaries: `$CARGO_TARGET_DIR/debug/build/<package>/<hash>/out/`. Never two suites at once (hw_tests timing gates fail).
 - cargo-deny 0.20.2, cargo-about 0.9.3 (`--features cli`) in ~/.cargo/bin. Cross clippy: `--target <t> --no-default-features`.
 
@@ -61,12 +78,12 @@
 - docs/code-360.md § Known limits — L101-107 (7 lines)
 - docs/code-architecture.md § Code — module architecture — L1-4 (4 lines)
 - docs/code-architecture.md § Layers — L5-18 (14 lines)
-- docs/code-architecture.md § Module dependency graph — L19-59 (41 lines)
-- docs/code-architecture.md § Import → timeline → preview → export — L60-90 (31 lines)
-- docs/code-architecture.md § A command, from the click to the undo step — L91-103 (13 lines)
-- docs/code-architecture.md § Threads and channels — L104-131 (28 lines)
-- docs/code-architecture.md § videolore player — L132-148 (17 lines)
-- docs/code-architecture.md § videolore screen spy — L149-167 (19 lines)
+- docs/code-architecture.md § Module dependency graph — L19-63 (45 lines)
+- docs/code-architecture.md § Import → timeline → preview → export — L64-94 (31 lines)
+- docs/code-architecture.md § A command, from the click to the undo step — L95-107 (13 lines)
+- docs/code-architecture.md § Threads and channels — L108-137 (30 lines)
+- docs/code-architecture.md § videolore player — L138-157 (20 lines)
+- docs/code-architecture.md § videolore screen spy — L158-176 (19 lines)
 - docs/code-audio-tracks.md § Code — 3.1.0: audio tracks, Enlarge word from its base, As subtitle track, project format 15 — L1-4 (4 lines)
 - docs/code-audio-tracks.md § Audio tracks (REQ-340, 339, 338) — L5-12 (8 lines)
 - docs/code-audio-tracks.md § Enlarge word from its base (REQ-334) — L13-16 (4 lines)
@@ -116,9 +133,6 @@
 - docs/code-frame.md § Interface (REQ-124, 127..130) — L64-80 (17 lines)
 - docs/code-frame.md § Tests — L81-88 (8 lines)
 - docs/code-frame.md § Known limits — L89-96 (8 lines)
-- docs/code-hardware-qg05.md § Code — hardware export: real-hardware verification (QG-05) — L1-5 (5 lines)
-- docs/code-hardware-qg05.md § Checklist — L6-32 (27 lines)
-- docs/code-hardware-qg05.md § Results — L33-59 (27 lines)
 - docs/code-hardware.md § Code — hardware export ("Export: Faster") — L1-7 (7 lines)
 - docs/code-hardware.md § Modules — L8-19 (12 lines)
 - docs/code-hardware.md § Methods and arguments — L20-60 (41 lines)
@@ -129,22 +143,25 @@
 - docs/code-hardware.md § Tests — L152-158 (7 lines)
 - docs/code-hardware.md § Real-hardware verification — L159-163 (5 lines)
 - docs/code-hardware.md § Known limitations — L164-181 (18 lines)
+- docs/code-hardware-qg05.md § Code — hardware export: real-hardware verification (QG-05) — L1-5 (5 lines)
+- docs/code-hardware-qg05.md § Checklist — L6-32 (27 lines)
+- docs/code-hardware-qg05.md § Results — L33-59 (27 lines)
 - docs/code-index.md § Code — index — L1-4 (4 lines)
 - docs/code-index.md § Programs and start-up — L5-15 (11 lines)
 - docs/code-index.md § Application core — L16-25 (10 lines)
-- docs/code-index.md § Media and project model — L26-33 (8 lines)
-- docs/code-index.md § Effects — L34-43 (10 lines)
-- docs/code-index.md § Order of the effects and the Applied effects column — L44-48 (5 lines)
-- docs/code-index.md § Overlap media and picture items — L49-55 (7 lines)
-- docs/code-index.md § Subtitles and texts — L56-65 (10 lines)
-- docs/code-index.md § 360° video — L66-70 (5 lines)
-- docs/code-index.md § Preview — L71-75 (5 lines)
-- docs/code-index.md § Export — L76-81 (6 lines)
-- docs/code-index.md § Hardware export ([code-hardware.md](code-hardware.md)) — L82-87 (6 lines)
-- docs/code-index.md § Interface — L88-94 (7 lines)
-- docs/code-index.md § videolore player — L95-97 (3 lines)
-- docs/code-index.md § videolore screen spy ([code-screen-spy.md](code-screen-spy.md)) — L98-100 (3 lines)
-- docs/code-index.md § Packaging, build and quality — L101-104 (4 lines)
+- docs/code-index.md § Media and project model — L26-34 (9 lines)
+- docs/code-index.md § Effects — L35-44 (10 lines)
+- docs/code-index.md § Order of the effects and the Applied effects column — L45-49 (5 lines)
+- docs/code-index.md § Overlap media and picture items — L50-56 (7 lines)
+- docs/code-index.md § Subtitles and texts — L57-66 (10 lines)
+- docs/code-index.md § 360° video — L67-71 (5 lines)
+- docs/code-index.md § Preview — L72-76 (5 lines)
+- docs/code-index.md § Export — L77-82 (6 lines)
+- docs/code-index.md § Hardware export ([code-hardware.md](code-hardware.md)) — L83-88 (6 lines)
+- docs/code-index.md § Interface — L89-96 (8 lines)
+- docs/code-index.md § videolore player — L97-99 (3 lines)
+- docs/code-index.md § videolore screen spy ([code-screen-spy.md](code-screen-spy.md)) — L100-102 (3 lines)
+- docs/code-index.md § Packaging, build and quality — L103-106 (4 lines)
 - docs/code-layers.md § Code — effect order, overlaps and project formats 12 to 14 (2.1.0 to 2.3.0) — L1-4 (4 lines)
 - docs/code-layers.md § Large LUTs and their preparation (REQ-300, 301, 312) — L5-16 (12 lines)
 - docs/code-layers.md § Text and subtitle styles (REQ-306 to 310, 318, 319, 323, 333) — L17-22 (6 lines)
@@ -162,6 +179,15 @@
 - docs/code-lut.md § Verification of `lut3d` — L70-77 (8 lines)
 - docs/code-lut.md § Tests — L78-85 (8 lines)
 - docs/code-lut.md § Known limits — L86-89 (4 lines)
+- docs/code.md § Code — L1-32 (32 lines)
+- docs/code.md § How to add an effect or a command — L33-37 (5 lines)
+- docs/code.md § Build, test, run — L38-52 (15 lines)
+- docs/code.md § System requirements for building — L53-58 (6 lines)
+- docs/code.md § Settings and machine detection — L59-61 (3 lines)
+- docs/code.md § CPU baseline for speech recognition — L62-64 (3 lines)
+- docs/code.md § Cargo features — L65-72 (8 lines)
+- docs/code.md § Finding ffmpeg — L73-75 (3 lines)
+- docs/code.md § Dependencies — L76-102 (27 lines)
 - docs/code-measurements.md § Code — measurements — L1-4 (4 lines)
 - docs/code-measurements.md § Rendering — L5-11 (7 lines)
 - docs/code-measurements.md § LUTs — L12-15 (4 lines)
@@ -183,11 +209,12 @@
 - docs/code-packaging.md § Known limitations — L126-143 (18 lines)
 - docs/code-player.md § Code — videolore player and the workspace (1.6.0, start screen 1.6.2) — L1-4 (4 lines)
 - docs/code-player.md § Workspace — L5-20 (16 lines)
-- docs/code-player.md § Modules of `player/src` — L21-32 (12 lines)
-- docs/code-player.md § How it works (ADR-105..108, 118, 119) — L33-59 (27 lines)
-- docs/code-player.md § Packaging (ADR-108, 115) — L60-69 (10 lines)
-- docs/code-player.md § Known limits — L70-76 (7 lines)
-- docs/code-player.md § Start screen (1.6.2, REQ-150) — L77-84 (8 lines)
+- docs/code-player.md § Modules of `player/src` — L21-34 (14 lines)
+- docs/code-player.md § How it works (ADR-105..108, 118, 119) — L35-61 (27 lines)
+- docs/code-player.md § Playlist menu, total and screenshot (3.2.0, REQ-374 to REQ-376) — L62-67 (6 lines)
+- docs/code-player.md § Packaging (ADR-108, 115) — L68-77 (10 lines)
+- docs/code-player.md § Known limits — L78-84 (7 lines)
+- docs/code-player.md § Start screen (1.6.2, REQ-150) — L85-92 (8 lines)
 - docs/code-readable-text.md § Code — readable text, placement and subtitle accuracy (2.0.3) — L1-10 (10 lines)
 - docs/code-readable-text.md § Step 0 — blur chroma radius (CI regression) — L11-21 (11 lines)
 - docs/code-readable-text.md § REQ-155 — the paused picture at the end of a clip — L22-34 (13 lines)
@@ -211,11 +238,11 @@
 - docs/code-testing.md § Code — tests and CI — L1-4 (4 lines)
 - docs/code-testing.md § Kinds of tests — L5-18 (14 lines)
 - docs/code-testing.md § Golden output — L19-22 (4 lines)
-- docs/code-testing.md § Integration tests (real ffmpeg) — L23-41 (19 lines)
-- docs/code-testing.md § Coverage — L42-44 (3 lines)
-- docs/code-testing.md § Running the suite on a small machine — L45-47 (3 lines)
-- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L48-60 (13 lines)
-- docs/code-testing.md § Suite size and time — L61-64 (4 lines)
+- docs/code-testing.md § Integration tests (real ffmpeg) — L23-42 (20 lines)
+- docs/code-testing.md § Coverage — L43-45 (3 lines)
+- docs/code-testing.md § Running the suite on a small machine — L46-48 (3 lines)
+- docs/code-testing.md § Continuous integration (`.github/workflows/build.yml`) — L49-61 (13 lines)
+- docs/code-testing.md § Suite size and time — L62-65 (4 lines)
 - docs/code-text.md § Code — text items, selection and 360° in 1.3.0 — L1-12 (12 lines)
 - docs/code-text.md § Where things are — L13-25 (13 lines)
 - docs/code-text.md § Model and file — L26-40 (15 lines)
@@ -225,6 +252,13 @@
 - docs/code-text.md § Selection and Context Menu — L97-107 (11 lines)
 - docs/code-text.md § Tests — L108-117 (10 lines)
 - docs/code-text.md § Known limits — L118-124 (7 lines)
+- docs/code-timeline-project.md § Code — 3.2.0: timeline aids, project as media, project format 16 — L1-4 (4 lines)
+- docs/code-timeline-project.md § Ruler marks and pointer line (REQ-367, REQ-368) — L5-8 (4 lines)
+- docs/code-timeline-project.md § Picture strips (REQ-369, REQ-370) — L9-15 (7 lines)
+- docs/code-timeline-project.md § Project as media (REQ-371 to REQ-373) — L16-22 (7 lines)
+- docs/code-timeline-project.md § Project format 16 (REQ-029) — L23-25 (3 lines)
+- docs/code-timeline-project.md § Tests — L26-28 (3 lines)
+- docs/code-timeline-project.md § Known limits — L29-33 (5 lines)
 - docs/code-ui.md § Code — the window (UI) — L1-8 (8 lines)
 - docs/code-ui.md § Window structure — L9-23 (15 lines)
 - docs/code-ui.md § Layout — L24-47 (24 lines)
@@ -234,12 +268,3 @@
 - docs/code-ui.md § Settings file — L108-114 (7 lines)
 - docs/code-ui.md § Since 1.2.0 — L115-125 (11 lines)
 - docs/code-ui.md § Preview picture (1.2.6) — L126-134 (9 lines)
-- docs/code.md § Code — L1-31 (31 lines)
-- docs/code.md § How to add an effect or a command — L32-36 (5 lines)
-- docs/code.md § Build, test, run — L37-51 (15 lines)
-- docs/code.md § System requirements for building — L52-57 (6 lines)
-- docs/code.md § Settings and machine detection — L58-60 (3 lines)
-- docs/code.md § CPU baseline for speech recognition — L61-63 (3 lines)
-- docs/code.md § Cargo features — L64-71 (8 lines)
-- docs/code.md § Finding ffmpeg — L72-74 (3 lines)
-- docs/code.md § Dependencies — L75-101 (27 lines)

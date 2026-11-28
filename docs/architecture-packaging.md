@@ -69,7 +69,7 @@ Two self-contained options, chosen by Andrea:
 - Least privilege: read-only repository access for jobs; only the release job writes.
 
 ## Bundled ffmpeg refresh (0.3.0)
-- FFmpeg 9.0.2 is the latest release; macOS keeps the Martin Riedl 9.0.2 build. Linux and Windows moved to the newest BtbN build of the 9.0 branch (2026-11-13, version 9.0.2-57), pinned by SHA-256 in `packaging/ffmpeg.lock`. It is a daily build kept for a shorter time than month-end builds: if it disappears, the package job fails and the pin moves to the 2026-11-30 month-end build. Each release refreshes the pin (ffmpeg parses untrusted media).
+- FFmpeg 9.0.2 is the latest release; macOS keeps the Martin Riedl 9.0.2 build. Linux and Windows moved to the newest BtbN build of the 9.0 branch (2026-11-27, version 9.0.2-982-g836df4e858), pinned by SHA-256 in `packaging/ffmpeg.lock`. It is a daily build kept for a shorter time than month-end builds: if it disappears, the package job fails and the pin moves to the 2026-11-30 month-end build. Each release refreshes the pin (ffmpeg parses untrusted media).
 
 ## Third program: the screen recorder (3.1.2)
 - `scripts/package.sh <target> screen-spy` builds the recorder's installers the same way as the player's: AppImage and tar.gz (Linux), NSIS setup (Windows), disk image (macOS). Identifier `io.github.andrealorenzani.videolore-screen-spy`; own notices `rust-crates-screen-spy.txt` and `third-party-screen-spy.txt`; no file association, no desktop entry written by the program; the default NSIS template; macOS minimum system version 11.0, as the editor and the player: the recorder must open on older Macs to show its message (computer sound needs macOS 14.6, checked at Start).

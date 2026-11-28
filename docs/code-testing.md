@@ -36,6 +36,7 @@ Back to the [index](code.md). Which test covers a requirement: `scripts/req-code
 | `v204.rs`, `v204b.rs` | separate subtitle track in MP4 and MKV, Arabic and Devanagari glyphs (empty fontconfig), kept background vs whole render (< 2/255); spatial sound (`pan=quad`, `the_pre_pass_runs_far_faster_than_real_time`) |
 | `v22.rs`, `v22order.rs` | blurred fill cost, speech-region checks; every order pair of the step builder in preview and export, a text by matte, a 360 flat view |
 | `v23overlap.rs` | overlap transparency (still, GIF, MOV), once then transparent, reshaped, the Enlarge word base, centre and room for the neighbours in a real render (ink boxes) |
+| `v32.rs` | 3.2.0: a project imported as media (frames, reuse, edits, nesting, source change, cancel), picture-strip snapshots at their times |
 | `v31.rs` | 3.1.0: blurred fill pixels (whole video, a clip's own aspect, preview against the whole render), a two-sound file (pitch of the export and of the preview audio), As subtitle track (streams, cues, language, no drawn text) |
 | `hw.rs` | hardware export with simulated vendors (libx264/libx265, SVT-AV1, libvpx-vp9 stand in and damage files on request); independent exports of one test run on threads (`in_parallel`, also the AV1 and VP9 codecs); `VIDEOLORE_REAL_HW=1` uses the real hardware; ignored `qg05_reference_render`, `req315_phase_times` |
 

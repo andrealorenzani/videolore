@@ -7,12 +7,15 @@
 
 use crate::app::{Command, PlayerState, SKIP};
 use crate::fullscreen::HINT_TEXT;
+use crate::screenshot;
 use eframe::egui::{
     self, Align2, Button, Color32, ColorImage, Context, CursorIcon, Event, Id, Key, Modifiers,
     Order, Rect, Sense, TextureHandle, TextureOptions, Ui, pos2, vec2,
 };
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use videolore::media::display_name;
 use videolore::time::{Micros, timecode};
 use videolore::ui::icons;
 use videolore::ui::placement;
@@ -27,6 +30,16 @@ impl eframe::App for PlayerApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         frame_ui(ui, &mut self.state, &mut self.cache, Instant::now());
     }
+}
+
+/// A capture of the window asked for.
+struct Capture {
+    /// Where the picture was in the captured frame.
+    picture: Rect,
+    /// Where the window puts the capture.
+    image: Arc<Mutex<Option<Arc<ColorImage>>>>,
+    /// Frames waited so far.
+    waited: u32,
 }
 
 /// UI-only state.
@@ -49,6 +62,8 @@ pub struct PlayerCache {
     splash: Option<videolore::ui::splash_window::Loaded>,
     /// Where the start screen was drawn this frame (screen pixels).
     pub splash_rects: Option<videolore::ui::splash_window::SplashRects>,
+    /// A capture was asked for.
+    shot: Option<Capture>,
 }
 
 /// The icon of an item of the player.
@@ -72,6 +87,10 @@ pub mod icon {
     pub const PLAYLIST: &str = i::LIST;
     pub const FOLDER: &str = i::FILM_STRIP;
     pub const EDITOR: &str = i::MONITOR_PLAY;
+    pub const SCREENSHOT: &str = i::IMAGE;
+    pub const UP: &str = i::CARET_UP;
+    pub const DOWN: &str = i::CARET_DOWN;
+    pub const REMOVE: &str = i::TRASH;
 }
 
 fn label(icon: &str, text: &str) -> String {
@@ -116,6 +135,7 @@ pub fn frame_ui(root: &mut Ui, app: &mut PlayerState, cache: &mut PlayerCache, n
         cmds.push(Command::Open(p));
     }
     let modal = app.notice.is_some() || app.show_about;
+    cmds.extend(captured(ctx, app, cache));
     cmds.extend(keys(ctx, app, modal));
 
     if !app.fullscreen.on {
@@ -135,6 +155,25 @@ pub fn frame_ui(root: &mut Ui, app: &mut PlayerState, cache: &mut PlayerCache, n
         .frame(egui::Frame::NONE)
         .show(root, |ui| picture(ui, app, cache, &mut cmds, now));
     popups(ctx, app, cache, &mut cmds);
+    // the capture is of this frame: its picture is drawn without anything over it
+    if app.shooting && cache.shot.is_none() {
+        match cache.picture {
+            Some(picture) => {
+                let image = Arc::new(Mutex::new(None));
+                let (slot, window) = (Arc::clone(&image), ctx.clone());
+                ctx.request_screenshot(move |taken| {
+                    *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(taken);
+                    window.request_repaint();
+                });
+                cache.shot = Some(Capture {
+                    picture,
+                    image,
+                    waited: 0,
+                });
+            }
+            None => cmds.push(Command::ScreenshotFailed),
+        }
+    }
 
     for c in cmds {
         app.dispatch(c, now);
@@ -143,6 +182,35 @@ pub fn frame_ui(root: &mut Ui, app: &mut PlayerState, cache: &mut PlayerCache, n
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
     ctx.request_repaint_after(Duration::from_millis(if app.busy() { 10 } else { 100 }));
+}
+
+/// Frames a capture is waited for.
+const SHOT_PATIENCE: u32 = 200;
+
+/// The capture asked for, once the window gives it: the picture cut out of it.
+fn captured(ctx: &Context, app: &PlayerState, cache: &mut PlayerCache) -> Option<Command> {
+    if !app.shooting {
+        cache.shot = None;
+        return None;
+    }
+    let capture = cache.shot.as_mut()?;
+    let image = capture
+        .image
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
+    match image {
+        Some(image) => Some(
+            match screenshot::crop(&image, capture.picture, ctx.pixels_per_point()) {
+                Some(shot) => Command::SaveScreenshot(shot),
+                None => Command::ScreenshotFailed,
+            },
+        ),
+        None => {
+            capture.waited += 1;
+            (capture.waited > SHOT_PATIENCE).then_some(Command::ScreenshotFailed)
+        }
+    }
 }
 
 /// Keyboard shortcuts of this frame. Esc closes the start screen, then a dialog, then the full-screen popup,
@@ -232,6 +300,14 @@ fn menu_bar(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
                     ui.close();
                 }
             }
+            if ui
+                .add_enabled(has, Button::new(label(icon::SCREENSHOT, "Take screenshot")))
+                .on_hover_text("Save the picture on the screen as a PNG file")
+                .clicked()
+            {
+                cmds.push(Command::TakeScreenshot);
+                ui.close();
+            }
             ui.separator();
             if ui.button(label(icon::QUIT, "Quit")).clicked() {
                 cmds.push(Command::Quit);
@@ -250,6 +326,7 @@ fn menu_bar(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
                 ui.close();
             }
         });
+        ui.menu_button("Playlist", |ui| playlist_menu(ui, app, cmds));
         ui.menu_button("Audio", |ui| audio_menu(ui, app, cmds));
         ui.menu_button("Subtitles", |ui| subtitles_menu(ui, app, cmds));
         ui.menu_button("Help", |ui| {
@@ -262,6 +339,55 @@ fn menu_bar(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
             }
         });
     });
+}
+
+/// The videos of the list in their order, the playing one marked, each with Move up,
+/// Move down and Remove (REQ-374). Only the rows in view are drawn.
+fn playlist_menu(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
+    let items = &app.playlist.items;
+    if items.is_empty() {
+        ui.add_enabled(
+            false,
+            Button::new(label(icon::PLAYLIST, "The playlist is empty")),
+        );
+        return;
+    }
+    ui.set_min_width(420.0);
+    let row = ui.spacing().interact_size.y;
+    egui::ScrollArea::vertical()
+        .max_height(360.0)
+        .show_rows(ui, row, items.len(), |ui, range| {
+            for i in range {
+                let Some(p) = items.get(i) else { break };
+                ui.horizontal(|ui| {
+                    let mut change = |ui: &mut Ui, on: bool, text: String, cmd: Command| {
+                        if ui.add_enabled(on, Button::new(text)).clicked() {
+                            cmds.push(cmd);
+                        }
+                    };
+                    change(ui, i > 0, label(icon::UP, "Move up"), Command::MoveUp(i));
+                    change(
+                        ui,
+                        i + 1 < items.len(),
+                        label(icon::DOWN, "Move down"),
+                        Command::MoveDown(i),
+                    );
+                    change(
+                        ui,
+                        true,
+                        label(icon::REMOVE, "Remove"),
+                        Command::RemoveFromPlaylist(i),
+                    );
+                    let name = format!("{}. {}", i + 1, display_name(p));
+                    let name = if app.playlist.current == Some(i) {
+                        egui::RichText::new(name).strong()
+                    } else {
+                        egui::RichText::new(name)
+                    };
+                    ui.add(egui::Label::new(name).truncate());
+                });
+            }
+        });
 }
 
 /// The audio tracks of the video, the playing one marked (REQ-338).
@@ -357,11 +483,7 @@ fn controls(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
                 cmds.push(Command::Next);
             }
         }
-        ui.monospace(format!(
-            "{} / {}",
-            timecode(app.playhead),
-            timecode(app.duration())
-        ));
+        ui.monospace(time_text(app));
         let (vol_icon, vol_tip) = if app.muted() {
             (icon::MUTED, "Sound is off: click to turn it on (M)")
         } else {
@@ -405,6 +527,27 @@ fn controls(ui: &mut Ui, app: &PlayerState, cmds: &mut Vec<Command>) {
     }
 }
 
+/// The time of the video and its length, then the length of a list of two or more videos
+/// in brackets (REQ-375).
+pub fn time_text(app: &PlayerState) -> String {
+    let own = format!("{} / {}", timecode(app.playhead), timecode(app.duration()));
+    match app.playlist.total() {
+        Some(total) => format!("{own} [{}]", total_text(total)),
+        None => own,
+    }
+}
+
+/// `hh:mm:ss` of a list's length; dashes while it is not known.
+pub fn total_text(total: Option<Micros>) -> String {
+    match total {
+        Some(t) => {
+            let s = t.0.max(0) / 1_000_000;
+            format!("{:02}:{:02}:{:02}", s / 3600, (s / 60) % 60, s % 60)
+        }
+        None => "--:--:--".into(),
+    }
+}
+
 fn update_texture(ctx: &Context, app: &PlayerState, cache: &mut PlayerCache) {
     let Some(f) = &app.frame else {
         cache.texture = None;
@@ -445,7 +588,9 @@ fn picture(
             Color32::WHITE,
         );
         cache.picture = Some(r);
-        interact(ui, app, cache, cmds, r);
+        if !app.shooting {
+            interact(ui, app, cache, cmds, r);
+        }
     } else if !app.has_video() {
         let text = if app.opening() {
             &app.status
@@ -460,7 +605,7 @@ fn picture(
             Color32::GRAY,
         );
     }
-    if let Some(e) = &app.preview.error {
+    if let Some(e) = app.preview.error.as_ref().filter(|_| !app.shooting) {
         ui.painter().text(
             area.left_top() + vec2(6.0, 6.0),
             Align2::LEFT_TOP,
@@ -469,7 +614,7 @@ fn picture(
             Color32::LIGHT_RED,
         );
     }
-    if app.fullscreen.on && app.fullscreen.controls_visible(now) {
+    if app.fullscreen.on && app.fullscreen.controls_visible(now) && !app.shooting {
         egui::Area::new(Id::unique("player-fs-controls"))
             .order(Order::Foreground)
             .anchor(Align2::CENTER_BOTTOM, vec2(0.0, -8.0))
@@ -614,7 +759,7 @@ fn popups(ctx: &Context, app: &PlayerState, cache: &mut PlayerCache, cmds: &mut 
     } else {
         cache.splash_rects = None;
     }
-    if app.fullscreen.hint_visible() {
+    if app.fullscreen.hint_visible() && !app.shooting {
         egui::Window::new("player-fs-hint")
             .title_bar(false)
             .order(Order::Foreground)

@@ -71,6 +71,13 @@ Status: GATE = checked by a test (fails the build); ESTIMATE = design figure, no
 - Start to first frame about 2 s (ESTIMATE, NOT MEASURED). Audio and video start within a few hundred milliseconds (ASSUMPTION, NOT MEASURED on Windows or macOS).
 - Installers about 70 to 130 MB each, three products (ESTIMATE, NOT MEASURED).
 
+## Timeline, player and recorder noise (3.2.0, built)
+- The timeline frame stays within 200 ms with picture strips decoding (GATE by test, REQ-056 rule); strips use one background job at a time (built).
+- Strip cache at most 32 MiB; strip jobs count against the process cap (ADR-015, 029).
+- Project as media: import shows "rendering" and never freezes the window (REQ-032); the intermediate's size and the render time are NOT MEASURED (ESTIMATE only).
+- Playlist durations: one probe per item; total shown after all are known (ADR-281).
+- Recorder noise (REQ-377): quiet parts at least 10 dB lower, speech within 3 dB (ASSUMPTION, checked on a synthetic fixture); picture and sound in sync within one frame (measured delay of the filter compensated; built).
+
 ## Security targets
 - No shell; `file:` prefix; `file` and `pipe` protocols only (GATE). Hostile project and settings files: no crash, a clear refusal, nothing written, sources unchanged (GATE). Full list: [security](architecture-security.md).
 - No network except the consented speech download; no telemetry; HTTPS-only table test; the HTTP client only in `stt` builds; the player graph without `ureq` or `whisper-rs` (CI).

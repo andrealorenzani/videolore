@@ -535,6 +535,10 @@ pub struct MediaItem {
     pub status: MediaStatus,
     #[serde(skip)]
     pub proxy: ProxyState,
+    /// A project imported as media (3.2.0, REQ-371): the project file the item follows.
+    /// `path` is then the video rendered from that project ([`crate::nested`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<PathBuf>,
 }
 
 impl MediaItem {
@@ -550,6 +554,7 @@ impl MediaItem {
             missing: false,
             status: MediaStatus::Analysing,
             proxy: ProxyState::None,
+            from: None,
         }
     }
 
@@ -804,6 +809,7 @@ pub fn probe_within(
         missing: false,
         status: MediaStatus::Ready,
         proxy: ProxyState::None,
+        from: None,
     })
 }
 

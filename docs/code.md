@@ -18,6 +18,7 @@ videolore is a Rust desktop application (edition 2024, MSRV 1.100) built on egui
 | [code-features.md](code-features.md) | 2.0.4: subtitle files and fonts, gestures and autosave, hardware reach and decoding, speed, platforms, interface settings, player, 360 additions, effects, quality items |
 | [code-layers.md](code-layers.md) | 2.1.0 to 2.3.0: large LUTs, text and subtitle styles, whole video as copies, the order of the effects (overlay stage, step builder), overlap media, project formats 12 to 14 |
 | [code-audio-tracks.md](code-audio-tracks.md) | 3.1.0: audio tracks (model, popups, render, player), Enlarge word from its base (`word_layout`), As subtitle track, the blurred fill fix, the Overlap media row, project format 15 |
+| [code-timeline-project.md](code-timeline-project.md) | 3.2.0: ruler marks, pointer line, picture strips, projects imported as media, project format 16 |
 | [code-measurements.md](code-measurements.md) | Every measurement: blur, order spikes, overlap memory, LUT start times, Faster on integrated graphics, speech regions, spatial pre-pass |
 | [code-splash-icons.md](code-splash-icons.md) | Splash screens and icons (Phosphor) |
 | [code-player.md](code-player.md) | The workspace and videolore player |
@@ -88,7 +89,7 @@ The project follows the latest stable Rust; `rust-version` (**1.100**) is raised
 | sysinfo | 0.40 (`system`) | Memory, physical cores, process times |
 | whisper-rs | 0.16 | Speech recognition (optional, `stt`) |
 | ureq | 3.5 (`rustls`) | Speech file download (optional, `stt`) |
-| image | 0.25 (`gif`) | Splash image |
+| image | 0.25 (`gif`, `png`) | Splash image; the player's screenshot (PNG) |
 | fontdb | 0.24 | Installed font families |
 | skrifa, harfrust | 0.44, 0.12 | Text measured with the font (the versions egui's epaint uses) |
 | objc2, objc2-foundation, objc2-app-kit | 0.6, 0.3, 0.3 | macOS only: Apple Events, the menu bar |

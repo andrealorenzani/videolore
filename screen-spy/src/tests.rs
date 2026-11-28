@@ -921,3 +921,23 @@ fn sound_streams_stay_on_the_thread_that_opened_them_until_the_session_ends() {
     let e = audio::hold::<()>(|| panic!("broken driver")).err().unwrap();
     assert_eq!(e, "The sound could not be opened");
 }
+
+// covers: REQ-377
+#[test]
+fn the_mixed_track_has_its_noise_reduced_before_the_limiter_on_every_system() {
+    for os in [Os::Linux, Os::Windows, Os::MacOs] {
+        let a = record(os, VideoFormat::Hd1080, AudioFormat::Aac, false);
+        let graph = &a[a.iter().position(|x| x == "-filter_complex").unwrap() + 1];
+        // after the mix, then its 25 ms delay cut off, then the limiter
+        assert!(
+            graph.ends_with(
+                "normalize=0,afftdn=nr=25:nf=-20:tn=0:rf=-60,atrim=start_sample=1200,\
+                 asetpts=PTS-STARTPTS,alimiter=level=false[a]"
+            ),
+            "{graph}"
+        );
+        // the picture is not touched
+        let picture = graph.split(";[0:a]").next().unwrap();
+        assert!(!picture.contains("afftdn") && !picture.contains("setpts"));
+    }
+}

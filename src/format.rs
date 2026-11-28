@@ -316,6 +316,31 @@ pub fn preset_settings(index: usize, encoders: &BTreeSet<String>) -> Option<Enco
     Some(s)
 }
 
+/// Constant quality of the video kept for an imported project (near lossless).
+pub const INTERMEDIATE_CRF: &str = "12";
+/// Its sound bit rate.
+pub const INTERMEDIATE_AUDIO_BPS: u64 = 256_000;
+
+/// The fixed settings of the video made from a project imported as media (ADR-279): the size
+/// and frame rate of `format`, H.264 at constant quality and AAC in a Matroska file; `None`
+/// when the ffmpeg lacks one of the two encoders.
+pub fn intermediate_settings(
+    format: &MediaFormat,
+    encoders: &BTreeSet<String>,
+) -> Option<EncodeSettings> {
+    (encoders.contains("libx264") && encoders.contains("aac")).then(|| EncodeSettings {
+        muxer: "matroska".into(),
+        extension: "mkv".into(),
+        vextra: ["-preset", "veryfast", "-crf", INTERMEDIATE_CRF]
+            .map(String::from)
+            .to_vec(),
+        video_bitrate: None,
+        audio_bitrate: Some(INTERMEDIATE_AUDIO_BPS),
+        faststart: false,
+        ..fallback(format)
+    })
+}
+
 /// The audio format of an export (REQ-121).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AudioChoice {

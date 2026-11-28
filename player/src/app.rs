@@ -10,13 +10,14 @@
 
 use crate::fullscreen::{EscapeResult, FullScreen};
 use crate::playlist::Playlist;
+use crate::screenshot::{self, Shot};
 use crate::settings::PlayerSettings;
 use crate::subs::{self, Source, Subs};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::{Duration, Instant};
 use videolore::base::pos::Pos;
 use videolore::camera::{Camera, Pov};
@@ -108,6 +109,17 @@ pub enum Command {
     Previous,
     /// File > Open in editor: the video playing, in videolore.
     OpenInEditor,
+    /// Playlist menu: moves the video at this place one earlier or later, or takes it out
+    /// of the list (REQ-374).
+    MoveUp(usize),
+    MoveDown(usize),
+    RemoveFromPlaylist(usize),
+    /// File > Take screenshot: the window captures the picture (REQ-376).
+    TakeScreenshot,
+    /// The captured picture: asks where to save it and writes it.
+    SaveScreenshot(Shot),
+    /// The picture could not be captured.
+    ScreenshotFailed,
     Quit,
 }
 
@@ -122,6 +134,10 @@ pub trait Dialogs {
     }
     /// The folder the next dialog starts in.
     fn start_in(&mut self, _folder: Option<PathBuf>) {}
+    /// Where to save a screenshot, starting in `folder` with the file name `name`.
+    fn pick_screenshot(&mut self, _folder: Option<PathBuf>, _name: &str) -> Option<PathBuf> {
+        None
+    }
 }
 
 type ProbeResult = Result<MediaItem, String>;
@@ -183,6 +199,10 @@ pub struct PlayerState {
     was_playing: bool,
     /// Start playing as soon as the next video of the playlist is open.
     pending_play: bool,
+    /// The length of a video of the playlist being looked at.
+    length_probe: Option<Receiver<(PathBuf, Option<Micros>)>>,
+    /// The window is asked for a capture of the picture (REQ-376).
+    pub shooting: bool,
 }
 
 /// The key of a video in the session's memory: its place on disk when it can be told.
@@ -255,6 +275,8 @@ impl PlayerState {
             audio_memory: HashMap::new(),
             was_playing: false,
             pending_play: false,
+            length_probe: None,
+            shooting: false,
         }
     }
 
@@ -396,6 +418,7 @@ impl PlayerState {
         self.tick_probe();
         self.tick_tracks(now);
         self.tick_proxy(now);
+        self.tick_lengths();
         if let Some(f) = self.preview.poll(now) {
             self.frame = Some(f);
             self.frame_serial += 1;
@@ -432,7 +455,115 @@ impl PlayerState {
 
     /// Something is going on that needs frequent repaints.
     pub fn busy(&self) -> bool {
-        self.is_playing() || self.probe.is_some() || self.tracks.is_some() || self.preview.busy()
+        self.is_playing()
+            || self.probe.is_some()
+            || self.tracks.is_some()
+            || self.length_probe.is_some()
+            || self.shooting
+            || self.preview.busy()
+    }
+
+    /// Looks at the length of the videos of a list of two or more, one after the other,
+    /// each once (REQ-375).
+    fn tick_lengths(&mut self) {
+        if let Some(rx) = &self.length_probe {
+            match rx.try_recv() {
+                Ok((path, length)) => {
+                    self.playlist.set_length(path, length);
+                    self.length_probe = None;
+                }
+                Err(TryRecvError::Empty) => return,
+                Err(TryRecvError::Disconnected) => self.length_probe = None,
+            }
+        }
+        let (Ok(info), Some(path)) = (&self.ffmpeg, self.playlist.unknown().cloned()) else {
+            return;
+        };
+        let ffprobe = info.ffprobe.clone();
+        let runner = self
+            .sched
+            .runner(Priority::Background, Arc::clone(&self.runner));
+        let (tx, rx) = channel();
+        std::thread::spawn(move || {
+            let r = media::probe(&runner, &ffprobe, &path, MediaId(0));
+            let _ = tx.send((path, r.ok().map(|m| m.duration)));
+        });
+        self.length_probe = Some(rx);
+    }
+
+    /// The video open or being opened.
+    fn active(&self) -> Option<&PathBuf> {
+        self.probe
+            .as_ref()
+            .map(|(_, _, p)| p)
+            .or(self.file.as_ref())
+    }
+
+    /// Removes a video from the list; removing the one playing starts the next one, or
+    /// stops after the last (REQ-374).
+    fn remove_from_playlist(&mut self, i: usize, now: Instant) -> Result<(), String> {
+        let active = self.active().cloned();
+        let gone = self
+            .playlist
+            .remove(i)
+            .ok_or("That video is not in the playlist")?;
+        if active.as_ref() != Some(&gone) {
+            return Ok(());
+        }
+        match self.playlist.items.get(i).cloned() {
+            Some(next) => {
+                self.open(next, now)?;
+                self.playlist.current = Some(i);
+                self.pending_play = self.probe.is_some();
+            }
+            None => {
+                self.close_current(now);
+                self.playlist.current = None;
+                self.status = "The end of the playlist".into();
+            }
+        }
+        Ok(())
+    }
+
+    fn take_screenshot(&mut self) -> Result<(), String> {
+        if !self.has_video() || self.frame.is_none() {
+            return Err("Open a video first".into());
+        }
+        self.shooting = true;
+        Ok(())
+    }
+
+    /// Asks where to save the captured picture and writes it there, nowhere else.
+    fn save_screenshot(&mut self, shot: &Shot, now: Instant) -> Result<(), String> {
+        if !std::mem::take(&mut self.shooting) {
+            return Ok(());
+        }
+        let Some(video) = self.file.clone() else {
+            return Ok(());
+        };
+        let at = self.frame.as_ref().map_or(self.playhead, |f| f.pts);
+        // the video waits while the file is chosen
+        let playing = self.is_playing();
+        if playing {
+            self.pause(now);
+        }
+        let name = screenshot::file_name(&video, at);
+        let chosen = self
+            .dialogs
+            .pick_screenshot(screenshot::pictures_folder(), &name);
+        let saved = match chosen {
+            Some(p) => {
+                let p = screenshot::png_path(&p);
+                screenshot::save(shot, &p)
+                    .map(|()| self.status = format!("Saved {}", display_name(&p)))
+                    .map_err(|e| format!("The screenshot could not be saved: {e}"))
+            }
+            None => Ok(()),
+        };
+        if playing {
+            self.play_pause(Instant::now())?;
+        }
+        saved
     }
 
     /// Runs a command; the error text goes to the status line.
@@ -619,6 +750,21 @@ impl PlayerState {
                 Some(p) => self.open(p, now),
                 None => Err("This is the first video of the playlist".into()),
             },
+            Command::MoveUp(i) => {
+                self.playlist.move_up(i);
+                Ok(())
+            }
+            Command::MoveDown(i) => {
+                self.playlist.move_down(i);
+                Ok(())
+            }
+            Command::RemoveFromPlaylist(i) => self.remove_from_playlist(i, now),
+            Command::TakeScreenshot => self.take_screenshot(),
+            Command::SaveScreenshot(shot) => self.save_screenshot(&shot, now),
+            Command::ScreenshotFailed => {
+                self.shooting = false;
+                Err("The screenshot could not be taken".into())
+            }
             Command::OpenInEditor => match self.file.clone() {
                 Some(p) => videolore::siblings::launch(videolore::siblings::EDITOR, &p),
                 None => Err("Open a video first".into()),
@@ -695,6 +841,7 @@ impl PlayerState {
         self.live = None;
         self.drag_pos = None;
         self.camera_restart = None;
+        self.shooting = false;
         self.playhead = Micros::ZERO;
         self.frame = None;
         self.frame_serial += 1;
@@ -763,6 +910,7 @@ impl PlayerState {
         p.mix.video_muted = self.settings.muted;
         self.project = p;
         self.playlist.play(&path);
+        self.playlist.set_length(path.clone(), Some(m.duration));
         if let Some(dir) = path.parent() {
             let dir = dir.to_path_buf();
             self.remember_folder(&dir);

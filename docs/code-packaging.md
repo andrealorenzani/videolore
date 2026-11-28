@@ -47,7 +47,14 @@ Windows and macOS, on every push and pull request, and checks the files of the A
 
 - Pinned in `packaging/ffmpeg.lock` (URL + SHA-256 per platform, version, licence, build-script
   commit, source): BtbN `linux64-gpl` (static) and `win64-gpl-shared`, Martin Riedl's macOS arm64
-  release build. Refresh the pins on every release; a vanished URL makes CI fail loudly.
+  release build. Refresh the pins on every release; a vanished URL makes CI fail loudly (when
+  the CI cache of the old copy is gone).
+- BtbN's repository is now `FFmpeg-Builds/FFmpeg-Builds`. Its daily builds are removed after
+  about two weeks; the last build of each month is kept. 3.2.0 pins the daily build of
+  2026-11-27 (9.0.2-982-g836df4e858), the last one of the 9.0 branch (the 2026-11-28 release has
+  no 9.0 files): it is expected to disappear around mid December 2026. Longer-lived choices: the
+  month-end build of 2026-10-31 (9.0.2-39, older, with fewer fixes), a copy kept by the project,
+  or the 9.1 branch. Check a new pin against the release's `checksums.sha256`.
 - `scripts/fetch-ffmpeg.sh <target> <dir>` downloads, checks the SHA-256 and extracts only
   `ffmpeg`, `ffprobe` (and the DLLs on Windows).
 - `scripts/package.sh` refuses a copy without the encoders libx264, libx265, libvpx-vp9, libopus,

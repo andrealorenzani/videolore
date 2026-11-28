@@ -11,6 +11,7 @@
 pub mod app;
 pub mod fullscreen;
 pub mod playlist;
+pub mod screenshot;
 pub mod settings;
 pub mod subs;
 pub mod ui;
@@ -53,6 +54,16 @@ impl app::Dialogs for NativeDialogs {
 
     fn pick_folder(&mut self) -> Option<PathBuf> {
         self.dialog().pick_folder()
+    }
+
+    fn pick_screenshot(&mut self, folder: Option<PathBuf>, name: &str) -> Option<PathBuf> {
+        let mut d = rfd::FileDialog::new()
+            .add_filter("PNG picture", &["png"])
+            .set_file_name(name);
+        if let Some(folder) = folder.filter(|f| f.is_dir()) {
+            d = d.set_directory(folder);
+        }
+        d.save_file()
     }
 
     fn start_in(&mut self, folder: Option<PathBuf>) {

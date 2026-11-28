@@ -67,6 +67,8 @@ impl AppState {
         }
         self.tick_probes();
         self.tick_tracks();
+        self.tick_imports(now);
+        self.tick_strips(now);
         self.tick_proxies(now);
         self.tick_stt(now);
         self.tick_model();
@@ -313,6 +315,22 @@ impl AppState {
             || self.track_check.is_some()
             || !self.probe_cancel.is_empty()
             || !self.proxy_jobs.is_empty()
+            || self.imports.busy()
+            || (self.settings.show_picture_strips && self.strips.busy())
+    }
+
+    /// Makes the snapshots the timeline shows (REQ-369); none with the setting off.
+    pub(super) fn tick_strips(&mut self, now: Instant) {
+        if !self.settings.show_picture_strips {
+            self.strips.clear();
+            return;
+        }
+        if let Ok(info) = &self.ffmpeg {
+            let runner = self
+                .sched
+                .runner(Priority::Background, Arc::clone(&self.runner));
+            self.strips.tick(now, &runner, &info.ffmpeg);
+        }
     }
 
     /// Waits for a running export (tests and shutdown).

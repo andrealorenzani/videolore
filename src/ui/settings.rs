@@ -404,6 +404,10 @@ fn look_section(ui: &mut Ui, app: &AppState, cmds: &mut Vec<Command>) {
             }
         }
     });
+    let mut strips = app.settings.show_picture_strips;
+    if ui.checkbox(&mut strips, tr!(ShowPictureStrips)).changed() {
+        cmds.push(Command::SetPictureStrips(strips));
+    }
     ui.horizontal(|ui| {
         ui.label(tr!(PreviewCopiesUpTo));
         for limit in CACHE_LIMITS {

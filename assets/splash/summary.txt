@@ -1,5 +1,5 @@
 New in this version
-videolore screen spy, a new separate program, records a screen with computer sound and microphone.
-It shows a live preview and saves an MP4 video, or an MKV video when the sound is WAV.
-The videolore player now plays several videos in a row, and more can be added at any time.
-A file that cannot be imported is now always reported, also when other files finish after it.
+The timeline ruler shows finer marks as you zoom in, and a line follows the pointer.
+Clips show snapshots of their picture; Settings can turn them off.
+File > Import project as media adds another project to this one as a single video.
+videolore screen spy reduces the background noise of its recordings.

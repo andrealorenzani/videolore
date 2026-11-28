@@ -13,5 +13,6 @@ pub mod names;
 pub mod pos;
 pub mod private;
 pub mod shadow;
+pub mod steps;
 #[cfg(test)]
 pub mod testing;

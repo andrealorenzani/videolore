@@ -1,4 +1,4 @@
 New in this version
-File > Open… now takes several videos at once: they play one after the other.
-File > Add to playlist adds videos at any time, without stopping the one playing.
-With more than one video, the window title shows the place, such as (2 of 5).
+The Playlist menu moves videos up and down and removes them.
+The length of the whole playlist is shown in brackets.
+File > Take screenshot saves the picture on the screen as a PNG file.

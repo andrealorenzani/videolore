@@ -91,6 +91,12 @@ pub struct UiCache {
     pub containers: Vec<Container>,
     /// Timeline geometry of this frame.
     pub timeline: Option<timeline::Geometry>,
+    /// Where the pointer line of the timeline was drawn this frame (REQ-368).
+    pub pointer_line: Option<f32>,
+    /// The places of the picture strips of this frame: clip, rectangle and snapshot.
+    pub strips: Vec<(crate::timeline::ClipId, Rect, crate::strips::Key)>,
+    /// The snapshots painted as textures.
+    strip_textures: std::collections::HashMap<crate::strips::Key, TextureHandle>,
     /// Where the chooser of overlapping markers opens.
     pub chooser_pos: Option<Pos2>,
     /// The marker a right-click menu is about.
@@ -823,6 +829,8 @@ mod splash_ux_tests;
 mod tests;
 #[cfg(test)]
 mod text_ux_tests;
+#[cfg(test)]
+mod timeline_aids_ux_tests;
 #[cfg(test)]
 mod ux_tests;
 #[cfg(test)]

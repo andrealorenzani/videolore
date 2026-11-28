@@ -204,6 +204,8 @@ pub enum Modal {
     /// Import of a subtitle file: the question about re-timing and replacing (REQ-183,
     /// REQ-184); the data is in `AppState::pending_import`.
     ImportSubtitles,
+    /// The question before a project is imported as media (REQ-372).
+    ImportProject(PathBuf),
     /// "This video already contains subtitles": the track labels to choose from, and
     /// whether this computer can match their words to the speech.
     SubtitleSource {
@@ -433,6 +435,10 @@ pub trait Dialogs {
     fn pick_subtitles_open(&mut self) -> Option<PathBuf> {
         None
     }
+    /// The project file to import as media (REQ-371).
+    fn pick_project_import(&mut self) -> Option<PathBuf> {
+        self.pick_project_open()
+    }
     /// A PNG, GIF or video file to show over a clip (REQ-325).
     fn pick_picture(&mut self) -> Option<PathBuf> {
         None
@@ -643,6 +649,10 @@ pub struct AppState {
     /// The window changed at this time and is not saved yet (REQ-234).
     window_dirty: Option<Instant>,
     pub preview: Preview,
+    /// Projects imported as media whose video is being made (REQ-371).
+    pub imports: imports::Imports,
+    /// The picture strips of the timeline (REQ-369).
+    pub strips: crate::strips::Strips,
     /// Latest preview frame and a counter that changes with it.
     pub frame: Option<Frame>,
     pub frame_serial: u64,
@@ -880,6 +890,8 @@ impl AppState {
             probes: probe_pool(&sched, &runner),
             probe_cancel: HashMap::new(),
             probe_rejected: Vec::new(),
+            imports: Default::default(),
+            strips: Default::default(),
             proxy_pool: proxy_pool(),
             proxy_events: channel(),
             proxy_jobs: HashMap::new(),
@@ -1449,7 +1461,7 @@ impl AppState {
             .project
             .media
             .iter()
-            .filter(|m| m.status == MediaStatus::Analysing)
+            .filter(|m| m.status == MediaStatus::Analysing && m.from.is_none())
             .count();
         if analysing > 0 {
             jobs.push(Job {
@@ -1473,6 +1485,13 @@ impl AppState {
                 label: format!("Preview copies: {}", copies.len()),
                 progress: Some(copies.iter().sum::<f32>() / copies.len() as f32),
                 cancel: None,
+            });
+        }
+        if let Some(progress) = self.imports.progress() {
+            jobs.push(Job {
+                label: "Rendering an imported project".into(),
+                progress,
+                cancel: Some(Command::CancelImport),
             });
         }
         if let Some(p) = self.model_progress {
@@ -1590,6 +1609,8 @@ impl AppState {
         self.stt = None;
         self.stt_progress = None;
         self.stop_track_check();
+        self.imports = Default::default();
+        self.strips.clear();
         self.pending_create = None;
         self.creating_for = None;
         self.pending_import = None;
@@ -1626,6 +1647,7 @@ impl AppState {
         for id in ids {
             self.maybe_proxy(id);
         }
+        self.queue_rebuilds();
         self.find_changed_media();
         self.start_track_check();
         self.refresh_import_offers();
@@ -1667,6 +1689,8 @@ impl AppState {
             c.store(true, Ordering::SeqCst);
         }
         self.cancel_proxy(id);
+        self.forget_import(id);
+        self.strips.forget(id);
         self.project.media.retain(|m| m.id != id);
         // Subtitle lines of the file go too; an undo step must never bring back a clip
         // whose file is gone, so the states that refer to the file are dropped from the
@@ -1922,6 +1946,7 @@ mod effects;
 mod enabled;
 mod export_flow;
 mod frame;
+pub mod imports;
 mod lut;
 pub mod overlap;
 mod placing;
@@ -1946,6 +1971,8 @@ mod effects_tests;
 mod frame_tests;
 #[cfg(test)]
 mod hw_tests;
+#[cfg(test)]
+pub(crate) mod imports_tests;
 #[cfg(test)]
 mod lut_tests;
 #[cfg(test)]

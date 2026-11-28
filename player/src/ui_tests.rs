@@ -800,3 +800,105 @@ fn the_file_menu_offers_the_playlist_and_the_editor_and_next_previous_appear_wit
     }
     h.click_label("Next");
 }
+
+// covers: REQ-374, REQ-375
+#[test]
+fn the_playlist_menu_moves_and_removes_videos_and_the_total_is_shown() {
+    let d = tempfile::tempdir().unwrap();
+    let mut h = Harness::new(state(d.path()));
+    h.click_label("Playlist");
+    assert!(h.has("The playlist is empty"), "{:#?}", h.labels());
+    h.key(Key::Escape);
+    h.click(pos2(480.0, 300.0));
+    open_video(&mut h, d.path(), "one-minute.mp4");
+    let two = d.path().join("two-minutes.mp4");
+    std::fs::write(&two, "x").unwrap();
+    h.app
+        .dispatch(Command::AddToPlaylistPaths(vec![two]), Instant::now());
+    let end = Instant::now() + Duration::from_secs(10);
+    while !h.has("00:00:00.000 / 00:01:00.000 [00:03:00]") {
+        assert!(Instant::now() < end, "{:#?}", h.labels());
+        std::thread::sleep(Duration::from_millis(2));
+        h.idle(1);
+    }
+    let names = |h: &Harness| -> Vec<String> {
+        h.app
+            .playlist
+            .items
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect()
+    };
+    h.click_label("Playlist");
+    assert!(h.has("1. one-minute.mp4") && h.has("2. two-minutes.mp4"));
+    // the buttons of a row, the rows from the top
+    let button = |h: &Harness, label: &str, row: usize| -> Pos2 {
+        let mut all: Vec<Rect> = h
+            .nodes
+            .iter()
+            .filter(|n| n.label == label)
+            .map(|n| n.rect)
+            .collect();
+        all.sort_by(|a, b| a.min.y.total_cmp(&b.min.y));
+        all[row].center()
+    };
+    let up = button(&h, "Move up", 1);
+    h.click(up);
+    assert_eq!(names(&h), ["two-minutes.mp4", "one-minute.mp4"]);
+    if !h.has("Move down") {
+        h.click_label("Playlist");
+    }
+    let down = button(&h, "Move down", 0);
+    h.click(down);
+    assert_eq!(names(&h), ["one-minute.mp4", "two-minutes.mp4"]);
+    if !h.has("Remove") {
+        h.click_label("Playlist");
+    }
+    let remove = button(&h, "Remove", 1);
+    h.click(remove);
+    assert_eq!(names(&h), ["one-minute.mp4"]);
+    assert!(!h.labels().iter().any(|l| l.contains("[00:")));
+}
+
+// covers: REQ-376
+#[test]
+fn take_screenshot_captures_the_picture_without_anything_over_it() {
+    use eframe::egui::{Color32, ColorImage, ViewportCommand, ViewportId};
+    let d = tempfile::tempdir().unwrap();
+    let mut h = Harness::new(state(d.path()));
+    open_video(&mut h, d.path(), "clip.mp4");
+    h.click_label("File");
+    assert!(h.has("Take screenshot"), "{:#?}", h.labels());
+    h.key(Key::Escape);
+    h.click(pos2(900.0, 40.0));
+    h.app.dispatch(Command::TakeScreenshot, h.now);
+    // the next frame asks the window for a capture
+    let (app, cache, now) = (&mut h.app, &mut h.cache, h.now);
+    let raw = RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, h.size)),
+        ..Default::default()
+    };
+    let mut out = h.ctx.run_ui(raw, |ui| frame_ui(ui, app, cache, now));
+    let asked = out.viewport_output[&ViewportId::ROOT]
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            ViewportCommand::Screenshot(callback) => Some(callback.clone()),
+            _ => None,
+        })
+        .expect("a capture is asked for");
+    out.textures_delta.clear();
+    out.drop_without_applying_deltas();
+    assert!(h.app.shooting);
+    h.idle(2);
+    assert!(h.app.shooting, "waiting for the window");
+    // the window answers; this player's save dialog is cancelled
+    asked.complete(Arc::new(ColorImage::filled([960, 600], Color32::BLUE)));
+    h.idle(2);
+    assert!(!h.app.shooting);
+    // a window that never answers is given up
+    h.app.dispatch(Command::TakeScreenshot, h.now);
+    h.idle(210);
+    assert!(!h.app.shooting);
+    assert_eq!(h.app.status, "The screenshot could not be taken");
+}

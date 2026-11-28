@@ -5,7 +5,7 @@ Index of the architecture. Each topic is in its own document; read only the one 
 ## Overview
 `videolore` is a desktop video editor with a native window (Linux, macOS, Windows). It does not decode or encode video itself: it drives `ffmpeg` and `ffprobe`, which are **bundled with the installers** and run as separate programs. The edit (clips, cuts, fades, music, effects, Scale and Move, LUTs, texts, subtitles, pictures and overlays) is kept in memory, previewed, and exported with a single `ffmpeg` run. The preview and the export come from the same graph builder, so what is seen is what is exported. The separate player (`videolore-player`) uses the same preview engine for one video, with no editing and no export.
 
-Last release: 2.3.0. Versions 3.0.0 to 3.1.2 are in the [changelog](changelog.md), not released yet. The 3.1.0 items (planned: audio tracks per clip, Enlarge word from its base, "As subtitle track", blurred fill fix, Overlap media row, player audio menu; see the sections marked 3.1.0 planned and [decisions](architecture-decisions.md#planned-for-310-adr-244-to-254)). 3.1.2 (built): a third program, the screen recorder `videolore-screen-spy` (its own installers), and the player's several videos from File > Open… and Add to playlist (see [screen recorder](architecture-screen-spy.md) and [decisions](architecture-decisions.md#built-in-312-adr-255-to-270)).
+Last release: 2.3.0. Versions 3.0.0 to 3.2.0 are in the [changelog](changelog.md), not released yet. 3.2.0 (built, see [timeline](architecture-timeline.md) and [decisions](architecture-decisions.md#built-in-320-adr-276-to-284)): ruler marks, pointer line, picture strips, project as media (format 16), player playlist menu and screenshot, recorder noise filter. The 3.1.0 items (planned: audio tracks per clip, Enlarge word from its base, "As subtitle track", blurred fill fix, Overlap media row, player audio menu; see the sections marked 3.1.0 planned and [decisions](architecture-decisions.md#planned-for-310-adr-244-to-254)). 3.1.2 (built): a third program, the screen recorder `videolore-screen-spy` (its own installers), and the player's several videos from File > Open… and Add to playlist (see [screen recorder](architecture-screen-spy.md) and [decisions](architecture-decisions.md#built-in-312-adr-255-to-270)).
 
 ## Sub-documents
 | Topic | Document |
@@ -22,7 +22,8 @@ Last release: 2.3.0. Versions 3.0.0 to 3.1.2 are in the [changelog](changelog.md
 | 360 video | [360](architecture-360.md) |
 | Interface, boxes, icons and splash | [UI](architecture-ui.md) |
 | Videolore player | [player](architecture-player.md) |
-| Screen recorder (3.1.2) | [screen recorder](architecture-screen-spy.md) |
+| Screen recorder (3.1.2; noise filter added in 3.2.0) | [screen recorder](architecture-screen-spy.md) |
+| Timeline ruler, pointer line, picture strips, project as media (3.2.0, built) | [timeline](architecture-timeline.md) |
 | Project files and settings | [projects](architecture-projects.md) |
 | Security | [security](architecture-security.md) |
 | Non-functional targets, limits and measurements | [NFR](architecture-nfr.md) |

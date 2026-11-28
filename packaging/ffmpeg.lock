@@ -1,27 +1,29 @@
 # Pinned ffmpeg builds shipped inside the videolore installers.
 # Read by scripts/fetch-ffmpeg.sh (download + SHA-256 check) and by the app's notices screen.
 # One section per target. Refresh the pins on every release (ffmpeg parses untrusted media).
+# BtbN/FFmpeg-Builds (now at FFmpeg-Builds/FFmpeg-Builds) removes its daily builds after about
+# two weeks and keeps the last one of each month.
 # Format: "[target]" then "key = value" lines; "#" starts a comment.
 
 [linux-x86_64]
 provider = BtbN/FFmpeg-Builds (linux64-gpl, static)
-version = 9.0.2-57-gd838f9f9ae
-url = https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-13-12-43/ffmpeg-n9.0.2-57-gd838f9f9ae-linux64-gpl-9.0.tar.xz
-sha256 = 01f1a5a6721de2d4e2e49dbadf6eb30bb750934429f685f6f5a389168ac27e23
+version = 9.0.2-982-g836df4e858
+url = https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-27-12-42/ffmpeg-n9.0.2-982-g836df4e858-linux64-gpl-9.0.tar.xz
+sha256 = a236601b679237dece06c8dbf1662cdb138f197c8109c9fa4ae5f0e884d61ffb
 licence = GPL-3.0-or-later (built with --enable-gpl --enable-version3)
-build_scripts = https://github.com/BtbN/FFmpeg-Builds
-build_scripts_commit = c9fe5114060e507409f7ee07edfd82efaf25d767
-source = https://github.com/FFmpeg/FFmpeg/archive/d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz
+build_scripts = https://github.com/FFmpeg-Builds/FFmpeg-Builds
+build_scripts_commit = d05871a37b5fc80e00714c708edec35c7b9ebfb0
+source = https://github.com/FFmpeg/FFmpeg/archive/836df4e85894b757debe268f84ffc08c57623a73.tar.gz
 
 [windows-x86_64]
 provider = BtbN/FFmpeg-Builds (win64-gpl-shared)
-version = 9.0.2-57-gd838f9f9ae
-url = https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-13-12-43/ffmpeg-n9.0.2-57-gd838f9f9ae-win64-gpl-shared-9.0.zip
-sha256 = f4e068477787394da18a44b27d3e2cb19e05b21495b836a4fd5a31958b608932
+version = 9.0.2-982-g836df4e858
+url = https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-27-12-42/ffmpeg-n9.0.2-982-g836df4e858-win64-gpl-shared-9.0.zip
+sha256 = 94687d75c4d653c99cc071022f11b3990f0eb50aff185d1f5983b02eb2947af9
 licence = GPL-3.0-or-later (built with --enable-gpl --enable-version3)
-build_scripts = https://github.com/BtbN/FFmpeg-Builds
-build_scripts_commit = c9fe5114060e507409f7ee07edfd82efaf25d767
-source = https://github.com/FFmpeg/FFmpeg/archive/d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz
+build_scripts = https://github.com/FFmpeg-Builds/FFmpeg-Builds
+build_scripts_commit = d05871a37b5fc80e00714c708edec35c7b9ebfb0
+source = https://github.com/FFmpeg/FFmpeg/archive/836df4e85894b757debe268f84ffc08c57623a73.tar.gz
 
 [macos-aarch64]
 provider = Martin Riedl build server (macOS arm64 release, static)

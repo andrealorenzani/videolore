@@ -42,7 +42,7 @@ mod v9;
 /// the camera paths; 3 since 1.2.0: clip volumes, fades at the video's edges, subtitle
 /// positions, subtitle tracks of media; 12 since 2.1.0: text shadows and the subtitle
 /// style settings; 14 since 2.3.0: overlap media, no crop). 13 is converted in memory when it is opened (`v13`).
-pub const SCHEMA_VERSION: u64 = 15;
+pub const SCHEMA_VERSION: u64 = 16;
 /// Oldest schema that can still be opened (0.1.x).
 pub const OLDEST_SCHEMA: u64 = 1;
 pub const MAX_PROJECT_BYTES: u64 = 96 * 1024 * 1024;
@@ -227,6 +227,11 @@ struct MediaEntry {
     file_size: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     modified_ms: Option<i64>,
+    /// A project imported as media (schema 16, REQ-371): its file, absolute and relative.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    from_abs: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    from_rel: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -302,6 +307,8 @@ pub fn to_json(project: &Project, path: &Path) -> Result<String, ProjectError> {
                 format: m.format.clone(),
                 file_size: m.stat.map(|s| s.size),
                 modified_ms: m.stat.map(|s| s.modified_ms),
+                from_abs: m.from.clone(),
+                from_rel: m.from.as_ref().and_then(|f| relative_path(&dir, f)),
             })
             .collect(),
         timeline: project.timeline.clone(),
@@ -434,6 +441,18 @@ fn text_migration(texts: &Texts) -> Option<TextMigration> {
     })
 }
 
+/// The file stored as `abs` with the relative path `rel` from the project folder `dir`:
+/// the absolute one when it is there, else the relative one.
+fn find_file(abs: &Path, rel: Option<&Path>, dir: &Path) -> Option<PathBuf> {
+    if abs.is_absolute() && abs.is_file() {
+        return Some(abs.to_path_buf());
+    }
+    rel.filter(|r| r.is_relative())
+        .map(|r| dir.join(r))
+        .filter(|p| p.is_file())
+        .and_then(|p| std::path::absolute(p).ok())
+}
+
 /// Parses and validates project JSON. `dir` is the project's folder (for relative paths).
 /// Returns the project and the names of sources that could not be found.
 pub fn from_json(json: &str, dir: &Path) -> Result<(Project, Vec<String>), ProjectError> {
@@ -504,24 +523,21 @@ pub fn from_json_noted(
         if e.duration <= Micros::ZERO {
             return Err(invalid("media with a non-positive duration"));
         }
-        let rel = e
-            .path_rel
+        let found = find_file(&e.path_abs, e.path_rel.as_deref(), dir);
+        // the source of an imported project, at its stored place or beside the project
+        // (a stored path that is not absolute is read from the project's folder)
+        let from = e
+            .from_abs
             .as_ref()
-            .filter(|r| r.is_relative())
-            .map(|r| dir.join(r));
-        let found = if e.path_abs.is_absolute() && e.path_abs.is_file() {
-            Some(e.path_abs.clone())
-        } else {
-            rel.filter(|p| p.is_file())
-                .and_then(|p| std::path::absolute(p).ok())
-        };
+            .map(|abs| find_file(abs, e.from_rel.as_deref(), dir).unwrap_or_else(|| dir.join(abs)));
         // The stored name is only shown: hostile characters are neutralised, length capped.
         let name = if e.name.is_empty() {
             crate::media::display_name(&e.path_abs)
         } else {
             crate::media::sanitize_for_display(&e.name.chars().take(255).collect::<String>())
         };
-        if found.is_none() {
+        // the video of an imported project is made again from its source: not reported here
+        if found.is_none() && from.is_none() {
             missing.push(name.clone());
         }
         let mut format = e.format;
@@ -558,6 +574,7 @@ pub fn from_json_noted(
             missing: found.is_none(),
             status: Default::default(),
             proxy: Default::default(),
+            from,
         });
     }
 
@@ -1184,14 +1201,14 @@ pub(crate) mod tests {
         let file = dir.path().join("old.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 15"));
+        assert!(text.contains("\"schema_version\": 16"));
         assert_eq!(load(&file).unwrap().0, p);
         // a file from a newer videolore is refused and left byte-for-byte unchanged
         let newer = dir.path().join("newer.vlproj");
-        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 16");
+        let body = V1_FIXTURE.replace("\"schema_version\": 1", "\"schema_version\": 17");
         std::fs::write(&newer, &body).unwrap();
         let e = load(&newer).unwrap_err();
-        assert_eq!(e, ProjectError::TooNew(16));
+        assert_eq!(e, ProjectError::TooNew(17));
         assert!(e.to_string().contains("newer version of videolore"));
         assert_eq!(std::fs::read_to_string(&newer).unwrap(), body);
     }
@@ -1370,8 +1387,8 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 15"));
-        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(15)));
+        assert!(text.contains("\"schema_version\": 16"));
+        assert_eq!(opened_by_1_1(&text), Err(ProjectError::TooNew(16)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         assert_eq!(
             opened_by_1_1(crate::render::golden_tests::V2_FIXTURE),
@@ -1518,9 +1535,9 @@ pub(crate) mod tests {
         let file = dir.path().join("new.vlproj");
         save(&q, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 15"));
+        assert!(text.contains("\"schema_version\": 16"));
         assert!(text.contains("\"camera\"") && !text.contains("\"treat_as_360\""));
-        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(15)));
+        assert_eq!(opened_by_1_2_5(&text), Err(ProjectError::TooNew(16)));
         assert_eq!(load(&file).unwrap().0, q);
         // a project without points of view writes no camera section
         let plain = dir.path().join("plain.vlproj");
@@ -1604,7 +1621,7 @@ pub(crate) mod tests {
         assert!(text.contains("\"texts\"") && text.contains("\"anchor\""));
         assert_eq!(load(&file).unwrap().0, q);
         // 1.2.6 refuses it, untouched
-        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(15)));
+        assert_eq!(opened_by_1_2_6(&text), Err(ProjectError::TooNew(16)));
         // a project of 1.2.6 has no texts
         let old = text.replace("\"schema_version\": 6", "\"schema_version\": 4");
         let mut v: serde_json::Value = serde_json::from_str(&old).unwrap();
@@ -1654,10 +1671,10 @@ pub(crate) mod tests {
         v["subtitles"]["lines"][0]["anchor"]["pitch_cd"] = 99_999.into();
         assert!(from_json(&v.to_string(), dir.path()).is_err());
         // too new
-        let new = text.replace("\"schema_version\": 15", "\"schema_version\": 16");
+        let new = text.replace("\"schema_version\": 16", "\"schema_version\": 17");
         assert_eq!(
             from_json(&new, dir.path()).unwrap_err(),
-            ProjectError::TooNew(16)
+            ProjectError::TooNew(17)
         );
     }
 
@@ -1794,11 +1811,11 @@ pub(crate) mod tests {
         let file = dir.path().join("f.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 15"));
+        assert!(text.contains("\"schema_version\": 16"));
         assert!(text.contains("\"frame_aspect\""));
         assert_eq!(load(&file).unwrap().0, p);
         // 1.4.1 and earlier refuse it
-        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(15)));
+        assert_eq!(opened_by_1_4_1(&text), Err(ProjectError::TooNew(16)));
     }
 
     // covers: REQ-132
@@ -1810,7 +1827,7 @@ pub(crate) mod tests {
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 15", "\"schema_version\": 6");
+            .replace("\"schema_version\": 16", "\"schema_version\": 6");
         assert!(!text.contains("frame_aspect") && !text.contains("clip_frames"));
         let (q, _) = from_json(&text, dir.path()).unwrap();
         assert!(!q.timeline.has_frame_effect());
@@ -1922,19 +1939,19 @@ pub(crate) mod tests {
         let file = dir.path().join("l.vlproj");
         save(&p, &file).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("\"schema_version\": 15"));
+        assert!(text.contains("\"schema_version\": 16"));
         let (q, notes) = load(&file).unwrap();
         assert_eq!(q, p);
         assert!(notes.is_empty());
         // 1.5.x refuses the file with its newer-version message and leaves it alone
-        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(15)));
+        assert_eq!(opened_by_1_5(&text), Err(ProjectError::TooNew(16)));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         // a project of 1.5 (no LUT keys) opens with no colour effect
         let plain = sample(dir.path());
         save(&plain, &file).unwrap();
         let old = std::fs::read_to_string(&file)
             .unwrap()
-            .replace("\"schema_version\": 15", "\"schema_version\": 7");
+            .replace("\"schema_version\": 16", "\"schema_version\": 7");
         assert!(!old.contains("whole_lut") && !old.contains("clip_luts"));
         let (r, _) = from_json(&old, dir.path()).unwrap();
         assert!(!r.timeline.any_lut());
@@ -2051,7 +2068,7 @@ pub(crate) mod tests {
         assert_eq!(old.texts.items[0].height, DEFAULT_HEIGHT);
         // a 2.0.2 reader refuses a format 10 file (nothing is silently changed)
         let text = std::fs::read_to_string(dir.path().join("f10.vlproj")).unwrap();
-        assert!(text.contains("\"schema_version\": 15"));
+        assert!(text.contains("\"schema_version\": 16"));
     }
 
     // covers: REQ-167

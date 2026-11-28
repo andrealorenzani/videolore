@@ -4,7 +4,9 @@
 //! The playlist (REQ-254, 355, 356): the videos to play one after the other. It exists only while
 //! the player is open and is never written anywhere.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use videolore::time::Micros;
 
 /// Most entries; a folder with more is cut here.
 pub const MAX_ENTRIES: usize = 10_000;
@@ -47,6 +49,8 @@ pub struct Playlist {
     pub items: Vec<PathBuf>,
     /// Index of the video playing now.
     pub current: Option<usize>,
+    /// How long each video is, as far as it was looked at (`None`: it cannot be told).
+    lengths: HashMap<PathBuf, Option<Micros>>,
 }
 
 impl Playlist {
@@ -57,6 +61,71 @@ impl Playlist {
         }
         self.items.push(p);
         true
+    }
+
+    /// Moves the video at `i` one place earlier; the one playing stays the one playing.
+    /// False when there is no earlier place.
+    pub fn move_up(&mut self, i: usize) -> bool {
+        match i.checked_sub(1) {
+            Some(to) if i < self.items.len() => self.swap(i, to),
+            _ => false,
+        }
+    }
+
+    /// Moves the video at `i` one place later (as [`Self::move_up`]).
+    pub fn move_down(&mut self, i: usize) -> bool {
+        match i.checked_add(1) {
+            Some(to) if to < self.items.len() => self.swap(i, to),
+            _ => false,
+        }
+    }
+
+    fn swap(&mut self, a: usize, b: usize) -> bool {
+        self.items.swap(a, b);
+        self.current = self.current.map(|c| match c {
+            c if c == a => b,
+            c if c == b => a,
+            c => c,
+        });
+        true
+    }
+
+    /// Takes the video at `i` out of the list and returns it. When it was the current one
+    /// the one that took its place becomes current (none after the last).
+    pub fn remove(&mut self, i: usize) -> Option<PathBuf> {
+        if i >= self.items.len() {
+            return None;
+        }
+        let gone = self.items.remove(i);
+        self.current = match self.current {
+            Some(c) if c > i => Some(c - 1),
+            Some(c) if c == i => (i < self.items.len()).then_some(i),
+            other => other,
+        };
+        Some(gone)
+    }
+
+    /// Notes how long the video `p` is.
+    pub fn set_length(&mut self, p: PathBuf, length: Option<Micros>) {
+        self.lengths.insert(p, length);
+    }
+
+    /// The first video of a list of two or more that was not looked at yet.
+    pub fn unknown(&self) -> Option<&PathBuf> {
+        self.items
+            .iter()
+            .filter(|_| self.items.len() > 1)
+            .find(|p| !self.lengths.contains_key(*p))
+    }
+
+    /// The length of the whole list (REQ-375): `None` for a list of one video at most,
+    /// `Some(None)` while a length is not known.
+    pub fn total(&self) -> Option<Option<Micros>> {
+        (self.items.len() > 1).then(|| {
+            self.items.iter().try_fold(Micros::ZERO, |sum, p| {
+                self.lengths.get(p).copied().flatten().map(|l| sum + l)
+            })
+        })
     }
 
     /// Replaces the list with the videos of a folder, none playing yet.
@@ -156,5 +225,70 @@ mod tests {
             big.add(format!("/v{i}.mp4").into());
         }
         assert_eq!(big.items.len(), MAX_ENTRIES);
+    }
+}
+
+#[cfg(test)]
+mod order_tests {
+    use super::*;
+
+    fn list(n: &[&str]) -> Playlist {
+        let mut l = Playlist::default();
+        for n in n {
+            l.add(format!("/{n}.mp4").into());
+        }
+        l
+    }
+
+    fn names(l: &Playlist) -> String {
+        l.items
+            .iter()
+            .map(|p| p.file_stem().unwrap().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    // covers: REQ-374
+    #[test]
+    fn moving_and_removing_keep_the_current_video() {
+        let mut l = list(&["a", "b", "c"]);
+        l.play(Path::new("/b.mp4"));
+        assert!(!l.move_up(0) && !l.move_down(2) && !l.move_up(9) && !l.move_down(9));
+        assert!(l.move_up(2));
+        assert_eq!((names(&l).as_str(), l.current), ("acb", Some(2)));
+        assert!(l.move_up(2));
+        assert_eq!((names(&l).as_str(), l.current), ("abc", Some(1)));
+        assert!(l.move_down(0));
+        assert_eq!((names(&l).as_str(), l.current), ("bac", Some(0)));
+        assert!(l.remove(2).is_some());
+        assert_eq!(l.current, Some(0));
+        assert_eq!(l.remove(0), Some("/b.mp4".into()));
+        assert_eq!(l.current, Some(0), "the one that took its place");
+        let mut l = list(&["a", "b", "c"]);
+        l.play(Path::new("/c.mp4"));
+        l.remove(0);
+        assert_eq!(l.current, Some(1));
+        l.remove(1);
+        assert_eq!(l.current, None, "it was the last");
+        assert_eq!(l.remove(7), None);
+    }
+
+    // covers: REQ-375
+    #[test]
+    fn the_total_needs_two_videos_and_every_length() {
+        let minute = Micros(60_000_000);
+        let mut l = list(&["a"]);
+        assert_eq!((l.total(), l.unknown()), (None, None));
+        l.add("/b.mp4".into());
+        assert_eq!(l.total(), Some(None));
+        assert_eq!(l.unknown(), Some(&PathBuf::from("/a.mp4")));
+        l.set_length("/a.mp4".into(), Some(minute));
+        assert_eq!(l.total(), Some(None));
+        l.set_length("/b.mp4".into(), Some(minute + minute));
+        assert_eq!(l.total(), Some(Some(Micros(180_000_000))));
+        assert_eq!(l.unknown(), None);
+        l.set_length("/b.mp4".into(), None);
+        assert_eq!((l.total(), l.unknown()), (Some(None), None));
+        l.remove(1);
+        assert_eq!(l.total(), None);
     }
 }

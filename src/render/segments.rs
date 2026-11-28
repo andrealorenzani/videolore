@@ -15,6 +15,9 @@ pub enum ExportMode {
     Sphere360,
     /// The flat camera view of 1.2.6 (the same as `Automatic`).
     FlatCamera,
+    /// The video kept for a project imported as media (REQ-371, ADR-279): a flat picture,
+    /// always re-encoded with the fixed settings of [`crate::format::intermediate_settings`].
+    Intermediate,
 }
 
 /// Who reads the files: the export always uses the originals; the preview may use proxies.
